@@ -4,11 +4,8 @@
 //! - **편집 도구가 허용되는 순간 그 Session이 쥔다.** 판정(v1 티켓 22, [`super::gate`])이 묻지 않고 편집을 허용하는 순간과, 사람이
 //!   승인 카드에서 편집을 허락하는 순간이다. 편집 도구는 ACP 도구 종류(`toolCall.kind`)가 `edit` · `delete` · `move`인 것이다 —
 //!   Runtime의 도구 이름으로 가르지 않는다(`policy::Act`).
-//! - **턴이 끝나면 놓는다.** 그 Session의 턴 끝 · 스스로 이어 간 턴의 끝 · 죽음, 그리고 떠 있는 표에서 꺼낼 때다. 그 턴이 연 호출
-//!   고리는 그 턴 안에서 끝난다 — 부른 쪽은 불린 턴이 끝날 때까지 결과를 기다린다(§8).
-//! - **명령은 쥐지 않는다.** 테스트를 돌리는 리뷰어가 막히지 않게(S20). 명령 요청은 이 자리를 보지 않는다.
-//! - **고리 안에서는 이어 쓴다.** 쥔 Session이 지금 턴의 호출 고리(같은 Thread에서 이 일을 맡긴 쪽들) 안이면 그 자리를 쓴다 — 부른
-//!   쪽은 기다리는 중이라 겹치지 않는다. 주인은 그대로라 불린 턴이 끝나도 놓이지 않는다.
+//! - **턴이 끝나면 놓는다.** 그 Session의 턴 끝 · 스스로 이어 간 턴의 끝 · 죽음, 그리고 떠 있는 표에서 꺼낼 때다.
+//! - **명령은 쥐지 않는다.** 테스트를 돌리는 Session이 막히지 않게(S20). 명령 요청은 이 자리를 보지 않는다.
 //! - **다른 Session의 편집 요청은 거절한다.** 판정의 셋째 칸이다(§9) — 사람에게 묻지 않고 「<주인>이 이 Work를 고치는 중이에요 — 끝난
 //!   뒤 다시 하세요」를 그 Agent에게 돌려준다(`permission` 줄 `decided`). 물은 사이에 다른 Session이 쥐었으면, 사람이 허락해도 같은
 //!   글로 거절한다.
@@ -19,15 +16,14 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde_json::Value;
 
-use super::call::subject;
 use super::gate::resolve;
 use super::writing::{Changed, DocDesk, ToolStep};
 use super::SessionKey;
-use crate::host::{Conv, Emit, HostEvent, OutOfTurn};
+use crate::host::{Emit, HostEvent, OutOfTurn};
 use crate::policy::Card;
 use crate::runtime::{Ruling, RuntimeEvent, Sink};
 
@@ -40,16 +36,16 @@ impl WriteSeats {
         self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// 그 Session이 그 Work를 고치는 것을 막는 주인 — 아무도 쥐지 않았거나 그 Session이 쓸 수 있는 자리면 없다.
-    fn owner_against(&self, work: &str, key: &SessionKey, chain: &[String]) -> Option<SessionKey> {
-        self.lock().get(work).filter(|owner| !shares(owner, key, chain)).cloned()
+    /// 그 Session이 그 Work를 고치는 것을 막는 주인 — 아무도 쥐지 않았거나 그 Session이 주인이면 없다.
+    fn owner_against(&self, work: &str, key: &SessionKey) -> Option<SessionKey> {
+        self.lock().get(work).filter(|owner| *owner != key).cloned()
     }
 
-    /// 쥔다 — 비었으면 그 Session이 쥐고(`Ok(true)`), 그 Session이 쓸 수 있는 자리면 주인을 그대로 둔다(`Ok(false)`). 막히면 주인이다.
-    fn take(&self, work: &str, key: &SessionKey, chain: &[String]) -> Result<bool, SessionKey> {
+    /// 쥔다 — 비었으면 그 Session이 쥐고(`Ok(true)`), 이미 주인이면 그대로 둔다(`Ok(false)`). 막히면 주인이다.
+    fn take(&self, work: &str, key: &SessionKey) -> Result<bool, SessionKey> {
         let mut seats = self.lock();
         match seats.get(work) {
-            Some(owner) if shares(owner, key, chain) => Ok(false),
+            Some(owner) if owner == key => Ok(false),
             Some(owner) => Err(owner.clone()),
             None => {
                 seats.insert(work.to_owned(), key.clone());
@@ -62,11 +58,6 @@ impl WriteSeats {
     fn release(&self, key: &SessionKey) {
         self.lock().retain(|_, owner| owner != key);
     }
-}
-
-/// 주인이 쥔 자리를 이 Session이 쓰나 — 주인이거나, 같은 Thread에서 지금 턴의 호출 고리에 주인이 있다(고리 안에서는 이어 쓴다).
-fn shares(owner: &SessionKey, key: &SessionKey, chain: &[String]) -> bool {
-    owner == key || (owner.thread == key.thread && chain.contains(&owner.handle))
 }
 
 /// 사람의 권한 답이 쓰기 자리에 무엇을 했나.
@@ -89,8 +80,6 @@ pub(super) struct Writer {
     /// 이 Session의 Thread가 이은 Work — 없으면 쓰기 자리가 없다. Work 없이 열린 Session의 Thread가 Work에 이어지면 곧바로 그 Work다
     /// ([`Writer::link`], v1 티켓 30) — 작업 폴더는 다음에 열 때부터 바뀌지만(S11) 판정 · 쓰기 자리는 그 턴부터 Work의 것이다.
     work: Mutex<Option<String>>,
-    /// 이 Session의 대화 — 지금 턴의 호출 고리를 읽는다. 약하게 쥔다: 런타임이 판정을 쥐고, 대화가 런타임의 손잡이를 쥔다.
-    conv: Weak<Conv>,
     /// 사람에게 물은 요청 — 요청 id → 적어 둔 것. 턴이 끝나면 비운다(그 턴의 요청은 거둬졌다).
     asked: Mutex<HashMap<String, Noted>>,
     /// 이 Session이 쓰는 문서를 적는 자리(v1 티켓 34) — 호스트에 하나다. 턴 끝을 보는 sink가 편집 도구의 갱신을 여기 적는다.
@@ -124,7 +113,6 @@ impl Writer {
         data_root: PathBuf,
         key: SessionKey,
         work: Option<String>,
-        conv: &Arc<Conv>,
         docs: Docs,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -132,7 +120,6 @@ impl Writer {
             data_root,
             key,
             work: Mutex::new(work),
-            conv: Arc::downgrade(conv),
             asked: Mutex::new(HashMap::new()),
             docs,
         })
@@ -155,10 +142,10 @@ impl Writer {
     }
 
     /// 이 Session의 편집을 막는 주인의 글(§10) — 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 그 거절 글, 아무도 쥐지 않았거나 이
-    /// Session이 쓸 수 있는 자리면 없다. 판정의 입력(「쓰기 자리 주인」)이다.
+    /// Session이 주인이면 없다. 판정의 입력(「쓰기 자리 주인」)이다.
     pub(super) fn blocker(&self) -> Option<String> {
         let work = self.work()?;
-        let owner = self.seats.owner_against(&work, &self.key, &self.chain())?;
+        let owner = self.seats.owner_against(&work, &self.key)?;
         Some(self.busy(&owner))
     }
 
@@ -166,7 +153,7 @@ impl Writer {
     /// 쥘 자리가 없다.
     pub(super) fn take(&self) -> Result<(), String> {
         let Some(work) = self.work() else { return Ok(()) };
-        self.seats.take(&work, &self.key, &self.chain()).map(drop).map_err(|owner| self.busy(&owner))
+        self.seats.take(&work, &self.key).map(drop).map_err(|owner| self.busy(&owner))
     }
 
     /// 사람에게 묻는 요청을 적어 둔다 — 편집을 허락하는 답이면 쥐고([`Writer::grant`]), 「다시 묻지 않기」면 그 허락을 읽는다
@@ -197,7 +184,7 @@ impl Writer {
         if !options.iter().any(|(id, kind)| id == option && kind.starts_with("allow")) {
             return Grant::Unchanged;
         }
-        match self.seats.take(&work, &self.key, &self.chain()) {
+        match self.seats.take(&work, &self.key) {
             Ok(true) => Grant::Took,
             Ok(false) => Grant::Unchanged,
             Err(owner) => match rejecting(&options) {
@@ -268,14 +255,6 @@ impl Writer {
         })
     }
 
-    /// 지금 턴의 호출 고리 — 맡은 일을 받은 턴이면 그 고리, 아니면 이 Agent 하나다(v1 티켓 16).
-    fn chain(&self) -> Vec<String> {
-        self.conv
-            .upgrade()
-            .and_then(|conv| conv.lock_state().order.serving().map(|call| call.chain().to_vec()))
-            .unwrap_or_else(|| vec![self.key.handle.clone()])
-    }
-
     /// 거절의 글(§10) — 같은 Thread의 주인이면 handle만, 다른 Thread면 그 Thread의 이름을 앞에 단다.
     fn busy(&self, owner: &SessionKey) -> String {
         let who = subject(&owner.handle);
@@ -289,6 +268,14 @@ impl Writer {
             .unwrap_or_else(|| owner.thread.clone());
         format!("「{title}」 Thread의 {who} 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요")
     }
+}
+
+/// `@handle` 뒤에 주격 조사를 붙인 것 — 끝 글자가 받침 있는 한글이면 「이」, 아니면 「가」(영문 handle은 대개 모음으로 읽힌다).
+fn subject(handle: &str) -> String {
+    let batchim = handle.chars().last().is_some_and(|last| {
+        ('\u{AC00}'..='\u{D7A3}').contains(&last) && (u32::from(last) - 0xAC00) % 28 != 0
+    });
+    format!("@{handle}{}", if batchim { "이" } else { "가" })
 }
 
 /// 권한 요청의 선택지들 — (`optionId`, `kind`).
@@ -333,32 +320,32 @@ mod tests {
         SessionKey::new(thread, handle)
     }
 
-    fn chain(handles: &[&str]) -> Vec<String> {
-        handles.iter().map(|handle| (*handle).to_owned()).collect()
+    #[test]
+    fn 쓰기_자리는_work마다_하나이고_주인만_이어_쓰며_주인이_놓으면_빈다() {
+        let seats = WriteSeats::default();
+        let host = key("a", "host");
+        assert_eq!(seats.take("cart", &host), Ok(true), "빈 자리는 쥔다");
+        assert_eq!(seats.take("cart", &host), Ok(false), "주인은 그대로 쓴다");
+        assert_eq!(seats.take("billing", &key("b", "tester")), Ok(true), "Work마다 따로다");
+
+        assert_eq!(seats.owner_against("cart", &host), None, "주인을 막지 않는다");
+        let other = key("b", "tester");
+        assert_eq!(seats.owner_against("cart", &other), Some(host.clone()), "다른 채팅은 막힌다");
+        assert_eq!(seats.take("cart", &other), Err(host.clone()), "막히면 주인이다");
+        assert_eq!(seats.owner_against("cart", &key("a", "reviewer")), Some(host.clone()), "같은 채팅의 다른 Session도 막힌다");
+        assert_eq!(seats.owner_against("cart", &key("b", "host")), Some(host.clone()), "다른 채팅의 같은 handle은 주인이 아니다");
+
+        seats.release(&other);
+        assert_eq!(seats.owner_against("cart", &other), Some(host.clone()), "주인이 아닌 쪽이 놓아도 그대로다");
+        seats.release(&host);
+        assert_eq!(seats.take("cart", &other), Ok(true), "주인이 놓으면 빈다");
     }
 
     #[test]
-    fn 쓰기_자리는_work마다_하나이고_주인과_같은_thread의_고리_안만_이어_쓰며_주인이_놓으면_빈다() {
-        let seats = WriteSeats::default();
-        let host = key("a", "host");
-        assert_eq!(seats.take("cart", &host, &chain(&["host"])), Ok(true), "빈 자리는 쥔다");
-        assert_eq!(seats.take("cart", &host, &chain(&["host"])), Ok(false), "주인은 그대로 쓴다");
-        assert_eq!(seats.take("billing", &key("b", "tester"), &chain(&["tester"])), Ok(true), "Work마다 따로다");
-
-        let reviewer = key("a", "reviewer");
-        assert_eq!(seats.owner_against("cart", &reviewer, &chain(&["host", "reviewer"])), None, "고리 안에서는 이어 쓴다");
-        assert_eq!(seats.take("cart", &reviewer, &chain(&["host", "reviewer"])), Ok(false), "주인은 바뀌지 않는다");
-        seats.release(&reviewer);
-        assert_eq!(seats.owner_against("cart", &key("b", "tester"), &chain(&["tester"])), Some(host.clone()), "불린 쪽이 놓아도 그대로다");
-        assert_eq!(seats.owner_against("cart", &reviewer, &chain(&["reviewer"])), Some(host.clone()), "고리 밖이면 같은 Thread여도 막힌다");
-        assert_eq!(
-            seats.owner_against("cart", &key("b", "reviewer"), &chain(&["host", "reviewer"])),
-            Some(host.clone()),
-            "다른 Thread의 같은 handle은 고리가 아니다"
-        );
-
-        seats.release(&host);
-        assert_eq!(seats.take("cart", &key("b", "tester"), &chain(&["tester"])), Ok(true), "주인이 놓으면 빈다");
+    fn 주인의_이름_뒤에는_받침에_맞는_주격_조사가_붙는다() {
+        assert_eq!(subject("host"), "@host가");
+        assert_eq!(subject("리뷰어"), "@리뷰어가");
+        assert_eq!(subject("검토관"), "@검토관이");
     }
 
     #[test]

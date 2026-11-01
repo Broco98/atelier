@@ -560,7 +560,6 @@ pub fn run() {
             commands::thread_work_prs,
             commands::thread_rename,
             commands::thread_mark_read,
-            commands::thread_call_again,
             commands::inspect_project_folder,
             commands::new_project_place,
             commands::new_project,

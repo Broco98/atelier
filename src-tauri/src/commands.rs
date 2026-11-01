@@ -1158,19 +1158,6 @@ pub async fn thread_work_mode(
     to_host(&engine, "Work의 물어보는 정도를 읽지 못했습니다", move |host| host.work_ask_level(&work)).await
 }
 
-/// 다시 맡기기(v1 티켓 17 · 구현 스펙 §8) — 호출 줄에서 사람이 `from`의 부르기를 같은 글(`text`)로 `to`에게 다시 한다. 기다리지
-/// 않는다 — 부르기 · 결과(부른 Agent의 다음 말)는 기록 줄로 온다. 부를 수 없으면 그 까닭으로 거절된다.
-#[tauri::command]
-pub async fn thread_call_again(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    thread: String,
-    from: String,
-    to: String,
-    text: String,
-) -> CmdResult<()> {
-    to_host(&chats, "다시 맡기지 못했습니다", move |host| host.call_again(&thread, &from, &to, &text)).await
-}
-
 /// 이름 바꾸기 — 위 막대에서 사람이 고친 이름(v1 티켓 05). `thread.json` · `title` 줄 · 목록 요약이 함께 바뀐다. 답은 바뀐 목록
 /// 요약이다. 빈 이름은 거절된다.
 #[tauri::command]

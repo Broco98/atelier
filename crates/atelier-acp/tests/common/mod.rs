@@ -211,6 +211,18 @@ impl Sandbox {
         self.data_root().join("works").join(slug)
     }
 
+    /// 커밋 하나가 있는 git 저장소를 세워 Project로 등록한다 — 등록한 Project의 slug는 폴더 이름이다.
+    pub fn register_project(&self, name: &str) -> PathBuf {
+        let folder = self.data_root().parent().unwrap().join("repos").join(name);
+        fs::create_dir_all(&folder).unwrap();
+        for args in [&["init", "-q", "-b", "main"][..], &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]] {
+            let out = Command::new("git").arg("-C").arg(&folder).args(args).output().expect("git");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        }
+        atelier_core::create_project(&atelier_core::projects_in(&self.data_root()), &folder).expect("Project 등록");
+        folder
+    }
+
     // ── Claude ──────────────────────────────────────────────────────────────────
 
     /// Claude를 띄우는 데 드는 `claude`를 둔 PATH 폴더 — 가짜 claude bin을 가리키는 링크다.

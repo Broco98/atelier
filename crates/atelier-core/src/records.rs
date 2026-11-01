@@ -65,8 +65,6 @@ pub enum RecordKind {
     Title,
     /// 물어보는 정도 바꿈.
     Mode,
-    /// Agent 호출의 시작과 끝 — 부른 쪽 · 불린 쪽 · 맡긴 말 · 받은 말 · 걸린 시간 · 실패 까닭.
-    Call,
     /// 이 Work의 PR이 처음 보였을 때와 상태가 바뀔 때.
     Pr,
     /// Space가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Space, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Space를 사내 도구로
@@ -176,11 +174,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 앞_판이_적은_library_줄은_읽기가_건너뛰고_그_seq는_이어_적는_자리로_센다() {
+    fn 앞_판이_적은_library_줄과_call_줄은_읽기가_건너뛰고_그_seq는_이어_적는_자리로_센다() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("events.jsonl");
         let line = |seq: u64, kind: &str| format!(r#"{{"seq":{seq},"at":"2026-11-02T04:00:00.000+09:00","kind":"{kind}","payload":{{}}}}"#);
-        let text = [line(1, "title"), line(2, "library"), line(3, "mode"), line(4, "library")].join("\n") + "\n";
+        let text = [line(1, "title"), line(2, "library"), line(3, "mode"), line(4, "call")].join("\n") + "\n";
         std::fs::write(&path, &text).unwrap();
 
         let read: Vec<(u64, RecordKind)> = read_records(&path, 0).unwrap().into_iter().map(|one| (one.seq, one.kind)).collect();

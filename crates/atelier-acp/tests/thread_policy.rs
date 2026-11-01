@@ -280,22 +280,18 @@ fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_�
 fn 편집은_허용에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐어_같은_work의_다른_편집은_거절된다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));
-    sandbox.library_agent("reviewer", &agent_md("리뷰어"));
     sandbox.library_agent("tester", &agent_md("테스터"));
     sandbox.work("cart", &["fe"]);
+    sandbox.register_project("api");
     cart_mode(&sandbox, "edits");
-    // Host는 편집(`Write`)을 묻고 그 턴 끝머리에서 리뷰어를 불러 기다린다 — 리뷰어는 멈춤을 기다리는 긴 명령을 되감는다. 테스터는
-    // 편집을 묻는다. 편집의 경로는 각자의 작업 폴더(worktree)로 옮긴다.
-    let fixtures = json!({"reviewer": "2.1.309/interrupt-sigint"}).to_string();
-    let call = json!([{"by": "host", "at": "result", "tool": "call_agent",
-                       "arguments": {"handle": "reviewer", "task": "고친 것을 확인해 줘"}}])
-    .to_string();
+    // Host는 편집(`Write`)을 묻고 그 턴 끝머리에서 Work 밖 Project 카드를 세워 사람의 답을 기다린다. 테스터는 편집을 묻는다. 편집의
+    // 경로는 각자의 작업 폴더(worktree)로 옮긴다.
+    let holds = json!([{"by": "host", "at": "result", "tool": "start_editing", "arguments": {"project": "api"}}]).to_string();
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[
             ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
-            ("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures),
-            ("FAKE_CLAUDE_MCP_CALL", &call),
+            ("FAKE_CLAUDE_MCP_CALL", &holds),
             ("FAKE_CLAUDE_REBASE", RECORDED_PLACE),
         ],
     ));
@@ -307,11 +303,9 @@ fn 편집은_허용에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐
         (json!("allow_once"), json!("편집은 허용"))
     );
     assert_eq!(decided["payload"]["toolCall"]["kind"], "edit");
-    sandbox.wait_thread_record(&writing, |record| {
-        record.iter().any(|line| line["who"] == "reviewer" && line["payload"]["update"]["sessionUpdate"] == "tool_call")
-    });
+    sandbox.wait_thread_kind(&writing, "question", 1);
 
-    // Host의 턴이 리뷰어를 기다리며 도는 동안 — 묻지 않고 허용한 편집으로도 Host가 쓰기 자리를 쥐었다(§10 · S20).
+    // Host의 턴이 카드의 답을 기다리며 도는 동안 — 묻지 않고 허용한 편집으로도 Host가 쓰기 자리를 쥐었다(§10 · S20).
     let other = host.start_thread("@tester 장바구니 문서를 고쳐 줘", in_cart()).expect("같은 Work의 다른 Thread");
     let refused = wait_permission(&sandbox, &other, "tester", "decided");
     assert_eq!(

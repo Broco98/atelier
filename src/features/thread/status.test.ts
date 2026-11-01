@@ -38,9 +38,13 @@ describe("작업 중", () => {
     expect(statusOf(through(twoTurns, 11), live(9))).toEqual({ kind: "working", text: null });
   });
 
-  // 맡은 턴이 도는 동안 부른 Host의 턴도 돈다(v1 티켓 17) — 지금 일하는 것은 불린 Agent의 도구다. 다른 Agent의 일은 이름이 앞에 선다.
-  it("Agent를 부른 동안에는 불린 Agent의 도구가 그 이름과 함께 선다", () => {
-    expect(statusOf(through(record("thread-call"), 17), live(0))).toEqual({ kind: "working", text: "리뷰어 · thread.json 읽는 중" });
+  // 함께 도는 턴에서는 가장 늦게 시작한 도구가 선다 — 다른 Agent의 일은 이름이 앞에 선다.
+  it("Host와 함께 도는 Agent의 도구는 그 이름과 함께 선다", () => {
+    const both = through(record("thread-ask-turns"), 25).filter((line) => line.kind !== "permission");
+    expect(statusOf(both, live(0))).toEqual({
+      kind: "working",
+      text: "테스터 · python3 -c \"import time; time.sleep(15); print('BG-done')\" 실행 중",
+    });
   });
 });
 
@@ -214,17 +218,6 @@ describe("실패", () => {
   it("답 없이 오류로 끝난 턴은 그 오류가 미리보기다", () => {
     const lines = [...twoTurns, sent(21, "다시 해 줘"), turnEnd(22, { error: { code: -32603, message: "API 사용량을 넘었어요" } })];
     expect(statusOf(lines, live(22))).toEqual({ kind: "failed", at: second(22), text: "API 사용량을 넘었어요" });
-  });
-
-  // 부른 Agent가 답하지 못해도 Host의 턴은 그 결과를 받고 끝난다 — 사람이 다시 말하기 전까지는 그 부르기가 이 Thread의 마지막 일이다.
-  it("마지막 부르기가 답하지 못했으면 Host의 턴이 끝났어도 실패다", () => {
-    const calling = record("thread-call").map((line) =>
-      line.seq === 22 ? { ...line, payload: { ...(line.payload as object), outcome: "failed", reason: "리뷰어의 Session이 끝났어요" } } : line,
-    );
-    expect(statusOf(calling, live(26))).toEqual({ kind: "failed", at: second(26), text: "리뷰어가 답하지 못함" });
-    // 사람이 다시 말해 끝난 턴이 이어지면 지난 부르기는 지난 일이다.
-    const after = [...calling, sent(27, "그럼 직접 봐 줘"), answer(28, "봤어요"), turnEnd(29)];
-    expect(statusOf(after, live(26))?.kind).toBe("new");
   });
 
   // 로그인 필요(three-axes 티켓 12)는 Session이 열리지 못한 것이다 — 보낸 말의 턴은 답을 받지 못한 채 열려 있다.

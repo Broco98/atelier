@@ -216,7 +216,6 @@ export type RecordKind =
   | "work"
   | "title"
   | "mode"
-  | "call"
   | "pr"
   | "space"
   | "setting";

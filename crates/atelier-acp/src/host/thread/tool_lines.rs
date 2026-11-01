@@ -1,6 +1,6 @@
 //! Thread 도구 줄의 차례(코드 리뷰 1차 A3) — Agent가 Thread 도구를 부르면 두 길로 닿는다. 도구 줄은 Runtime의 stdout(변환기 →
 //! Runtime 손 → 기록)으로, 부르기는 중계 서버 → Session의 소켓으로 온다. 두 길은 서로 기다리지 않아, 부하가 걸리면 부르기가 먼저
-//! 닿고 그 결과의 줄(불린 Agent의 참여 · Work 만들기 카드 · 이름 바꾸기)이 그 도구 줄과 그 앞 줄들보다 먼저 기록에 선다. 기록은
+//! 닿고 그 결과의 줄(Work 만들기 카드 · 이름 바꾸기)이 그 도구 줄과 그 앞 줄들보다 먼저 기록에 선다. 기록은
 //! 사람이 읽는 차례이자 L3가 쏘는 축복 자료다 — **부르기는 그 도구 줄이 기록에 선 뒤에 받는다.**
 //!
 //! Runtime이 도구 줄을 내지 않으면(내지 않는 Runtime · 깨진 줄) 한도([`LIMIT`])까지만 기다리고 받는다 — 차례보다 일이 먼저다.
@@ -17,7 +17,7 @@ use crate::thread_tools::SERVER_NAME;
 /// 도구 줄을 기다리는 한도 — 줄이 늦는 것은 부하 탓이라 보통은 곧바로 온다.
 const LIMIT: Duration = Duration::from_secs(5);
 
-/// Session 하나가 기록에 적은 Thread 도구 줄 가운데 아직 부르기와 짝짓지 않은 것들 — 도구 이름(`call_agent` …)이 적은 차례로 선다.
+/// Session 하나가 기록에 적은 Thread 도구 줄 가운데 아직 부르기와 짝짓지 않은 것들 — 도구 이름(`rename_thread` …)이 적은 차례로 선다.
 #[derive(Default)]
 pub(super) struct ToolLines {
     heard: Mutex<Vec<String>>,
@@ -101,19 +101,19 @@ mod tests {
 
         let waiting = Arc::clone(&lines);
         let waited = std::thread::spawn(move || {
-            waiting.wait_for("call_agent", Duration::from_secs(10));
+            waiting.wait_for("get_work", Duration::from_secs(10));
         });
         std::thread::sleep(Duration::from_millis(50));
         sink(tool_call("Read"));
-        sink(tool_call("mcp__other__call_agent"));
+        sink(tool_call("mcp__other__get_work"));
         assert!(!waited.is_finished(), "다른 도구 · 다른 서버의 줄로는 받지 않는다");
-        sink(tool_call("mcp__atelier-thread__call_agent"));
+        sink(tool_call("mcp__atelier-thread__get_work"));
         waited.join().unwrap();
         assert_eq!(written.lock().unwrap().len(), 3, "기다림이 풀린 때에는 그 줄이 이미 적혔다");
 
         // 짝지은 줄은 다시 쓰지 않는다 — 다음 부르기는 제 줄을 기다린다.
         let started = Instant::now();
-        lines.wait_for("call_agent", Duration::from_millis(100));
+        lines.wait_for("get_work", Duration::from_millis(100));
         assert!(started.elapsed() >= Duration::from_millis(100));
 
         // 턴이 끝나면 짝짓지 못한 줄을 잊는다.

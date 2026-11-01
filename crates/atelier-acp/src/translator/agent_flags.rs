@@ -92,10 +92,9 @@ pub(super) fn disallowed(forbid: &Value) -> Option<String> {
 
 /// 호스트가 넘긴 MCP 서버의 도구 시간 제한(ms) — claude가 받는 가장 긴 값(JS 타이머의 한도 2^31-1, 약 24.8일)이다.
 ///
-/// **엔진은 Agent 부르기에 시간 제한을 두지 않는다**(v1 구현 스펙 §8 「시간」, v1 티켓 16). 부르기는 불린 Agent의 턴이 끝날 때까지,
-/// 불린 Agent가 사람에게 물으면 그 답까지 기다린다 — 리뷰 한 번이 몇 분, 사람의 답은 하룻밤일 수도 있다. claude의 시간 제한에
-/// 걸리면 부른 Agent는 결과 없이 실패를 받고 불린 Agent는 그대로 일한다. env `MCP_TOOL_TIMEOUT`이 아니라 서버마다의 `timeout`
-/// 칸(2.1.309 MCP 설정의 stdio 꼴)으로 준다 — 사용자의 MCP 서버는 사용자 설정 그대로다(결정.md 16).
+/// **엔진은 사람을 기다리는 도구에 시간 제한을 두지 않는다.** 카드를 세운 Thread 도구는 사람이 고를 때까지 기다린다 — 사람의 답은
+/// 하룻밤일 수도 있다. claude의 시간 제한에 걸리면 Agent는 결과 없이 실패를 받고 카드는 그대로 선다. env `MCP_TOOL_TIMEOUT`이 아니라
+/// 서버마다의 `timeout` 칸(2.1.309 MCP 설정의 stdio 꼴)으로 준다 — 사용자의 MCP 서버는 사용자 설정 그대로다(결정.md 16).
 const TOOL_TIMEOUT_MS: u64 = 2_147_483_647;
 
 /// ACP `mcpServers` → `--mcp-config`의 값(claude의 MCP 설정 JSON 글). 넘길 서버가 없으면 `None`이다.

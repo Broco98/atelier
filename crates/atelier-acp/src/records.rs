@@ -206,12 +206,6 @@ impl Recorder {
         self.log.write(RecordKind::Sent, None, payload).map(drop)
     }
 
-    /// Agent 호출 줄(v1 티켓 16) — 줄의 참여자(`who`)는 이 기록의 참여자가 아니라 부른 Agent(`from`)다(S8: 그 줄의 참여자). 불린
-    /// Agent의 Session이 맡긴 일을 받는 자리(시작 줄)에서 적는다.
-    pub(crate) fn call(&self, from: &str, payload: Value) -> Result<(), RecordError> {
-        self.log.write(RecordKind::Call, Some(from), payload).map(drop)
-    }
-
     /// `session/update` 원문.
     pub(crate) fn update(&self, raw: Value) -> Result<(), RecordError> {
         self.write(RecordKind::Update, raw)
@@ -310,7 +304,7 @@ impl ThreadLog {
 }
 
 /// Thread의 그 참여자가 지금 Session에서 말을 받은 적이 있나 — 그 참여자의 Session이 새로 선 마지막 열림 줄(`new` · `fresh`)
-/// 뒤에 그에게 간 말(사람의 말 · 맡긴 일, [`past::addressed_to`])이 있나. 되살린 열림(`resumed` · `loaded`)은 같은 Session을 이은
+/// 뒤에 그에게 간 말([`past::addressed_to`])이 있나. 되살린 열림(`resumed` · `loaded`)은 같은 Session을 이은
 /// 것이라 건너뛴다. 되살린 Session이 아직 첫 말을 받지 않았으면 그 첫 말에 머리말이 붙는다(v1 구현 스펙 S10 · three-axes 티켓 10).
 pub(crate) fn heard_since_session_start(lines: &[RecordLine], who: &str) -> bool {
     lines

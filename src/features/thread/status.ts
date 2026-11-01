@@ -1,16 +1,13 @@
 import type { StatusMarkKind } from "@/components/shell/status-mark";
 import { describeApproval } from "./approval";
-import { describeCall } from "./call-view";
 import { awaitingLogin, isLoginRequired } from "./engine-store";
 import {
   finalMessages,
   foldOf,
   isCardAsk,
-  type CallEntry,
   type CastMember,
   type PendingAsk,
   type PendingPermission,
-  type ThreadModel,
   type ToolEntry,
   type Turn,
 } from "./fold";
@@ -27,14 +24,12 @@ import type { RecordLine, ThreadView } from "./types";
 // |---|---|---|
 // | 1 | 내 차례 | 답을 기다리는 물음이 있다 — 승인 · Work 만들기 카드 · Agent의 질문(`model.asks` — 앱을 다시 켜 답할 곳이 없는 물음은 접기가 걷는다) |
 // | 2 | 작업 중 | 어느 참여자의 턴이든 돈다 — 로그인을 기다리며 멈춘 턴은 돌지 않는 것이다 |
-// | 3 | 실패 | 로그인 필요 · 마지막 턴이 답 없이 끝났다(오류 · 프로세스 죽음 · 앱이 꺼지며 끊김) · 마지막 부르기가 답하지 못했다 |
+// | 3 | 실패 | 로그인 필요 · 마지막 턴이 답 없이 끝났다(오류 · 프로세스 죽음 · 앱이 꺼지며 끊김) |
 // | 4 | 중단 | 마지막 턴을 사람이 멈췄다 |
 // | 5 | 새 결과 | 마지막 턴 끝 줄이 읽은 자리 뒤에 있다 |
 //
-// - **「마지막 턴」은 끝난 때가 가장 늦은 턴이다** — 함께 도는 턴(멘션 · 맡은 턴, v1 티켓 14 · 17)은 선 차례와 끝난 차례가 다르다. 답 없이
+// - **「마지막 턴」은 끝난 때가 가장 늦은 턴이다** — 함께 도는 턴(멘션, v1 티켓 14)은 선 차례와 끝난 차례가 다르다. 답 없이
 //   끝난 턴의 판정은 흐름의 「답하지 못했습니다」(`ThreadFlow`)와 같다: 끝 까닭이 없고 턴 끝 메시지가 없다.
-// - **부르기의 실패는 사람이 다시 말할 때까지 남는다** — 불린 Agent가 답하지 못해도 부른 Host의 턴은 그 결과를 받고 끝나므로, 마지막
-//   턴만 보면 실패가 묻힌다. 사람이 보낸 말이 그 부르기 뒤에 서면 지난 일이다. 사람이 멈춘 부르기는 실패가 아니라 중단의 몫이다.
 // - **미리보기**는 상태가 정한다 — 내 차례면 기다리는 것(「승인 · pnpm prisma migrate dev」), 작업 중이면 지금 도는 도구의 문구(보드 「pnpm
 //   test auth 실행 중」 — 도구가 없으면 마지막 말이 남는다 · Work 만들기 카드면 「Work 만들기 · 제목」, v1 티켓 30 · 질문이면 「질문 · 첫 물음」, v1 티켓 26), 실패면 그 까닭(「실패」는 그리는 쪽이 앞에 단다), 중단이면 「중단했습니다」다.
 // - 실패 · 중단은 읽어도 남는다 — 읽은 자리가 가르는 것은 새 결과뿐이다. 다음 턴이 끝나면 걷힌다.
@@ -86,11 +81,6 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
   if (last?.end && last.end.stopReason === null && finalMessages(last).length === 0) {
     return { kind: "failed", at: last.end.at, text: last.end.error ?? "Claude Code와 연결이 끊겼어요" };
   }
-  const call = lastCall(model);
-  const spokenAfter = (at: string) => model.turns.some((turn) => turn.sent !== null && Date.parse(turn.startedAt) > Date.parse(at));
-  if (last?.end && call?.end?.outcome === "failed" && !spokenAfter(call.startedAt)) {
-    return { kind: "failed", at: last.end.at, text: describeCall(call, model.cast[call.to]?.name ?? call.to).title };
-  }
   if (last?.end?.stopReason === "cancelled" && last.end.cancelledByUs) {
     return { kind: "stopped", at: last.end.at, text: "중단했습니다" };
   }
@@ -131,17 +121,6 @@ function lastEnded(turns: readonly Turn[]): Turn | null {
   for (const turn of turns) {
     if (turn.end && (found?.end == null || Date.parse(turn.end.at) >= Date.parse(found.end.at))) found = turn;
   }
-  return found;
-}
-
-/** 마지막 부르기 — 턴 안의 호출 줄과 턴 밖의 것(다시 맡기기) 가운데 가장 늦게 선 것. */
-function lastCall(model: ThreadModel): CallEntry | null {
-  const calls = [
-    ...model.turns.flatMap((turn) => turn.entries.filter((entry): entry is CallEntry => entry.kind === "call")),
-    ...model.calls.map((loose) => loose.entry),
-  ];
-  let found: CallEntry | null = null;
-  for (const call of calls) if (found === null || Date.parse(call.startedAt) >= Date.parse(found.startedAt)) found = call;
   return found;
 }
 

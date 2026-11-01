@@ -119,7 +119,7 @@ function Chevron({ open, className }: { open: boolean; className?: string }) {
 
 /**
  * 펼침 · 접힘(02 구현 스펙 §12) — 높이 0 → auto와 투명도가 함께 .3s로 움직인다(`index.css`의 `unfold`). 펼칠 때 그 안을 그리고, 접으면 다
- * 접힌 뒤에 걷는다 — 접힌 줄들이 DOM에 남지 않는다. 처음부터 펼친 채 선 것(다시 연 Thread · Session 보기)은 움직이지 않는다. 동작
+ * 접힌 뒤에 걷는다 — 접힌 줄들이 DOM에 남지 않는다. 처음부터 펼친 채 선 것(다시 연 Thread)은 움직이지 않는다. 동작
  * 줄이기에서는 곧바로 펴고 걷는다.
  */
 export function Unfold({ open, className, children }: { open: boolean; className?: string; children: ReactNode }) {

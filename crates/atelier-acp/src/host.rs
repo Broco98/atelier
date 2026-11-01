@@ -428,10 +428,6 @@ impl TurnHands for ConvHands<'_> {
         self.conv.recorder.sent(text, quote, attachments, prompt, send_now)
     }
 
-    fn called(&mut self, call: &thread::Assignment, text: &str, prompt: &[Value]) -> Result<(), records::RecordError> {
-        self.conv.recorder.call(call.from(), call.started(text, prompt))
-    }
-
     /// 엔진을 가리지 않는다 — 턴 도중의 `-32000`도 `session/new`의 것과 같은 로그인 필요 줄이다(three-axes 티켓 12). Session의
     /// 잠금을 쥔 채 적고 쥐어 둔다 — 그 사이에 보내기가 끼지 않고, 대기 줄도 로그인을 기다린다.
     fn login_lost(&mut self) -> Result<(), records::RecordError> {
@@ -579,9 +575,6 @@ pub enum HostError {
     HandleTaken { call: String, handle: String },
     /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
     BadTitle,
-    /// 「다시 맡기기」로 부를 수 없다(v1 티켓 17) — `tools.agents`에 없음 · 범위 밖 · 호출 고리 안(§8 「부를 수 있나」). 까닭은
-    /// Agent 부르기 도구가 돌려주는 글 그대로다.
-    CallRefused(String),
     /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
     QuestionClosed { thread: String, request: String },
     /// 「Work 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
@@ -644,7 +637,6 @@ impl fmt::Display for HostError {
                 write!(f, "@{call} — 이 Thread에는 이미 다른 @{handle} Agent가 들어와 있어요")
             }
             HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
-            HostError::CallRefused(reason) => write!(f, "{reason}"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
             HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
             HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 Work의 Thread는 읽기만 돼요"),

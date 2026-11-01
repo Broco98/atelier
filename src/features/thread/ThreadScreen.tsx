@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { ArrowDown, ArrowLeft } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { PANEL_MOTION } from "@/components/shell/panel-layout";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
@@ -15,7 +15,6 @@ import { useHomeDir, useWorks } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
 import type { NewThreadSeed } from "@/routes/-new-thread-search";
 import { recallSearch } from "@/routes/-work-search";
-import { AgentFace } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { ArrivalScope, Arriving } from "./arrival";
 import QuestionCard from "./QuestionCard";
@@ -26,7 +25,7 @@ import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
 import { chipLists, CLAUDE_MODELS, currentModel } from "./chips";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
-import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
+import { foldOf, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
 import GuideCard from "./GuideCard";
 import {
@@ -100,9 +99,6 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 // - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
 //   첫 Session이 뜬다 — 최근 Work를 골랐으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
 //   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
-// - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
-//   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
-//   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
 // - **요약 카드**(02 구현 스펙 §7 · Screen-Live — v1 Work 카드를 바꿨다, `SummaryCard`) — 판 오른쪽 위에 위 · 오른쪽 8 띄워 떠 있고 높이는
 //   내용만큼이다. Work에 이은 Thread는 머리 · 변경 사항 · 결과물 · 소스, 보관된 Work의 Thread는 같은 카드에 「보관됨」, Work 없는 Thread는
 //   결과물 · 소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 머리 줄의 요약 고정 토글이 여닫고 머리 줄 Work 이름이 열며, 열림은
@@ -547,9 +543,7 @@ function ThreadBody({
     },
   };
 
-  // 흐름에 선 마지막 턴 — 일하는 맡은 턴은 아직 흐름에 서지 않았다(`flowOf`).
-  const shown = flowOf(model).turns;
-  const last = shown[shown.length - 1];
+  const last = model.turns[model.turns.length - 1];
   // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」).
   const changes = last ? changedFiles(last) : null;
   const turn = askTurn(model);
@@ -592,38 +586,6 @@ function ThreadBody({
     el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
   };
 
-  // Session 보기 — 누구의 줄만 그리나, 열 때 굴러 갈 맡은 턴. 돌아갈 자리는 열기 전의 굴림 값이다.
-  const [session, setSession] = useState<{ handle: string; turn: string | null } | null>(null);
-  const back = useRef<number | null>(null);
-  const openSession = useCallback(
-    (call: CallEntry) => {
-      back.current = scroller.current?.scrollTop ?? 0;
-      const turn = model.turns.find((one) => one.assigned?.id === call.id);
-      setSession({ handle: call.to, turn: turn?.key ?? null });
-    },
-    [model.turns],
-  );
-  const closeSession = () => setSession(null);
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    // 처음 그릴 때는 할 일이 없다 — 바닥에 붙는 일은 기록 줄의 효과가 한다.
-    if (!el || (session === null && back.current === null)) return;
-    if (session) {
-      const target = session.turn ? el.querySelector(`[data-turn="${CSS.escape(session.turn)}"]`) : null;
-      if (target) target.scrollIntoView({ block: "start" });
-      else el.scrollTop = el.scrollHeight;
-    } else if (back.current !== null) {
-      el.scrollTop = back.current;
-      back.current = null;
-    }
-    stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-    setAway(!stuck.current);
-  }, [session]);
-  const callAgain = useCallback(
-    (call: CallEntry) =>
-      threadApi.callAgain(thread, call.from, call.to, call.text).catch((failure: unknown) => setChipProblem(String(failure))),
-    [thread],
-  );
   // PR 카드의 동작(v1 티켓 36) — 「Host에게 고쳐 달라고 하기」는 이 Thread의 입력창에 맡기는 말을 채운다. 보내는 것은 사람이다.
   const prActions = useMemo<PrActions>(
     // 읽기만인 Thread(v1 티켓 38)에는 채울 입력창이 없다 — 고쳐 달라는 버튼이 서지 않는다.
@@ -695,26 +657,15 @@ function ThreadBody({
           className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-4 scroll-quiet"
         >
           <Beside open={beside}>
-            {session && (
-              <SessionHead
-                handle={session.handle}
-                name={model.cast[session.handle]?.name ?? session.handle}
-                avatar={model.cast[session.handle]?.avatar ?? null}
-                onBack={closeSession}
-              />
-            )}
             <LogPlace.Provider value={host?.cwd ?? null}>
               <PrPlace.Provider value={prActions}>
                 <ResultPlace.Provider value={resultActions}>
                   <ThreadFlow
                     thread={thread}
                     model={model}
-                    only={session?.handle ?? null}
                     onRetry={(text, attachments) =>
                       void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
                     }
-                    onOpenSession={openSession}
-                    onCallAgain={callAgain}
                   />
                 </ResultPlace.Provider>
               </PrPlace.Provider>
@@ -830,41 +781,3 @@ function ThreadBody({
   );
 }
 
-/**
- * Session 보기의 머리 줄(S37) — 흐름 위에 붙어 굴려도 남는다. 굴림 상자의 위 여백(`pt-6`)까지 덮고 붙는다(`-top-6`) — 그 여백으로 흐름이
- * 비쳐 오르지 않게. 왼쪽은 돌아가는 길(「Thread로 돌아가기」), 오른쪽은 누구의 Session인지
- * (얼굴 · 이름 · `@handle`)다. 시안에 없는 줄이라 작업 로그의 글자 · 색을 따른다.
- */
-function SessionHead({
-  handle,
-  name,
-  avatar,
-  onBack,
-}: {
-  handle: string;
-  name: string;
-  avatar: CastMember["avatar"];
-  onBack: () => void;
-}) {
-  return (
-    <div
-      data-session={handle}
-      className="sticky -top-6 z-10 -mt-6 mb-4 flex items-center gap-2 border-b-[0.5px] border-border-light bg-surface pt-3 pb-2"
-    >
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1 rounded-md px-1.5 py-1 text-chat-meta text-fg-secondary transition-colors quiet-hover focus-ring"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden />
-        Thread로 돌아가기
-      </button>
-      <span className="flex-1" />
-      <h2 className="flex items-center gap-1.5 text-chat-meta">
-        <AgentFace handle={handle} avatar={avatar} className="size-5" />
-        <b className="font-semibold">{name}의 Session</b>
-        {handle !== "host" && <span className="text-xs text-fg-tertiary">@{handle}</span>}
-      </h2>
-    </div>
-  );
-}

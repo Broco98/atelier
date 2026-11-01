@@ -52,7 +52,7 @@ describe("흐름의 물음 자리", () => {
   const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
   const flow = (lines: readonly RecordLine[]) =>
     renderToStaticMarkup(
-      <ThreadFlow thread="t" model={foldThread(lines)} onRetry={() => {}} onOpenSession={() => {}} onCallAgain={async () => {}} />,
+      <ThreadFlow thread="t" model={foldThread(lines)} onRetry={() => {}} />,
     );
   /** 그 속성이 선 줄의 글 — 태그를 걷고 이어 읽는다. */
   const rowText = (markup: string, attribute: string) => {

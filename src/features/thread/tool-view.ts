@@ -16,9 +16,6 @@ import { isObject, nonEmpty, type Json } from "./json";
 //   내가 거절함」.
 // - **명령 출력의 끝 줄은 종료 코드와 걸린 시간이다**(「코드 종료 0 · 4.2초」). Claude Code는 종료 코드를 주지 않아 그때는 「끝남」 ·
 //   「실패」다.
-// - **Agent 부르기 Thread 도구(`atelier-thread.call_agent`)는 「@reviewer에게 맡기는 중」이다**(v1 티켓 17) — 맡긴 일이 그 Agent에게
-//   전해지면 호출 줄이 이 줄의 자리를 대신하고(`fold.ts`), 그 전(들이는 중 · Session을 여는 중)과 거절된 부르기만 이 줄로 선다.
-//   거절 까닭은 MCP 상자의 받은 값이다.
 // - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「Work 읽음」 · 「Work 만들기를 묻는 중」.
 //   「Project 고치기 시작」(v1 티켓 32)은 「api-server 고치기 시작함」이다 — Work 밖 Project 카드가 서면 그동안 「web-app 고치기 시작하는
 //   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다.
@@ -127,9 +124,6 @@ const THINK: Verbs = { running: "생각하는 중", done: "생각함", failed: "
 const MODE: Verbs = { running: "모드 바꾸는 중", done: "모드 바꿈", failed: "모드 바꾸지 못함", refused: "모드 바꾸지 않음" };
 const OTHER: Verbs = { running: "쓰는 중", done: "씀", failed: "쓰지 못함", refused: "쓰지 않음" };
 
-/** Agent 부르기 Thread 도구(v1 티켓 16)의 `서버.도구` 이름. */
-const CALL_AGENT = "atelier-thread.call_agent";
-
 /** Work와 이어지는 Thread 도구 셋(v1 티켓 30)의 `서버.도구` 이름 — 사람의 말로 선다(캔버스 화면 2 「Project 3개 목록 확인함」). */
 const LIST_PROJECTS = "atelier-thread.list_projects";
 const GET_WORK = "atelier-thread.get_work";
@@ -188,10 +182,6 @@ export function describeTool(tool: ToolEntry): ToolView {
     const sent = Object.keys(rawInput).length > 0 ? pretty(rawInput) : "";
     const received = mcpOutput(call, contentText);
     const box = { name, sent, received, receivedCode: /^[[{]/.test(received.trim()) };
-    if (name === CALL_AGENT) {
-      const handle = nonEmpty(rawInput.handle)?.replace(/^@/, "");
-      return { ...base, glyph: "other", phrase: say(SUBAGENT, handle ? `@${handle}` : "Agent", false), mcp: box };
-    }
     if (name === LIST_PROJECTS) {
       const count = state === "done" ? listedCount(received) : null;
       return { ...base, glyph: "read", phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, false), mcp: box };

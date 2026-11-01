@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,16 +8,14 @@ import { AgentFace, FaceStack } from "./AgentFace";
 import { AnsweredCards } from "./AnsweredCards";
 import { decisionText } from "./approval";
 import { useArrival } from "./arrival";
-import { CallPlace, CallRow, type CallActions } from "./CallRow";
 import {
+  answeringLine,
   finalFrom,
-  flowOf,
   headline,
   keptFolded,
   runningHeadline,
   shownEntry,
   workLine,
-  type CallEntry,
   type CastMember,
   type DecisionEntry,
   type Entry,
@@ -54,7 +52,7 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   (`ThreadModel.cast`, v1 티켓 14).
 // - **턴 사이는 Codex의 대화 간격이다**(02 구현 스펙 §8) — 말풍선 → 답 첫 글자 51.5, 답 끝 → 다음 말풍선 52(글자 잉크에서 상자 끝까지,
 //   `index.css`의 `--space-reply` · `--space-turn`). 흐름의 줄 사이(`TURN_GAP`)가 그 값에서 글줄의 위아래 여백을 뺀 상자 사이다. 턴
-//   사이에 서는 시스템 줄 · 상태 줄 · 호출 줄 · PR 카드 · 「답하는 중」도 같은 줄 사이를 따른다. 턴 안의 줄 사이는 그대로다(8).
+//   사이에 서는 시스템 줄 · 상태 줄 · PR 카드 · 「답하는 중」도 같은 줄 사이를 따른다. 턴 안의 줄 사이는 그대로다(8).
 // - **「답하는 중」**(Messages 보드 · Motion 보드 「Agent 참여」) — 답이 아직 안 보이는 도는 턴(보낸 말에 아직 아무 줄도 오지 않았거나,
 //   흐름 끝이 아닌 자리에서 돈다)이 있으면 흐름 맨 아래에 얼굴(여럿이면 겹친 얼굴)과 「리뷰어와 테스터가 답하는 중」, 차례로 떠오르는
 //   세 점이 한 줄로 선다(`answeringLine`). 그래서 아직 아무 줄도 오지 않은 턴은 이름 줄 없이 보낸 말만 서고, 첫 줄이 오면 그 자리에
@@ -75,10 +73,6 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 // - 마지막으로 끝난 답 아래에만 응답 액션(복사)이 선다(`AnswerActions`). 「…」는 무엇을 둘지 정해지면(02 P1) 단다.
 // - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
 //   서고, 온 흐름에만 선다(그 Agent의 일이 아니라 Work의 일이다).
-// - **호출 줄**(v1 티켓 17 · `CallRow`) — Agent가 다른 Agent에게 맡긴 부르기는 부른 턴 안의 카드 한 줄이고, 접힌 턴에도 남는다(계획
-//   카드처럼 — 누가 무엇을 맡았는지는 다시 보는 것이다). 불린 Agent의 맡은 턴은 답을 받은 뒤에만 그 Agent의 말로 선다(`flowOf`).
-// - **Session 보기**(S37 「Session 열기」, `only`) — 같은 흐름 부품으로 그 Agent의 줄만 그린다. 맡은 턴은 말풍선 자리에 「Host가 맡긴
-//   일」을 세우고, 끝난 턴의 작업 로그는 처음부터 펼쳐 둔다 — 그 Agent가 한 일을 보러 온 보기다.
 //
 // - **대화 속 문서 카드**(v1 티켓 35 · Messages 보드 「Agent가 만든 파일」) — 끝난 턴에서 Agent가 이은 Work의 spec 폴더에 새로 쓴 문서는 답
 //   아래에 카드로 놓이고(`createdDocs`), 누르면 요약 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
@@ -88,13 +82,13 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   「승인 카드 올라옴」의 답한 뒤 줄), 시스템 줄 · 「답하는 중」은 아래 4에서 떠오르며(줄 바뀜 — 보드 「Agent 참여」의 「시스템 줄과 답하는
 //   중이 차례로 따라옵니다」), 턴이 끝나면 「N초 동안 작업」이 같은 자리에서 떠오르고(줄 바뀜), 구분선을 눌러 펼치면 줄들이 높이와
 //   투명도로 자라 나온다(펼침 · 접힘 — 02 구현 스펙 §12). 흐르는 낱말은 `ThreadMarkdown`이 움직인다. 자리를 옮겨 다시 서는 줄(턴이
-//   끝나 접힌 턴으로 옮겨 선 결정 줄 · Session 보기)은 기록 줄의 열쇠로 알아보고 다시 움직이지 않는다.
+//   끝나 접힌 턴으로 옮겨 선 결정 줄)은 기록 줄의 열쇠로 알아보고 다시 움직이지 않는다.
 //
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
 
 /**
  * 대화 속 문서 카드의 자리(v1 티켓 35) — 이은 Work의 spec 폴더(절대 경로)와 그 문서를 넓힌 카드에서 여는 길. Work 없는 Thread · Session을
- * 띄운 화면 밖에서는 `null`이고 카드가 서지 않는다. 흐름의 모든 턴이 같은 값을 쓰므로 Context로 건넨다(`LogPlace` · `CallPlace`와 같다).
+ * 띄운 화면 밖에서는 `null`이고 카드가 서지 않는다. 흐름의 모든 턴이 같은 값을 쓰므로 Context로 건넨다(`LogPlace`와 같다).
  */
 export const DocPlace = createContext<{ specRoot: string; open: (path: string) => void } | null>(null);
 
@@ -110,76 +104,51 @@ export const TURN_GAP = "gap-11.5";
 interface ThreadFlowProps {
   thread: string;
   model: ThreadModel;
-  /** Session 보기(S37) — 그 참여자의 줄만 그린다. 온 흐름이면 null이다. */
-  only?: string | null;
   /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 붙인 첨부와 함께 다시 보낸다. */
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
-  /** 호출 줄의 「Session 열기」 — 그 부르기를 받은 Agent의 Session 보기로 간다. */
-  onOpenSession: (call: CallEntry) => void;
-  /** 호출 줄의 「다시 맡기기」 — 같은 글로 부르기를 다시 한다. */
-  onCallAgain: (call: CallEntry) => Promise<void>;
 }
 
 /** 참여자 한 사람 — 들어옴 줄에 없으면(옛 기록) handle이 이름이고 얼굴은 handle에서 정한다. */
 const memberOf = (cast: Readonly<Record<string, CastMember>>, handle: string): CastMember =>
   cast[handle] ?? { name: handle, avatar: null };
 
-function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCallAgain }: ThreadFlowProps) {
+function ThreadFlow({ thread, model, onRetry }: ThreadFlowProps) {
   const expanded = useStore(threadUiStore, (state) => state.expanded);
-  const flow = flowOf(model, only);
   // PR 카드의 병합한 때(「어제 오후 6:12」)를 견줄 지금 — 흐름을 다시 그릴 때마다 읽는다.
   const now = Date.now();
   const between = (count: number) => [
-    ...flow.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
-    ...flow.system
+    ...model.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
+    ...model.system
       .filter((line) => line.turn === undefined && line.turnsBefore === count)
       .map((line) => <SystemRow key={line.key} line={line} cast={model.cast} />),
-    ...flow.calls.filter((one) => one.turnsBefore === count).map((one) => <CallRow key={one.entry.key} call={one.entry} />),
-    ...flow.prs.filter((card) => card.turnsBefore === count).map((card) => <PrCard key={card.key} card={card} now={now} />),
+    ...model.prs.filter((card) => card.turnsBefore === count).map((card) => <PrCard key={card.key} card={card} now={now} />),
   ];
-  const last = flow.turns[flow.turns.length - 1];
-  const actions = useMemo<CallActions>(
-    () => ({
-      cast: model.cast,
-      asking: new Set(model.asks.map((request) => request.who)),
-      openSession: onOpenSession,
-      callAgain: onCallAgain,
-    }),
-    [model.cast, model.asks, onOpenSession, onCallAgain],
-  );
-  // Session 보기의 끝난 턴은 처음부터 펼쳐 둔다 — 그 열쇠에는 접은 턴이 든다(온 흐름의 펼침과 따로다).
-  const keyOf = (turn: Turn) => turnKey(thread, only === null ? turn.key : `${only}\u0000${turn.key}`);
-  const isOpen = (turn: Turn) => (only === null ? expanded[keyOf(turn)] === true : expanded[keyOf(turn)] !== true);
+  const last = model.turns[model.turns.length - 1];
+  const answering = answeringLine(model);
   return (
-    <CallPlace.Provider value={actions}>
-      <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
-        {between(0)}
-        {flow.turns.map((turn, at) => (
-          <Fragment key={turn.key}>
-            <TurnView
-              turn={turn}
-              member={turn.who ? memberOf(model.cast, turn.who) : null}
-              cast={model.cast}
-              task={only !== null}
-              open={isOpen(turn)}
-              onToggle={() => toggleTurn(keyOf(turn))}
-              waiting={turn.end === null ? waitingFor(model, turn.who ?? "host") : null}
-              last={turn === last}
-              onRetry={onRetry}
-              lead={flow.system
-                .filter((line) => line.turn === turn.key)
-                .map((line) => (
-                  <SystemRow key={line.key} line={line} cast={model.cast} />
-                ))}
-            />
-            {between(at + 1)}
-          </Fragment>
-        ))}
-        {flow.answering && (
-          <AnsweringRow people={flow.answering.map((handle) => ({ handle, ...memberOf(model.cast, handle) }))} />
-        )}
-      </div>
-    </CallPlace.Provider>
+    <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
+      {between(0)}
+      {model.turns.map((turn, at) => (
+        <Fragment key={turn.key}>
+          <TurnView
+            turn={turn}
+            member={turn.who ? memberOf(model.cast, turn.who) : null}
+            open={expanded[turnKey(thread, turn.key)] === true}
+            onToggle={() => toggleTurn(turnKey(thread, turn.key))}
+            waiting={turn.end === null ? waitingFor(model, turn.who ?? "host") : null}
+            last={turn === last}
+            onRetry={onRetry}
+            lead={model.system
+              .filter((line) => line.turn === turn.key)
+              .map((line) => (
+                <SystemRow key={line.key} line={line} cast={model.cast} />
+              ))}
+          />
+          {between(at + 1)}
+        </Fragment>
+      ))}
+      {answering && <AnsweringRow people={answering.map((handle) => ({ handle, ...memberOf(model.cast, handle) }))} />}
+    </div>
   );
 }
 
@@ -270,8 +239,6 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
 function TurnView({
   turn,
   member,
-  cast,
-  task,
   open,
   onToggle,
   waiting,
@@ -281,9 +248,6 @@ function TurnView({
 }: {
   turn: Turn;
   member: CastMember | null;
-  cast: Readonly<Record<string, CastMember>>;
-  /** 맡은 턴이면 맡긴 일을 말풍선 자리에 세우나 — Session 보기만 세운다(온 흐름에서는 호출 줄이 그 말을 든다). */
-  task: boolean;
   open: boolean;
   onToggle: () => void;
   /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
@@ -305,13 +269,11 @@ function TurnView({
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
-  // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴에는 없다. 구분선이 없거나 펼칠 것이 없는 턴은 늘 접힌 모양이다(Session 보기가
-  // 처음부터 펼쳐 두는 턴도 — 그래야 접힌 턴에 남는 줄이 사라지지 않는다).
+  // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴에는 없다. 구분선이 없거나 펼칠 것이 없는 턴은 늘 접힌 모양이다.
   const line = turn.end && !failed && !stopped ? workLine(turn) : null;
   const unfolded = open && (stopped || failed || line?.unfolds === true);
-  // 계획 카드 · 체크리스트 · 호출 줄 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 누가 무엇을
-  // 맡았는지 · Work를 만들었는지 · 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의
-  // 결정 줄은 위의 `final`이 든다.
+  // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
+  // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   const kept = turn.end && !unfolded ? turn.entries.filter((entry, at) => keptFolded(entry) && (!isToolChoice(entry) || at < from)) : [];
   return (
     <>
@@ -321,7 +283,6 @@ function TurnView({
           <UserMessage text={turn.sent} to={turn.who} attachments={turn.attachments} quote={turn.quote} />
         </div>
       )}
-      {task && turn.assigned && <AssignedTask call={turn.assigned} cast={cast} turn={turn.key} />}
       {lead}
       {!waitingFirst && (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
@@ -456,8 +417,6 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <ThreadMarkdown text={entry.text} className="w-full text-fg-tertiary" />;
     case "tool":
       return <ToolRows tools={[entry]} />;
-    case "call":
-      return <CallRow call={entry} />;
     case "plan":
       return (
         <div className="w-full">
@@ -543,24 +502,6 @@ export function UserMessage({
       {quote && <SentQuoteChip quote={quote} />}
       {attachments.length > 0 && <SentAttachments attachments={attachments} />}
       {bubble}
-    </div>
-  );
-}
-
-/**
- * 맡긴 일(Session 보기의 맡은 턴 머리) — 그 Agent에게 간 말이라 말풍선 자리(오른쪽)에 서되, 사람의 말이 아니라 옅은 회색 면이고 위에 부른
- * Agent의 얼굴 · 「Host가 맡긴 일」이 선다.
- */
-function AssignedTask({ call, cast, turn }: { call: CallEntry; cast: Readonly<Record<string, CastMember>>; turn: string }) {
-  const from = memberOf(cast, call.from);
-  return (
-    <div data-turn={turn} className="flex scroll-mt-16 flex-col items-end gap-1.5">
-      <p className="flex items-center gap-1.5 text-xs text-fg-tertiary">
-        <AgentFace handle={call.from} avatar={from.avatar} className="size-4" />
-        {from.name}
-        {particle(from.name, "이", "가")} 맡긴 일
-      </p>
-      <p className="max-w-[78%] rounded-bubble bg-fill-soft px-4 py-2 whitespace-pre-wrap wrap-anywhere">{call.text}</p>
     </div>
   );
 }

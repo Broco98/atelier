@@ -18,10 +18,8 @@
 //! - **Session마다 Thread 도구의 소켓을 연다(v1 티켓 15 · S12).** Session을 열 때 소켓을 열어 ACP `mcpServers`로 중계 서버를 넘기고,
 //!   그 소켓으로 온 도구 호출은 그 Session의 Thread와 Agent의 것으로 받는다([`ConversationHost::answer_tool`]). 소켓은 Session의
 //!   프로세스와 함께 산다 — 끄거나 되살릴 때 놓여 치워진다.
-//! - **Agent가 Agent를 부른다(v1 티켓 16 · §8, [`call`]).** 맡긴 일은 사람의 말과 같은 길(턴 차례 · 머리말 · 지난 말)로 불린 Agent의
-//!   Session에 가고, 그 턴의 마지막 메시지가 부른 Agent에게 돌아간다. 멈추기는 그 Thread의 호출 고리 전체에 걸린다.
 //! - **Work 하나에서 고치는 Session은 하나다(v1 티켓 18 · §10, [`seat`]).** 편집을 허락받은 Session이 그 Work의 쓰기 자리를 쥐고 턴이
-//!   끝나면 놓는다. 그동안 다른 Session의 편집 요청은 묻지 않고 거절한다 — 고리 안에서 불린 쪽은 이어 쓴다.
+//!   끝나면 놓는다. 그동안 다른 Session의 편집 요청은 묻지 않고 거절한다.
 //! - **승인은 판정 하나를 거친다(v1 티켓 22 · §9, [`gate`]).** Session에 온 권한 요청은 모두 판정을 지나 허용 · 거절 · 물음 가운데
 //!   하나가 된다. `claude`는 기본 모드로만(「계획만」이면 계획 모드로) 뜬다(S17). 물어보는 정도는 Work에 이은 Thread면 Work의 것,
 //!   아니면 Thread의 것이다(S18).
@@ -35,7 +33,6 @@
 //! - **Work의 PR을 지켜본다(v1 티켓 36 · §12 S24, [`pr`]).** 이은 Thread의 턴이 끝날 때마다 · Work 카드가 부를 때 PR을 `gh`로 읽고, 처음
 //!   보인 PR과 상태 변화를 그 Work에서 가장 최근에 말한 Thread에 `pr` 줄로 남긴다.
 
-mod call;
 mod gate;
 mod pr;
 mod project;
@@ -47,7 +44,6 @@ mod tool_lines;
 mod work;
 mod writing;
 
-pub(super) use call::Assignment;
 pub use project::ProjectChoice;
 pub use setting::ProjectAddChoice;
 pub use space::SpaceChoice;
@@ -196,8 +192,6 @@ pub(super) struct Threads {
     index: Mutex<Option<ThreadIndex>>,
     /// `thread.json`을 읽고 고쳐 쓰는 사이를 잠근다.
     files: Mutex<()>,
-    /// Thread마다 사람이 멈춘 횟수(v1 티켓 16) — Agent 부르기가 맡길 때 읽어 두고, 끝날 때 바뀌었으면 「사람이 멈춤」이다.
-    halts: Mutex<HashMap<String, u64>>,
     /// Work마다의 쓰기 자리(v1 티켓 18) — Session들의 쓰기 자리 손이 함께 쥔다.
     seats: Arc<seat::WriteSeats>,
     /// 서 있는 카드(Work 만들기 — v1 티켓 30, Work 밖 Project — v1 티켓 32) — 사람의 답을 기다리는 도구 호출들.
@@ -344,19 +338,6 @@ impl Threads {
         self.trees.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn lock_halts(&self) -> MutexGuard<'_, HashMap<String, u64>> {
-        self.halts.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// 그 Thread를 사람이 멈춘 횟수.
-    fn halts(&self, thread: &str) -> u64 {
-        self.lock_halts().get(thread).copied().unwrap_or(0)
-    }
-
-    /// 사람이 그 Thread를 멈췄다.
-    fn halt(&self, thread: &str) {
-        *self.lock_halts().entry(thread.to_owned()).or_default() += 1;
-    }
 }
 
 impl ConversationHost {
@@ -481,7 +462,7 @@ impl ConversationHost {
                 self.set_thread_mode(&created.id, mode)?;
             }
         }
-        self.say_noting(&SessionKey::new(&created.id, &handle), text, None, attachments, None, note)?;
+        self.say_noting(&SessionKey::new(&created.id, &handle), text, None, attachments, note)?;
         drop(log);
         Ok(created.id)
     }
@@ -527,7 +508,7 @@ impl ConversationHost {
             Recipient::Seated(handle) => handle,
             Recipient::Newcomer(found) => self.join(thread, &found)?,
         };
-        self.say_noting(&SessionKey::new(thread, &handle), text, quote, attachments, None, None)
+        self.say_noting(&SessionKey::new(thread, &handle), text, quote, attachments, None)
     }
 
     /// 인용을 이은 Work의 spec 폴더 것으로 붙인다 — 인용 블록이 그 폴더 안의 실제 경로를 가리킨다.
@@ -542,14 +523,11 @@ impl ConversationHost {
     /// 멈추기 — Thread 전체에 건다(§5): 그 Thread의 도는 턴마다 멈춤을 보낸다. 기다리지 않는다 — 멈춘 턴의 끝(`cancelled`)은
     /// 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다. 사람의 대기 줄은 거두지 않는다.
     ///
-    /// 호출 고리도 함께 멈춘다(§8 「멈춤」, v1 티켓 16) — 부른 턴과 불린 턴이 모두 이 Thread의 턴이라 함께 멈추고, 대기 줄에 든 맡긴
-    /// 일은 거둔다. 그 부르기들의 결과는 「사람이 멈춤」이다. 서 있는 Work 만들기 카드도 거둔다(v1 티켓 30).
+    /// 서 있는 Work 만들기 카드도 거둔다(v1 티켓 30).
     pub fn stop_thread(&self, thread: &str) -> Result<(), HostError> {
-        self.threads.halt(thread);
         self.stop_work_cards(thread);
         for (_, conv) in self.threads.of_thread(thread) {
             let Some(mut state) = conv.lock_found() else { continue };
-            conv.seat(&mut state).withdraw_calls();
             conv.seat(&mut state).stop().map_err(|refused| refused.into_host(thread))?;
         }
         Ok(())
@@ -911,7 +889,6 @@ impl ConversationHost {
                 Ok(summary) => thread_tools::said(&format!("Thread 이름을 바꿨다 — {}", summary.title), false),
                 Err(error) => thread_tools::said(&error.to_string(), true),
             },
-            Ok(Call::CallAgent { handle, task }) => self.call_agent(key, &handle, &task),
             Ok(Call::ListProjects) => self.list_projects_tool(),
             Ok(Call::GetWork) => self.get_work_tool(key),
             Ok(Call::ProposeWork(proposal)) => self.propose_work(key, proposal),
@@ -968,28 +945,15 @@ impl ConversationHost {
     }
 
     /// 받는 이의 Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
-    /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다). `call`이 있으면 사람의 말이 아니라 다른 Agent가 맡긴
-    /// 일이다(v1 티켓 16) — 막히면 그 맡긴 일도 놓인다.
-    fn say_in_thread(
-        &self,
-        key: &SessionKey,
-        text: &str,
-        attachments: Vec<Attachment>,
-        call: Option<Assignment>,
-    ) -> Result<(), HostError> {
-        self.say_noting(key, text, None, attachments, call, None)
-    }
-
-    /// [`Self::say_in_thread`]에 인용(`quote` — 사람의 말에만, v1 티켓 35)과 머리말 끝의 한 줄(`note`)을 더한 것 — 새 Thread의 첫 말이
-    /// 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그 줄도 그때만 간다. 이은 Space의 파일이
-    /// 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_space`]).
+    /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다). 인용(`quote`, v1 티켓 35)과 머리말 끝의 한 줄(`note`)을
+    /// 함께 받는다 — 새 Thread의 첫 말이 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그
+    /// 줄도 그때만 간다. 이은 Space의 파일이 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_space`]).
     fn say_noting(
         &self,
         key: &SessionKey,
         text: &str,
         quote: Option<Attached>,
         attachments: Vec<Attachment>,
-        call: Option<Assignment>,
         note: Option<&str>,
     ) -> Result<(), HostError> {
         self.close_lost_space(&key.thread)?;
@@ -998,7 +962,7 @@ impl ConversationHost {
         } else {
             self.move_if_needed(key)?;
         }
-        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote, attachments, call };
+        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote, attachments };
         let found = self.threads.find(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(&key.waiter()) {
@@ -1108,7 +1072,7 @@ impl ConversationHost {
             cwd: place.cwd.clone(),
             name: if key.handle == HOST { "Host".to_owned() } else { definition.name.clone() },
         };
-        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), &conv, docs);
+        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), docs);
         let gate = Gate {
             data_root: self.data_root.clone(),
             thread: key.thread.clone(),
@@ -1300,7 +1264,7 @@ impl ConversationHost {
         Ok((definition, path))
     }
 
-    /// 그 참여자의 정의 — Thread 폴더의 스냅숏에서만 읽는다(§19). Agent 부르기의 `tools.agents` 검사도 이것을 본다(v1 티켓 16).
+    /// 그 참여자의 정의 — Thread 폴더의 스냅숏에서만 읽는다(§19).
     fn snapshot_definition(&self, key: &SessionKey) -> Result<AgentDefinition, HostError> {
         atelier_core::read_agent(&self.snapshots(&key.thread)?.join(format!("{}.md", key.handle)))
             .map_err(|problem| HostError::AgentBroken { handle: key.handle.clone(), reason: problem_text(problem) })
@@ -1389,8 +1353,6 @@ impl ConversationHost {
             text.push_str(&format!(
                 "- Thread 도구: MCP 서버 `{}`의 도구로 이 Thread를 다룬다. Thread id는 넘기지 않는다 — 이 Session의 Thread다.\n  \
                  - `rename_thread`(title) — Thread 이름을 바꾼다. 일이 무엇인지 드러나는 짧은 이름으로.\n  \
-                 - `{}`(handle, task) — 다른 Agent에게 일을 맡기고, 그 Agent가 턴을 끝낼 때의 마지막 메시지를 결과로 받는다. \
-                 그때까지 기다린다.\n  \
                  - `{}`() — 등록된 Project와 그 저장소의 브랜치들. Work를 제안하기 전에 본다.\n  \
                  - `{}`() — 이 Thread의 Work(spec 폴더 · 브랜치 · Project마다 worktree 또는 읽기만).\n  \
                  - `{}`(title, slug, reason, branch, projects) — 일이 커지면 Work로 묶자고 사람에게 카드로 묻고, 사람이 고를 \
@@ -1413,7 +1375,6 @@ impl ConversationHost {
                  부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › Projects에서 \
                  api-server의 ⋯ › 제거를 눌러 주세요.」 Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다.\n",
                 thread_tools::SERVER_NAME,
-                thread_tools::CALL_AGENT,
                 thread_tools::LIST_PROJECTS,
                 thread_tools::GET_WORK,
                 thread_tools::PROPOSE_WORK,
@@ -1474,22 +1435,12 @@ impl ConversationHost {
     }
 }
 
-/// 말을 받는 이(S9) — 사람이 멘션한 Agent이거나 다른 Agent가 부른 Agent(v1 티켓 16).
+/// 말을 받는 이(S9) — 사람이 멘션한 Agent.
 enum Recipient {
     /// 이미 참여자인 Agent — 그 handle.
     Seated(String),
     /// 아직 참여자가 아닌 범위 안의 Agent — 들인 뒤에 받는다.
     Newcomer(FoundAgent),
-}
-
-impl Recipient {
-    /// 받는 Agent의 handle — 이 Thread에서 그 Session의 열쇠다.
-    fn handle(&self) -> &str {
-        match self {
-            Recipient::Seated(handle) => handle,
-            Recipient::Newcomer(found) => &found.definition.handle,
-        }
-    }
 }
 
 /// 범위에서 그 이름의 Agent — 범위에 없으면 `None`이다. 겹친 맨 이름 · 깨진 파일은 거절이고, 이미 앉은 다른 Agent와 handle이

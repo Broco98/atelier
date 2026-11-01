@@ -26,12 +26,12 @@
 //!   띄워 `initialize` → `tools/list`를 하고, 그 도구를 가진 서버에 `tools/call`한다. 진짜 claude처럼 `assistant`의
 //!   `tool_use`(`mcp__<서버>__<도구>`)를 낸 뒤에 부르고, 받은 답을 `user`의 `tool_result`로 낸다. 주고받은 것은 `<세션 id>.mcp`에
 //!   부르기마다 `{server, tools, tool, arguments, call}` 한 줄로 남는다.
-//!   - 부르기에 `"by": handle`이 있으면 그 Agent의 claude만 부른다(v1 티켓 16 — Thread에는 참여자마다 claude가 뜨고 env는 모두
+//!   - 부르기에 `"by": handle`이 있으면 그 Agent의 claude만 부른다(Thread에는 참여자마다 claude가 뜨고 env는 모두
 //!     같다). 이 claude가 누구의 것인지는 받은 `--append-system-prompt-file`의 이름(`<handle>.instructions.md`)이다.
 //!   - 부르기에 `"at": "result"`가 있으면 턴의 앞머리가 아니라 그 턴의 `result` 바로 앞(턴의 도구를 다 쓴 뒤)에서 부른다(v1 티켓
-//!     18 — 파일을 고친 Agent가 이어 다른 Agent를 부르는 꼴). 스스로 이어 간 턴의 `result` 앞에서는 부르지 않는다.
+//!     18 — 파일을 고친 Agent가 카드의 답을 기다리며 그 턴을 이어 가는 꼴). 스스로 이어 간 턴의 `result` 앞에서는 부르지 않는다.
 //! - `FAKE_CLAUDE_AGENT_FIXTURES` — `{handle: 원문}` JSON. 이 claude가 그 Agent의 것이면 `FAKE_CLAUDE_FIXTURE` 대신 그 원문을
-//!   되감는다(v1 티켓 16 — 부른 Agent와 불린 Agent가 다른 턴을 돈다).
+//!   되감는다(v1 티켓 16 — 한 Thread의 Agent들이 다른 턴을 돈다).
 //! - `FAKE_CLAUDE_REBASE` — 녹음의 폴더 하나(예 `/tmp/gate/ws/g1/outside`). 있으면 내는 줄마다 그 글을 이 claude의 작업 폴더로 바꿔
 //!   낸다(v1 티켓 22). 원문의 경로는 잰 날의 임시 폴더라 판정에는 늘 「Work 밖 편집」이다 — 작업 자리 안의 편집을 재려면 가짜가
 //!   제 자리의 경로를 물어야 한다. 그 폴더는 진짜 claude처럼 심볼릭 링크를 푼 경로(`getcwd`)다.
@@ -43,7 +43,7 @@
 //!   엔진) 길이 부하로 늦어 Thread 도구 호출(중계 서버 → 소켓)이 먼저 닿는 꼴을 늘 일으킨다(코드 리뷰 1차 A3).
 //! - **녹음 속 MCP 부르기**(v1 티켓 20) — 되감는 원문의 `assistant`가 받은 `--mcp-config`의 서버 도구(`mcp__<서버>__<도구>`)를
 //!   부르면, 그 줄을 낸 뒤 그 서버를 띄워 같은 입력으로 정말 부르고, 뒤따르는 원문의 그 `tool_result`를 받은 답으로 바꿔 낸다.
-//!   진짜 claude가 Thread 도구를 부른 녹음(`thread-call-host` · `thread-rename-host`)이 엔진의 중계 서버 → 소켓 길을 끝까지 탄다.
+//!   진짜 claude가 Thread 도구를 부른 녹음(`thread-rename-host`)이 엔진의 중계 서버 → 소켓 길을 끝까지 탄다.
 //!   입력은 `FAKE_CLAUDE_REBASE`로 옮긴 뒤의 것이고, 영수증 `<세션 id>.mcp`에 `FAKE_CLAUDE_MCP_CALL`과 같은 꼴로 남는다.
 //!
 //! 녹화를 되감는 규칙(턴 · 권한 · 멈추기 · 바꾸기 · 스스로 이어 간 턴)은 입출력 없는 몸 `src/fakes/claude_replay.rs`에 있다 —

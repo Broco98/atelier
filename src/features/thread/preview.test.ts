@@ -90,21 +90,31 @@ describe("Thread의 마지막 말", () => {
   });
 });
 
-describe("Agent를 부른 Thread(v1 티켓 17)", () => {
-  // 불린 Agent의 맡은 턴은 부른 턴이 도는 사이에 서고 먼저 끝난다 — 마지막 말은 턴이 선 차례가 아니라 말한 때로 고른다.
-  const calling: RecordLine[] = readFileSync(
-    fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-call.jsonl", import.meta.url)),
-    "utf8",
-  )
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line) as RecordLine);
-
-  it("부른 Agent가 결과를 받아 마지막에 한 답이 마지막 말이다 — 먼저 끝난 불린 Agent의 답이 아니다", () => {
-    expect(lastSaid(calling)).toMatchObject({
-      who: "host",
-      name: "Host",
-      text: "@reviewer가 보낸 답을 그대로 옮깁니다. thread.json에 적힌 제목은 「리뷰어에게 이 Thread 폴더의 thread.json을 읽고 제목이 무…」입니다. 끝의 「…」까지 파일에 그대로 들어 있습니다.",
+describe("함께 도는 턴(v1 티켓 14)", () => {
+  // 먼저 선 턴이 늦게 끝날 수 있다 — 마지막 말은 턴이 선 차례가 아니라 말한 때로 고른다.
+  const line = (seq: number, second: number, kind: RecordLine["kind"], who: string | undefined, payload: unknown): RecordLine => ({
+    seq,
+    at: `2026-10-10T10:02:${String(second).padStart(2, "0")}.000+09:00`,
+    kind,
+    who,
+    payload,
+  });
+  const said = (seq: number, second: number, who: string, id: string, text: string) =>
+    line(seq, second, "update", who, {
+      sessionId: "s",
+      update: { sessionUpdate: "agent_message_chunk", messageId: id, content: { type: "text", text } },
     });
+  const ended = (seq: number, second: number, who: string) => line(seq, second, "turn-end", who, { stopReason: "end_turn" });
+
+  it("늦게 끝난 Host의 답이 마지막 말이다 — 뒤에 섰지만 먼저 끝난 Agent의 답이 아니다", () => {
+    const lines = [
+      line(1, 0, "sent", undefined, { text: "장바구니를 고쳐 줘", to: "host" }),
+      line(2, 1, "sent", undefined, { text: "@reviewer 봐 줘", to: "reviewer" }),
+      said(3, 2, "reviewer", "r1", "봤어요"),
+      ended(4, 2, "reviewer"),
+      said(5, 3, "host", "h1", "고쳤어요"),
+      ended(6, 3, "host"),
+    ];
+    expect(lastSaid(lines)).toMatchObject({ who: "host", name: "Host", text: "고쳤어요" });
   });
 });

@@ -509,7 +509,7 @@ fn space_error(error: atelier_core::Error) -> HostError {
     }
 }
 
-/// 그 참여자가 마지막으로 들은 머리말의 「- Space:」 줄 — 받은 말(`sent` · 맡긴 일) 가운데 머리말 블록을 실은 마지막 것에서 읽는다.
+/// 그 참여자가 마지막으로 들은 머리말의 「- Space:」 줄 — 받은 말(`sent`) 가운데 머리말 블록을 실은 마지막 것에서 읽는다.
 /// 이어 연 Session이 그사이 바뀐 Space를 듣게 한다(앱을 끈 동안 고친 파일도). 못 찾으면 없다 — 견주지 않는다.
 pub(super) fn heard_space(lines: &[atelier_core::RecordLine], who: &str) -> Option<String> {
     lines.iter().rev().filter(|line| crate::past::addressed_to(line, who)).find_map(|line| {

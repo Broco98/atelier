@@ -75,7 +75,6 @@ fn 보관된_work의_thread는_쉬던_session이_꺼지고_말을_거절하며_�
 
     assert_eq!(host.send_to_thread(&thread, "하나 더 정리해 줘"), read_only(&thread, WorkGone::Archived));
     assert_eq!(host.send_to_thread(&thread, "@reviewer 봐 줘"), read_only(&thread, WorkGone::Archived), "새 Agent도 들이지 않는다");
-    assert_eq!(host.call_again(&thread, "host", "reviewer", "봐 줘"), read_only(&thread, WorkGone::Archived));
     assert_eq!(host.rename_thread(&thread, "새 이름").map(drop), read_only(&thread, WorkGone::Archived));
     assert_eq!(
         sandbox.thread_record(&thread).len(),

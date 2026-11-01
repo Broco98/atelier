@@ -52,10 +52,6 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   스스로 이어 간 턴 — 그 턴이 `Read` · `Write`로 결과를 `bg.md`에 쓴다(판 02 관문 G4).
 /// - `2.1.309/noauth` — 로그인이 안 된 claude의 두 턴: `assistant{error:"authentication_failed"}` → `result{is_error:true}`
 ///   (판 02 실측 A8).
-/// - `2.1.309/thread-call-host` · `2.1.309/thread-call-reviewer` — Thread의 Host가 리뷰어를 부른 한 턴과 불린 리뷰어의 한 턴(v1
-///   티켓 20 끝 점검). Host는 미뤄 실린 Thread 도구를 `ToolSearch`(`select:mcp__atelier-thread__call_agent`)로 들인 뒤
-///   `call_agent`를 부르고 받은 답을 옮긴다. 리뷰어는 `Read`로 `thread.json`을 읽고 답한다. 녹음의 Thread 폴더는
-///   `/tmp/gate/home/threads/20261023-234318`이다.
 /// - `2.1.309/thread-rename-host` — Host가 `ToolSearch`로 들인 `rename_thread`로 Thread 이름을 바꾼 한 턴(v1 티켓 20 끝 점검).
 /// - `2.1.309/thread-question-host` — Host가 `AskUserQuestion`으로 사람에게 묻는 두 턴(v1 티켓 27 끝 점검). 첫 턴은 물음 둘(둘째는
 ///   여럿 고르기)을 한 번에 묻고 답(allow의 `updatedInput.answers`)을 받아 「done」, 둘째 턴은 물음 하나를 「나중에」(deny)로
@@ -86,8 +82,6 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     ("2.1.309/g4-background", include_str!("../../tests/fixtures/claude-2.1.309/g4-background.jsonl")),
     ("2.1.309/noauth", include_str!("../../tests/fixtures/claude-2.1.309/noauth.jsonl")),
-    ("2.1.309/thread-call-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-host.jsonl")),
-    ("2.1.309/thread-call-reviewer", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-reviewer.jsonl")),
     ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
     ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
     ("2.1.309/thread-work-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-work-host.jsonl")),
