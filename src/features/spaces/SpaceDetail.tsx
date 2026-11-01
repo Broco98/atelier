@@ -44,7 +44,7 @@ import type { SpaceDetail as Detail, SpacePatch, SpaceProblemKind } from "./type
 // 오른쪽 칸 「Work」 묶음은 이 Space에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
 //
 // 판 안 맨 위 「← Space」 줄 오른쪽에 ⋯와 시작 단추 둘이 선다(시안 F1-SpaceDetail `.topbar`). ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인
-// 창을 거쳐 목록으로 가고, 목록에 「… Space를 지웠어요 · 되돌리기」 토스트가 선다. 시작 단추는 「Host와 고치기」(이 Space를 붙인 Work 없는
+// 창을 거쳐 목록으로 가고, 목록에 「… Space를 지웠어요 · 되돌리기」 토스트가 선다. 시작 단추는 「대화로 고치기」(이 Space를 붙인 Work 없는
 // 새 대화에 고쳐 달라는 말, S17)와 「새 Work」(이 Space를 고른 「새 Work」 — 스토리 159)다(06) — 둘 다 첫 화면을 씨앗과 함께 열 뿐이고
 // 보내기는 사람이 한다.
 
@@ -83,7 +83,7 @@ export default function SpaceDetail({ slug }: { slug: string }) {
 }
 
 /**
- * 시작 단추 둘(§14 · 시안 F1-SpaceDetail — 맨 위 줄 오른쪽 끝 ⋯ 뒤, 사이 6) — 테두리 알약 「Host와 고치기」(S17)와 짙은 알약 「+ 새 Work」(스토리
+ * 시작 단추 둘(§14 · 시안 F1-SpaceDetail — 맨 위 줄 오른쪽 끝 ⋯ 뒤, 사이 6) — 테두리 알약 「대화로 고치기」(S17)와 짙은 알약 「+ 새 Work」(스토리
  * 159). 시안 `.btn.lg`의 34 · 좌우 14 · 14px다.
  */
 function SpaceStarts({ space }: { space: Detail }) {
@@ -93,7 +93,7 @@ function SpaceStarts({ space }: { space: Detail }) {
     <>
       <Button variant="outline" size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.hostEdit })}>
         <SquarePen aria-hidden className="size-3.5" />
-        Host와 고치기
+        대화로 고치기
       </Button>
       <Button size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.newWork })}>
         <Plus aria-hidden className="size-3.5" />새 Work
@@ -166,7 +166,7 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
         </Section>
         <DescriptionSection
           text={space.description}
-          aside="Agent가 이 Space에서 일할 때 처음 읽어요"
+          aside="Runtime이 이 Space에서 일할 때 처음 읽어요"
           placeholder="이 Space에서 다루는 일과 Project들이 어떻게 이어지는지 적어 두세요"
           locked={locked}
           onSave={(description) => patch({ description })}
@@ -313,11 +313,6 @@ function Title({ space, locked, onRename }: { space: Detail; locked: boolean; on
         )}
       </h1>
       <div className="mt-2 flex items-center gap-2 text-sm text-fg-secondary">
-        {created.host && (
-          <span aria-hidden className="flex size-5.5 items-center justify-center rounded-full bg-fg text-xs text-fg-inverse">
-            H
-          </span>
-        )}
         <span className="text-fg">{created.by}</span>
         {created.when && <span>{created.when}</span>}
         <span aria-hidden>·</span>

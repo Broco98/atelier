@@ -1,15 +1,13 @@
 import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { AgentFace } from "./AgentFace";
 import { SLOT_CARD, SlotButton, useSlotCard } from "./ApprovalCard";
 import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
-import type { Avatar } from "./faces";
 import { toolQuestionKey, type ToolQuestionView } from "./tool-question";
 
 // Thread 도구 질문 카드(03 티켓 08 · 구현 스펙 §11 S12 · 캔버스 F4-WorkAsk · F4-KitChat 「질문 카드」) — Thread 도구가 「카드를 세우고 기다리는
 // 길」로 사람에게 묻는 질문이 **입력창 자리에** 선다(승인 카드와 같은 자리 · 같은 물음 차례 — `askTurn`). 따로 그린 카드가 아니라 질문
-// 카드의 부품이다 — 겉은 입력창 자리 카드의 한 겉(`SLOT_CARD`), 머리는 얼굴 16과 「Host · 질문」(13 `fg-secondary`), 물음(14/20 500)과 그
+// 카드의 부품이다 — 겉은 입력창 자리 카드의 한 겉(`SLOT_CARD`), 머리는 「Claude Code · 질문」(13 `fg-secondary`), 물음(14/20 500)과 그
 // 아래 한 줄(12 `fg-tertiary`), 번호 줄(높이 32 · r12 · 켜진 줄 `fill-soft` — 앞에 번호 글쇠, 이름 뒤 파란 「추천」 표, 아래 줄 12
 // `fg-tertiary`), 맨 아래 「↑↓ 고르기 · esc 닫기」와 오른쪽 「나중에」 · 검은 「고르기 ↵」(승인 카드의 28 알약 단추). 캔버스 `.qc`는 위 16 ·
 // 옆 16 · 아래 12, 칸 사이 10이다. 값은 카드 종류의 순수 함수가 짓는다(`tool-question.ts`).
@@ -22,9 +20,6 @@ import { toolQuestionKey, type ToolQuestionView } from "./tool-question";
 //   도구 줄 자리에 접힌 줄이 선다. 해내지 못하면(엔진이 거절) 까닭을 보이고 다시 고를 수 있게 푼다 — 엔진도 카드를 그대로 세워 둔다.
 
 interface ToolQuestionCardProps {
-  /** 물은 참여자의 handle · 얼굴(들어옴 줄, `ThreadModel.cast`). */
-  who: string;
-  avatar: Avatar | null;
   view: ToolQuestionView;
   /** 그 번호 줄을 골랐다 — 실패하면 그 까닭으로 거절한다. */
   onPick: (at: number) => Promise<unknown>;
@@ -36,7 +31,7 @@ interface ToolQuestionCardProps {
   next?: ReactNode;
 }
 
-function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, next }: ToolQuestionCardProps) {
+function ToolQuestionCard({ view, onPick, onLater, count = null, next }: ToolQuestionCardProps) {
   const titleId = useId();
   const { box, armed, sent, problem, send } = useSlotCard();
   const [active, setActive] = useState(view.start);
@@ -68,7 +63,6 @@ function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, ne
       className={cn("flex shrink-0 flex-col gap-2.5 px-4 pt-4 pb-3", SLOT_CARD)}
     >
       <div className="flex items-center gap-1.5 text-chat-meta leading-5 text-fg-secondary">
-        <AgentFace handle={who} avatar={avatar} className="size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{view.head}</span>
         <AskCount count={count} />
       </div>

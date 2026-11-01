@@ -5,7 +5,6 @@ import { AnsweredCards } from "./AnsweredCards";
 import { threadApi } from "./api";
 import { useArrival } from "./arrival";
 import type { AskTurn } from "./asks";
-import type { Avatar } from "./faces";
 import type { ProjectAddChoiceEntry, ProjectChoiceEntry, SpaceChoiceEntry, WorkChoiceEntry } from "./fold";
 import { describeProjectAddCard, projectAddChoiceCard } from "./project-add-card";
 import { projectChoiceText } from "./project-card";
@@ -29,9 +28,8 @@ import WorkProposalCard from "./WorkProposalCard";
 /** 입력창 자리의 Thread 도구 카드가 받는 것. */
 export interface ToolCardProps<A> {
   thread: string;
-  /** 물은 참여자의 화면 이름 · 얼굴(들어옴 줄, `ThreadModel.cast`). */
+  /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 카드의 물음과 머리에 선다. */
   name: string;
-  avatar: Avatar | null;
   /** 맨 앞의 답하지 않은 카드. 부르는 쪽이 요청 id를 key로 건다 — 다음 카드가 오면 새로 선다. */
   card: A;
   /** 물음 차례의 「1 / 2」(`askTurn`) — 묶음에 물음이 하나뿐이면 null. */
@@ -94,7 +92,6 @@ type AnsweringView<T> = ToolQuestionView & { options: (ToolQuestionOption & { an
 function ToolQuestionSlot<A extends ToolCardAsk, T>({
   thread,
   name,
-  avatar,
   card,
   count = null,
   next,
@@ -110,8 +107,6 @@ function ToolQuestionSlot<A extends ToolCardAsk, T>({
   const view = describe(card, name);
   return (
     <ToolQuestionCard
-      who={card.who}
-      avatar={avatar}
       view={view}
       onPick={(at) => answer(thread, card.requestId, view.options[at].answer)}
       onLater={later && (() => later(thread, card.requestId))}

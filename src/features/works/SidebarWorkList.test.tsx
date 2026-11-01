@@ -269,8 +269,8 @@ describe("빈 `Work` 구획이 하는 말", () => {
     expect(render(works("pin:가"))).toContain("전부 고정돼 있어요.");
   });
 
-  it("아무것도 없으면 「말로 시작하면 Host가 Work로 묶어 줘요」다(02 S6)", () => {
-    expect(render([])).toContain("아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.");
+  it("아무것도 없으면 「말로 시작하면 Runtime이 Work로 묶어 줘요」다(02 S6)", () => {
+    expect(render([])).toContain("아직 Work가 없어요. 말로 시작하면 Runtime이 Work로 묶어 줘요.");
   });
 
   it("고정된 것이 초안뿐이어도 「전부 고정돼 있어요」다", () => {

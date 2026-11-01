@@ -197,7 +197,7 @@ const valueOf = (link: ThreadLink): string => (link.kind === "work" ? `work:${li
 /** 스위치 둘 — 차례 · 이름 · 설명 한 줄이 시안 v52 그대로다(03 §5 · 스토리 15–17). */
 const SWITCHES = [
   { kind: "new-work", name: "새 Work", description: "첫 말로 Work를 만들고 그 안에서 시작해요" },
-  { kind: "no-work", name: "Work 없이 대화", description: "묻고 답하기 · 나중에 Host 제안으로 Work가 될 수 있어요" },
+  { kind: "no-work", name: "Work 없이 대화", description: "묻고 답하기 · 나중에 제안을 받아 Work가 될 수 있어요" },
 ] as const;
 
 /**

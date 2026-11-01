@@ -2,7 +2,6 @@ import { useId, useState } from "react";
 import { Folder } from "lucide-react";
 import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import { AgentFace } from "./AgentFace";
 import { KeyCap, SLOT_CARD, useSlotCard } from "./ApprovalCard";
 import { threadApi } from "./api";
 import { cardKey } from "./approval";
@@ -11,13 +10,13 @@ import type { PendingProject } from "./fold";
 import { describeProjectCard } from "./project-card";
 import type { ToolCardProps } from "./ToolCards";
 
-// Work 밖 Project 카드(v1 티켓 32 · 구현 스펙 §11 S22 · 스토리 99 · 캔버스 Cards 보드 「Work 밖 Project」) — Agent가 이 Work에 없는
+// Work 밖 Project 카드(v1 티켓 32 · 구현 스펙 §11 S22 · 스토리 99 · 캔버스 Cards 보드 「Work 밖 Project」) — Runtime이 이 Work에 없는
 // Project를 고치려고 Thread 도구 「Project 고치기 시작」을 부르면 **입력창 자리에** 선다(승인 카드와 같은 자리 · 같은 물음 차례 —
-// `askTurn`). 누가 무엇을 고치려는지(물음 · Agent가 든 까닭), 그 Project(「이 Work에 붙어 있지 않음」), 번호 줄 셋 — 붙이고 고치기 · 읽기만
+// `askTurn`). 무엇을 고치려는지(물음 · Runtime이 든 까닭), 그 Project(「이 Work에 붙어 있지 않음」), 번호 줄 셋 — 붙이고 고치기 · 읽기만
 // 하기 · 아니요, ○○에서만 고쳐 주세요. 값은 순수 함수가 짓는다(`project-card.ts`).
 //
 // 겉은 입력창 자리 카드의 한 겉이다(`SLOT_CARD` — 02 §10 · 스토리 68). 안은 v1 보드의 `.ap`다 — 위 16 · 옆 8 · 아래 8, 칸 사이 10. 머리는
-// 얼굴 22와 물음(14/20 600) · 까닭(12/18 `fg-tertiary`). Project 상자는 보드 `.scope` — 옆 10 · 위아래 8 · 옆 12 안쪽 · r14 · `surface-under` 면 · 13/18, 폴더 글리프와
+// 물음(14/20 600) · 까닭(12/18 `fg-tertiary`). Project 상자는 보드 `.scope` — 옆 10 · 위아래 8 · 옆 12 안쪽 · r14 · `surface-under` 면 · 13/18, 폴더 글리프와
 // 이름, 오른쪽에 「이 Work에 붙어 있지 않음」(12 `fg-tertiary`). 번호 줄은 계획 카드의 것과 같다(높이 36 · r14 · 켜진 줄 `fill-soft`와
 // ↵ 글쇠, 마지막 줄 Esc 글쇠) — 승인 카드의 단추 줄(02 §10)과 달리 번호 고르기가 남는다.
 //
@@ -27,7 +26,7 @@ import type { ToolCardProps } from "./ToolCards";
 //   결정 줄(「web-app을 이 Work에 붙임」)이 선다. 붙이지 못하면(core가 거절) 까닭을 보이고 다시 고를 수 있게 푼다 — 엔진도 카드를 그대로
 //   세워 둔다. 까닭은 빨강이 아니라 `fg-secondary` 글이다.
 
-function ProjectCard({ thread, name, avatar, card, count = null, next }: ToolCardProps<PendingProject>) {
+function ProjectCard({ thread, name, card, count = null, next }: ToolCardProps<PendingProject>) {
   const titleId = useId();
   const { box, armed, sent, problem, send } = useSlotCard();
   const view = describeProjectCard(card, name);
@@ -58,7 +57,6 @@ function ProjectCard({ thread, name, avatar, card, count = null, next }: ToolCar
       className={cn("flex shrink-0 flex-col gap-2.5 px-2 pt-4 pb-2", SLOT_CARD)}
     >
       <div className="flex items-start gap-2.5 px-2.5">
-        <AgentFace handle={card.who} avatar={avatar} className="size-5.5 shrink-0" />
         <div className="flex min-w-0 flex-1 flex-col">
           <p id={titleId} className="break-keep text-sm font-semibold text-fg">
             {view.title}

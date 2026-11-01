@@ -1,7 +1,6 @@
 import { readStored, writeStored } from "@/lib/stored";
 import type { ReadingScope } from "@/features/spaces/scope";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
-import { particle } from "@/lib/particle";
 import type { Opened } from "./expanded";
 import { failNote, mergedWhen } from "./pr";
 import type { DocWriting } from "./types";
@@ -93,15 +92,15 @@ export function finishedDocs(before: readonly DocWriting[] | undefined, after: r
   return new Set((before ?? []).map((one) => one.path).filter((path) => !still.has(path)));
 }
 
-/** 문서 칸의 줄 하나 — spec 기준 경로와, 지금 그 문서를 쓰는 Agent(없으면 `null`). */
+/** 문서 칸의 줄 하나 — spec 기준 경로와, 지금 그 문서를 쓰는 중이면 그 값(없으면 `null`). */
 export interface DocRow {
   path: string;
   writer: DocWriting | null;
 }
 
 /**
- * 문서 칸(스토리 108 · 보드 「Host가 문서를 쓰는 중」) — Work의 spec 트리의 파일을 **트리 차례로** 편다(앱에는 차례의 규칙이 없다 —
- * 레이아웃이 정한 차례다). 쓰는 중인 문서에는 그 Agent가 붙는다. 아직 트리에 없는 문서(방금 쓰기 시작한 새 파일 — spec 트리는
+ * 문서 칸(스토리 108 · 보드 「문서를 쓰는 중」) — Work의 spec 트리의 파일을 **트리 차례로** 편다(앱에는 차례의 규칙이 없다 —
+ * 레이아웃이 정한 차례다). 쓰는 중인 문서에는 쓰는 중 값이 붙는다. 아직 트리에 없는 문서(방금 쓰기 시작한 새 파일 — spec 트리는
  * `works:changed`로 따라온다)도 쓰는 중이면 끝에 선다.
  */
 export function docRows(tree: SpecTree, writing: readonly DocWriting[]): DocRow[] {
@@ -116,9 +115,6 @@ export function docRows(tree: SpecTree, writing: readonly DocWriting[]): DocRow[
 function filesOf(items: readonly SpecTreeItem[]): string[] {
   return items.flatMap((item) => (item.kind === "file" ? [item.path] : filesOf(item.children)));
 }
-
-/** 쓰는 중 문구(보드 「Host가 쓰는 중」) — 이름의 받침에 맞는 조사를 단다. */
-export const writerLine = (name: string) => `${name}${particle(name, "이", "가")} 쓰는 중`;
 
 /** Project 칸의 줄 하나 — 고치는 중(worktree가 섰다)인가, 읽기만인가. */
 export interface ProjectRow {

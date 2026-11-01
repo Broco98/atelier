@@ -252,16 +252,16 @@ export type DefinitionSource = "library" | { project: string };
 
 /**
  * 문서 하나를 쓰는 중(`atelier_acp::DocWriting`, v1 티켓 34) — Work의 spec 폴더 안 파일에 편집 도구가 도는 동안이다. 요약 카드 소스의 문서 줄이
- * 파란 점과 「Host가 쓰는 중」을 세운다.
+ * 파란 점과 「쓰는 중」을 세운다.
  */
 export interface DocWriting {
   /** spec 폴더 기준 경로 — spec 트리의 `path`와 같은 꼴. */
   path: string;
-  /** 쓰는 Agent의 handle. */
+  /** 쓰는 Session의 `who`. */
   who: string;
-  /** 쓰는 Agent의 이름(Host는 「Host」). */
+  /** 엔진이 싣는 이름 — 화면은 읽지 않는다. */
   name: string;
-  /** 그 Agent가 앉은 Thread. */
+  /** 그 Session의 Thread. */
   thread: string;
 }
 

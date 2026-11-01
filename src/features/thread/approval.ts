@@ -64,7 +64,7 @@ function actOf(toolCall: Json): string {
 }
 
 /**
- * 카드의 값. `name`은 물은 참여자의 화면 이름, `place`는 그 Session이 일하는 자리(`placeOf`)다. 영향은 Runtime이 명령에 단 설명
+ * 카드의 값. `name`은 그 채팅의 Runtime 이름, `place`는 그 Session이 일하는 자리(`placeOf`)다. 영향은 Runtime이 명령에 단 설명
  * (Claude Bash의 `description`)이다.
  */
 export function describeApproval(request: PendingPermission, name: string, place: string | null): ApprovalView {

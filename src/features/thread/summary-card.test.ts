@@ -15,7 +15,6 @@ import {
   sourceProjects,
   summarySections,
   writeSummaryOpen,
-  writerLine,
   type PrRow,
   type SummaryInput,
 } from "./summary-card";
@@ -118,11 +117,6 @@ describe("문서 칸", () => {
     expect(docRows(tree, [fresh]).map((row) => row.path)).toEqual(["overview.md", "design/api.md", "review-notes.md", "plan.md"]);
   });
 
-  it("쓰는 중 문구는 이름의 받침에 맞는 조사를 단다", () => {
-    expect(writerLine("Host")).toBe("Host가 쓰는 중");
-    expect(writerLine("리뷰어")).toBe("리뷰어가 쓰는 중");
-    expect(writerLine("검토관")).toBe("검토관이 쓰는 중");
-  });
 });
 
 describe("Project 칸", () => {

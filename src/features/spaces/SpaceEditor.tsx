@@ -338,12 +338,12 @@ function Preview({ draft, piece }: { draft: SpaceDraft | undefined; piece: Piece
             <CardPiece on={piece === "body"} span={pieceSpan(draft.pieces, "body")}>
               <h3 className="mb-2 text-xs font-medium text-fg-tertiary">설명</h3>
               <p className={cn("text-chat-body whitespace-pre-wrap", draft.space.description ? "text-fg" : "text-fg-tertiary")}>
-                {draft.space.description || "아직 설명이 없어요 — 마지막 --- 아래에 적으면 Agent가 이 Space에서 일할 때 처음 읽어요"}
+                {draft.space.description || "아직 설명이 없어요 — 마지막 --- 아래에 적으면 Runtime이 이 Space에서 일할 때 처음 읽어요"}
               </p>
             </CardPiece>
           </article>
           <p className="mx-auto mt-3 max-w-150 text-center text-xs text-fg-tertiary">
-            커서가 있는 줄의 조각이 파랗게 · Agent도 이 내용으로 읽어요
+            커서가 있는 줄의 조각이 파랗게 · Runtime도 이 내용으로 읽어요
           </p>
         </>
       )}

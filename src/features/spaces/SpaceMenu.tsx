@@ -27,7 +27,7 @@ import { HOST_MAKE, spaceMenu, spaceName } from "./space-view";
 //   ──
 //   ⚙ Space 관리                            메뉴 › Space
 //
-// - 하나도 없으면 목록 자리에 「아직 Space가 없어요」 · 「Host와 Space 만들기」(첫 화면을 「Work 없이 대화」와 입력 글로 연다 — §14 S16)다.
+// - 하나도 없으면 목록 자리에 「아직 Space가 없어요」 · 「대화로 Space 만들기」(첫 화면을 「Work 없이 대화」와 입력 글로 연다 — §14 S16)다.
 // - 줄은 시안 `.pmenu .mi2`(min 32 · 13.5/19 · 곁말 12/16)를 앱의 두 줄 항목(`size="note"`)이 그린다 — 폭은 내용을 따르되 300부터(`note`).
 // - 고른 것은 부르는 쪽이 적는다(`onPick` — Work면 그 Work, Space 칩이면 Thread · 입력창). 같은 것을 다시 고르면 아무것도 하지 않는다.
 
@@ -126,14 +126,14 @@ export function SpaceMenuItems({
           <DropdownMenuLabel>아직 Space가 없어요</DropdownMenuLabel>
           <DropdownMenuItem
             size="note"
-            aria-label="Host와 Space 만들기"
-            aria-description="Host가 Project를 읽고 초안을 내요"
+            aria-label="대화로 Space 만들기"
+            aria-description="Project를 읽고 초안을 내요"
             onClick={() => void navigate({ to: "/", search: HOST_MAKE })}
           >
             <SquarePen className="mt-0.5" aria-hidden />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate">Host와 Space 만들기</span>
-              <span className="truncate text-xs text-fg-tertiary">Host가 Project를 읽고 초안을 내요</span>
+              <span className="truncate">대화로 Space 만들기</span>
+              <span className="truncate text-xs text-fg-tertiary">Project를 읽고 초안을 내요</span>
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>

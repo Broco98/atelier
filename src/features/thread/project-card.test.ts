@@ -19,8 +19,8 @@ const card = (extra: Partial<PendingProject> = {}): PendingProject => ({
 
 describe("Work 밖 Project 카드", () => {
   it("누가 무엇을 고치려는지와 선택지 셋을 보드 문장 그대로 낸다 — 아니요는 이 Work의 Project를 이름으로 든다", () => {
-    expect(describeProjectCard(card(), "Host")).toEqual({
-      title: "Host가 이 Work에 없는 Project를 고치려고 해요",
+    expect(describeProjectCard(card(), "Claude Code")).toEqual({
+      title: "Claude Code가 이 Work에 없는 Project를 고치려고 해요",
       reason: "환불 버튼이 두 번 눌리는 문제는 web-app에 있어요",
       name: "web-app",
       note: "이 Work에 붙어 있지 않음",
@@ -36,7 +36,7 @@ describe("Work 밖 Project 카드", () => {
     expect(describeProjectCard(card({ workProjects: ["api-server", "admin-console"] }), "리뷰어").choices[2].label).toBe(
       "아니요, api-server · admin-console에서만 고쳐 주세요",
     );
-    expect(describeProjectCard(card({ workProjects: [] }), "Host").choices[2].label).toBe("아니요");
+    expect(describeProjectCard(card({ workProjects: [] }), "Claude Code").choices[2].label).toBe("아니요");
     expect(describeProjectCard(card(), "리뷰어").title).toBe("리뷰어가 이 Work에 없는 Project를 고치려고 해요");
   });
 });

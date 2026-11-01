@@ -180,7 +180,7 @@ impl ConversationHost {
         // 같은 slug의 Work가 그사이 섰으면 core는 그 Work를 「다시 연다」 — 새 Work가 아니다.
         let works = atelier_core::works_in(&self.data_root);
         if atelier_core::read_work(&works, &proposal.slug).is_ok() {
-            return Err(not_created(format!("Work `{}`가 이미 있어요 — Host에게 다른 slug로 다시 제안해 달라고 해 주세요", proposal.slug)));
+            return Err(not_created(format!("Work `{}`가 이미 있어요 — 다른 slug로 다시 제안해 달라고 해 주세요", proposal.slug)));
         }
         let branch = if projects.is_empty() { None } else { branch.map(str::trim).filter(|branch| !branch.is_empty()) };
         atelier_core::start_work_deferred(

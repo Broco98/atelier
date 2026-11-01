@@ -41,13 +41,13 @@ const turnEnd = (seq: number, durationMs: number): RecordLine => ({
 describe("Thread의 마지막 말", () => {
   it("끝난 턴이면 Agent의 턴 끝 답이고, 시각은 그 턴이 끝난 때다", () => {
     const said = lastSaid(blessed);
-    expect(said && { who: said.who, name: said.name, text: said.text }).toEqual({ who: "host", name: "Host", text: "5" });
+    expect(said && { who: said.who, text: said.text }).toEqual({ who: "host", text: "5" });
     expect(said && Date.parse(said.at)).toBe(Date.parse("2026-10-10T10:00:20.000+09:00"));
   });
 
   it("보내고 아직 답이 없으면 사람의 말이다", () => {
     const said = lastSaid([...blessed, sent(30, "테스트도 돌려 줘")]);
-    expect(said).toEqual({ who: null, name: null, text: "테스트도 돌려 줘", at: "2026-10-10T10:01:00.000+09:00" });
+    expect(said).toEqual({ who: null, text: "테스트도 돌려 줘", at: "2026-10-10T10:01:00.000+09:00" });
   });
 
   // 도는 턴의 반쪽 답은 아직 말이 아니다 — 엔진의 지난 말(`past.rs`)도 끝난 턴의 것만 넘긴다.
@@ -67,8 +67,7 @@ describe("Thread의 마지막 말", () => {
     expect(said?.text).toBe("정리 환불은 partialRefund에서 한 번만 뺀다");
   });
 
-  // 이름은 기록의 들어옴 줄(`joined`)이 든다 — 줄의 앞에 「리뷰어 · …」로 서는 말(캔버스 보드)이다.
-  it("다른 Agent가 마지막에 말했으면 그 이름이 함께 온다", () => {
+  it("다른 `who`가 마지막에 말했어도 그 말이다", () => {
     const reviewer = (line: RecordLine): RecordLine => ({ ...line, who: "reviewer" });
     const said = lastSaid([
       ...blessed,
@@ -77,11 +76,7 @@ describe("Thread의 마지막 말", () => {
       reviewer(chunk(32, "r1", "수정 요청 2건")),
       reviewer(turnEnd(33, 1000)),
     ]);
-    expect(said && { who: said.who, name: said.name, text: said.text }).toEqual({
-      who: "reviewer",
-      name: "리뷰어",
-      text: "수정 요청 2건",
-    });
+    expect(said && { who: said.who, text: said.text }).toEqual({ who: "reviewer", text: "수정 요청 2건" });
   });
 
   it("말이 하나도 없으면 없다", () => {
@@ -115,6 +110,6 @@ describe("함께 도는 턴(v1 티켓 14)", () => {
       said(5, 3, "host", "h1", "고쳤어요"),
       ended(6, 3, "host"),
     ];
-    expect(lastSaid(lines)).toMatchObject({ who: "host", name: "Host", text: "고쳤어요" });
+    expect(lastSaid(lines)).toMatchObject({ who: "host", text: "고쳤어요" });
   });
 });

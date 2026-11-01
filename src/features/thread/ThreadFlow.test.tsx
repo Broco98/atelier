@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { foldThread, type QuestionEntry } from "./fold";
-import ThreadFlow, { AnsweredRow } from "./ThreadFlow";
+import ThreadFlow, { AnsweredRow, DocPlace } from "./ThreadFlow";
 import type { RecordLine } from "./types";
 
 // 답한 카드(02 구현 스펙 §10 · 캔버스 v35 Components 「답한 카드」 · 02 코드 리뷰 S3) — 흐름에 물음마다 한 줄 카드로 남는다: **초록 ✓ 13** · 물은
@@ -52,7 +52,7 @@ describe("흐름의 물음 자리", () => {
   const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
   const flow = (lines: readonly RecordLine[]) =>
     renderToStaticMarkup(
-      <ThreadFlow thread="t" model={foldThread(lines)} onRetry={() => {}} />,
+      <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />,
     );
   /** 그 속성이 선 줄의 글 — 태그를 걷고 이어 읽는다. */
   const rowText = (markup: string, attribute: string) => {
@@ -89,5 +89,78 @@ describe("흐름의 물음 자리", () => {
     expect(rowText(flow(record("thread-project-add")), 'data-answered="project-add" data-choice="init"')).toBe(
       "notes는 git 저장소가 아니에요. 어떻게 할까요?git init 하고 추가",
     );
+  });
+});
+
+// 채팅은 Runtime 세션 하나라 말한 이를 가를 일이 없다(스토리 2 · 구현 지도 「얼굴」) — 얼굴도 이름 줄도 들고 난 줄도 없고, 말은 Runtime 이름으로 선다.
+// `who`는 기록에 아직 남아 있다(01a-5가 지운다) — 다른 handle이 말한 기록으로 화면이 그 값을 보이지 않는 것을 잰다.
+describe("Runtime 이름으로 말하는 흐름", () => {
+  const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
+  const sent = (seq: number, to: string, text: string): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text, to } });
+  const joined = (seq: number, handle: string, name: string): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "joined",
+    who: handle,
+    payload: { handle, name, avatar: { shape: "circle", color: "green" }, from: "library" },
+  });
+  const said = (seq: number, who: string, text: string): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "update",
+    who,
+    payload: { sessionId: "s", update: { sessionUpdate: "agent_message_chunk", messageId: `m${seq}`, content: { type: "text", text } } },
+  });
+  const ended = (seq: number, who: string): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "turn-end",
+    who,
+    payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
+  });
+  const flow = (lines: readonly RecordLine[]) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />);
+  const answeringRow = (markup: string) => /<p data-answering.*?<\/p>/.exec(markup)?.[0] ?? "";
+  const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
+
+  it("답을 기다리는 동안 얼굴 없이 Runtime 이름으로 「답하는 중」이 선다", () => {
+    const row = answeringRow(flow([joined(1, "host", "Host"), sent(2, "host", "고쳐 줘")]));
+    expect(words(row)).toBe("Claude Code가 답하는 중");
+    expect(row).not.toContain("<svg");
+  });
+
+  it("도는 턴이 둘이어도 「답하는 중」은 Runtime 이름 하나다", () => {
+    const row = answeringRow(flow([joined(1, "host", "Host"), sent(2, "host", "고쳐 줘"), sent(3, "reviewer", "봐 줘")]));
+    expect(words(row)).toBe("Claude Code가 답하는 중");
+    expect(row).not.toContain("<svg");
+  });
+
+  it("다른 handle이 답한 턴에도 이름 줄이 없고, 참여자의 이름이 흐름 어디에도 서지 않는다", () => {
+    const markup = flow([
+      joined(1, "host", "Host"),
+      joined(2, "reviewer", "리뷰어"),
+      sent(3, "reviewer", "봐 줘"),
+      said(4, "reviewer", "봤어요"),
+      ended(5, "reviewer"),
+      { seq: 6, at: at(6), kind: "left", who: "reviewer", payload: { handle: "reviewer", name: "리뷰어" } },
+    ]);
+    expect(words(markup)).toContain("봤어요");
+    expect(markup).not.toContain("data-who");
+    expect(markup).not.toContain("data-system");
+    expect(words(markup)).not.toMatch(/리뷰어|reviewer|참여함|나감/);
+  });
+
+  it("턴이 spec 폴더에 쓴 문서 카드는 Runtime 이름으로 말한다", () => {
+    const lines = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-work.jsonl", import.meta.url)), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as RecordLine);
+    const markup = renderToStaticMarkup(
+      <DocPlace.Provider value={{ specRoot: "~/.atelier/works/refund-partial-amount/spec", open: () => {} }}>
+        <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />
+      </DocPlace.Provider>,
+    );
+    expect(markup).toContain("Claude Code가 만듦 · 27줄 · 같이 고칠 수 있어요");
+    expect(markup).not.toContain("Host가 만듦");
   });
 });

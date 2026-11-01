@@ -264,7 +264,7 @@ describe("말의 사전", () => {
       expect(bodyOf("읽는 범위"), piece).toContain(piece);
     }
     for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Space 없이", "되돌렸어요"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
-    for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「Host와 Space 만들기」", "메뉴 › Space"]) {
+    for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「대화로 Space 만들기」", "메뉴 › Space"]) {
       expect(bodyOf("Space 메뉴"), piece).toContain(piece);
     }
     expect(bodyOf("요약 카드")).toContain("소스는 그 Thread의 읽는 범위다");
@@ -315,7 +315,7 @@ describe("말의 사전", () => {
     for (const piece of ["「파일 칸 | 미리보기 카드」", "같은 하나", "한 글자도 바꾸지 않고", "파일 이름은 그대로"]) {
       expect(bodyOf("관계 편집"), piece).toContain(piece);
     }
-    for (const piece of ["관계 편집과 같은 화면", "빈 틀", "`-2`", "「Host와 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
+    for (const piece of ["관계 편집과 같은 화면", "빈 틀", "`-2`", "「대화로 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
   });
 
   // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Agent가 고친 자리를 그

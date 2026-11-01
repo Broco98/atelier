@@ -92,7 +92,7 @@ export function setDraft(thread: string, text: string): void {
 }
 
 /**
- * 바깥에서 입력창에 글을 채운다 — 주소의 입력 글 씨앗(`?say=`)과 PR 카드의 「Host에게 고쳐 달라고 하기」가 넣는다. 그 입력칸은 채운 글 끝에
+ * 바깥에서 입력창에 글을 채운다 — 주소의 입력 글 씨앗(`?say=`)과 PR 카드의 「고쳐 달라고 하기」가 넣는다. 그 입력칸은 채운 글 끝에
  * 커서를 두고 포커스를 받는다(`ThreadComposer`). 그 입력창이 아직 서지 않았으면(새 Thread로 가는 중) 선 뒤에 받는다.
  */
 export function fillDraft(thread: string, text: string): void {

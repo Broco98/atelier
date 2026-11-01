@@ -35,8 +35,8 @@ const choice = (card: PendingProjectAdd, picked: ProjectAddChoiceEntry["choice"]
 
 describe("Project 추가 카드", () => {
   it("git이 아닌 폴더는 「notes는 git 저장소가 아니에요. 어떻게 할까요?」 — 1 git init 하고 추가(추천) · 2 추가하지 않기다(F4-KitChat)", () => {
-    expect(describeProjectAddCard(notGit, "Host")).toEqual({
-      head: "Host · 질문",
+    expect(describeProjectAddCard(notGit, "Claude Code")).toEqual({
+      head: "Claude Code · 질문",
       title: "notes는 git 저장소가 아니에요. 어떻게 할까요?",
       sub: null,
       options: [
@@ -59,7 +59,7 @@ describe("Project 추가 카드", () => {
   });
 
   it("받침 있는 폴더 이름은 「은」이다", () => {
-    expect(describeProjectAddCard({ ...notGit, folder: "web-app" }, "Host").title).toBe("web-app은 git 저장소가 아니에요. 어떻게 할까요?");
+    expect(describeProjectAddCard({ ...notGit, folder: "web-app" }, "Claude Code").title).toBe("web-app은 git 저장소가 아니에요. 어떻게 할까요?");
   });
 
   it("답하면 「✓ · 물은 제목 · 고른 답」 한 줄로 접힌다", () => {

@@ -38,12 +38,12 @@ describe("작업 중", () => {
     expect(statusOf(through(twoTurns, 11), live(9))).toEqual({ kind: "working", text: null });
   });
 
-  // 함께 도는 턴에서는 가장 늦게 시작한 도구가 선다 — 다른 Agent의 일은 이름이 앞에 선다.
-  it("Host와 함께 도는 Agent의 도구는 그 이름과 함께 선다", () => {
+  // 함께 도는 턴에서는 가장 늦게 시작한 도구가 선다 — 말한 이를 가르지 않아 이름이 앞에 서지 않는다.
+  it("함께 도는 턴의 도구도 이름 없이 선다", () => {
     const both = through(record("thread-ask-turns"), 25).filter((line) => line.kind !== "permission");
     expect(statusOf(both, live(0))).toEqual({
       kind: "working",
-      text: "테스터 · python3 -c \"import time; time.sleep(15); print('BG-done')\" 실행 중",
+      text: "python3 -c \"import time; time.sleep(15); print('BG-done')\" 실행 중",
     });
   });
 });

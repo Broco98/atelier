@@ -17,11 +17,10 @@ export function countThreadsForQuit(): Promise<QuitCounts> {
 }
 
 /**
- * 종료 확인 창의 Thread 줄 — 「턴이 도는 Agent N · 대기 중인 말 N · 답하지 않은 승인 N」. **셋 다 0이면 없다**(`undefined`) — 잃을
- * 것이 없으면 적지 않는다. 하나라도 있으면 셋을 다 적는다: 셸 줄이 「명령이 도는 셸 0」을 적는 것과 같은 꼴이다. 턴은 Agent의 것이라
- * 세는 말은 Agent다(Session은 Agent 하나의 맥락이다 — `CONTEXT.md`).
+ * 종료 확인 창의 Thread 줄 — 「도는 턴 N · 대기 중인 말 N · 답하지 않은 승인 N」. **셋 다 0이면 없다**(`undefined`) — 잃을 것이 없으면
+ * 적지 않는다. 하나라도 있으면 셋을 다 적는다: 셸 줄이 「명령이 도는 셸 0」을 적는 것과 같은 꼴이다.
  */
 export function threadQuitNotice({ running, queued, approvals }: QuitCounts): string | undefined {
   if (running === 0 && queued === 0 && approvals === 0) return undefined;
-  return `턴이 도는 Agent ${running} · 대기 중인 말 ${queued} · 답하지 않은 승인 ${approvals}`;
+  return `도는 턴 ${running} · 대기 중인 말 ${queued} · 답하지 않은 승인 ${approvals}`;
 }

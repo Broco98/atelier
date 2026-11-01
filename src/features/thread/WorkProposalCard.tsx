@@ -12,12 +12,12 @@ import { branchHint, firstPicked } from "./work-proposal";
 
 // Work 만들기 카드(v1 티켓 30 · 구현 스펙 §11 · 스토리 89 · 90 · 91 · 캔버스 Cards 보드 「Work 만들기 · 묻는 중」) — Host가 Thread 도구
 // `propose_work`로 Work 만들기를 제안하면 **입력창 자리에** 선다(승인 카드와 같은 자리 · 같은 물음 차례 — `askTurn`). 제목 · 까닭,
-// 등록된 Project(Host 추천과 그 까닭이 먼저 · 처음부터 골라 둠), 규칙 설명과 함께 고치는 브랜치, 「worktree는 처음 고칠 때 만듭니다」
+// 등록된 Project(추천과 그 까닭이 먼저 · 처음부터 골라 둠), 규칙 설명과 함께 고치는 브랜치, 「worktree는 처음 고칠 때 만듭니다」
 // 안내, 「Work 없이 계속」 · 「Work 만들기」다. 값은 순수 함수가 짓는다(`work-proposal.ts`). Space에 이은 Thread면 머리 아래에 새 Work로
 // 옮겨 갈 Space 한 줄 「◇ 결제 서비스 · Space」가 선다(03 §9 · S8 — 카드에서 바꾸지 않는다, 바꾸려면 받아들인 뒤 Work 화면 머리의 Space 메뉴로).
 //
 // 겉은 입력창 자리 카드의 한 겉이다(`SLOT_CARD` — 02 §10 · 스토리 68). 안은 v1 보드의 `.wc`다 — 위 16 · 옆 16 · 아래 14, 칸 사이 12.
-// 머리는 폴더 아이콘 상자(32 · r10 · `fill-soft`)와 물음 · 「제목 · 까닭」(12/18 `fg-tertiary`). Project 줄은 높이 38 · r12에 체크(16)와 이름, 추천이면 「Host 추천」 꼬리표와 까닭, 아니면
+// 머리는 폴더 아이콘 상자(32 · r10 · `fill-soft`)와 물음 · 「제목 · 까닭」(12/18 `fg-tertiary`). Project 줄은 높이 38 · r12에 체크(16)와 이름, 추천이면 「추천」 꼬리표와 까닭, 아니면
 // Project 설명이 오른쪽에 선다. 브랜치 칸은 높이 36 · r12 · 안쪽 링에 고정폭 13이고 오른쪽에 규칙 설명(12 `fg-tertiary`)이 선다.
 //
 // - 이 카드는 답 명령을 부르기만 한다. 고른 것은 기록의 답 줄로 오고, 그 줄이 오면 접기가 이 카드를 빼서 카드가 걷히고 제안 도구 줄
@@ -126,7 +126,7 @@ function WorkProposalCard({ thread, card, count = null, next }: WorkProposalCard
                   <span className="min-w-0 shrink-0 truncate">{one.name}</span>
                   {one.recommended && (
                     <span className="inline-flex h-5 shrink-0 items-center rounded-sm bg-accent-soft px-2 text-2xs font-medium text-link">
-                      Host 추천
+                      추천
                     </span>
                   )}
                   {side && <span className="ml-auto min-w-0 truncate text-xs text-fg-tertiary">{side}</span>}

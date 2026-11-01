@@ -155,9 +155,9 @@ describe("넣기 메뉴", () => {
 
 describe("만든 이 · 만든 때", () => {
   const today = new Date(2026, 9, 26, 15, 0);
-  it("Host가 만들었으면 Host와 만듦, 아니면 직접 만듦", () => {
-    expect(createdLine(space({ createdBy: "host" }), today)).toEqual({ host: true, by: "Host와 만듦", when: "2일 전" });
-    expect(createdLine(space({ createdAt: "2026-10-26" }), today)).toEqual({ host: false, by: "직접 만듦", when: "오늘" });
+  it("대화로 만들었으면 대화로 만듦, 아니면 직접 만듦", () => {
+    expect(createdLine(space({ createdBy: "host" }), today)).toEqual({ by: "대화로 만듦", when: "2일 전" });
+    expect(createdLine(space({ createdAt: "2026-10-26" }), today)).toEqual({ by: "직접 만듦", when: "오늘" });
     expect(createdLine(space({ createdAt: "2026-10-25" }), today).when).toBe("어제");
     expect(createdLine(space({ createdAt: "2025-12-01" }), today).when).toBe("2025. 12. 1.");
     expect(createdLine(space({ createdAt: "" }), today).when).toBe("");
@@ -190,7 +190,7 @@ describe("Space 메뉴(03 §5 · §10)", () => {
     }
   });
 
-  it("Space가 하나도 없으면 줄 목록이 없고(「Host와 Space 만들기」 자리), 등록된 Project가 없으면 그렇다고 말한다", () => {
+  it("Space가 하나도 없으면 줄 목록이 없고(「대화로 Space 만들기」 자리), 등록된 Project가 없으면 그렇다고 말한다", () => {
     expect(spaceMenu([], null, 0)).toEqual({
       top: { kind: "none", label: "Space 없음", note: "등록된 Project가 없어요", current: true },
       rows: null,
@@ -226,14 +226,14 @@ describe("Space 상세의 Work 묶음", () => {
 
 // 03 구현 스펙 §14 · S16 · S17 · 티켓 06 — Space 화면의 시작 단추는 첫 화면(`/`)을 씨앗과 함께 연다. 보내기는 사람이 한다.
 describe("Space 화면의 시작 단추가 여는 첫 화면", () => {
-  it("「Host와 만들기」는 Work 없는 대화에 Space를 만들어 달라는 말을 넣는다(S16)", () => {
+  it("「대화로 만들기」는 Work 없는 대화에 Space를 만들어 달라는 말을 넣는다(S16)", () => {
     expect(HOST_MAKE).toEqual({
       new: "thread",
       say: "Space를 만들고 싶어요. 등록된 Project를 읽고 초안(이름 · Project · 설명)을 보여 주세요.",
     });
   });
 
-  it("상세의 「새 Work」는 그 Space를 고른 「새 Work」, 「Host와 고치기」는 그 Space를 붙인 Work 없는 대화와 고쳐 달라는 말이다(S17)", () => {
+  it("상세의 「새 Work」는 그 Space를 고른 「새 Work」, 「대화로 고치기」는 그 Space를 붙인 Work 없는 대화와 고쳐 달라는 말이다(S17)", () => {
     expect(spaceStarts(space())).toEqual({
       newWork: { new: "work", space: "결제-서비스" },
       hostEdit: { new: "thread", space: "결제-서비스", say: "결제 서비스 Space를 고치고 싶어요. " },

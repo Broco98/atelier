@@ -64,7 +64,7 @@ describe("Thread 기록을 턴으로 접는다", () => {
     ]);
   });
 
-  it("Host가 들어온 첫 줄은 흐름에 서지 않는다 — 모든 Thread가 그 줄로 시작한다", () => {
+  it("들어온 첫 줄은 흐름에 서지 않는다 — 모든 Thread가 그 줄로 시작한다", () => {
     expect(foldThread(blessed).system).toEqual([]);
   });
 
@@ -77,24 +77,27 @@ describe("Thread 기록을 턴으로 접는다", () => {
     ]);
   });
 
-  it("Host의 답에는 이름 줄이 없다 — 사람이 말한 턴도, 스스로 이어 간 턴도 본문으로 바로 시작한다(02 구현 스펙 §8)", () => {
+  it("스스로 이어 간 턴도 턴으로 서고, 보낸 말이 없다", () => {
     const lines: RecordLine[] = [
       ...blessed,
       update(25, 1, { sessionUpdate: "agent_message_chunk", messageId: "m9", content: { type: "text", text: "더 볼게요" } }),
       { seq: 26, at: at(2), kind: "turn-end", who: "host", payload: { stopReason: "end_turn", durationMs: 1000, outOfTurn: true } },
     ];
-    const model = foldThread(lines);
-    expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.selfContinued])).toEqual([
-      ["host", false, false],
-      ["host", false, false],
-      ["host", false, true],
-    ]);
+    const { turns } = foldThread(lines);
+    expect(turns).toHaveLength(3);
+    expect(turns[2].sent).toBeNull();
+    expect(finalMessages(turns[2]).map((entry) => entry.kind === "message" && entry.text)).toEqual(["더 볼게요"]);
   });
 });
 
 // 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 끝난 턴의 「N초 동안 작업」은 펼쳐야 보이는 일(도구 줄 · 생각 · 앞선 답)이 있을 때만
 // 선다. 말만 한 턴에는 빈 머리가 서지 않는다. 접힌 턴에도 남는 줄(계획 · 질문 · 카드의 결정 줄)만 있는 턴도 펼칠 것이 없다.
 describe("작업 구분선", () => {
+  it("Runtime이 거절한 턴은 그 까닭을 말하고 Agent를 말하지 않는다", () => {
+    const end = { stopReason: "refusal", durationMs: 1000, cancelledByUs: false, error: null, at: at(1) };
+    expect(headline(end)).toBe("이 요청에는 답할 수 없어 멈췄어요");
+  });
+
   it("도구 없이 끝난 턴에는 구분선이 없고, 도구를 쓴 턴은 「N초 동안 작업」이다", () => {
     const [first, second] = foldThread(blessed).turns;
     expect(workLine(first)).toBeNull();
@@ -149,34 +152,31 @@ describe("시스템 줄", () => {
     ]);
   });
 
-  it("Host 밖의 참여자가 들고 나면 이름을 굵게 한 줄이 선다", () => {
+  it("참여자가 들고 나도 흐름에 줄이 서지 않는다", () => {
     const lines: RecordLine[] = [
       ...blessed,
       { seq: 25, at: at(5), kind: "joined", who: "reviewer", payload: { handle: "reviewer", name: "리뷰어", from: "library" } },
       { seq: 26, at: at(6), kind: "left", who: "tester", payload: { handle: "tester", name: "테스터" } },
     ];
-    expect(foldThread(lines).system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
-      "리뷰어가 참여함",
-      "테스터가 나감",
-    ]);
+    expect(foldThread(lines).system).toEqual([]);
   });
 
   // 바탕은 엔진이 축복한 기록이다(`thread-space.jsonl`) — Work 없는 Thread에 「결제 서비스」(web-app · api-server)를 붙이고 한 턴 뒤 뺐다.
   it("Space를 바꾸거나 빼면 다음 차례부터 읽는 Project를 말하는 한 줄이 서고, 굵은 것은 Space 이름뿐이다(03 티켓 05)", () => {
     const model = foldThread(record("thread-space"));
-    expect(model.system.map((line) => [line.kind, line.handle, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
-      ["space", null, "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
-      ["space", null, "", "Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요"],
+    expect(model.system.map((line) => [line.kind, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
+      ["space", "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
+      ["space", "", "Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요"],
     ]);
   });
 
   // 바탕은 엔진이 축복한 기록이다(`thread-space-deleted.jsonl`) — Work 없는 Thread에 붙인 「결제 서비스」를 지우고, 한 턴 뒤 되돌렸다.
   it("이은 Space를 지우면 Space 없이 이어간다는 한 줄이, 되돌리면 다시 읽는 Project를 말하는 한 줄이 선다(03 티켓 07)", () => {
     const model = foldThread(record("thread-space-deleted"));
-    expect(model.system.map((line) => [line.kind, line.handle, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
-      ["space", null, "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
-      ["space", null, "", "결제 서비스 Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요"],
-      ["space", null, "결제 서비스", "결제 서비스 Space를 되돌렸어요 — 다시 web-app · api-server를 읽어요"],
+    expect(model.system.map((line) => [line.kind, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
+      ["space", "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
+      ["space", "", "결제 서비스 Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요"],
+      ["space", "결제 서비스", "결제 서비스 Space를 되돌렸어요 — 다시 web-app · api-server를 읽어요"],
     ]);
   });
 
@@ -466,69 +466,31 @@ describe("여럿이 한 Thread에(v1 티켓 14)", () => {
     who,
     payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
   });
-  const joined = (seq: number, second: number, handle: string, name: string, avatar: unknown = null): RecordLine => ({
+  const joined = (seq: number, second: number, handle: string, name: string): RecordLine => ({
     seq,
     at: at(second),
     kind: "joined",
     who: handle,
-    payload: { handle, name, avatar, from: "library" },
+    payload: { handle, name, avatar: null, from: "library" },
   });
 
-  it("멘션으로 들어온 리뷰어의 턴은 리뷰어가 답하고, 「리뷰어가 참여함」이 그 턴 앞에 선다", () => {
+  it("멘션으로 들어온 리뷰어의 턴은 그 `who`의 턴이고, 흐름에 들어온 줄이 서지 않는다", () => {
     const model = foldThread(mention);
-    // 이름 줄은 Host가 아닌 리뷰어의 턴에만 선다(02 구현 스펙 §8).
-    expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.sent])).toEqual([
-      ["host", false, "세 낱말로 답해 줘: hello from turn"],
-      ["reviewer", true, "@reviewer 방금 답을 봐 줘"],
+    expect(model.turns.map((turn) => [turn.who, turn.sent])).toEqual([
+      ["host", "세 낱말로 답해 줘: hello from turn"],
+      ["reviewer", "@reviewer 방금 답을 봐 줘"],
     ]);
-    expect(model.system.map((line) => [line.handle, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
-      ["reviewer", "리뷰어가 참여함", 1],
-    ]);
-    expect(model.cast.reviewer).toEqual({ name: "리뷰어", avatar: { shape: "circle", color: "green" } });
+    expect(model.system).toEqual([]);
   });
 
-  it("같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시 쓰지 않고, 사이에 다른 이가 말했으면 다시 쓴다", () => {
-    const goesOn = (seq: number, second: number, who: string): RecordLine => ({
-      ...ended(seq, second, who),
-      payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: true },
-    });
-    const model = foldThread([
-      joined(1, 1, "host", "Host"),
-      joined(2, 2, "reviewer", "리뷰어"),
-      sent(3, 3, "reviewer", "@reviewer 봐 줘"),
-      said(4, 4, "reviewer", "보는 중"),
-      ended(5, 5, "reviewer"),
-      said(6, 6, "reviewer", "하나 더 봤어요"),
-      goesOn(7, 7, "reviewer"),
-      said(8, 8, "host", "받아서 고칠게요"),
-      goesOn(9, 9, "host"),
-      said(10, 10, "reviewer", "고친 것도 봤어요"),
-      goesOn(11, 11, "reviewer"),
-    ]);
-    expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.selfContinued])).toEqual([
-      ["reviewer", true, false],
-      ["reviewer", false, true],
-      ["host", false, true],
-      ["reviewer", true, true],
-    ]);
-  });
-
-  it("받는 이를 모르는 옛 말에 Host가 답해도 이름 줄이 없다 — 말한 이는 답한 줄이 정한다", () => {
+  it("받는 이를 모르는 옛 말의 턴은 답한 줄의 `who`가 정한다", () => {
     const model = foldThread([
       joined(1, 1, "host", "Host"),
       { seq: 2, at: at(2), kind: "sent", payload: { text: "고쳐 줘" } },
       said(3, 3, "host", "고칠게요"),
       ended(4, 4, "host"),
     ]);
-    expect(model.turns.map((turn) => [turn.who, turn.namesWho])).toEqual([["host", false]]);
-  });
-
-  it("참여자의 이름 · 얼굴은 기록의 들어옴 줄이 정본이다 — Host는 늘 「Host」다", () => {
-    const { cast } = foldThread([joined(1, 1, "host", "Host"), joined(2, 2, "reviewer", "리뷰어", { shape: "circle", color: "green" })]);
-    expect(cast).toEqual({
-      host: { name: "Host", avatar: null },
-      reviewer: { name: "리뷰어", avatar: { shape: "circle", color: "green" } },
-    });
+    expect(model.turns.map((turn) => turn.who)).toEqual(["host"]);
   });
 
   it("Host가 도는 동안 리뷰어에게 보낸 말은 리뷰어의 턴이 따로 서고, 각자의 줄은 각자의 턴에 든다", () => {
@@ -622,10 +584,10 @@ describe("물어보는 정도(v1 티켓 23)", () => {
       { seq: 28, at: at(8), kind: "mode", payload: { mode: "bogus", work: null } },
     ];
     const { system } = foldThread(lines);
-    expect(system.map((line) => [line.kind, line.handle, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
-      ["mode", null, "Policy를 편집은 허용으로 바꿈 · 이 Work에만", 2],
-      ["mode", null, "Policy를 매번 묻기로 바꿈", 2],
-      ["mode", null, "Policy를 계획만으로 바꿈", 2],
+    expect(system.map((line) => [line.kind, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
+      ["mode", "Policy를 편집은 허용으로 바꿈 · 이 Work에만", 2],
+      ["mode", "Policy를 매번 묻기로 바꿈", 2],
+      ["mode", "Policy를 계획만으로 바꿈", 2],
     ]);
     expect(system.map((line) => line.name)).toEqual(["편집은 허용", "매번 묻기", "계획만"]);
   });
@@ -1109,8 +1071,8 @@ describe("Space 질문 카드(03 티켓 08)", () => {
   it("Host가 묻지 않고 붙이면 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」 한 줄이 서고, 굵은 것은 Space 이름뿐이다", () => {
     const model = foldThread(record("thread-space-attached"));
     expect(model.asks).toEqual([]);
-    expect(model.system.map((line) => [line.kind, line.handle, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
-      ["space", null, "결제 서비스", "결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요"],
+    expect(model.system.map((line) => [line.kind, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
+      ["space", "결제 서비스", "결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요"],
     ]);
     const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
     expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Space 고름");

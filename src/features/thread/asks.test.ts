@@ -153,12 +153,10 @@ describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같�
     proposed(7),
   ];
 
-  it("먼저 온 승인 카드 뒤에 Work 만들기 카드가 「다음 · Host가 Work 만들기 답을 기다려요」로 선다", () => {
+  it("먼저 온 승인 카드 뒤에 Work 만들기 카드가 「다음 · Work 만들기 답을 기다려요」로 선다", () => {
     const turn = askTurn(foldThread(testerAsks));
     expect(who(turn)).toEqual(["tester", { at: 1, total: 2 }, "host"]);
-    expect(turn?.next && nextOf(turn.next, "Host")).toEqual({
-      name: "Host",
-      particle: "가",
+    expect(turn?.next && nextOf(turn.next)).toEqual({
       subject: "Work 만들기",
       mono: false,
       what: "답을 기다려요",
@@ -194,26 +192,22 @@ describe("카드 아래 다음 줄", () => {
     grant: [],
   });
 
-  it("다음 차례는 누가 무엇을 기다리는지다 — 대상은 작업 로그의 그 도구 줄과 같은 글이다(보드 「다음 · 테스터가 pnpm playwright test 실행을 기다려요」)", () => {
+  it("다음 차례는 무엇을 기다리는지다 — 이름 없이, 대상은 작업 로그의 그 도구 줄과 같은 글이다(「다음 · pnpm playwright test 실행을 기다려요」)", () => {
     const turn = askTurn(foldThread(bothAsking));
-    expect(turn?.next && nextOf(turn.next, "테스터")).toEqual({
-      name: "테스터",
-      particle: "가",
+    expect(turn?.next && nextOf(turn.next)).toEqual({
       subject: "pnpm playwright test",
       mono: true,
       what: "실행을 기다려요",
     });
   });
 
-  it("파일은 그 이름을, 계획은 대상 없이 기다린다 — 이름에 받침이 있으면 「이」다", () => {
+  it("파일은 그 이름을, 계획은 대상 없이 기다린다", () => {
     const write = pendingOf({
       kind: "edit",
       title: "Write e2e/refund.spec.ts",
       content: [{ type: "diff", path: "/w/trees/api-server/e2e/refund.spec.ts", oldText: null, newText: "test()\n" }],
     });
-    expect(nextOf(write, "테스터 봇")).toEqual({
-      name: "테스터 봇",
-      particle: "이",
+    expect(nextOf(write)).toEqual({
       subject: "refund.spec.ts",
       mono: true,
       what: "작성을 기다려요",
@@ -223,17 +217,17 @@ describe("카드 아래 다음 줄", () => {
       title: "Edit src/refund.ts",
       content: [{ type: "diff", path: "/w/src/refund.ts", oldText: "a\n", newText: "b\n" }],
     });
-    expect(nextOf(edit, "Host")).toMatchObject({ particle: "가", subject: "refund.ts", what: "수정을 기다려요" });
+    expect(nextOf(edit)).toMatchObject({ subject: "refund.ts", what: "수정을 기다려요" });
     const plan = pendingOf({ kind: "switch_mode", title: "Ready to code?", rawInput: { plan: "1. 고친다" } });
-    expect(nextOf(plan, "Host")).toMatchObject({ subject: null, what: "계획 승인을 기다려요" });
+    expect(nextOf(plan)).toMatchObject({ subject: null, what: "계획 승인을 기다려요" });
   });
 
   it("질문은 대상 없이 답을 기다린다(v1 티켓 26)", () => {
     const question: PendingQuestion = { card: "question", requestId: "0", who: "host", toolCall: {}, questions: [] };
-    expect(nextOf(question, "Host")).toEqual({ name: "Host", particle: "가", subject: null, mono: false, what: "질문의 답을 기다려요" });
+    expect(nextOf(question)).toEqual({ subject: null, mono: false, what: "질문의 답을 기다려요" });
   });
 
-  it("Work 밖 Project 카드는 「Host가 web-app 고치기 답을 기다려요」다(v1 티켓 32)", () => {
+  it("Work 밖 Project 카드는 「web-app 고치기 답을 기다려요」다(v1 티켓 32)", () => {
     const outside: PendingProject = {
       card: "project",
       requestId: "o-1",
@@ -244,10 +238,10 @@ describe("카드 아래 다음 줄", () => {
       work: "refund-api",
       workProjects: ["api-server"],
     };
-    expect(nextOf(outside, "Host")).toEqual({ name: "Host", particle: "가", subject: "web-app 고치기", mono: false, what: "답을 기다려요" });
+    expect(nextOf(outside)).toEqual({ subject: "web-app 고치기", mono: false, what: "답을 기다려요" });
   });
 
-  it("Space 질문 카드는 「Host가 Space 답을 기다려요」다(03 티켓 08)", () => {
+  it("Space 질문 카드는 「Space 답을 기다려요」다(03 티켓 08)", () => {
     const space: PendingSpace = {
       card: "space",
       requestId: "s-1",
@@ -256,10 +250,10 @@ describe("카드 아래 다음 줄", () => {
       spaces: [],
       registered: 0,
     };
-    expect(nextOf(space, "Host")).toEqual({ name: "Host", particle: "가", subject: "Space", mono: false, what: "답을 기다려요" });
+    expect(nextOf(space)).toEqual({ subject: "Space", mono: false, what: "답을 기다려요" });
   });
 
-  it("Project 추가 카드는 「Host가 notes 추가 답을 기다려요」다(03 티켓 12)", () => {
+  it("Project 추가 카드는 「notes 추가 답을 기다려요」다(03 티켓 12)", () => {
     const adding: PendingProjectAdd = {
       card: "project-add",
       requestId: "p-1",
@@ -269,6 +263,6 @@ describe("카드 아래 다음 줄", () => {
       folder: "notes",
       root: null,
     };
-    expect(nextOf(adding, "Host")).toEqual({ name: "Host", particle: "가", subject: "notes 추가", mono: false, what: "답을 기다려요" });
+    expect(nextOf(adding)).toEqual({ subject: "notes 추가", mono: false, what: "답을 기다려요" });
   });
 });

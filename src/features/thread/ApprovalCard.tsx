@@ -74,7 +74,7 @@ const PEEK = 8;
 
 interface ApprovalCardProps {
   thread: string;
-  /** 물은 참여자의 화면 이름(들어옴 줄, `ThreadModel.cast`) — 머리 한 줄과 카드 이름에 선다. */
+  /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 머리 한 줄과 카드 이름에 선다. */
   name: string;
   /** 맨 앞의 답하지 않은 요청. 부르는 쪽이 요청 id를 key로 건다 — 다음 요청이 오면 카드가 새로 선다. */
   request: PendingPermission;

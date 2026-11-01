@@ -80,7 +80,7 @@ describe("Thread 줄", () => {
     expect(rows).toHaveLength(2);
     expect(rows.map(textOf)).toEqual(["환불 API 버그 고쳐줘", "PR #142 리뷰"]);
     for (const row of rows) {
-      // 얼굴(`ThreadFaces` · `HostFace`)은 svg · 글자 상자였다 — 줄 안에 그림이 하나도 없다.
+      // 얼굴이 없다 — 줄 안에 그림이 하나도 없다.
       expect(row).not.toContain("<svg");
       expect(row).not.toContain("<img");
     }

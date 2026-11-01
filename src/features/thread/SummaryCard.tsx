@@ -50,7 +50,6 @@ import {
   sourceProjects,
   summarySections,
   workPrsKey,
-  writerLine,
   writeSummaryOpen,
   type ChangeSummary,
   type PrRow,
@@ -551,7 +550,7 @@ function Label({ children }: { children: ReactNode }) {
   return <div className="flex h-9.5 shrink-0 items-center pr-2.5 pl-4 text-chat-meta text-fg-label">{children}</div>;
 }
 
-/** 소스의 줄 하나 — 문서는 쓰는 중(파란 점 · 「Host가 쓰는 중」) · 막 쓴 빛, Project는 끝에 「고치는 중」 · 「읽기만」(13 · 3단계 색). */
+/** 소스의 줄 하나 — 문서는 쓰는 중(파란 점 · 「쓰는 중」) · 막 쓴 빛, Project는 끝에 「고치는 중」 · 「읽기만」(13 · 3단계 색). */
 function SourceLine({
   row,
   lit,
@@ -580,7 +579,7 @@ function SourceLine({
         {row.writer && (
           <span className="flex items-center gap-1.5 text-xs">
             <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-accent-solid writing-pulse" />
-            {writerLine(row.writer.name)}
+            쓰는 중
           </span>
         )}
       </Line>

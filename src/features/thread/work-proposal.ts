@@ -5,7 +5,7 @@ import type { WorkProjectChoice } from "./fold";
 // - **브랜치 칸은 규칙을 말한다**(스토리 90) — 고른 Project의 브랜치에서 머리(`fix/` · `feat/` …)를 읽어, 적은 이름이 그 규칙을 따르는지
 //   칸 오른쪽에 한 줄로 말한다. 고른 Project에 이미 있는 이름 · 빈 이름은 문제라 「Work 만들기」가 잠긴다(core가 그 이름으로 Work를 만들지
 //   않는다). Project를 다 빼면 브랜치가 없다 — core가 Project 없는 Work에 브랜치를 적지 않는다.
-// - **처음 골라 둔 것은 Host의 추천이다**(보드 「Host 추천」) — 사람은 넣고 빼기만 한다.
+// - **처음 골라 둔 것은 제안의 추천이다**(보드 「추천」) — 사람은 넣고 빼기만 한다.
 
 /** 브랜치 칸 오른쪽의 한 줄. `problem`이면 그 이름으로는 만들 수 없다. */
 export interface BranchHint {

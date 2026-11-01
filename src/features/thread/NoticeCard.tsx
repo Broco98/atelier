@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 // 안내 카드의 틀(three-axes 티켓 22) — 캔버스의 한 틀이다(DS `.at-approval` — r28 · 컴포저 면과 그림자 · 위에 엔진 줄 · 제목 · 대상 ·
 // 까닭, 아래 단추 줄). 카드마다 다른 것은 위 칸의 글과 아래 줄(`children`)뿐이다. 승인 카드도 이 틀을 썼으나 v1 티켓 24부터 제 모양
-// (Cards · Approval 보드 A안 — 얼굴 · Policy · 번호 줄)이다(`ApprovalCard`).
+// (Cards · Approval 보드 A안 — Policy · 번호 줄)이다(`ApprovalCard`).
 //
 // 카드의 주 동작은 검정 면이다(캔버스 `.cx-split` · `.cx-btn.primary`) — 앱의 주 버튼(`Button` default)이 Codex primary(`fg` 면 ·
 // `fg-inverse` 글자)라 덮을 것이 없다. 한때 앱의 주 버튼이 파랑이라 카드가 그 면을 덮었다.

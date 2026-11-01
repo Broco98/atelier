@@ -195,6 +195,25 @@ describe("도구 줄의 종류 글리프", () => {
     );
   });
 
+  it("서브에이전트의 종류를 모르면 「서브에이전트」라 부른다 — Agent라 말하지 않는다", () => {
+    const tool = (subagent: Record<string, unknown>): ToolEntry => ({
+      kind: "tool",
+      key: "t",
+      toolCallId: "t",
+      call: { title: "Task", kind: "other", status: "in_progress", _meta: { claudeCode: { toolName: "Task", subagent } } },
+      output: "",
+      stop: null,
+      cut: false,
+      denied: false,
+      allowed: null,
+      asking: false,
+      startedAt: "",
+      endedAt: null,
+    });
+    expect(phraseText(describeTool(tool({ subagentType: "explorer" })).phrase)).toBe("explorer에게 맡기는 중");
+    expect(phraseText(describeTool(tool({})).phrase)).toBe("서브에이전트에게 맡기는 중");
+  });
+
   it("MCP는 플러그다 — Atelier의 Thread 도구는 그 말의 갈래다(읽음 · 확인함은 읽기, 고치기 시작은 편집, 맡김 · 물음은 그 밖)", () => {
     const mcp = (name: string, rawInput: Record<string, unknown> = {}) =>
       glyphOf({ title: name, kind: "other", rawInput, _meta: claude(`mcp__${name}`) });

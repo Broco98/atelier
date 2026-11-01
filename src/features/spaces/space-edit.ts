@@ -187,13 +187,13 @@ export function previewOf(draft: Pick<SpaceDraft, "space" | "shared">): {
 }
 
 /**
- * 편집기 아래 안내 줄 — 넣을 수 있는 Project(등록부 차례). 관계 편집은 뒤에 Host 길을, 새 Space는 앞에 파일 이름이 이름을 따라온다는 말
+ * 편집기 아래 안내 줄 — 넣을 수 있는 Project(등록부 차례). 관계 편집은 뒤에 대화로 고치는 길을, 새 Space는 앞에 파일 이름이 이름을 따라온다는 말
  * (겹치면 `-2`를 붙였다는 말)을 단다(시안 `.hint` · F4-KitSpace 「파일 이름 — 따라옴 · 겹침」).
  */
 export function editHint(mode: EditMode, draft: Pick<SpaceDraft, "registered" | "suffix">): string {
   const projects =
     draft.registered.length > 0 ? `Project는 ${draft.registered.join(" · ")} 중에서` : "아직 등록된 Project가 없어요";
-  if (mode === "edit") return `${projects} — Host에게 말로 부탁해도 이 파일이 바뀌어요`;
+  if (mode === "edit") return `${projects} — 대화로 부탁해도 이 파일이 바뀌어요`;
   const slug = draft.suffix
     ? `같은 이름의 Space가 있어 파일 이름에 ${draft.suffix}를 붙였어요`
     : "이름(name)을 적으면 파일 이름이 따라와요 — 만든 뒤엔 바뀌지 않아요";

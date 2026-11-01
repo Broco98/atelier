@@ -488,7 +488,7 @@ fn project_edited(before: &Project, after: &Project) -> Option<(String, String)>
             Some(_) => format!("{}의 설명을 고쳤어요", after.name),
             None => format!("{}의 설명을 비웠어요", after.name),
         };
-        changed.push(("설명", title, first.map_or_else(|| "Agent가 이 Project를 이해할 때 읽어요".to_owned(), str::to_owned)));
+        changed.push(("설명", title, first.map_or_else(|| "Runtime이 이 Project를 이해할 때 읽어요".to_owned(), str::to_owned)));
     }
     if before.base_branch != after.base_branch {
         let base = &after.base_branch;

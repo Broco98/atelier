@@ -5,7 +5,6 @@ import {
   finalMessages,
   foldOf,
   isCardAsk,
-  type CastMember,
   type PendingAsk,
   type PendingPermission,
   type ToolEntry,
@@ -22,7 +21,7 @@ import type { RecordLine, ThreadView } from "./types";
 //
 // | 우선 | 상태 | 언제 |
 // |---|---|---|
-// | 1 | 내 차례 | 답을 기다리는 물음이 있다 — 승인 · Work 만들기 카드 · Agent의 질문(`model.asks` — 앱을 다시 켜 답할 곳이 없는 물음은 접기가 걷는다) |
+// | 1 | 내 차례 | 답을 기다리는 물음이 있다 — 승인 · Work 만들기 카드 · 질문(`model.asks` — 앱을 다시 켜 답할 곳이 없는 물음은 접기가 걷는다) |
 // | 2 | 작업 중 | 어느 참여자의 턴이든 돈다 — 로그인을 기다리며 멈춘 턴은 돌지 않는 것이다 |
 // | 3 | 실패 | 로그인 필요 · 마지막 턴이 답 없이 끝났다(오류 · 프로세스 죽음 · 앱이 꺼지며 끊김) |
 // | 4 | 중단 | 마지막 턴을 사람이 멈췄다 |
@@ -74,7 +73,7 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
   const login = loginLine(lines);
   if (model.running && !login) {
     const tool = runningTool(model.turns.filter((turn) => turn.end === null));
-    return { kind: "working", text: tool && said(tool.who, phraseText(describeTool(tool.entry).phrase), model.cast) };
+    return { kind: "working", text: tool && phraseText(describeTool(tool).phrase) };
   }
   if (login) return { kind: "failed", at: login.at, text: "로그인이 필요해요" };
   const last = lastEnded(model.turns);
@@ -134,7 +133,7 @@ function waitingFor(request: PendingPermission): string {
 
 /**
  * 그 물음이 선 때 — 기록의 물음 줄 시각이다. 요청 id는 Session마다 0부터 세므로 물은 참여자와 함께 찾는다(v1 티켓 25). Work 만들기
- * 카드(v1 티켓 30) · Agent의 질문(v1 티켓 26) · Work 밖 Project 카드(v1 티켓 32)는 `question` 줄이다.
+ * 카드(v1 티켓 30) · 질문(v1 티켓 26) · Work 밖 Project 카드(v1 티켓 32)는 `question` 줄이다.
  */
 function askedAt(lines: readonly RecordLine[], request: PendingAsk): string {
   const kind = isCardAsk(request) ? "question" : "permission";
@@ -147,21 +146,16 @@ function askedAt(lines: readonly RecordLine[], request: PendingAsk): string {
   return "";
 }
 
-/** 도는 턴들에서 가장 늦게 시작한 도는 도구 — 그 턴의 참여자와 함께. 없으면 `null`이다. */
-function runningTool(turns: readonly Turn[]) {
-  let found: { who: string | null; entry: ToolEntry } | null = null;
+/** 도는 턴들에서 가장 늦게 시작한 도는 도구. 없으면 `null`이다. */
+function runningTool(turns: readonly Turn[]): ToolEntry | null {
+  let found: ToolEntry | null = null;
   for (const turn of turns) {
     for (const entry of turn.entries) {
       if (entry.kind !== "tool" || describeTool(entry).state !== "running") continue;
-      if (found === null || Date.parse(entry.startedAt) >= Date.parse(found.entry.startedAt)) found = { who: turn.who, entry };
+      if (found === null || Date.parse(entry.startedAt) >= Date.parse(found.startedAt)) found = entry;
     }
   }
   return found;
-}
-
-/** 줄의 글 — Host가 아닌 Agent의 일은 이름을 앞에 단다(보드 「리뷰어 · 수정 요청 2건」, `SidebarThreads`의 마지막 말과 같은 꼴). */
-function said(who: string | null, words: string, cast: Record<string, CastMember>): string {
-  return who && who !== "host" ? `${cast[who]?.name ?? who} · ${words}` : words;
 }
 
 /** 마지막 턴 끝 줄의 seq — 끝난 턴이 없으면 0이다. */

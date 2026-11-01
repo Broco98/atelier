@@ -19,9 +19,9 @@ const card = (over: Partial<PendingSpace> = {}): PendingSpace => ({
 });
 
 describe("Space 질문 카드의 선택지", () => {
-  it("머리는 「Host · 질문」, 물음과 그 아래 한 줄, 1 추천 Space(추천 · Project) · 2 다른 후보 · 끝 「Space 없이」다(F4-WorkAsk)", () => {
-    expect(describeSpaceCard(card(), "Host")).toEqual({
-      head: "Host · 질문",
+  it("머리는 「Claude Code · 질문」, 물음과 그 아래 한 줄, 1 추천 Space(추천 · Project) · 2 다른 후보 · 끝 「Space 없이」다(F4-WorkAsk)", () => {
+    expect(describeSpaceCard(card(), "Claude Code")).toEqual({
+      head: "Claude Code · 질문",
       title: "어느 Space에서 할까요?",
       sub: "Space를 고르면 그 안의 Project만 읽어요 · 나중에 바꿀 수 있어요",
       options: [
@@ -34,7 +34,7 @@ describe("Space 질문 카드의 선택지", () => {
   });
 
   it("Host가 Space 없이를 넘겼으면 「Space 없이」가 추천이고 처음 켜진 줄이다", () => {
-    const view = describeSpaceCard(card({ recommended: null, spaces: [card().spaces[1]] }), "Host");
+    const view = describeSpaceCard(card({ recommended: null, spaces: [card().spaces[1]] }), "Claude Code");
     expect(view.options.map((one) => [one.label, one.badge])).toEqual([
       ["사내 도구", null],
       ["Space 없이", "추천"],

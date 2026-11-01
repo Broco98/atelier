@@ -11,30 +11,25 @@ import type { RecordLine } from "./types";
 //   상태 칸의 일이다(v1 티켓 41).
 // - 상태(내 차례 · 작업 중 · 실패 · 중단)에 따라 다른 것을 보이는 일은 `status.ts`의 몫이다(v1 티켓 41) — 그 상태가 글을 주지 않으면 이 말이 선다.
 
-/** 마지막 말 — 누가(참여자 handle과 화면 이름, 사람이면 둘 다 `null`) · 무엇을(한 줄) · 언제. */
+/** 마지막 말 — 누가(기록의 `who`, 사람이면 `null`) · 무엇을(한 줄) · 언제. */
 export interface Said {
   who: string | null;
-  name: string | null;
   text: string;
   at: string;
 }
 
-/**
- * 그 Thread의 마지막 말. 말이 하나도 없으면(첫 말이 아직 기록에 없다) `null`이다. 이름은 접기의 참여자 표(`cast` — 들어옴 줄의 이름,
- * Host는 「Host」)에서 읽는다 — 흐름의 이름 줄과 같은 이름이다.
- */
+/** 그 Thread의 마지막 말. 말이 하나도 없으면(첫 말이 아직 기록에 없다) `null`이다. */
 export function lastSaid(lines: readonly RecordLine[]): Said | null {
-  const { turns, cast } = foldThread(lines);
-  let latest: Omit<Said, "name"> | null = null;
-  for (const turn of turns) {
+  let latest: Said | null = null;
+  for (const turn of foldThread(lines).turns) {
     const said = saidIn(turn);
     if (said && (latest === null || Date.parse(said.at) >= Date.parse(latest.at))) latest = said;
   }
-  return latest && { ...latest, name: latest.who === null ? null : (cast[latest.who]?.name ?? latest.who) };
+  return latest;
 }
 
 /** 턴 하나의 마지막 말 — 끝난 턴의 답, 없으면 그 턴을 연 사람의 말. 스스로 이어 간 턴에 답도 없으면 없다. */
-function saidIn(turn: Turn): Omit<Said, "name"> | null {
+function saidIn(turn: Turn): Said | null {
   if (turn.end) {
     const answers = finalMessages(turn);
     const answer = answers[answers.length - 1];

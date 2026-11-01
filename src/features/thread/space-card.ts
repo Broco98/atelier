@@ -22,7 +22,7 @@ export interface SpaceCardView extends ToolQuestionView {
   options: SpaceCardOption[];
 }
 
-/** 카드의 값. `asker`는 물은 참여자의 화면 이름이다. */
+/** 카드의 값. `asker`는 그 채팅의 Runtime 이름이다. */
 export function describeSpaceCard(card: PendingSpace, asker: string): SpaceCardView {
   const options: SpaceCardOption[] = card.spaces.map((space) => ({
     answer: { kind: "space", slug: space.slug },

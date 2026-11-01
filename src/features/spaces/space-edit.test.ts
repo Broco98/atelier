@@ -149,7 +149,7 @@ describe("안내 줄", () => {
   const draft = { registered: ["web-app", "api-server", "backoffice"], suffix: null };
 
   it("관계 편집은 넣을 수 있는 Project와 Host 길이다", () => {
-    expect(editHint("edit", draft)).toBe("Project는 web-app · api-server · backoffice 중에서 — Host에게 말로 부탁해도 이 파일이 바뀌어요");
+    expect(editHint("edit", draft)).toBe("Project는 web-app · api-server · backoffice 중에서 — 대화로 부탁해도 이 파일이 바뀌어요");
   });
 
   it("새 Space는 앞에 파일 이름이 이름을 따라온다는 말, 겹치면 -2 말이다", () => {
@@ -163,7 +163,7 @@ describe("안내 줄", () => {
 
   it("등록된 Project가 없으면 그렇다고 말한다 — 빈 Space도 만든다", () => {
     expect(editHint("edit", { registered: [], suffix: null })).toBe(
-      "아직 등록된 Project가 없어요 — Host에게 말로 부탁해도 이 파일이 바뀌어요",
+      "아직 등록된 Project가 없어요 — 대화로 부탁해도 이 파일이 바뀌어요",
     );
   });
 });

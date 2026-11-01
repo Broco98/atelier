@@ -1,5 +1,4 @@
 import { askLevelOf } from "./chips";
-import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
 import { readingText, registeredText } from "@/features/spaces/scope";
 import type { Quote } from "@/features/works/QuotePick";
@@ -24,14 +23,12 @@ import { particle } from "@/lib/particle";
 //
 // three-axes 대화 접기(`chat/fold.ts`)를 옮겨 왔다 — 턴 · 멈춘 뒤의 도구 줄 · 스스로 이어 간 턴 · 계획 카드 · 상태 줄의 규칙은 그대로이고
 // (그쪽 머리말이 근거를 든다), Thread에서 달라진 것은 셋이다.
-// - **줄의 `who`로 말한 이를 가른다.** 턴은 그 턴에 답한 참여자의 handle을 들고, 같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시
-//   쓰지 않는다(`namesWho`). Host의 턴은 이름 줄이 아예 없다(02 구현 스펙 §8). 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다.
-//   **열린 턴은 참여자마다 하나다**(v1 티켓 14) — 참여자마다 Session이 따로라(§5) Host가 도는 동안 리뷰어에게 보낸 말은 리뷰어의 턴으로
-//   함께 돈다. 줄은 그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 참여자의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은
-//   모두의 끝이다. 참여자의 이름 · 얼굴은 들어옴 줄(`joined`)이 정본이다(`cast`) — 처음 불린 정의 그대로다(S4).
-// - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 참여자가 들고 남(`joined` ·
-//   `left`), 물어보는 정도 바꿈(`mode` — 「Policy를 편집은 허용으로 바꿈 · 이 Work에만」, v1 티켓 23). 모든 Thread가 Host의 `joined`로
-//   시작하므로 Host가 들어온 줄은 세우지 않는다. Work · PR 줄은 그 장(30 · 31 · 40)이 더한다.
+// - **줄의 `who`로 턴을 가른다.** 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다. **열린 턴은 `who`마다 하나다**(v1 티켓 14) — 줄은
+//   그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 `who`의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은 모두의 끝이다.
+//   화면은 `who`를 보이지 않는다 — 채팅은 Runtime 세션 하나라 말은 Runtime 이름으로 선다(`runtime.ts`). 기록의 `who`는 01a-5가 지운다.
+// - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 물어보는 정도 바꿈(`mode` —
+//   「Policy를 편집은 허용으로 바꿈 · 이 Work에만」, v1 티켓 23). Work · PR 줄은 그 장(30 · 31 · 40)이 더한다. `joined` · `left` 줄은 화면에
+//   서지 않는다.
 // - **도구 줄은 시작과 끝의 시각을 든다** — 작업 로그가 마우스를 올린 줄에 걸린 시간을 말한다(캔버스 WorkLog 보드). 사람이 거절한
 //   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`). 판정이 묻지 않고 허용한 도구 줄은 그 까닭을 든다
 //   (`allowed` — 방패 줄 「자동으로 허용함」, v1 티켓 23 · 구현 스펙 §9). 판정 줄(`decided`)의 고른 선택지가 허용 갈래일 때다 — 엔진의
@@ -236,24 +233,17 @@ export interface ToolEntry {
 export interface Turn {
   /** 턴의 정체 — 접고 펴기를 기억하는 열쇠다. 보낸 말의 seq에서 나온다. */
   key: string;
-  /** 그 턴에 답한 참여자의 handle — 보낸 말의 받는 이(`to`), 그 뒤 답한 줄의 `who`. 모르면 null이다. */
+  /** 그 턴의 `who` — 보낸 말의 받는 이(`to`), 그 뒤 답한 줄의 `who`. 모르면 null이다. 화면에는 서지 않는다. */
   who: string | null;
-  /**
-   * 이름 줄(「이름 · @handle」)을 쓰나 — Host의 턴은 쓰지 않는다(02 구현 스펙 §8 — Host의 답은 본문으로 바로 시작한다). 다른 Agent도
-   * 사람 말 없이 이어 말하면 쓰지 않는다(구현 스펙 §14). 그 밖의 턴(사람이 말한 턴 · 말한 이가 바뀐 턴)은 쓴다.
-   */
-  namesWho: boolean;
   /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말은 기록의 `prompt`에만 있다. 스스로 이어 간 턴은 null이다. */
   sent: string | null;
   /** 그 말에 붙인 파일 · 폴더(`sent`의 `attachments`, v1 티켓 06) — 말풍선 위 칩이다. 없으면 빈 목록이다. */
   attachments: Attachment[];
   /** 그 말에 붙인 인용(`sent`의 `quote`, v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글이고 말풍선 위에 선다. 없으면 null이다. */
   quote: Quote | null;
-  /** Agent가 스스로 이어 간 턴인가 — 보낸 말 없이 시작했거나 턴 밖 끝만 온 턴이다. */
-  selfContinued: boolean;
   /** 턴이 선 시각(보낸 말 · 처음 온 줄). */
   startedAt: string;
-  /** 답한 이의 첫 줄 시각. 아직 답이 없으면 null이다(이름 줄은 02 티켓 08부터 시각을 그리지 않는다). */
+  /** 답한 첫 줄의 시각. 아직 답이 없으면 null이다. */
   answeredAt: string | null;
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
@@ -278,9 +268,7 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "joined" | "left" | "mode" | "work" | "worktree" | "space";
-  /** 들고 난 참여자의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기 · 정도 바꿈)은 `null`이다. */
-  handle: string | null;
+  kind: "title" | "mode" | "work" | "worktree" | "space";
   before: string;
   name: string;
   after: string;
@@ -288,7 +276,7 @@ export interface SystemLine {
   code?: string | null;
   turnsBefore: number;
   /**
-   * 턴 사이가 아니라 이 턴(열쇠)의 머리 — 사람 말 뒤, Agent의 줄 앞 — 에 선다. worktree를 만든 줄이 그 Project를 고치기 시작한 턴에
+   * 턴 사이가 아니라 이 턴(열쇠)의 머리 — 사람 말 뒤, 답의 줄 앞 — 에 선다. worktree를 만든 줄이 그 Project를 고치기 시작한 턴에
    * 선다(화면 2 보드). 없으면 `turnsBefore`의 턴 사이다.
    */
   turn?: string;
@@ -296,7 +284,7 @@ export interface SystemLine {
 
 /**
  * PR 카드 하나(v1 티켓 36 · 스토리 124) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
- * 선다. 같은 PR(Project · 번호)의 마지막 카드만 `latest`다 — 지금의 상태라 「Host에게 고쳐 달라고 하기」가 그 카드에만 선다.
+ * 선다. 같은 PR(Project · 번호)의 마지막 카드만 `latest`다 — 지금의 상태라 「고쳐 달라고 하기」가 그 카드에만 선다.
  */
 export interface PrCardEntry {
   key: string;
@@ -326,12 +314,6 @@ export type ResultAction = "project-added" | "project-edited" | "space-created" 
 
 const RESULT_ACTIONS: readonly ResultAction[] = ["project-added", "project-edited", "space-created", "space-edited"];
 
-/** 참여자 한 사람의 이름 · 얼굴 — 들어옴 줄(`joined`)의 `name` · `avatar`. */
-export interface CastMember {
-  name: string;
-  avatar: Avatar | null;
-}
-
 export interface ThreadModel {
   turns: Turn[];
   /** 도는 턴이 하나라도 있나 — 참여자마다 하나씩 돌 수 있다. */
@@ -340,8 +322,6 @@ export interface ThreadModel {
   answering: string[];
   /** Session을 띄우거나 되살리는 중인가 — 띄우는 중 줄 뒤로 열림 · 죽음 · 닫힘 · 로그인 필요가 아직 오지 않았다. */
   connecting: boolean;
-  /** 참여자 handle → 이름 · 얼굴(들어옴 줄). Host는 줄이 없어도 「Host」다. */
-  cast: Record<string, CastMember>;
   notices: Notice[];
   system: SystemLine[];
   /** PR 카드(v1 티켓 36) — 줄이 온 차례다. */
@@ -563,7 +543,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
-  const cast: Record<string, CastMember> = { [HOST]: { name: "Host", avatar: null } };
   const start = (
     key: string,
     sent: string | null,
@@ -572,22 +551,17 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     attachments: Attachment[] = [],
     quote: Quote | null = null,
   ): Turn => {
-    const previous = turns[turns.length - 1];
     const turn: Turn = {
       key,
       who,
-      namesWho: true,
       sent,
       attachments,
       quote,
-      selfContinued: sent === null,
       startedAt: at,
       answeredAt: null,
       entries: [],
       end: null,
     };
-    // 사람 말 없이 이어진 턴 — 앞 턴과 같은 이면 이름 줄을 다시 쓰지 않는다.
-    if (turn.selfContinued && previous && previous.who === who) turn.namesWho = false;
     turns.push(turn);
     open.set(who ?? "", turn);
     return turn;
@@ -622,7 +596,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const say = (
     seq: number,
     kind: SystemLine["kind"],
-    handle: string | null,
     before: string,
     name: string,
     after: string,
@@ -631,7 +604,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     system.push({
       key: `s${seq}`,
       kind,
-      handle,
       before,
       name,
       after,
@@ -784,7 +756,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (turn.end.stopReason === "cancelled" && turn.end.cancelledByUs) {
           markStopped(turn, closedLast.get(turn) ?? [], withdrawnByStop);
         }
-        if (payload.outOfTurn === true) turn.selfContinued = true;
         close(turn);
         break;
       }
@@ -920,11 +891,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       // 만듦 · fix/refund-api」. Project 붙임(`attached`)은 시스템 줄이 아니다 — 카드의 결정 줄 「web-app을 이 Work에 붙임」이 말한다.
       case "work": {
         const title = nonEmpty(payload.title) ?? nonEmpty(payload.slug);
-        if (payload.state === "created" && title) say(line.seq, "work", null, "Work ", title, `${particle(title, "을", "를")} 만들고 이 Thread에 연결함`);
+        if (payload.state === "created" && title) say(line.seq, "work", "Work ", title, `${particle(title, "을", "를")} 만들고 이 Thread에 연결함`);
         const project = nonEmpty(payload.project);
         if (payload.state === "worktree" && project) {
           const branch = nonEmpty(payload.branch);
-          say(line.seq, "worktree", null, "", project, branch ? "에 worktree를 만듦 ·" : "에 worktree를 만듦", branch);
+          say(line.seq, "worktree", "", project, branch ? "에 worktree를 만듦 ·" : "에 worktree를 만듦", branch);
           // 그 Project를 고치기 시작한 도는 턴(그 도구 줄이나 카드의 결정 줄이 있다)의 머리에 선다. `work` 줄은 누가 적지 않으므로 못
           // 찾으면 마지막에 열린 턴이고, 열린 턴이 없으면(옛 기록) 턴 사이다.
           const turns = [...open.values()];
@@ -961,21 +932,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       }
       case "title": {
         const title = nonEmpty(payload.title);
-        if (title) say(line.seq, "title", null, "Thread 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
-        break;
-      }
-      case "joined":
-      case "left": {
-        const handle = text(payload.handle) ?? line.who ?? null;
-        if (line.kind === "joined" && handle && handle !== HOST) {
-          cast[handle] = { name: nonEmpty(payload.name) ?? handle, avatar: avatarOf(payload.avatar) };
-        }
-        // 모든 Thread가 Host의 들어옴으로 시작한다 — 세우지 않는다(머리말).
-        if (line.kind === "joined" && handle === HOST) break;
-        const name = nonEmpty(payload.name) ?? (handle ? cast[handle]?.name : null) ?? handle;
-        if (!name) break;
-        const verb = line.kind === "joined" ? "참여함" : "나감";
-        say(line.seq, line.kind, handle, "", name, `${particle(name, "이", "가")} ${verb}`);
+        if (title) say(line.seq, "title", "Thread 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
         break;
       }
       // 사람이 물어보는 정도를 바꿈(v1 티켓 23) — 「Policy를 편집은 허용으로 바꿈 · 이 Work에만」. Work에 이은 Thread의 정도는 그 Work의
@@ -984,7 +941,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         const level = askLevelOf(payload.mode);
         if (!level) break;
         const scope = nonEmpty(payload.work) ? " · 이 Work에만" : "";
-        say(line.seq, "mode", null, "Policy를 ", level.name, `${particle(level.name, "으로", "로")} 바꿈${scope}`);
+        say(line.seq, "mode", "Policy를 ", level.name, `${particle(level.name, "으로", "로")} 바꿈${scope}`);
         break;
       }
       // 그 Work의 PR이 처음 보였거나 상태가 바뀜(v1 티켓 36) — 엔진이 그 Work에서 가장 최근에 말한 Thread에 남긴 줄이 PR 카드다.
@@ -1002,23 +959,23 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         );
         const name = nonEmpty(payload.name);
         if (payload.change === "changed" && name) {
-          say(line.seq, "space", null, "Space를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${readingText(projects)}`);
+          say(line.seq, "space", "Space를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${readingText(projects)}`);
         }
         // Host가 묻지 않고 붙임(03 티켓 08 — 「알아서」) — 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」.
         if (payload.change === "attached" && name) {
-          say(line.seq, "space", null, "", name, ` Space에 넣었어요 — ${readingText(projects)}`);
+          say(line.seq, "space", "", name, ` Space에 넣었어요 — ${readingText(projects)}`);
         }
         if (payload.change === "removed") {
           const registered = typeof payload.registered === "number" ? payload.registered : 0;
-          say(line.seq, "space", null, `Space를 뺐어요 — 다음 차례부터 ${registeredText(registered)}`, "", "");
+          say(line.seq, "space", `Space를 뺐어요 — 다음 차례부터 ${registeredText(registered)}`, "", "");
         }
         // 지움 · 되돌림(03 티켓 07) — 이은 Space가 지워진 대화는 굵은 것 없이 한 줄이다(시안 F4-KitChat 「Space가 지워짐」). 손으로 지운
         // 파일은 이름을 읽을 수 없어 엔진이 slug를 싣는다.
         if (payload.change === "deleted" && name) {
-          say(line.seq, "space", null, `${name} Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요`, "", "");
+          say(line.seq, "space", `${name} Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요`, "", "");
         }
         if (payload.change === "restored" && name) {
-          say(line.seq, "space", null, "", name, ` Space를 되돌렸어요 — ${readingText(projects, { again: true })}`);
+          say(line.seq, "space", "", name, ` Space를 되돌렸어요 — ${readingText(projects, { again: true })}`);
         }
         break;
       }
@@ -1051,9 +1008,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     const same = (one: PrCardEntry) => one.pr.project === card.pr.project && one.pr.number === card.pr.number;
     card.latest = !prs.slice(at + 1).some(same);
   }
-  // Host의 답에는 이름 줄이 없다(02 구현 스펙 §8) — 다 접은 뒤에 본다. 말한 이는 답한 줄이 정하므로(`answer`) 턴이 설 때는 아직
-  // 모를 수 있다(받는 이를 모르는 옛 `sent`).
-  for (const turn of turns) if (turn.who === HOST) turn.namesWho = false;
   const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   const asks = [...pending.values()].map((one): PendingAsk => {
     if (isCardAsk(one)) return one;
@@ -1067,7 +1021,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     running: open.size > 0,
     answering: [...new Set(answering)],
     connecting: connecting.size > 0,
-    cast,
     notices,
     system,
     prs,
@@ -1078,11 +1031,10 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
 }
 
 /**
- * 「답하는 중」 줄에 설 참여자(캔버스 Messages 보드 「답하는 중」 · Motion 보드 「Agent 참여」) — 도는 턴 가운데 **흐름 끝에서 답이 보이지
- * 않는** 턴의 참여자다: 아직 아무 줄도 오지 않은 턴(보낸 말 · 참여 줄 바로 뒤)과 흐름 끝이 아닌 자리에서 도는 턴. 흐름 끝의 턴이 답 ·
- * 생각 · 도구 줄을 흘리고 있으면 그 턴의 이름 줄 · 머리줄이 이미 말하므로 뺀다. 승인을 기다리는 참여자도 뺀다 — 답하는 것이 아니라
- * 사람을 기다리고, 그 턴의 머리줄이 「승인을 기다립니다」를 말한다(v1 티켓 25 — 두 Agent가 함께 물으면 앞의 턴이 흐름 끝이 아니다).
- * 아무도 없으면 `null`이다. 여럿이면 턴이 선 차례로 모두 든다(「리뷰어와 테스터가 답하는 중」).
+ * 「답하는 중」 줄을 세울 턴의 `who`(캔버스 Messages 보드 「답하는 중」) — 도는 턴 가운데 **흐름 끝에서 답이 보이지 않는** 턴이다: 아직 아무
+ * 줄도 오지 않은 턴(보낸 말 바로 뒤)과 흐름 끝이 아닌 자리에서 도는 턴. 흐름 끝의 턴이 답 · 생각 · 도구 줄을 흘리고 있으면 그 턴의 머리줄이
+ * 이미 말하므로 뺀다. 승인을 기다리는 턴도 뺀다 — 답하는 것이 아니라 사람을 기다리고, 그 턴의 머리줄이 「승인을 기다립니다」를 말한다
+ * (v1 티켓 25). 아무도 없으면 `null`이다. 줄의 글은 Runtime 이름 하나다(`ThreadFlow`).
  */
 export function answeringLine(model: ThreadModel): string[] | null {
   const last = model.turns[model.turns.length - 1];
@@ -1090,12 +1042,6 @@ export function answeringLine(model: ThreadModel): string[] | null {
   const asking = new Set(model.asks.map((request) => request.who));
   const answering = model.answering.filter((who) => who !== speaking && !asking.has(who));
   return answering.length > 0 ? answering : null;
-}
-
-/** 들어옴 줄의 `avatar` — 모양 · 색 글자만 좁힌다(푸는 일은 `faces.ts`). */
-function avatarOf(value: unknown): Avatar | null {
-  if (!isObject(value)) return null;
-  return { shape: text(value.shape), color: text(value.color) };
 }
 
 /** 앱을 다시 켜기 전에 끊긴 턴의 끝 까닭 — 앱이 꺼지면 Session도 함께 꺼진다. */
@@ -1370,7 +1316,7 @@ export function spoken(ms: number): string {
 const STOPPED: Record<string, string> = {
   max_tokens: "답이 길이 한도에 닿아 멈췄어요",
   max_turn_requests: "한 턴의 요청 한도에 닿아 멈췄어요",
-  refusal: "Agent가 거절해서 멈췄어요",
+  refusal: "이 요청에는 답할 수 없어 멈췄어요",
 };
 
 /**

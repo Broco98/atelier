@@ -60,7 +60,7 @@ describe("CI 문장(스토리 125)", () => {
     expect(failNote([])).toBe("검사가 실패했어요.");
   });
 
-  it("「Host에게 고쳐 달라고 하기」가 입력창에 채우는 말은 PR 번호와 실패한 검사를 모두 싣는다", () => {
+  it("「고쳐 달라고 하기」가 입력창에 채우는 말은 PR 번호와 실패한 검사를 모두 싣는다", () => {
     expect(fixAsk({ number: 142, ci: { kind: "failing", failed: ["e2e", "lint", "build"] } })).toBe(
       "PR #142의 CI에서 e2e, lint, build 검사가 실패했어요. 원인을 찾아 고쳐 줘.",
     );

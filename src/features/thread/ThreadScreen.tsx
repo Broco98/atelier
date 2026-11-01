@@ -47,6 +47,7 @@ import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
+import { runtimeNameOf } from "./runtime";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
@@ -70,10 +71,10 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · Work 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
 //   Thread에 Space가 있으면 「흐린 Space /」가 서고 누르면 그 Space 상세다(03 §10 — Space가 없으면 이름만). 오른쪽
 //   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
-//   다 없다, S23). 옛 Work 알약(브랜치)과 참여자 얼굴은 걷었다(S14 — 참여자는 본문의 이름 줄이 말한다). 시안의 머리 줄 Work
+//   다 없다, S23). 옛 Work 알약(브랜치)은 걷었다(S14). 시안의 머리 줄 Work
 //   탭은 짓지 않는다 — Work 화면 몫이다.
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
-//   아래 28에 입력창과 트레이뿐이다. Host 얼굴은 걷었다(02 S26 — 시안과 Codex 첫 화면에 없다). 시안의 Space 제안 줄은 짓지 않는다(03
+//   아래 28에 입력창과 트레이뿐이다. 시안의 Space 제안 줄은 짓지 않는다(03
 //   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 Work와
 //   Space를 고른다(03 §5). 고른 Space는 입력창이 쥐었다가 첫 말과 함께 간다(`space-chip.ts` — 씨앗 `?space=`가 처음 쥔다). 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을
 //   이미 말한다). 처음 고를 곳은 주소 씨앗 › 기억한 스위치 쪽 › 「새 Work」다(S2 · `startLink`) — 메뉴에서 고른 스위치 쪽은 다음 새
@@ -94,8 +95,8 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
 //   Project · Space 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
-// - **여럿이 한 Thread에**(v1 티켓 14) — 누가 있는지는 본문의 이름 줄이 말한다(머리 줄 얼굴은 걷었다 — 02 S14). 모델 칩은 **다음 말을
-//   받을 참여자**의 Session 값이다(§14).
+// - **말은 Runtime 이름으로 선다**(`runtimeNameOf`) — 채팅은 Runtime 세션 하나라 흐름과 카드에 얼굴도 이름 줄도 없다. 모델 칩은 **다음 말을
+//   받을 Session**의 값이다(§14).
 // - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
 //   첫 Session이 뜬다 — 최근 Work를 골랐으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
 //   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
@@ -586,7 +587,7 @@ function ThreadBody({
     el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
   };
 
-  // PR 카드의 동작(v1 티켓 36) — 「Host에게 고쳐 달라고 하기」는 이 Thread의 입력창에 맡기는 말을 채운다. 보내는 것은 사람이다.
+  // PR 카드의 동작(v1 티켓 36) — 「고쳐 달라고 하기」는 이 Thread의 입력창에 맡기는 말을 채운다. 보내는 것은 사람이다.
   const prActions = useMemo<PrActions>(
     // 읽기만인 Thread(v1 티켓 38)에는 채울 입력창이 없다 — 고쳐 달라는 버튼이 서지 않는다.
     () => ({ showChanges: onShowChanges, askFix: view.readOnly ? undefined : (pr) => fillDraft(thread, fixAsk(pr)) }),
@@ -604,18 +605,12 @@ function ThreadBody({
   );
 
   // 카드 맨 아래 「다음 · …」 줄 — 다음 차례가 없으면 비운다(승인 카드 · Work 만들기 카드가 같은 줄을 쓴다).
-  const askNext = turn?.next && (
-    <AskNext
-      handle={turn.next.who}
-      avatar={model.cast[turn.next.who]?.avatar ?? null}
-      line={nextOf(turn.next, model.cast[turn.next.who]?.name ?? turn.next.who)}
-    />
-  );
-  // 입력창 자리 카드가 함께 받는 것 — 답할 Thread, 물은 참여자의 이름 · 얼굴(들어옴 줄), 물음 차례의 표시.
+  const askNext = turn?.next && <AskNext line={nextOf(turn.next)} />;
+  // 입력창 자리 카드가 함께 받는 것 — 답할 Thread, 그 채팅의 Runtime 이름, 물음 차례의 표시.
+  const runtime = runtimeNameOf(view);
   const slot = asking && {
     thread,
-    name: model.cast[asking.who]?.name ?? asking.who,
-    avatar: model.cast[asking.who]?.avatar ?? null,
+    name: runtime,
     count: turn?.count,
     next: askNext,
   };
@@ -663,6 +658,7 @@ function ThreadBody({
                   <ThreadFlow
                     thread={thread}
                     model={model}
+                    runtime={runtime}
                     onRetry={(text, attachments) =>
                       void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
                     }

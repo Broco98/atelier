@@ -3,25 +3,23 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
-import { AgentFace } from "./AgentFace";
 import { threadApi } from "./api";
 import { KeyCap, SLOT_CARD, useSlotCard } from "./ApprovalCard";
 import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
-import type { Avatar } from "./faces";
 import type { AskedQuestion, PendingQuestion } from "./fold";
 import { answerOf, answersOf, NO_PICK, pickOption, questionKey, typeAnswer, type QuestionPick } from "./question";
 
-// 질문 카드(v1 티켓 26 · 구현 스펙 §9 · 스토리 81 · 캔버스 Cards 보드 「Agent의 질문」) — Agent가 고를 답을 내밀며 물으면 승인 카드처럼
+// 질문 카드(v1 티켓 26 · 구현 스펙 §9 · 스토리 81 · 캔버스 Cards 보드 「질문」) — Runtime이 고를 답을 내밀며 물으면 승인 카드처럼
 // **입력창 자리에** 선다(같은 자리 · 같은 물음 차례). 번호로 고르거나 직접 답하고, 「답하기」 · 「나중에」로 닫는다. 값은 순수 함수가
 // 짓는다(`question.ts`).
 //
 // 겉은 입력창 자리 카드의 한 겉이다(`SLOT_CARD` — 02 §10 · 스토리 68: 25 · 1px 옅은 테두리 · 흰 면). 안은 v1 보드의 `.qcard`다 — 위 16 ·
-// 옆 8 · 아래 8, 칸 사이 10. 머리는 얼굴 22와 물음(14/20 600) · 물음 아래 한 줄(12/18 `fg-tertiary`)이다. 선택지 줄은 승인 카드의 번호 줄과 같은 높이 36 · 반경 12에 라디오(여럿
+// 옆 8 · 아래 8, 칸 사이 10. 머리는 물음(14/20 600) · 물음 아래 한 줄(12/18 `fg-tertiary`)이다. 선택지 줄은 승인 카드의 번호 줄과 같은 높이 36 · 반경 12에 라디오(여럿
 // 고르기면 체크) 16과 글, 오른쪽 끝에 번호 글쇠이고, 고른 줄은 `fill-soft` 면이다. 「직접 답하기」 칸은 높이 38 · 머리카락 선,
 // 맨 아래 줄은 「나중에」(흐린 버튼) · 「답하기」(주 버튼)다.
 //
-// - **물음이 여럿이면 차례로 쌓는다** — 첫 물음만 얼굴 옆에 서고, 다음 물음은 그 아래에 제 머리로 선다. 숫자 키는 지금 물음(마지막으로
+// - **물음이 여럿이면 차례로 쌓는다** — 첫 물음의 머리에만 차례(「1 / 2」)가 서고, 다음 물음은 그 아래에 제 머리로 선다. 숫자 키는 지금 물음(마지막으로
 //   손댄 물음, 처음엔 첫째)의 선택지를 고르고, 하나만 고르는 물음을 고르면 답하지 않은 다음 물음으로 넘어간다.
 // - **Enter는 「답하기」다** — 모든 물음에 답했을 때만 간다. Esc는 고르지 않는다: 「나중에」는 그 질문을 답 없이 닫는 일이다.
 // - 카드가 서면 포커스를 받는다 — 풀린 포커스만 받는다. 선 직후 잠깐(`ARMING_MS`)은 키를 받지 않는다(승인 카드와 같다).
@@ -31,9 +29,8 @@ import { answerOf, answersOf, NO_PICK, pickOption, questionKey, typeAnswer, type
 
 interface QuestionCardProps {
   thread: string;
-  /** 물은 참여자의 화면 이름 · 얼굴(들어옴 줄, `ThreadModel.cast`). */
+  /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 카드의 이름에 선다. */
   name: string;
-  avatar: Avatar | null;
   /** 맨 앞의 답하지 않은 질문. 부르는 쪽이 요청 id를 key로 건다 — 다음 물음이 오면 카드가 새로 선다. */
   request: PendingQuestion;
   /** 물음 차례의 「1 / 2」(`askTurn`) — 묶음에 물음이 하나뿐이면 null. */
@@ -42,7 +39,7 @@ interface QuestionCardProps {
   next?: ReactNode;
 }
 
-function QuestionCard({ thread, name, avatar, request, count = null, next }: QuestionCardProps) {
+function QuestionCard({ thread, name, request, count = null, next }: QuestionCardProps) {
   const cardId = useId();
   const { box: card, armed, sent, problem, send } = useSlotCard();
   const { questions } = request;
@@ -93,7 +90,6 @@ function QuestionCard({ thread, name, avatar, request, count = null, next }: Que
             head={
               at === 0 ? (
                 <>
-                  <AgentFace handle={request.who} avatar={avatar} className="size-5.5 shrink-0" />
                   <QuestionHead id={`${cardId}-${at}`} question={question} />
                   <AskCount count={count} />
                 </>

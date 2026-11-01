@@ -184,12 +184,11 @@ export function addMenu(space: Pick<Space, "projects">, registered: readonly Pro
 // ── 만든 이 · 만든 때 ────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * 상세 제목 아래 줄(스토리 144) — 만든 이(`createdBy: host`면 Host와 만듦 · H 얼굴, 아니면 직접 만듦)와 만든 때. 파일의 `createdAt`은
+ * 상세 제목 아래 줄(스토리 144) — 만든 길(`createdBy: host`면 대화로 만듦, 아니면 직접 만듦)과 만든 때. 파일의 `createdAt`은
  * 날짜라 때는 날 단위다 — 오늘 · 어제 · N일 전(한 달 안), 그보다 오래면 날짜다.
  */
 export function createdLine(space: Pick<Space, "createdAt" | "createdBy">, now: Date) {
-  const host = space.createdBy === "host";
-  return { host, by: host ? "Host와 만듦" : "직접 만듦", when: daysAgo(space.createdAt, now) };
+  return { by: space.createdBy === "host" ? "대화로 만듦" : "직접 만듦", when: daysAgo(space.createdAt, now) };
 }
 
 function daysAgo(createdAt: string, now: Date): string {
@@ -222,7 +221,7 @@ export interface SpaceMenu {
    * 읽는 것(「등록된 Project 3개를 모두 읽어요」)이다. 그리는 쪽은 갈래(`kind`)로 줄의 꼴을 고른다 — 화면 글을 열쇠로 삼지 않는다.
    */
   top: { kind: "remove"; label: "Space 빼기"; note: string; current: false } | { kind: "none"; label: "Space 없음"; note: string; current: boolean };
-  /** 「Space — 고르면 그 안의 Project만 읽어요」 아래의 줄들 — Space가 하나도 없으면 `null`이고 그 자리에 「Host와 Space 만들기」가 선다. */
+  /** 「Space — 고르면 그 안의 Project만 읽어요」 아래의 줄들 — Space가 하나도 없으면 `null`이고 그 자리에 「대화로 Space 만들기」가 선다. */
   rows: SpaceMenuRow[] | null;
 }
 
@@ -267,7 +266,7 @@ export function spaceMenu(
 // 한다(S16 — 사람이 말을 더할 수 있다).
 
 /**
- * 「Host와 만들기」(§14 S16 — 목록 「새 Space ⌄」의 기본 · Space 메뉴에 Space가 하나도 없을 때의 「Host와 Space 만들기」) — Work 칩 「Work 없이
+ * 「대화로 만들기」(§14 S16 — 목록 「새 Space ⌄」의 기본 · Space 메뉴에 Space가 하나도 없을 때의 「대화로 Space 만들기」) — Work 칩 「Work 없이
  * 대화」와 이 입력 글. Host는 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
  */
 export const HOST_MAKE: NewThreadSearch = {
@@ -276,7 +275,7 @@ export const HOST_MAKE: NewThreadSearch = {
 };
 
 /**
- * Space 상세 머리의 둘(§14) — 「새 Work」는 Work 칩 「새 Work」 · Space 칩 「◇ 결제 서비스 ×」(스토리 159), 「Host와 고치기」(S17)는 그 Space를
+ * Space 상세 머리의 둘(§14) — 「새 Work」는 Work 칩 「새 Work」 · Space 칩 「◇ 결제 서비스 ×」(스토리 159), 「대화로 고치기」(S17)는 그 Space를
  * 붙인 Work 없는 대화에 고쳐 달라는 말(끝에 빈칸 — 사람이 이어 쓴다)이다. Host는 그 Space의 Project를 읽은 채 시작한다.
  */
 export function spaceStarts(space: Pick<Space, "slug" | "name">): { newWork: NewThreadSearch; hostEdit: NewThreadSearch } {

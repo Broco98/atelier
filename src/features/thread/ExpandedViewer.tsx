@@ -10,11 +10,10 @@ import { useSpecFile } from "@/features/works/hooks";
 import { specRef, worktreeDirRef } from "@/features/works/refs";
 import SpecViewer from "@/features/works/SpecViewer";
 import type { WorkView } from "@/features/works/types";
-import { AgentFace } from "./AgentFace";
 import { freshLines, viewerPath, type Opened } from "./expanded";
 import { setQuote } from "./thread-store";
 import type { DocWriting } from "./types";
-import { writerLine, type ChangeSummary } from "./summary-card";
+import type { ChangeSummary } from "./summary-card";
 
 // 강조 라이브러리(`@pierre/diffs`)는 코드 보기 모듈 아래에서만 들어온다(git-integration 결정 35 · `code-view-chunk.test.ts`) — 넓힌 카드도 그
 // 모듈을 `lazy`로 부른다. diff 보기는 그 모듈의 이름 붙은 내보내기다.
@@ -26,7 +25,7 @@ const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => 
  * 선다(02 §7 — 넓힌 카드는 그대로다). 한 번에 파일 하나다.
  *
  * - 머리는 경로 줄(`PathBar` — 보드 `.vh`의 「문서 / design.md」 · 「api-server / src / refund.service.ts」 · 「Project / api-server」)이다. 끝
- *   칸에 변경의 Work 브랜치와 +/−(브랜치는 요약 카드 머리에서 옮겨 왔다 — 02 §7 표), 쓰는 중인 문서의 「Host가 쓰는 중」, 그리고 「카드로
+ *   칸에 변경의 Work 브랜치와 +/−(브랜치는 요약 카드 머리에서 옮겨 왔다 — 02 §7 표), 쓰는 중인 문서의 「쓰는 중」, 그리고 「카드로
  *   접기」 ×가 선다(스토리 117).
  * - **문서**는 작업 화면의 문서 보기 그대로다(`SpecViewer` — 렌더 · 원문 보기 묶음, 링크 따라가기, 문서 글 메뉴). 다시 읽은 글에서 바뀐
  *   줄만 잠깐 칠하고(스토리 118 · Motion 보드 — `freshLines` · `doc-flash`), 구르는 자리는 그대로다(같은 쿼리의 새 값이 같은 상자에
@@ -129,7 +128,7 @@ function copyPathOf(work: WorkView, opened: Opened): (() => void) | undefined {
 
 /**
  * 경로 줄 끝의 옅은 메타(보드 `.vh .st` · `.vlive` — 12/18) — 변경은 Work 브랜치(고정폭)와 그 파일의 +/−(0인 쪽은 적지 않는다 — 카드의
- * 줄과 같다), 쓰는 중인 문서는 그 Agent의 얼굴과 「Host가 쓰는 중」이다.
+ * 줄과 같다), 쓰는 중인 문서는 「쓰는 중」이다.
  */
 function ViewerNote({
   opened,
@@ -146,9 +145,8 @@ function ViewerNote({
     const writer = writing.find((one) => one.path === opened.path);
     if (!writer) return null;
     return (
-      <span data-writer={writer.who} className="flex shrink-0 items-center gap-1.5 px-1 text-xs text-fg-tertiary">
-        <AgentFace handle={writer.who} className="size-3.5" />
-        {writerLine(writer.name)}
+      <span data-writer={writer.who} className="shrink-0 px-1 text-xs text-fg-tertiary">
+        쓰는 중
       </span>
     );
   }

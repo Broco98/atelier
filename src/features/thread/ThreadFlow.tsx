@@ -4,7 +4,6 @@ import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, TriangleAler
 import { Button } from "@/components/ui/button";
 import { particle } from "@/lib/particle";
 import { cn } from "@/lib/utils";
-import { AgentFace, FaceStack } from "./AgentFace";
 import { AnsweredCards } from "./AnsweredCards";
 import { decisionText } from "./approval";
 import { useArrival } from "./arrival";
@@ -16,7 +15,6 @@ import {
   runningHeadline,
   shownEntry,
   workLine,
-  type CastMember,
   type DecisionEntry,
   type Entry,
   type Notice,
@@ -47,16 +45,14 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 // (`chat/ChatThread.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 //
 // - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 옅은 파랑(`bubble-user`)에 짙은 남색 글자, 폭은 줄의 70%까지다(02 구현 스펙 §8 —
-//   `UserMessage`). Agent의 답은 머리 없이 본문 그대로 선다(Codex 결). Host가 아닌 Agent의 턴만 맨 위에 「이름 · @handle」 한 줄이
-//   서고, 같은 Agent가 사람 말 없이 이어 말하면 그 줄도 다시 쓰지 않는다(`Turn.namesWho`). 이름은 들어옴 줄이 정본이다
-//   (`ThreadModel.cast`, v1 티켓 14).
+//   `UserMessage`). 답은 머리 없이 본문 그대로 선다(Codex 결). 채팅은 Runtime 세션 하나라 말한 이를 가를 일이 없어 얼굴도 이름 줄도 없고,
+//   이름이 필요한 말은 Runtime 이름으로 선다(`runtime`).
 // - **턴 사이는 Codex의 대화 간격이다**(02 구현 스펙 §8) — 말풍선 → 답 첫 글자 51.5, 답 끝 → 다음 말풍선 52(글자 잉크에서 상자 끝까지,
 //   `index.css`의 `--space-reply` · `--space-turn`). 흐름의 줄 사이(`TURN_GAP`)가 그 값에서 글줄의 위아래 여백을 뺀 상자 사이다. 턴
 //   사이에 서는 시스템 줄 · 상태 줄 · PR 카드 · 「답하는 중」도 같은 줄 사이를 따른다. 턴 안의 줄 사이는 그대로다(8).
-// - **「답하는 중」**(Messages 보드 · Motion 보드 「Agent 참여」) — 답이 아직 안 보이는 도는 턴(보낸 말에 아직 아무 줄도 오지 않았거나,
-//   흐름 끝이 아닌 자리에서 돈다)이 있으면 흐름 맨 아래에 얼굴(여럿이면 겹친 얼굴)과 「리뷰어와 테스터가 답하는 중」, 차례로 떠오르는
-//   세 점이 한 줄로 선다(`answeringLine`). 그래서 아직 아무 줄도 오지 않은 턴은 이름 줄 없이 보낸 말만 서고, 첫 줄이 오면 그 자리에
-//   이름 줄과 「생각 중」 · 답이 선다.
+// - **「답하는 중」**(Messages 보드) — 답이 아직 안 보이는 도는 턴(보낸 말에 아직 아무 줄도 오지 않았거나, 흐름 끝이 아닌 자리에서 돈다)이
+//   있으면 흐름 맨 아래에 「Claude Code가 답하는 중」과 차례로 떠오르는 세 점이 한 줄로 선다(`answeringLine`). 그래서 아직 아무 줄도 오지
+//   않은 턴은 보낸 말만 서고, 첫 줄이 오면 그 자리에 「생각 중」 · 답이 선다.
 // - **작업 로그** — 일하는 동안은 「N초 동안 작업 중입니다」가 반짝이고 그 아래로 도구 줄이 쌓인다. 승인을 기다리면 「· 승인을
 //   기다립니다」가 링크 색으로 붙는다. 끝나면 작업 구분선 「N초 동안 작업 ›」(그 아래 가는 선 — 02 구현 스펙 §8)으로 접히고 **턴 끝
 //   메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다. 구분선을 누르면 생각 · 도구 줄 · 앞선 답이 높이와 함께 펼쳐진다(`Unfold`). **펼칠 것 없이
@@ -68,19 +64,17 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12).
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
-// - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 들고 난 줄은 이름 앞에 그 얼굴이 선다(「● 리뷰어가
-//   참여함」). 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴 사이의 옅은 줄이다.
+// - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Space)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
+//   사이의 옅은 줄이다.
 // - 마지막으로 끝난 답 아래에만 응답 액션(복사)이 선다(`AnswerActions`). 「…」는 무엇을 둘지 정해지면(02 P1) 단다.
 // - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
-//   서고, 온 흐름에만 선다(그 Agent의 일이 아니라 Work의 일이다).
+//   선다(턴의 일이 아니라 Work의 일이다).
 //
-// - **대화 속 문서 카드**(v1 티켓 35 · Messages 보드 「Agent가 만든 파일」) — 끝난 턴에서 Agent가 이은 Work의 spec 폴더에 새로 쓴 문서는 답
-//   아래에 카드로 놓이고(`createdDocs`), 누르면 요약 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
+// - **대화 속 문서 카드**(v1 티켓 35 · ChatCards 보드) — 끝난 턴에서 이은 Work의 spec 폴더에 새로 쓴 문서는 답 아래에 카드로 놓이고(`createdDocs`), 누르면 요약 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글을 붙인 말은 말풍선 위에 인용 칩이 선다(`SentQuoteChip`).
 //
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 움직인다(`arrival.tsx`). 결정 줄은 칩으로 나타나고(칩 나타남 — 보드
-//   「승인 카드 올라옴」의 답한 뒤 줄), 시스템 줄 · 「답하는 중」은 아래 4에서 떠오르며(줄 바뀜 — 보드 「Agent 참여」의 「시스템 줄과 답하는
-//   중이 차례로 따라옵니다」), 턴이 끝나면 「N초 동안 작업」이 같은 자리에서 떠오르고(줄 바뀜), 구분선을 눌러 펼치면 줄들이 높이와
+//   「승인 카드 올라옴」의 답한 뒤 줄), 시스템 줄 · 「답하는 중」은 아래 4에서 떠오르며(줄 바뀜), 턴이 끝나면 「N초 동안 작업」이 같은 자리에서 떠오르고(줄 바뀜), 구분선을 눌러 펼치면 줄들이 높이와
 //   투명도로 자라 나온다(펼침 · 접힘 — 02 구현 스펙 §12). 흐르는 낱말은 `ThreadMarkdown`이 움직인다. 자리를 옮겨 다시 서는 줄(턴이
 //   끝나 접힌 턴으로 옮겨 선 결정 줄)은 기록 줄의 열쇠로 알아보고 다시 움직이지 않는다.
 //
@@ -104,15 +98,13 @@ export const TURN_GAP = "gap-11.5";
 interface ThreadFlowProps {
   thread: string;
   model: ThreadModel;
+  /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 「답하는 중」과 문서 카드의 말이 이 이름으로 선다. */
+  runtime: string;
   /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 붙인 첨부와 함께 다시 보낸다. */
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
 }
 
-/** 참여자 한 사람 — 들어옴 줄에 없으면(옛 기록) handle이 이름이고 얼굴은 handle에서 정한다. */
-const memberOf = (cast: Readonly<Record<string, CastMember>>, handle: string): CastMember =>
-  cast[handle] ?? { name: handle, avatar: null };
-
-function ThreadFlow({ thread, model, onRetry }: ThreadFlowProps) {
+function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
   const expanded = useStore(threadUiStore, (state) => state.expanded);
   // PR 카드의 병합한 때(「어제 오후 6:12」)를 견줄 지금 — 흐름을 다시 그릴 때마다 읽는다.
   const now = Date.now();
@@ -120,7 +112,7 @@ function ThreadFlow({ thread, model, onRetry }: ThreadFlowProps) {
     ...model.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
     ...model.system
       .filter((line) => line.turn === undefined && line.turnsBefore === count)
-      .map((line) => <SystemRow key={line.key} line={line} cast={model.cast} />),
+      .map((line) => <SystemRow key={line.key} line={line} />),
     ...model.prs.filter((card) => card.turnsBefore === count).map((card) => <PrCard key={card.key} card={card} now={now} />),
   ];
   const last = model.turns[model.turns.length - 1];
@@ -132,7 +124,7 @@ function ThreadFlow({ thread, model, onRetry }: ThreadFlowProps) {
         <Fragment key={turn.key}>
           <TurnView
             turn={turn}
-            member={turn.who ? memberOf(model.cast, turn.who) : null}
+            runtime={runtime}
             open={expanded[turnKey(thread, turn.key)] === true}
             onToggle={() => toggleTurn(turnKey(thread, turn.key))}
             waiting={turn.end === null ? waitingFor(model, turn.who ?? "host") : null}
@@ -141,36 +133,28 @@ function ThreadFlow({ thread, model, onRetry }: ThreadFlowProps) {
             lead={model.system
               .filter((line) => line.turn === turn.key)
               .map((line) => (
-                <SystemRow key={line.key} line={line} cast={model.cast} />
+                <SystemRow key={line.key} line={line} />
               ))}
           />
           {between(at + 1)}
         </Fragment>
       ))}
-      {answering && <AnsweringRow people={answering.map((handle) => ({ handle, ...memberOf(model.cast, handle) }))} />}
+      {answering && <AnsweringRow runtime={runtime} />}
     </div>
   );
 }
 
 /**
- * 「답하는 중」(Messages 보드 `.typing`) — 얼굴 20을 겹치고(`-5` · 바탕 고리 2) 「리뷰어와 테스터가 답하는 중」 13/20 `fg-tertiary`,
- * 그 뒤에 점 셋이 파도친다(`typing-dots` — 입력창 위 작업 중 점과 같은 Codex 파도, 점 색은 이 줄의 글자색). 점은 그림이라 숨고 문장이 말한다.
+ * 「답하는 중」(Messages 보드 `.typing`) — 「Claude Code가 답하는 중」 13/20 `fg-tertiary`, 그 뒤에 점 셋이 파도친다(`typing-dots` — 입력창 위
+ * 작업 중 점과 같은 Codex 파도, 점 색은 이 줄의 글자색). 점은 그림이라 숨고 문장이 말한다.
  */
-function AnsweringRow({ people }: { people: readonly { handle: string; name: string; avatar: CastMember["avatar"] }[] }) {
-  const names = people.map((one) => one.name);
-  const lastName = names[names.length - 1];
-  const said =
-    names.length === 1
-      ? `${lastName}${particle(lastName, "이", "가")}`
-      : `${names.slice(0, -1).join(", ")}${particle(names[names.length - 2], "과", "와")} ${lastName}${particle(lastName, "이", "가")}`;
+function AnsweringRow({ runtime }: { runtime: string }) {
   return (
     <p data-answering className={cn("flex items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("row-in"))}>
-      {people.length === 1 ? (
-        <AgentFace handle={people[0].handle} avatar={people[0].avatar} className="size-5" />
-      ) : (
-        <FaceStack people={people} label="답하는 이" faceClass="size-5" className="-space-x-1" />
-      )}
-      <span>{said} 답하는 중</span>
+      <span>
+        {runtime}
+        {particle(runtime, "이", "가")} 답하는 중
+      </span>
       <span className="typing-dots" aria-hidden>
         <i />
         <i />
@@ -192,7 +176,7 @@ function NoticeLine({ notice }: { notice: Notice }) {
 }
 
 /**
- * 도는 턴의 머리줄 끝에 붙는 기다림 — 그 참여자가 물은 것이 있으면 무엇을 기다리는지다. 승인은 시안 문장 그대로(「승인을 기다립니다」),
+ * 도는 턴의 머리줄 끝에 붙는 기다림 — 그 턴이 물은 것이 있으면 무엇을 기다리는지다. 승인은 시안 문장 그대로(「승인을 기다립니다」),
  * 시안에 없는 셋은 해요체다(코드 리뷰 1차 A4).
  */
 function waitingFor(model: ThreadModel, who: string): string | null {
@@ -203,10 +187,9 @@ function waitingFor(model: ThreadModel, who: string): string | null {
 }
 
 /**
- * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄은 이름 앞에 그 얼굴이 선다. Work를 만든 줄은 앞에 폴더 14가, worktree를 만든 줄은 앞에 브랜치 14가 선다(화면 2
- * 보드, 사이 6). 끝의 고정폭 조각(브랜치)은 빈칸 하나를 앞에 실어 글로 읽어도 「만듦 · fix/refund-api」다.
+ * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. Work를 만든 줄은 앞에 폴더 14가, worktree를 만든 줄은 앞에 브랜치 14가 선다(화면 2 보드, 사이 6). 끝의 고정폭 조각(브랜치)은 빈칸 하나를 앞에 실어 글로 읽어도 「만듦 · fix/refund-api」다.
  */
-function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<string, CastMember>> }) {
+function SystemRow({ line }: { line: SystemLine }) {
   return (
     <p
       data-system={line.kind}
@@ -218,15 +201,8 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "space" && <Layers className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
-      {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 앞말과 얼굴이 붙는다. */}
+      {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 앞말과 이름이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
-      {line.handle && (
-        <AgentFace
-          handle={line.handle}
-          avatar={memberOf(cast, line.handle).avatar}
-          className="mr-1.5 size-4"
-        />
-      )}
       {/* 이름이 없는 줄도 있다 — 「Space를 뺐어요 — …」는 앞말만이다. */}
       {line.name && <b className="font-medium text-fg">{line.name}</b>}
       {/* 뒷말의 앞 빈칸도 지킨다 — 「결제 서비스 Space를 되돌렸어요」처럼 이름 뒤에 빈칸으로 잇는 줄이 있다. */}
@@ -238,7 +214,7 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
 
 function TurnView({
   turn,
-  member,
+  runtime,
   open,
   onToggle,
   waiting,
@@ -247,14 +223,14 @@ function TurnView({
   lead,
 }: {
   turn: Turn;
-  member: CastMember | null;
+  runtime: string;
   open: boolean;
   onToggle: () => void;
   /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
   waiting: string | null;
   last: boolean;
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
-  /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, Agent의 줄 앞이다(화면 2 보드). */
+  /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, 답의 줄 앞이다(화면 2 보드). */
   lead: ReactNode[];
 }) {
   const from = finalFrom(turn);
@@ -263,7 +239,7 @@ function TurnView({
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(shownEntry);
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isToolChoice(entry)) : [];
-  // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
+  // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 「생각 중」은 아직 서지 않는다.
   const waitingFirst = !turn.end && turn.entries.length === 0;
   const thinking = !turn.end && lastEntry?.kind === "thought";
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
@@ -286,7 +262,6 @@ function TurnView({
       {lead}
       {!waitingFirst && (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
-          {turn.namesWho && turn.who && member && <WhoRow handle={turn.who} member={member} />}
           {turn.end ? (
             failed ? (
               <ErrorLine
@@ -326,23 +301,11 @@ function TurnView({
           ))}
           {!stopped &&
             final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
-          {turn.end && <CreatedDocs turn={turn} name={member?.name ?? turn.who ?? "Host"} />}
+          {turn.end && <CreatedDocs turn={turn} name={runtime} />}
           {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} />}
         </div>
       )}
     </>
-  );
-}
-
-/**
- * 이름 줄(02 구현 스펙 §8 · Diff-Chat 「답 머리」) — Host가 아닌 Agent의 턴 맨 위에 「리뷰어 · @reviewer」 13 · 2단계 색 한 줄이다. 얼굴 ·
- * 시각은 없다(Codex 답에는 머리가 없다). 낼지는 접기가 정한다(`Turn.namesWho` — Host의 턴 · 같은 Agent가 이어 말한 턴은 없다).
- */
-function WhoRow({ handle, member }: { handle: string; member: CastMember }) {
-  return (
-    <p data-who={handle} className="text-chat-meta text-fg-secondary">
-      <span>{member.name}</span> · <span>@{handle}</span>
-    </p>
   );
 }
 
@@ -442,7 +405,7 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
 }
 
 /**
- * Agent의 질문에 답한 줄(02 §10 「답한 카드」 — 겉은 `AnsweredCards`) — 물음마다 한 줄 카드다. 나중에로 닫은 질문은 미룬 표지(시계)와 「나중에
+ * 질문에 답한 줄(02 §10 「답한 카드」 — 겉은 `AnsweredCards`) — 물음마다 한 줄 카드다. 나중에로 닫은 질문은 미룬 표지(시계)와 「나중에
  * 답하기로 함」이다(`answeredCards`). 답을 기다리는 동안은 서지 않는다 — 입력창 자리의 질문 카드가 말한다.
  */
 export function AnsweredRow({ entry }: { entry: QuestionEntry }) {

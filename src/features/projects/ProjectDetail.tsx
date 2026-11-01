@@ -66,7 +66,7 @@ function ProjectBody({ project }: { project: ProjectView }) {
         {project.missing && <MissingNotice project={project} onRelocate={() => void relocate(project)} />}
         <DescriptionSection
           text={project.description}
-          aside="Agent가 이 Project를 이해할 때 읽어요"
+          aside="Runtime이 이 Project를 이해할 때 읽어요"
           placeholder="이 Project가 무엇인지 한두 줄로 적어 두세요"
           onSave={(description) => patch({ description }, "설명을 저장하지 못했어요")}
         />

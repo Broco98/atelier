@@ -98,7 +98,7 @@ describe("요약 카드의 몸", () => {
     expect(body({ ...live, prs: [{ ...pr, status: "CI 확인 중", checking: true }] })).toMatch(/chat-shimmer[^>]*>CI 확인 중/);
   });
 
-  it("쓰는 중인 문서 줄에 파란 점과 「Host가 쓰는 중」이, 막 쓴 문서 줄에 빛이 선다", () => {
+  it("쓰는 중인 문서 줄에 파란 점과 이름 없는 「쓰는 중」이, 막 쓴 문서 줄에 빛이 선다(Summary 보드)", () => {
     const writing = body({
       ...live,
       docs: [
@@ -106,7 +106,8 @@ describe("요약 카드의 몸", () => {
         { path: "설계.md", writer: { path: "설계.md", who: "host", name: "Host", thread: "a" } },
       ],
     });
-    expect(writing).toMatch(/data-doc="설계.md".*writing-pulse.*Host가 쓰는 중/);
+    expect(writing).toMatch(/data-doc="설계.md".*writing-pulse.*>쓰는 중</);
+    expect(writing).not.toContain("Host");
     expect(writing).not.toMatch(/data-doc="overview.md"[^>]*>(?:(?!data-doc).)*쓰는 중/);
     const written = body(live, { written: { keys: new Set(["설계.md"]), flash: 1 } });
     expect(written).toMatch(/data-doc="설계.md"[^>]*class="[^"]*row-flash/);

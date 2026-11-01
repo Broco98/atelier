@@ -47,10 +47,10 @@ const schemaEdit = {
 
 describe("카드의 값", () => {
   it("명령 카드는 머리 한 줄(누가 · 무슨 일 · 어떤 규칙) · 물음 · 어디서 한 줄 · 명령이다(02 §10 · Screen-Live 단계 4)", () => {
-    const view = describeApproval(request(migrate, { policy: "스키마를 바꾸기 전에 묻기" }), "Host", "api-server · fix/refund-api worktree에서 실행");
+    const view = describeApproval(request(migrate, { policy: "스키마를 바꾸기 전에 묻기" }), "Claude Code", "api-server · fix/refund-api worktree에서 실행");
     expect(view).toMatchObject({
       kind: "command",
-      head: "Host · 명령 실행 · 「스키마를 바꾸기 전에 묻기」",
+      head: "Claude Code · 명령 실행 · 「스키마를 바꾸기 전에 묻기」",
       title: "이 명령을 실행해도 될까요?",
       command: "pnpm prisma migrate dev --name partial_refund",
       where: "api-server · fix/refund-api worktree에서 실행 · DB 스키마가 바뀝니다",
@@ -59,7 +59,7 @@ describe("카드의 값", () => {
   });
 
   it("규칙 이름이 없으면(판정 없이 물은 옛 기록) 머리에서 그 조각을 뺀다", () => {
-    expect(describeApproval(request(migrate, { policy: null }), "Host", null).head).toBe("Host · 명령 실행");
+    expect(describeApproval(request(migrate, { policy: null }), "Claude Code", null).head).toBe("Claude Code · 명령 실행");
   });
 
   it("카드의 이름은 누가 묻는지까지 든 물음이다 — 보이는 물음은 머리가 Agent를 말하니 이름을 빼고 선다", () => {
@@ -68,10 +68,10 @@ describe("카드의 값", () => {
   });
 
   it("계획 넘어가기 카드는 계획대로 구현해도 되는지 묻는다(v1 티켓 26) — 계획 본문은 흐름의 계획 카드가 든다", () => {
-    const view = describeApproval(request({ kind: "switch_mode", rawInput: { plan: "1. 고친다" } }, { card: "plan", policy: "계획만" }), "Host", null);
+    const view = describeApproval(request({ kind: "switch_mode", rawInput: { plan: "1. 고친다" } }, { card: "plan", policy: "계획만" }), "Claude Code", null);
     expect(view).toMatchObject({
       kind: "plan",
-      head: "Host · 계획 구현 · 「계획만」",
+      head: "Claude Code · 계획 구현 · 「계획만」",
       title: "이 계획대로 구현해도 될까요?",
       command: null,
       subject: null,
@@ -102,10 +102,10 @@ describe("카드의 값", () => {
     ]);
     const mcp = describeApproval(
       request({ kind: "other", title: "mcp__linear__create_issue", _meta: { claudeCode: { toolName: "mcp__linear__create_issue" } } }),
-      "Host",
+      "Claude Code",
       null,
     );
-    expect([mcp.head, mcp.title, mcp.subject]).toEqual(["Host · MCP 도구 쓰기 · 「매번 묻기」", "이 MCP 도구를 써도 될까요?", "linear · create_issue"]);
+    expect([mcp.head, mcp.title, mcp.subject]).toEqual(["Claude Code · MCP 도구 쓰기 · 「매번 묻기」", "이 MCP 도구를 써도 될까요?", "linear · create_issue"]);
   });
 
   it("실행할 자리는 Session의 작업 폴더를 Work의 자리들과 견줘 읽는다 — worktree면 Project와 브랜치다", () => {
@@ -181,15 +181,15 @@ describe("선택지 — 승인은 단추 줄, 계획은 번호 줄", () => {
 
 describe("고르기 전에 할 말(v1 티켓 25)", () => {
   it("카드 안 입력칸에 말을 쓰면 보내면 무엇이 건너뛰어지고 누구에게 가는지 한 줄로 말한다(스토리 83)", () => {
-    expect(skipHint("command", "Host")).toBe("보내면 이 명령은 건너뛰고 Host에게 말을 전해요");
+    expect(skipHint("command", "Claude Code")).toBe("보내면 이 명령은 건너뛰고 Claude Code에게 말을 전해요");
     expect(skipHint("edit", "리뷰어")).toBe("보내면 이 편집은 건너뛰고 리뷰어에게 말을 전해요");
     expect(skipHint("other", "테스터")).toBe("보내면 이 요청은 건너뛰고 테스터에게 말을 전해요");
   });
 
   it("계획 다시 쓰기의 입력칸은 고칠 점을 받고, 보내면 그 말대로 계획을 다시 쓴다(v1 티켓 26)", () => {
-    expect(fieldLabel("plan", "Host")).toBe("Host에게 고칠 점 알려 주기");
+    expect(fieldLabel("plan", "Claude Code")).toBe("Claude Code에게 고칠 점 알려 주기");
     expect(fieldLabel("command", "테스터")).toBe("테스터에게 다르게 할 방법 알려 주기");
-    expect(skipHint("plan", "Host")).toBe("보내면 Host가 이 말대로 계획을 다시 써요");
+    expect(skipHint("plan", "Claude Code")).toBe("보내면 Claude Code가 이 말대로 계획을 다시 써요");
     expect(skipHint("plan", "테스터 봇")).toBe("보내면 테스터 봇이 이 말대로 계획을 다시 써요");
   });
 });

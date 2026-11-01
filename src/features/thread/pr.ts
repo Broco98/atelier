@@ -92,7 +92,7 @@ export function failNote(failed: readonly string[]): string {
 }
 
 /**
- * 「Host에게 고쳐 달라고 하기」가 그 Thread의 입력창에 채우는 말 — 실패한 검사를 모두 싣는다. 보내는 것은 사람이다(v1 Work 카드의 더하기와
+ * 「고쳐 달라고 하기」가 그 Thread의 입력창에 채우는 말 — 실패한 검사를 모두 싣는다. 보내는 것은 사람이다(v1 Work 카드의 더하기와
  * 같은 길, 결정.md 34).
  */
 export function fixAsk(pr: Pick<PrLine, "number" | "ci">): string {

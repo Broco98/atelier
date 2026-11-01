@@ -210,7 +210,7 @@ export function describeTool(tool: ToolEntry): ToolView {
   const subagent = isObject(claudeCode.subagent) ? claudeCode.subagent : null;
   if (subagent) {
     const type = nonEmpty(subagent.subagentType);
-    return { ...base, glyph: "other", phrase: say(SUBAGENT, type ?? "Agent", false), text: contentText || null };
+    return { ...base, glyph: "other", phrase: say(SUBAGENT, type ?? "서브에이전트", false), text: contentText || null };
   }
   if (toolName === "Skill" && nonEmpty(rawInput.skill)) {
     return { ...base, glyph: "read", phrase: say(SKILL, nonEmpty(rawInput.skill), true), text: fallbackText };

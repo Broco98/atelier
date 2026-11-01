@@ -12,11 +12,11 @@ import { ciText, failedChecks, mergedWhen, reviewText, type PrLine } from "./pr"
 //
 //   머리(PR 글리프 · 제목 14/600 · #번호 · 오른쪽 끝 상태 알약 — 열림은 옅은 파랑, 병합됨 · 닫힘은 옅은 회색)
 //   메타(12/18 옅은 글자 — 브랜치 → base(고정폭) · +/− · 파일 N개 · 리뷰 · CI 문장)
-//   CI 실패 칸(옅은 바탕 — 진한 ⓘ · **CI 실패** · 실패한 검사, 오른쪽 끝 「Host에게 고쳐 달라고 하기」)
+//   CI 실패 칸(옅은 바탕 — 진한 ⓘ · **CI 실패** · 실패한 검사, 오른쪽 끝 「고쳐 달라고 하기」)
 //   동작(「변경 사항 보기」 · 「GitHub에서 열기 ↗」)
 //
 // - **CI는 색 없이 문장이다**(스토리 125) — 실패의 글리프도 빨강이 아니라 진한 글자색이다(빨강은 사이드바 목록의 「실패」만 — v1 티켓 41).
-// - 「Host에게 고쳐 달라고 하기」는 **지금의 카드**(같은 PR의 마지막 카드)에만 선다 — 지난 카드의 실패는 이미 고쳐졌을 수 있다. 누르면 이
+// - 「고쳐 달라고 하기」는 **지금의 카드**(같은 PR의 마지막 카드)에만 선다 — 지난 카드의 실패는 이미 고쳐졌을 수 있다. 누르면 이
 //   Thread의 입력창에 맡기는 말을 채운다(보내는 것은 사람이다). 읽기만인 Thread(v1 티켓 38)에는 서지 않는다.
 // - 「변경 사항 보기」는 요약 카드의 변경으로 간다 — 넓힌 카드(v1 티켓 35)가 그 자리다. 병합된 PR은 동작 없이 브랜치와 병합한 때만 남는다
 //   (보드 「합쳐짐」). 닫힌 PR은 「GitHub에서 열기」만.
@@ -26,7 +26,7 @@ import { ciText, failedChecks, mergedWhen, reviewText, type PrLine } from "./pr"
 export interface PrActions {
   /** 「변경 사항 보기」 — 요약 카드의 변경으로 간다. */
   showChanges: (pr: PrLine) => void;
-  /** 「Host에게 고쳐 달라고 하기」 — 이 Thread의 입력창에 맡기는 말을 채운다. 없으면(읽기만인 Thread — v1 티켓 38) 버튼이 서지 않는다. */
+  /** 「고쳐 달라고 하기」 — 이 Thread의 입력창에 맡기는 말을 채운다. 없으면(읽기만인 Thread — v1 티켓 38) 버튼이 서지 않는다. */
   askFix?: (pr: PrLine) => void;
 }
 
@@ -71,7 +71,7 @@ export function PrCard({ card, now }: { card: PrCardEntry; now: number }) {
           </span>
           {card.latest && actions.askFix && (
             <Button variant="outline" size="xs" onClick={() => actions.askFix?.(pr)}>
-              Host에게 고쳐 달라고 하기
+              고쳐 달라고 하기
             </Button>
           )}
         </div>

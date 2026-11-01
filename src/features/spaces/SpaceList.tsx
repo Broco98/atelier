@@ -17,7 +17,7 @@ import type { Space } from "./types";
 // 고치므로 `spaces:changed`를 듣는다(`useSpaces`). 판 · 찾기 칸 · 표 · 줄의 꼴은 Projects 목록과 같은 것이다(`@/components/catalog` — 03 코드
 // 리뷰 D1), 찾기의 규칙은 `shownSpaces`다.
 //
-// 머리 줄 「새 Space ⌄」는 두 길의 메뉴다(§14 · F4-SpaceNewMenu) — 「Host와 만들기」(기본 — Work 없는 새 대화에 맡기는 말을 넣어 연다, S16)와
+// 머리 줄 「새 Space ⌄」는 두 길의 메뉴다(§14 · F4-SpaceNewMenu) — 「대화로 만들기」(기본 — Work 없는 새 대화에 맡기는 말을 넣어 연다, S16)와
 // 「직접 만들기」(빈 틀의 Space 파일을 고치기 화면에 연다 — `/spaces/new`, 04). 줄 끝 ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인 창을
 // 거쳐 「… Space를 지웠어요 · 되돌리기」 토스트가 본문 아래 가운데 선다(상세에서 지우고 목록으로 와도 같은 자리다).
 
@@ -59,14 +59,14 @@ export default function SpaceList() {
             ))}
           </ListTable>
         )}
-        <p className="px-3.5 text-xs text-fg-tertiary">Space는 Project를 묶어요. Agent는 Space 안의 Project를 함께 읽어요.</p>
+        <p className="px-3.5 text-xs text-fg-tertiary">Space는 Project를 묶어요. Runtime은 Space 안의 Project를 함께 읽어요.</p>
       </ListPanel>
     </PlainFrame>
   );
 }
 
 /**
- * 「새 Space ⌄」 — 짙은 알약(시안 F1-Space `.btn.pri`)이 메뉴를 연다(F4-SpaceNewMenu — 단추 오른쪽 끝에 맞춰 아래 6). 「Host와 만들기」(끝에
+ * 「새 Space ⌄」 — 짙은 알약(시안 F1-Space `.btn.pri`)이 메뉴를 연다(F4-SpaceNewMenu — 단추 오른쪽 끝에 맞춰 아래 6). 「대화로 만들기」(끝에
  * 「기본」)는 첫 화면을 「Work 없이 대화」와 맡기는 말로 열고 보내기는 사람이 한다(S16), 「직접 만들기」는 빈 틀의 고치기 화면이다.
  */
 function NewSpaceButton() {
@@ -81,14 +81,14 @@ function NewSpaceButton() {
       <DropdownMenuContent side="bottom" align="end" sideOffset={6} width="note-fold">
         <DropdownMenuItem
           size="note"
-          aria-label="Host와 만들기"
-          aria-description="Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요"
+          aria-label="대화로 만들기"
+          aria-description="Project를 읽고 초안을 내요 — 승인하면 만들어져요"
           onClick={() => void navigate({ to: "/", search: HOST_MAKE })}
         >
           <SquarePen className="mt-0.5" aria-hidden />
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate">Host와 만들기</span>
-            <span className="text-xs break-keep text-fg-tertiary">Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요</span>
+            <span className="truncate">대화로 만들기</span>
+            <span className="text-xs break-keep text-fg-tertiary">Project를 읽고 초안을 내요 — 승인하면 만들어져요</span>
           </span>
           <span className="shrink-0 pl-3 text-xs text-fg-tertiary">기본</span>
         </DropdownMenuItem>
