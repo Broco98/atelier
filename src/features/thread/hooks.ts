@@ -22,10 +22,8 @@ import { recentWorks, type RecentWork } from "./work-chip";
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
 const THREADS_KEY = ["threads"] as const;
-/** Agent 목록(`list_agents`)의 열쇠 머리 — 뒤에 범위(`work`)가 붙는다. @ 메뉴와 Library 화면이 같은 캐시를 읽는다. */
-export const AGENTS_KEY = ["agents"] as const;
-/** Agent 파일 원문(`read_agent_file`)의 열쇠 머리 — 뒤에 범위와 부르는 이름이 붙는다(Library 화면). */
-export const AGENT_FILE_KEY = ["agent-file"] as const;
+/** Agent 목록(`list_agents`)의 열쇠 머리 — 뒤에 범위(`work`)가 붙는다. */
+const AGENTS_KEY = ["agents"] as const;
 const threadKey = (thread: string) => ["thread", thread] as const;
 
 /** 모든 Thread의 요약 — 사이드바의 Thread 묶음. 엔진이 요약 이벤트로 고쳐 주므로 다시 읽지 않는다(`useThreadFeeds`). */
@@ -179,8 +177,6 @@ export function useThreadFeeds(): void {
 /**
  * 기록 줄 하나가 쿼리 캐시에 미치는 것 — 줄을 스토어에 쌓는 것은 부르는 쪽(`useThreadFeeds`)이다.
  *
- * - Agent가 Library에 Agent를 저장했다(v1 티켓 19) — @ 메뉴 · Library 화면의 목록과 파일을 다시 읽는다. 엔진은 Library가 바뀌었다는
- *   이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
  * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
  *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획만에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
  * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — 요약 카드가 읽어 둔 PR의 그 Project 줄을 줄의 PR로 갈아 끼운다.
@@ -197,10 +193,6 @@ export function followRecordLine(queryClient: QueryClient, thread: string, line:
   // Space 질문 카드의 답(03 티켓 08)도 그 칸을 고치지만 묻던 Thread에는 Space 줄이 서지 않는다 — 답 줄이 그 결정이다.
   const spaceAnswer = line.kind === "question" && isObject(line.payload) && line.payload.card === "space";
   if (line.kind === "space" || spaceAnswer) void queryClient.invalidateQueries({ queryKey: threadKey(thread) });
-  if (line.kind === "library") {
-    void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
-    void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });
-  }
   if (line.kind === "mode" && isObject(line.payload)) {
     const level = askLevelOf(line.payload.mode);
     if (level) putAskLevel(queryClient, thread, level.value);

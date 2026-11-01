@@ -69,9 +69,6 @@ pub enum RecordKind {
     Call,
     /// 이 Work의 PR이 처음 보였을 때와 상태가 바뀔 때.
     Pr,
-    /// Library에 Agent를 저장함 — Agent가 Thread 도구 「Agent 저장」으로 둔 정의의 handle · 이름 · 얼굴 · 자리(v1 티켓 19). 시스템 줄
-    /// 「Library에 리뷰어를 저장함」이 이것이다.
-    Library,
     /// Space가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Space, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Space를 사내 도구로
     /// 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」가 이것이다. Work의 Space가 바뀌면 그 Work의 Thread마다 선다(S9).
     Space,
@@ -172,4 +169,23 @@ fn ends_mid_line(path: &Path) -> bool {
 /// 기록의 시각 — 로컬 시각대의 RFC 3339, 밀리초까지.
 pub fn record_time() -> String {
     chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 앞_판이_적은_library_줄은_읽기가_건너뛰고_그_seq는_이어_적는_자리로_센다() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        let line = |seq: u64, kind: &str| format!(r#"{{"seq":{seq},"at":"2026-11-02T04:00:00.000+09:00","kind":"{kind}","payload":{{}}}}"#);
+        let text = [line(1, "title"), line(2, "library"), line(3, "mode"), line(4, "library")].join("\n") + "\n";
+        std::fs::write(&path, &text).unwrap();
+
+        let read: Vec<(u64, RecordKind)> = read_records(&path, 0).unwrap().into_iter().map(|one| (one.seq, one.kind)).collect();
+
+        assert_eq!(read, [(1, RecordKind::Title), (3, RecordKind::Mode)]);
+        assert_eq!(last_record_seq(&text), 4);
+    }
 }

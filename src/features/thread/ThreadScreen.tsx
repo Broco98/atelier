@@ -108,8 +108,7 @@ import { decisionItems, decisionsDue } from "./work-proposal";
 //   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
 // - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
 //   첫 Session이 뜬다 — 최근 Work를 골랐으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
-//   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다. 칩 메뉴의 「Policy 열기」는 다음 말을 받을 Agent의 파일을
-//   Library에서 연다.
+//   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
@@ -134,10 +133,6 @@ import { decisionItems, decisionsDue } from "./work-proposal";
  * 폭이다. 문서 · 설정이 읽는 `size-thread`(768)는 그대로다(02 결정 「01 · 공유 토큰은 새 이름으로」).
  */
 const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
-
-/** 「Policy 열기」의 자리 — Library 화면의 그 Agent 파일. Work에 이었으면 그 Work의 Project 안 Agent도 서는 범위다. */
-const policyPlace = (call: string, work: string | null) =>
-  ({ to: "/library", search: { agent: call, ...(work !== null && { work }) } }) as const;
 
 /** 이은 Work의 화면으로 가는 길 — 잠긴 Work 칩이 누른다. 사이드바 · ⌘K가 그 Work를 여는 주소와 같다(`recallSearch`). */
 function useOpenWork(): (slug: string) => void {
@@ -240,7 +235,6 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
       onCreateAgent={createAgent}
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
-      onOpenPolicy={() => void navigate(policyPlace(first?.call ?? "host", work))}
       // 트레이는 첫 말 전에 상자 아래에서 Work · Space를 고르고, 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 상자 위에서
       // 잠긴다(Space는 Session이 열릴 때까지 고르지 못한다).
       tray={
@@ -709,8 +703,6 @@ function ThreadBody({
     setChipProblem(null);
     setMode.mutate({ thread, mode }, { onError: (failure) => setChipProblem(String(failure)) });
   };
-  // 「Policy 열기」 — 다음 말을 받을 Agent(멘션이 없으면 Host)의 파일.
-  const policyOwner = target?.call ?? "host";
 
   const chip = (next: ChipChange) => {
     if (!participant) return;
@@ -796,7 +788,6 @@ function ThreadBody({
               onCreateAgent={createAgent}
               level={view.askLevel}
               onLevel={pickLevel}
-              onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
               tray={tray}
               card={
                 // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
@@ -828,14 +819,7 @@ function ThreadBody({
                   />
                 ) : decisions ? (
                   <Arriving motion="card-rise">
-                    <DecisionsCard
-                      items={decisionItems(library)}
-                      onDone={() => markSeen.mutate()}
-                      onPolicy={() => {
-                        markSeen.mutate();
-                        void navigate(policyPlace("host", view.work));
-                      }}
-                    />
+                    <DecisionsCard items={decisionItems(library)} onDone={() => markSeen.mutate()} />
                   </Arriving>
                 ) : null
               }

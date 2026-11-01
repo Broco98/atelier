@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PlainFrame, PlainHead } from "./PlainFrame";
 
-// Thread · 첫 화면 · Library의 틀(02 구현 스펙 §3) — 틀은 앱 셸 하나다(머리 줄 · 흰 판). 이 화면들은 머리 줄에 놓을 것(이름 · 할 일)과
+// Thread · 첫 화면의 틀(02 구현 스펙 §3) — 틀은 앱 셸 하나다(머리 줄 · 흰 판). 이 화면들은 머리 줄에 놓을 것(이름 · 할 일)과
 // 판 안에 놓을 것(본문)만 건넨다. seam은 그린 꼴(markup)이다: 제자리에 서는 것은 본문 하나이고 머리는 셸의 머리 줄로 간다(그 길은
 // `ShellHead.test.tsx` — 셸 밖이면 머리가 아무 데도 안 선다).
 const render = (title?: { name: string }) =>

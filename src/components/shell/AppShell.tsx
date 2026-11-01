@@ -5,10 +5,8 @@ import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogOpen, dialogStore } from "@/components/ui/confirm-store";
-import { threadsQuery, useThreadFeeds, waitingNow } from "@/features/thread/hooks";
+import { useThreadFeeds, waitingNow } from "@/features/thread/hooks";
 import { jumpTarget } from "@/features/thread/waiting";
-import { workOfPlace } from "@/features/library/library";
-import { readLibrarySearch } from "@/routes/-library-search";
 import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { countThreadsForQuit } from "@/features/thread/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
@@ -395,15 +393,6 @@ function AppShell() {
           size={sidebarSize}
           // ⌘N과 같은 함수다(위 `openNewThread` — 가드도 거기 하나다).
           onNewThread={openNewThread}
-          // Library(v1 티켓 19)는 **지금 선 자리의 Work**를 싣고 간다 — 그 Work의 Project 안 Agent가 따로 묶인다(S35, `workOfPlace`).
-          // 이미 같은 Work의 Library면 아무것도 하지 않는다(위와 같은 가드 — 고른 Agent도 그대로다). 주소 · Thread 목록은 누를 때 읽는다.
-          onOpenLibrary={() => {
-            const { pathname, search } = router.state.location;
-            const here = pathname === "/library" ? readLibrarySearch(search).work : null;
-            const work = workOfPlace(pathname, queryClient.getQueryData(threadsQuery().queryKey), here);
-            if (pathname === "/library" && work === here) return;
-            void navigate({ to: "/library", search: work === null ? {} : { work } });
-          }}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로

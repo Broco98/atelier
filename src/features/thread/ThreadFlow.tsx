@@ -234,8 +234,7 @@ function waitingFor(model: ThreadModel, who: string): string | null {
 }
 
 /**
- * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄 · Library에 저장한 줄은 이름 앞에 그 얼굴이 선다 —
- * 저장한 Agent는 참여자가 아니라 줄이 실은 얼굴이다. Work를 만든 줄은 앞에 폴더 14가, worktree를 만든 줄은 앞에 브랜치 14가 선다(화면 2
+ * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄은 이름 앞에 그 얼굴이 선다. Work를 만든 줄은 앞에 폴더 14가, worktree를 만든 줄은 앞에 브랜치 14가 선다(화면 2
  * 보드, 사이 6). 끝의 고정폭 조각(브랜치)은 빈칸 하나를 앞에 실어 글로 읽어도 「만듦 · fix/refund-api」다.
  */
 function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<string, CastMember>> }) {
@@ -250,12 +249,12 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "space" && <Layers className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
-      {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 「Library에」와 얼굴이 붙는다. */}
+      {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 앞말과 얼굴이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
       {line.handle && (
         <AgentFace
           handle={line.handle}
-          avatar={line.avatar !== undefined ? line.avatar : memberOf(cast, line.handle).avatar}
+          avatar={memberOf(cast, line.handle).avatar}
           className="mr-1.5 size-4"
         />
       )}

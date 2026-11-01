@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronsUpDown, LayoutGrid, Settings } from "lucide-react";
+import { ArrowLeft, ChevronsUpDown, Settings } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { useRouterState } from "@tanstack/react-router";
 import {
@@ -44,7 +44,7 @@ import { PlaceCount } from "./place-count";
 import { initialOf, usePersonName } from "./person";
 import { ShellMeta } from "./shell-meta";
 import { SIDEBAR_ROWS, sidebarRowTone } from "./sidebar-look";
-import { LIBRARY_KEY, MINE_KEY, MineRow, NEW_THREAD_KEY, NewThreadRow, SidebarItem } from "./sidebar-item";
+import { MINE_KEY, MineRow, NEW_THREAD_KEY, NewThreadRow, SidebarItem } from "./sidebar-item";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useGoToShell from "./useGoToShell";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
@@ -55,8 +55,6 @@ interface SidebarProps {
   size: ResizableWidth;
   /** 「새 Thread」(v1 티켓 05) — 앱 셸이 씨앗 없는 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
-  /** 「Library」(v1 티켓 19) — 앱 셸이 지금 선 자리의 Work를 실어 `/library`로 간다. 켜짐은 그 항목이 스스로 읽는다(`LibraryItem`). */
-  onOpenLibrary: () => void;
   /** 지금 선 화면이 사람 메뉴의 어느 곳인가 — 그 밖(Thread · Works)이면 `null`이다. */
   activeKey: NavKey | null;
   /** 사람 메뉴에서 고른 곳(v1 구현 스펙 S27 — 지금 main nav 넷이 이리로 왔다). */
@@ -80,11 +78,11 @@ interface SidebarProps {
 // **바닥의 사람 줄도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다(그때는 바닥의 설정이었다).
 const GUTTER = "pl-2 pr-2";
 
-// nav 목록(앱 갈래의 위 줄 — 새 Thread · 내 차례 · Library, 설정 갈래의 항목) — 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 두 갈래가 한 벌이다.
+// nav 목록(앱 갈래의 위 줄 — 새 Thread · 내 차례, 설정 갈래의 항목) — 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 두 갈래가 한 벌이다.
 const NAV = cn(SIDEBAR_ROWS, "shrink-0", GUTTER);
 
 // 사이드바는 캔버스 「Atelier 공간 시안」의 차례다(02 구현 스펙 §4 · F1-Home · Diff-Frame 「제안」 — v1 구현 스펙 §13 · 티켓 07 · 42를 이었다) —
-// 위 줄(새 Thread · 내 차례 · Library) · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄. 위에 머리(옛 「전체 | 내 차례」 마디)가 없다 —
+// 위 줄(새 Thread · 내 차례) · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄. 위에 머리(옛 「전체 | 내 차례」 마디)가 없다 —
 // Codex 사이드바처럼 조용하다. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와 ⌘K로 간다(S27).
 // **결은 Codex 사이드바다**(v1 티켓 46 · 결정.md 「46」) — 사용자가 준 Codex 그림을 재어 줄 30 · 줄 사이 1 · 글자 14/400 · 소제목 14
 // `fg-tertiary` · 고른 줄 `fill-selected`를 맞췄다. 맨 위의 검색 칸은 걷었다 — 검색은 창 위 줄의 돋보기(`ShellControls`)와 ⌘K가 연다.
@@ -94,7 +92,6 @@ function Sidebar({
   open,
   size,
   onNewThread,
-  onOpenLibrary,
   activeKey,
   onSelect,
   currentSettingsItem,
@@ -151,12 +148,12 @@ function Sidebar({
   // 지우기) 이 값은 비워진다 — 입력칸이 blur 없이 내려가도 끝을 알린다(`InlineRename`의 `onDone`).
   const [renaming, setRenaming] = useState<string | null>(null);
   // **위 줄 「내 차례」 행이 켠 거르기**(v1 티켓 42 · 02 구현 스펙 §4 · S3) — 펼친 띠처럼 앱이 떠 있는 동안만 기억한다(위 `bandOpen`). 설정에
-  // 다녀와도 그대로다. 그 행을 다시 누르거나 위 줄의 다른 행(새 Thread · Library)을 고르면 「전체」로 돌아온다.
+  // 다녀와도 그대로다. 그 행을 다시 누르거나 위 줄의 다른 행(새 Thread)을 고르면 「전체」로 돌아온다.
   const [threadFilter, setThreadFilter] = useState<ThreadListFilter>("all");
   // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
   // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
-  // nav에는 위 줄 셋 — 「새 Thread」 · 「내 차례」 · 「Library」가 선다(v1 티켓 07 · 19 · 02 스펙 §4 — 지금 화면들은 사람 메뉴로 갔다).
-  const navRoving = useRoving([NEW_THREAD_KEY, MINE_KEY, LIBRARY_KEY], null);
+  // nav에는 위 줄 둘 — 「새 Thread」 · 「내 차례」가 선다(v1 티켓 07 · 02 스펙 §4 — 지금 화면들은 사람 메뉴로 갔다).
+  const navRoving = useRoving([NEW_THREAD_KEY, MINE_KEY], null);
   const settingsRoving = useRoving(
     SETTINGS_ITEMS.map((item) => item.key),
     currentSettingsItem,
@@ -191,7 +188,7 @@ function Sidebar({
       {/* **위 줄이 맨 위다**(02 구현 스펙 §4 · 스토리 9 — 시안 F1-Home · Diff-Frame 「제안」). 거르기 머리(옛 「전체 | 내 차례」 마디 — v1
           티켓 42)를 걷고 「내 차례」가 위 줄의 행이 됐다. 그 행을 켜면 Work 묶음과 Thread 묶음 대신 나를 기다리는 Thread만 기다린 순서로
           선다 — 위 줄 · 알림 띠는 그대로다(셸의 띠와 Thread 목록은 섞지 않는다 — v1 구현 스펙 §17). 켜진 동안은 그 행 하나가 고른 줄이다
-          — 「새 Thread」 · 「Library」는 주소가 그쪽이어도 고른 모양을 내려놓는다(위 줄 셋이 「지금 무엇을 보나」 하나를 답한다).
+          — 「새 Thread」는 주소가 그쪽이어도 고른 모양을 내려놓는다(위 줄이 「지금 무엇을 보나」 하나를 답한다).
 
           거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다. 지금 화면들로 가는 줄(옛 main nav 넷)은 사람
           메뉴로 갔다(S27). */}
@@ -208,14 +205,6 @@ function Sidebar({
           stop={navRoving.stop === MINE_KEY}
           on={threadFilter === "mine"}
           onToggle={() => setThreadFilter((filter) => (filter === "mine" ? "all" : "mine"))}
-        />
-        <LibraryItem
-          stop={navRoving.stop === LIBRARY_KEY}
-          yielded={threadFilter === "mine"}
-          onClick={() => {
-            setThreadFilter("all");
-            onOpenLibrary();
-          }}
         />
       </nav>
 
@@ -631,18 +620,6 @@ function NewThreadItem({ stop, yielded, onClick }: { stop: boolean; yielded: boo
 function MineItem({ stop, on, onToggle }: { stop: boolean; on: boolean; onToggle: () => void }) {
   const count = useWaiting().length;
   return <MineRow count={count} on={on} stop={stop} onToggle={onToggle} />;
-}
-
-/**
- * 「Library」 항목(v1 티켓 19) — `/library`에 서 있으면 켜진다. 「새 Thread」와 같은 까닭으로 켜짐을 이 항목이 스스로 구독한다(원시값
- * 하나 — `/library`를 드나들 때만 다시 그려진다). 「내 차례」가 켜진 동안은 고른 모양을 내려놓는다(위와 같다). 글리프는 시안의 네 칸이다
- * (F1-Home · Diff-Frame 「제안」 — 한때 책꽂이 `Library`였다).
- */
-function LibraryItem({ stop, yielded, onClick }: { stop: boolean; yielded: boolean; onClick: () => void }) {
-  const here = useRouterState({ select: (state) => state.location.pathname === "/library" });
-  return (
-    <SidebarItem icon={LayoutGrid} label="Library" active={here && !yielded} roving={{ key: LIBRARY_KEY, stop }} onClick={onClick} />
-  );
 }
 
 // 사람 메뉴의 줄 — Components 보드 「사람 메뉴」(02 구현 스펙 §5 · 스토리 35 — 사이드바 줄과 같은 결): 30 · 둥글기 8 · 14px · 줄 글자색

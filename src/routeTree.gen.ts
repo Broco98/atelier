@@ -10,7 +10,6 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as LibraryRouteImport } from './routes/library'
 import { Route as ProcessesRouteImport } from './routes/processes'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TerminalRouteImport } from './routes/terminal'
@@ -37,11 +36,6 @@ import { Route as SpacesSlugEditRouteImport } from './routes/spaces.$slug_.edit'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LibraryRoute = LibraryRouteImport.update({
-  id: '/library',
-  path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProcessesRoute = ProcessesRouteImport.update({
@@ -157,7 +151,6 @@ const SpacesSlugEditRoute = SpacesSlugEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/library': typeof LibraryRoute
   '/processes': typeof ProcessesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
@@ -183,7 +176,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/library': typeof LibraryRoute
   '/processes': typeof ProcessesRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
@@ -208,7 +200,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/library': typeof LibraryRoute
   '/processes': typeof ProcessesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
@@ -236,7 +227,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/library'
     | '/processes'
     | '/settings'
     | '/terminal'
@@ -262,7 +252,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/library'
     | '/processes'
     | '/terminal'
     | '/archive/$slug'
@@ -286,7 +275,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/library'
     | '/processes'
     | '/settings'
     | '/terminal'
@@ -313,7 +301,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  LibraryRoute: typeof LibraryRoute
   ProcessesRoute: typeof ProcessesRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
@@ -337,13 +324,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/library': {
-      id: '/library'
-      path: '/library'
-      fullPath: '/library'
-      preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/processes': {
@@ -540,7 +520,6 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  LibraryRoute: LibraryRoute,
   ProcessesRoute: ProcessesRoute,
   SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,

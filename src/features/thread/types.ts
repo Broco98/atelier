@@ -200,7 +200,7 @@ export type ProjectAddAnswer = "init" | "root" | "as-is" | "decline";
 
 /**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·
- * `title` · `mode` · `call` · `pr` · `library`)에 03이 `space`(Space 줄) · `setting`(결과 카드)을 더했다. Thread Session에는 `changes`가
+ * `title` · `mode` · `call` · `pr`)에 03이 `space`(Space 줄) · `setting`(결과 카드)을 더했다. Thread Session에는 `changes`가
  * 서지 않는다.
  */
 export type RecordKind =
@@ -220,7 +220,6 @@ export type RecordKind =
   | "mode"
   | "call"
   | "pr"
-  | "library"
   | "space"
   | "setting";
 
@@ -259,7 +258,7 @@ export interface FoundAgent {
   /** 부르는 이름 — `reviewer`, Project 둘이 같은 handle이면 `api/reviewer`. @ 메뉴가 `@<call> `으로 넣는다. */
   call: string;
   from: DefinitionSource;
-  /** 읽은 파일의 절대 경로 — Library 화면의 경로 복사 · 블록 복사가 쓴다(v1 티켓 19). */
+  /** 읽은 파일의 절대 경로. */
   path: string;
   definition: {
     handle: string;

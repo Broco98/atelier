@@ -4,7 +4,7 @@ import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_ROW_SHAPE, sidebarRowTone } from "./sidebar-look";
 
-// 사이드바의 nav 줄 — **위 줄**(새 Thread · 내 차례 · Library, 02 구현 스펙 §4 · CONTEXT 「위 줄」)과 설정 nav의 항목이 같은 컴포넌트를 쓴다.
+// 사이드바의 nav 줄 — **위 줄**(새 Thread · 내 차례, 02 구현 스펙 §4 · CONTEXT 「위 줄」)과 설정 nav의 항목이 같은 컴포넌트를 쓴다.
 // 둘은 같은 사이드바 자리에 갈아 서서 규격이 갈리면 들어가는 순간 행이 튄다(`Sidebar.tsx`의 GUTTER 주석과 같은 계약). 같은 문자열을 두 곳에
 // 적어 두면 다음에 규격을 한 번 조정할 때 한쪽만 남는다 — index.css의 quiet-hover 주석이 같은 이유로 열 자리를 하나로 묶었다.
 //
@@ -16,8 +16,6 @@ import { SIDEBAR_ROW_SHAPE, sidebarRowTone } from "./sidebar-look";
 export const NEW_THREAD_KEY = "new-thread";
 /** nav 정류장 목록에서 「내 차례」의 열쇠. */
 export const MINE_KEY = "mine";
-/** nav 정류장 목록에서 「Library」의 열쇠. */
-export const LIBRARY_KEY = "library";
 
 /**
  * 줄 하나. **누르면 바로 간다**(결정 6) — 더 갈라지지 않는 줄이다. 배경(선택 · hover)은 바깥 상자가 갖고 가로 여백은 이름 버튼이 품는다 —

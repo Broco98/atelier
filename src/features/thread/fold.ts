@@ -322,14 +322,9 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "joined" | "left" | "library" | "mode" | "work" | "worktree" | "space";
-  /** 들고 난 참여자 · Library에 저장한 Agent의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기 · 정도 바꿈)은 `null`이다. */
+  kind: "title" | "joined" | "left" | "mode" | "work" | "worktree" | "space";
+  /** 들고 난 참여자의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기 · 정도 바꿈)은 `null`이다. */
   handle: string | null;
-  /**
-   * Library에 저장한 Agent의 얼굴 — 저장한 정의의 것이다(그 Agent는 이 Thread의 참여자가 아니라 `cast`에 없다). 들고 난 줄은 적지
-   * 않는다 — 참여자의 얼굴(`cast`)을 쓴다.
-   */
-  avatar?: Avatar | null;
   before: string;
   name: string;
   after: string;
@@ -690,7 +685,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     before: string,
     name: string,
     after: string,
-    avatar?: Avatar | null,
     code?: string | null,
   ) =>
     system.push({
@@ -700,7 +694,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       before,
       name,
       after,
-      ...(avatar !== undefined && { avatar }),
       ...(code !== undefined && { code }),
       turnsBefore: turns.length,
     });
@@ -1000,7 +993,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         const project = nonEmpty(payload.project);
         if (payload.state === "worktree" && project) {
           const branch = nonEmpty(payload.branch);
-          say(line.seq, "worktree", null, "", project, branch ? "에 worktree를 만듦 ·" : "에 worktree를 만듦", undefined, branch);
+          say(line.seq, "worktree", null, "", project, branch ? "에 worktree를 만듦 ·" : "에 worktree를 만듦", branch);
           // 그 Project를 고치기 시작한 도는 턴(그 도구 줄이나 카드의 결정 줄이 있다)의 머리에 선다. `work` 줄은 누가 적지 않으므로 못
           // 찾으면 마지막에 열린 턴이고, 열린 턴이 없으면(옛 기록) 턴 사이다.
           const turns = [...open.values()];
@@ -1108,14 +1101,6 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       case "pr": {
         const pr = prLineOf(payload);
         if (pr) prs.push({ key: `p${line.seq}`, pr, latest: false, turnsBefore: turns.length });
-        break;
-      }
-      // Agent가 Thread 도구 「Agent 저장」으로 Library에 Agent를 둠(v1 티켓 19) — 그 Agent는 들어오지 않았다. 부르면 그때 들어온다.
-      case "library": {
-        const handle = nonEmpty(payload.handle);
-        const name = nonEmpty(payload.name) ?? handle;
-        if (!handle || !name) break;
-        say(line.seq, "library", handle, "Library에 ", name, `${particle(name, "을", "를")} 저장함`, avatarOf(payload.avatar));
         break;
       }
       // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) · 지움 · 되돌림(07) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는

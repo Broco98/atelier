@@ -1,11 +1,10 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { ChevronDown, ChevronRight, Folder, FolderPlus, Layers, MessageSquare, Shield, X, type LucideIcon } from "lucide-react";
+import { ChevronDown, Folder, FolderPlus, Layers, MessageSquare, Shield, X, type LucideIcon } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -38,8 +37,7 @@ import type { LockedWork } from "./work-chip";
 //   「결제 서비스 ×」(×는 빼기)이고, 바꾸는 것이 Work의 Space면 × 대신 ▾다. 메뉴는 Work 화면 머리 줄과 같은 Space 메뉴다(맨 위 「Space 없음
 //   — 등록된 Project N개 읽기」). 첫 말 뒤에도 바꾼다. 그 곁의 **범위 줄**이 지금 읽는 Project를 한 줄로 말한다(읽는 범위 — `scopeLine`).
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84)는 방패 · 지금 정도 이름의 칩이다(시안의 「매번 묻기」 — 셰브런 없이). 누르면 「언제
-//   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 끝의 「Policy 열기」는 다음 말을 받을 Agent의 파일을
-//   Library에서 연다 — 정도보다 먼저 드는 그 Agent의 `ask_before` · `forbid`가 거기 있다. 입력창의 `/policy`도 이 메뉴를 연다.
+//   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 입력창의 `/policy`도 이 메뉴를 연다.
 
 /** 입력창 칩 — 28 · 알약 · 좌우 6 · 글리프와 글자 사이 4 · 13/18 `fg-subtle`, 테두리 · 면 없음(Diff-Chat 「칩」 · F1-Home `.chip`). */
 const CHIP =
@@ -406,18 +404,16 @@ export function ScopeLineText({ scope }: { scope: ReadingScope | undefined }) {
   );
 }
 
-/** 물어보는 정도 칩이 받는 것 — 지금 정도 · 바꾸기 · 「Policy 열기」, 그리고 `/policy`가 메뉴를 여는 열림 상태. */
+/** 물어보는 정도 칩이 받는 것 — 지금 정도 · 바꾸기, 그리고 `/policy`가 메뉴를 여는 열림 상태. */
 export interface AskChoice {
   level: AskLevel;
   onLevel: (level: AskLevel) => void;
-  /** 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. 없으면 그 줄이 서지 않는다. */
-  onOpenPolicy?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 /** 물어보는 정도 칩과 메뉴(보드 「아래 줄 메뉴 · 물어보는 정도」 — 16 반경 메뉴, 고른 것에만 체크, 설명은 한 줄로 끝난다). */
-export function AskChip({ level, onLevel, onOpenPolicy, open, onOpenChange }: AskChoice) {
+export function AskChip({ level, onLevel, open, onOpenChange }: AskChoice) {
   const name = askLevelOf(level)?.name ?? level;
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -451,15 +447,6 @@ export function AskChip({ level, onLevel, onOpenPolicy, open, onOpenChange }: As
             ))}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
-        {onOpenPolicy && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onOpenPolicy} className="text-fg-secondary">
-              Policy 열기
-              <ChevronRight className="ml-auto size-3.5" aria-hidden />
-            </DropdownMenuItem>
-          </>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

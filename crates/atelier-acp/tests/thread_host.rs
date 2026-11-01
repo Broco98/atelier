@@ -26,6 +26,19 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 }
 
 #[test]
+fn library_폴더가_없어도_새_thread가_열리고_답한다() {
+    let sandbox = Sandbox::new();
+    assert!(!sandbox.data_root().join("library").exists(), "시작 절차가 옮긴 뒤의 자리다");
+    let host = sandbox.host(two_turns(&sandbox));
+
+    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(of_kind(&record, "turn-end").len(), 1, "{}", common::lines_text(&record));
+}
+
+#[test]
 fn 새_thread의_첫_말에_host가_답하고_thread_폴더에_thread_json과_스냅숏과_기록이_남는다() {
     let sandbox = Sandbox::new();
     let library = sandbox.library_agent("host", HOST_MD);

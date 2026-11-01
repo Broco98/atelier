@@ -176,7 +176,7 @@ _피할 말_: 패널 탭
 Archive에서는 같은 버튼이 spec 목록 패널을 여닫는다(⋯ 뒤 오른쪽 맨 끝이다) — 이름이 그 패널의 이름을 탄다(「spec 목록 접기」).
 
 **위 줄**:
-사이드바 맨 위 세 행 — 새 Thread · 내 차례 · Library. 새 Thread 끝에 그 키(⌘N)가 옅게 서고, 내 차례 끝에 나를 기다리는 Thread 수가
+사이드바 맨 위 두 행 — 새 Thread · 내 차례. 새 Thread 끝에 그 키(⌘N)가 옅게 서고, 내 차례 끝에 나를 기다리는 Thread 수가
 파랗게 선다(없으면 빈다). 내 차례를 누르면 Work 묶음과 Thread 묶음 대신 나를 기다리는 Thread가 기다린 순서로 서고, 다시 누르거나
 위 줄의 다른 행을 고르면 돌아온다 — 모아 보기 화면으로 가지 않는다. 사이드바 위에 거르기 머리는 없다.
 
@@ -257,14 +257,8 @@ three-axes 대화창이 「에이전트」라 부르던 것(Claude Code · Codex
 _피할 말_: 하네스, 엔진
 
 **Library**:
-어디서나 쓰는 Agent 정의를 두는 곳. Host의 정의도 여기 산다. Project 안에 둔 정의는 Library가 아니라 그 Project의 것이다. 사이드바의
-Library 줄이 여는 화면도 Library다 — 정의의 목록과 파일을 읽기만 하고, 지금 Work의 Project 안 정의는 따로 묶어 보인다. 새 Agent는
-대화로 만든다 — Host가 Library에 저장한다.
+어디서나 쓰는 Agent 정의를 두는 곳. Host의 정의도 여기 산다. Project 안에 둔 정의는 Library가 아니라 그 Project의 것이다.
 _피할 말_: 레지스트리, 카탈로그, 마켓플레이스
-
-**Agent 저장**:
-대화로 지은 Agent 정의를 Library에 새 파일로 두는 Thread 도구. 있는 이름은 덮지 않는다. 그 Project에 두는 것은 이 도구가 아니라
-worktree에 쓰는 보통 편집이다.
 
 **Thread 도구**:
 Atelier가 Thread 안의 Agent에게 주는 도구 — Thread 이름 바꾸기처럼 그 Thread와 Work를 다루는 일이다. Agent는 어느 Thread인지 말하지

@@ -97,8 +97,6 @@ export interface ThreadComposerProps {
   /** 지금 물어보는 정도(v1 티켓 23) — 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
   level: AskLevel;
   onLevel: (level: AskLevel) => void;
-  /** 물어보는 정도 메뉴 끝의 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. */
-  onOpenPolicy?: () => void;
   /**
    * 트레이(03 §5) — 첫 화면은 상자 아래, Thread 화면은 상자 위에 서는 회색 띠다. 그 Work 칩이 고르는 칩(첫 말 전)이면 `/work`가 선다.
    * 입력창 자리에 카드가 서면 함께 걷힌다.
@@ -131,7 +129,6 @@ function ThreadComposer({
   onCreateAgent,
   level,
   onLevel,
-  onOpenPolicy,
   tray,
   placeholder,
 }: ThreadComposerProps) {
@@ -471,7 +468,7 @@ function ThreadComposer({
             )}
             {/* 첫 말을 보내는 중(Screen-Live 단계 1)에는 칩이 옅게 쉰다 — 고른 것은 이미 첫 말과 함께 떠났다. */}
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", busy && "pointer-events-none opacity-50")}>
-              <AskChip level={level} onLevel={onLevel} onOpenPolicy={onOpenPolicy} open={asking} onOpenChange={setAsking} />
+              <AskChip level={level} onLevel={onLevel} open={asking} onOpenChange={setAsking} />
               <span className="min-w-0 flex-1" />
               <ModelChip
                 models={models}

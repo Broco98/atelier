@@ -504,8 +504,6 @@ pub fn run() {
             commands::search,
             commands::touch_recent_work,
             commands::list_agents,
-            commands::read_agent_file,
-            commands::reveal_agent_file,
             commands::describe_attachments,
             commands::pty_spawn,
             commands::pty_write,

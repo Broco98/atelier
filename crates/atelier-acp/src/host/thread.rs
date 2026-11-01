@@ -60,7 +60,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use atelier_core::{
-    AgentDefinition, AgentProblem, AgentRoster, AgentSaveRefusal, Attachment, DefinitionSource, FoundAgent, NewThread, Participant, RecordKind,
+    AgentDefinition, AgentProblem, AgentRoster, Attachment, DefinitionSource, FoundAgent, NewThread, Participant, RecordKind,
     RecordLine, ThreadFile, ThreadIndex, ThreadSummary, Unresolved, WorkGone,
 };
 use serde::{Deserialize, Serialize};
@@ -912,13 +912,6 @@ impl ConversationHost {
                 Err(error) => thread_tools::said(&error.to_string(), true),
             },
             Ok(Call::CallAgent { handle, task }) => self.call_agent(key, &handle, &task),
-            Ok(Call::SaveAgent { handle, content }) => match self.save_agent(key, &handle, &content) {
-                Ok(path) => thread_tools::said(
-                    &format!("Library에 저장했다 — {}. 이제 `@{handle}`로 부를 수 있다.", path.display()),
-                    false,
-                ),
-                Err(why) => thread_tools::said(&why, true),
-            },
             Ok(Call::ListProjects) => self.list_projects_tool(),
             Ok(Call::GetWork) => self.get_work_tool(key),
             Ok(Call::ProposeWork(proposal)) => self.propose_work(key, proposal),
@@ -932,36 +925,6 @@ impl ConversationHost {
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
-    }
-
-    /// Agent 저장(Thread 도구 「Agent 저장」 — v1 티켓 19 · §7 S13) — Library에만 쓰고(규칙은 [`atelier_core::save_agent`]), 저장했으면
-    /// `library` 줄을 남긴다(`who`는 저장한 Agent). 줄의 payload는 저장한 정의의 handle · 이름 · 얼굴(`avatar`, 없으면 칸째 빠진다) ·
-    /// 자리다 — 시스템 줄 「Library에 리뷰어를 저장함」이 이것을 그리고, 화면은 이 줄을 보고 Agent 목록을 다시 읽는다. 거절이면 그
-    /// 까닭의 글이다(Agent가 읽고 고쳐 부른다) — 아무것도 적지 않는다.
-    fn save_agent(&self, key: &SessionKey, handle: &str, content: &str) -> Result<PathBuf, String> {
-        let saved = atelier_core::save_agent(&self.data_root, handle, content).map_err(|refusal| match refusal {
-            AgentSaveRefusal::BadHandle => format!(
-                "handle `{handle}`은 쓸 수 없다 — 파일 이름이자 @로 부르는 이름이라 영어 소문자 · 숫자로 시작하고 끝나며 사이에 \
-                 `-` · `_`만 든다(예: security-reviewer)."
-            ),
-            AgentSaveRefusal::Taken { path } => format!(
-                "Library에 `@{handle}`가 이미 있다 — 덮지 않는다: {}. 다른 handle로 다시 저장한다.",
-                path.display()
-            ),
-            AgentSaveRefusal::Broken(problem) => {
-                format!("Agent 파일이 깨졌다 — {}. frontmatter를 고쳐 다시 부른다.", problem_text(problem))
-            }
-            AgentSaveRefusal::Unwritable { message } => format!("Library에 쓰지 못했다 — {message}"),
-        })?;
-        let definition = &saved.definition;
-        let mut payload = json!({"handle": definition.handle, "name": definition.name, "path": saved.path});
-        if let Some(avatar) = &definition.avatar {
-            payload["avatar"] = json!(avatar);
-        }
-        let log = self.thread_log(&key.thread).map_err(|error| error.to_string())?;
-        log.write(RecordKind::Library, Some(&key.handle), payload)
-            .map_err(|error| format!("Library에 저장했지만 Thread에 적지 못했다 — {error}"))?;
-        Ok(saved.path)
     }
 
     /// 그 Session의 Thread 도구 소켓을 연다 — 중계 서버 명령이 없으면 없다. 열지 못하면 Thread 도구 없이 Session을 연다: 까닭은
@@ -1428,8 +1391,6 @@ impl ConversationHost {
                  - `rename_thread`(title) — Thread 이름을 바꾼다. 일이 무엇인지 드러나는 짧은 이름으로.\n  \
                  - `{}`(handle, task) — 다른 Agent에게 일을 맡기고, 그 Agent가 턴을 끝낼 때의 마지막 메시지를 결과로 받는다. \
                  그때까지 기다린다.\n  \
-                 - `{}`(handle, content) — 사람이 Agent를 만들어 달라면 Library에 Agent 파일로 저장한다. 「이 Project에 \
-                 둬」라면 이 도구가 아니라 그 Project worktree의 `.atelier/agents/<handle>.md`에 보통 편집으로 쓴다.\n  \
                  - `{}`() — 등록된 Project와 그 저장소의 브랜치들. Work를 제안하기 전에 본다.\n  \
                  - `{}`() — 이 Thread의 Work(spec 폴더 · 브랜치 · Project마다 worktree 또는 읽기만).\n  \
                  - `{}`(title, slug, reason, branch, projects) — 일이 커지면 Work로 묶자고 사람에게 카드로 묻고, 사람이 고를 \
@@ -1453,7 +1414,6 @@ impl ConversationHost {
                  api-server의 ⋯ › 제거를 눌러 주세요.」 Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다.\n",
                 thread_tools::SERVER_NAME,
                 thread_tools::CALL_AGENT,
-                thread_tools::SAVE_AGENT,
                 thread_tools::LIST_PROJECTS,
                 thread_tools::GET_WORK,
                 thread_tools::PROPOSE_WORK,

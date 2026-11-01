@@ -267,19 +267,18 @@ describe("사이드바 최상단이 위 줄이다", () => {
   });
 });
 
-// v1 구현 스펙 §13 · S27 · 02 구현 스펙 §4. **사이드바의 차례가 시안의 차례다**(캔버스 F1-Home · Diff-Frame 「제안」) — 위 줄 세 행(새 Thread ·
-// 내 차례 · Library) · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄(누르면 사람 메뉴). 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람
+// v1 구현 스펙 §13 · S27 · 02 구현 스펙 §4. **사이드바의 차례가 시안의 차례다**(캔버스 F1-Home · Diff-Frame 「제안」) — 위 줄 두 행(새 Thread ·
+// 내 차례) · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄(누르면 사람 메뉴). 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람
 // 메뉴로 갔다. 이 파일은 렌더로 못 들이므로(머리말) 앱 갈래 안의 자리를 소스로 잰다 — 무엇이 그려지는지는 시안 비교 캡처와 L3가 본다.
 describe("사이드바의 차례가 시안의 차례다", () => {
   const sidebar = read("Sidebar.tsx");
   const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
   const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
 
-  it("새 Thread · 내 차례 · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
+  it("새 Thread · 내 차례 · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
     const order = [
       "<NewThreadItem",
       "<MineItem",
-      "<LibraryItem",
       "<AttentionBand",
       "<SidebarWorkList",
       "<SidebarThreads",
@@ -290,10 +289,11 @@ describe("사이드바의 차례가 시안의 차례다", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it("위 줄(nav)에는 새 Thread · 내 차례 · Library만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
+  it("위 줄(nav)에는 새 Thread · 내 차례만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
     const nav = app.slice(app.indexOf("<nav"), app.indexOf("</nav>"));
-    for (const row of ["<NewThreadItem", "<MineItem", "<LibraryItem"]) expect(nav).toContain(row);
-    expect(countOf(nav, "Item")).toBe(3);
+    for (const row of ["<NewThreadItem", "<MineItem"]) expect(nav).toContain(row);
+    expect(countOf(nav, "Item")).toBe(2);
+    expect(sidebar).not.toContain("Library");
     expect(nav).not.toContain("navItems");
     expect(countOf(sidebar, "navItems.map(")).toBe(1);
     const menuAt = sidebar.indexOf("function PersonMenu(");

@@ -29,7 +29,7 @@ const buttonVariants = cva(
         // 카드 · 툴바 안의 버튼 — 에이전트 훅의 「설치」, 프로젝트 빈 화면의 「프로젝트 등록」, 확인 창의 바닥(DS `.at-btn.sm`).
         default:
           "h-8 gap-1.5 rounded-lg px-3 text-chat-meta has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5 [&_svg:not([class*='size-'])]:size-3.5",
-        // 머리 줄의 글자 버튼 — 「폴더 열기」 · 「조용한 셸 모두 닫기」 · 설정의 「저장」 · Library의 「새 Agent 만들기」. 머리 줄의 아이콘
+        // 머리 줄의 글자 버튼 — 「폴더 열기」 · 「조용한 셸 모두 닫기」 · 설정의 「저장」. 머리 줄의 아이콘
         // 단추(`ShellHead`의 `headButton` — 28 · `radius-lg`)와 같은 높이 · 모서리다(02 결정 「머리 줄은 한 결이다(03 뒤)」 — 머리 줄의
         // 단추는 모두 28). 좌우 10 · `chat-meta`는 앱의 다른 28 글자 단(`Toggle`의 `sm`)과 같고, 아이콘 14와 사이 5는 DS `.at-btn.top`
         // 그대로다. 한때 DS `.at-btn.top`의 24 · `radius-md` · 좌우 8이었다(머리 카드 때). 색은 변형이 든다 — 보통은 ghost, 저장은 default.
