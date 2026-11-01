@@ -389,21 +389,19 @@ impl ConversationHost {
         Ok(card)
     }
 
-    /// Work를 Agent에게 보이는 글 — 머리말의 Work 칸(S10)과 같은 줄에 브랜치와, spec 폴더 안 문서의 배치(spec 레이아웃 — MCP
-    /// `atelier_start_work`가 싣는 것과 같다)를 더한다.
+    /// Work를 Agent에게 보이는 글 — 머리말의 Work 칸(S10)과 같은 줄에 spec 폴더 안 문서의 배치를 더한다.
     fn work_text(&self, slug: &str, work_at: &WorkAt) -> String {
-        let mut text = work_lines(slug, work_at);
-        if let Some(branch) = &work_at.meta.branch {
-            text.push_str(&format!("  - 브랜치: `{branch}` — Project마다 이 브랜치로 worktree가 선다\n"));
-        }
+        format!("{}\n{}", work_lines(slug, work_at), self.spec_layout())
+    }
+
+    /// spec 폴더 안 문서의 배치 — spec 레이아웃을 render한 글이다(MCP `atelier_start_work`가 싣는 것과 같다). 부를 때마다 새로 읽는다.
+    pub(super) fn spec_layout(&self) -> String {
         let resolved = atelier_core::resolve_layout(&self.data_root);
-        let layout =
-            atelier_core::render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref()).text;
-        format!("{text}\n{layout}")
+        atelier_core::render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref()).text
     }
 }
 
-/// 이은 Work의 줄들 — slug · 제목 · spec 폴더, Project마다 worktree 또는 「읽기만」(머리말 S10과 Thread 도구가 함께 쓴다).
+/// 이은 Work의 줄들 — slug · 제목 · spec 폴더, Project마다 worktree 또는 「읽기만」, 브랜치(머리말 S10과 Thread 도구가 함께 쓴다).
 pub(super) fn work_lines(slug: &str, work_at: &WorkAt) -> String {
     let mut text = format!("- Work: `{slug}` — {}\n  - spec 폴더(specDir): `{}`\n", work_at.meta.title, work_at.places.spec.display());
     for (project, tree) in work_at.meta.projects.iter().zip(&work_at.places.worktrees) {
@@ -412,6 +410,9 @@ pub(super) fn work_lines(slug: &str, work_at: &WorkAt) -> String {
         } else {
             text.push_str(&format!("  - Project `{project}`: 읽기만 — worktree가 아직 없다\n"));
         }
+    }
+    if let Some(branch) = &work_at.meta.branch {
+        text.push_str(&format!("  - 브랜치: `{branch}` — Project마다 이 브랜치로 worktree가 선다\n"));
     }
     text
 }

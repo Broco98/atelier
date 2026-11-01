@@ -175,7 +175,7 @@ fn 알아서에서도_thread_폴더의_기록_파일이_나오는_명령은_묻�
 
 #[test]
 fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어도_묻지_않고_거절된다() {
-    // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl` · `agents/`는
+    // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl`은
     // Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을 넓힌다.
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));

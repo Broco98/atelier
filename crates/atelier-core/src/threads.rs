@@ -19,8 +19,6 @@ use crate::Result;
 
 const THREAD_FILE: &str = "thread.json";
 const RECORD_FILE: &str = "events.jsonl";
-/// Thread 폴더 안에서 지시문 파일(`host.instructions.md`)이 사는 폴더. 01a-7이 지시문을 걷을 때까지 있다.
-pub const THREAD_SNAPSHOTS: &str = "agents";
 /// 지금 띄우는 Runtime 하나(S3) — 새 Thread가 이 값으로 선다.
 const RUNTIME: &str = "claude-code";
 
@@ -172,10 +170,10 @@ pub fn thread_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
     Ok(crate::paths::threads_in(data_root).join(id))
 }
 
-/// Thread 폴더 안에서 Atelier만 쓰는 자리(S7 · §19, 코드 리뷰 1차 A2) — `thread.json` · `events.jsonl` · 점 파일 `.policy.json` ·
-/// 지시문 폴더. 판정이 이 자리의 편집을 거절한다. 나머지 Thread 폴더는 Work 없는 Thread의 작업 폴더라 Agent가 고친다(S11).
+/// Thread 폴더 안에서 Atelier만 쓰는 자리(S7 · §19, 코드 리뷰 1차 A2) — `thread.json` · `events.jsonl` · 점 파일 `.policy.json`. 판정이
+/// 이 자리의 편집을 거절한다. 나머지 Thread 폴더는 Work 없는 Thread의 작업 폴더라 Agent가 고친다(S11).
 pub fn thread_kept(dir: &Path) -> Vec<PathBuf> {
-    [THREAD_FILE, RECORD_FILE, crate::policy_file::POLICY_FILE, THREAD_SNAPSHOTS].iter().map(|name| dir.join(name)).collect()
+    [THREAD_FILE, RECORD_FILE, crate::policy_file::POLICY_FILE].iter().map(|name| dir.join(name)).collect()
 }
 
 /// `thread.json`을 읽는다. 없거나 Runtime 값이 없는 옛 폴더면 `NotFound`, 깨졌으면 `InvalidData` — 까닭은 색인의 깨진 줄과 같은 말이다.

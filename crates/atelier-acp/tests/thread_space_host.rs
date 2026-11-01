@@ -437,29 +437,19 @@ fn space_없이를_고르면_space를_빼고_다음_말부터_등록된_project�
 }
 
 #[test]
-fn 머리말은_space_목록과_space_붙이기를_알리고_다루는_project가_정해지면_붙이라고_지시한다() {
+fn space_붙이기의_설명은_다루는_project가_정해지면_붙이라고_한다() {
     let sandbox = Sandbox::new();
     payments_world(&sandbox);
-    let host = sandbox.host(calling(&sandbox, &[]));
+    let host = sandbox.host(calling(&sandbox, &[tool("list_spaces", json!({}))]));
     let thread = host.start_thread("환불 봐 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
-    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
-    let lines: Vec<&str> = preamble.lines().collect();
-    let tools = lines.iter().position(|line| line.starts_with("- Thread 도구:")).expect("도구 블록");
-    let space = lines.iter().position(|line| line.starts_with("- Space:")).expect("Space 줄");
-    assert!(space < tools, "Space 줄 뒤에 도구 블록이 선다:\n{preamble}");
-    assert!(lines.iter().any(|line| line.trim_start().starts_with("- `list_spaces`()")), "{preamble}");
-    assert!(lines.iter().any(|line| line.trim_start().starts_with("- `set_space`(space, projects, reason)")), "{preamble}");
+    let guide = sandbox.claude_tool_guide(&sandbox.thread_session_id(&thread), "set_space");
     assert!(
-        preamble.contains(
-            "다루는 Project가 정해지면 `list_spaces`로 그 Project를 담은 Space를 보고 `set_space`로 붙인다. 이미 붙어 있으면 바꿀 까닭이 \
-             있을 때만 부른다."
-        ),
-        "지시(§11):\n{preamble}"
+        guide.contains("다루는 Project가 정해지면 list_spaces로 그 Project를 담은 Space를 보고 부른다. 이미 붙어 있으면 바꿀 까닭이 있을 때만 부른다."),
+        "지시(§11):\n{guide}"
     );
-    assert!(preamble.contains("\n- Work: 없음 — 이 Thread 폴더에서 일한다: `"), "Work 줄의 꼴은 그대로다(L3 `workTitleOf`):\n{preamble}");
 }
 
 /// 기록 축복(S26 꼴) — 매번 묻기 Thread에서 Host가 「Space 붙이기」로 묻고 사람이 추천(결제 서비스)을 고른 턴이 검사 자료로 선다. 화면

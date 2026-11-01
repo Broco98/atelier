@@ -281,20 +281,18 @@ impl Machine {
     /// 답은 claude의 `initialize` 답에서 한다([`Machine::opened`]).
     ///
     /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) · `mcpServers` ·
-    /// `_meta.atelier{claudePath, permissionMode, model, effort, instructionsFile, builtinTools, forbid}`.
+    /// `_meta.atelier{claudePath, permissionMode, model, effort, builtinTools, forbid}`.
     ///
-    /// Agent 정의에서 오는 것(v1 구현 스펙 §3 · S4) — 지시문은 Thread 폴더에 둔 지시문 파일의 경로로 받아
-    /// `--append-system-prompt-file`로 claude의 기본 시스템 프롬프트 **뒤에** 붙인다(바꾸면 Claude Code의 도구 · 환경 안내가
-    /// 사라진다). 모델 · 생각 깊이는 `--model` · `--effort`다. 변환기는 그 파일을 읽지 않고 값을 고르지도 않는다 — 비우면 플래그를
-    /// 주지 않아 claude의 기본값을 쓴다.
+    /// **시스템 프롬프트를 건드리지 않는다** — 터미널의 claude와 같은 시스템 프롬프트로 뜬다. 자리는 첫 말이 말한다. 모델 · 생각 깊이는
+    /// `--model` · `--effort`다. 변환기는 값을 고르지 않는다 — 비우면 플래그를 주지 않아 claude의 기본값을 쓴다.
     ///
     /// 내장 도구 · 금지(v1 티켓 12)는 추상 이름으로 받아 Claude Code의 이름으로 옮긴다([`agent_flags`]) — `--tools` ·
     /// `--disallowedTools`다. ACP `mcpServers`는 claude의 MCP 설정으로 옮겨 `--mcp-config`로 넘긴다 — 사용자 MCP와 커넥터는 그와
     /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 넘겨받은 서버(Thread 도구, v1 티켓 15)의 도구는 `--allowedTools`로 묻지
     /// 않게 한다. 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로 답한다.
     ///
-    /// resume · load는 되살리기다(three-axes 티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
-    /// 도구 · 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
+    /// resume · load는 되살리기다(three-axes 티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 도구 ·
+    /// 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
     /// Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
     /// 호스트는 다음 단계로 넘어간다.
@@ -321,7 +319,6 @@ impl Machine {
         let mode = atelier["permissionMode"].as_str();
         let model = atelier["model"].as_str();
         let effort = atelier["effort"].as_str();
-        let instructions = atelier["instructionsFile"].as_str();
         let tools = agent_flags::tools(&atelier["builtinTools"]);
         let mcp_config = agent_flags::mcp_config(&params["mcpServers"]);
         let (tools, mcp_config) = match (tools, mcp_config) {
@@ -357,9 +354,6 @@ impl Machine {
         }
         if let Some(effort) = effort {
             args.extend(["--effort", effort]);
-        }
-        if let Some(instructions) = instructions {
-            args.extend(["--append-system-prompt-file", instructions]);
         }
         if let Some(tools) = &tools {
             args.extend(["--tools", tools]);

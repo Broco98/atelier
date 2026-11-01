@@ -11,8 +11,8 @@
 //! 1. `forbid`에 걸리면 거절한다. 볼 수 없는 조각이 있어 걸렸을 수 있으면 묻는다(아래 「모를 때」).
 //! 2. 고치는 경로가 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더) 밖이면 거절한다. 그 경로가 등록된 Project 안이면
 //!    Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터 만들라고.
-//!    Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json` · `agents/` 지시문 폴더)이면 거절한다(S7 ·
-//!    §19, 코드 리뷰 1차 A2) — 그대로면 Agent가 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓히거나 지시문을 고친다.
+//!    Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json`)이면 거절한다(S7 · §19, 코드 리뷰 1차
+//!    A2) — 그대로면 Agent가 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓힌다.
 //!    명령 글에 그 파일이 나오면 「알아서」 · 허락이 있어도 묻는다(코드 리뷰 2차 A3 — 글자로만 본다, [`mentions_kept`]).
 //! 3. 쓰기 자리를 다른 Session이 쥐고 있으면 거절한다(§10 · v1 티켓 18).
 //! 4. `ask_before`에 걸리면(걸렸을 수 있으면) 묻는다.
@@ -284,14 +284,14 @@ fn outside_message(path: &Path, case: &Case) -> String {
 /// Atelier만 쓰는 파일의 글 — Work 밖 거절과 같은 꼴이다.
 fn kept_message(path: &Path) -> String {
     format!(
-        "Thread 기록이라 고칠 수 없어요: {} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json` · `agents/`는 Atelier만 써요",
+        "Thread 기록이라 고칠 수 없어요: {} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요",
         path.display()
     )
 }
 
 /// 명령 글에 Atelier만 쓰는 Thread 파일이 나오나(코드 리뷰 2차 A3) — 글자로만 본다. 경로 낱말의 마디에 `<Thread 폴더>/<그 파일>`이
 /// 있거나(절대 경로 · `~/…` · `../threads/…`), 작업 폴더가 그 Thread 폴더이거나 글이 그 폴더를 가리키면(`cd …/<Thread> && …`) 그
-/// 파일 이름으로 시작하는 낱말(`thread.json` · `./agents/host.md` · `../events.jsonl`)이다. 변수 · 스크립트 속의 경로는 보지
+/// 파일 이름으로 시작하는 낱말(`thread.json` · `./.policy.json` · `../events.jsonl`)이다. 변수 · 스크립트 속의 경로는 보지
 /// 못한다(결정.md 「코드 리뷰 2차」 A3의 남은 위험).
 fn mentions_kept(text: &str, kept: &[PathBuf], cwd: &Path) -> bool {
     let words: Vec<Vec<&str>> = text
@@ -538,7 +538,7 @@ mod tests {
                 grants: Vec::new(),
                 in_work: true,
                 roots: vec!["/w/cart/trees/fe".into(), "/w/cart/spec".into(), "/t/20261023-101010".into()],
-                kept: ["thread.json", "events.jsonl", ".policy.json", "agents"].map(|name| Path::new("/t/20261023-101010").join(name)).to_vec(),
+                kept: ["thread.json", "events.jsonl", ".policy.json"].map(|name| Path::new("/t/20261023-101010").join(name)).to_vec(),
                 cwd: "/w/cart/trees/fe".into(),
                 projects: vec![("fe".to_owned(), "/repos/fe".into())],
                 seat: None,
@@ -1010,7 +1010,7 @@ mod tests {
     }
 
     #[test]
-    fn thread_폴더의_기록_파일과_지시문_폴더는_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
+    fn thread_폴더의_기록_파일은_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
         // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 알아서 · 편집 허락이 있어도 거절이다.
         let judged = |path: &str| {
             let mut given = Given::act(edit(path));
@@ -1021,28 +1021,26 @@ mod tests {
         };
         let refused = |path: &str| {
             refuse(&format!(
-                "Thread 기록이라 고칠 수 없어요: {path} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json` · `agents/`는 \
-                 Atelier만 써요"
+                "Thread 기록이라 고칠 수 없어요: {path} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요"
             ))
         };
         for path in [
             "/t/20261023-101010/thread.json",
             "/t/20261023-101010/events.jsonl",
             "/t/20261023-101010/.policy.json",
-            "/t/20261023-101010/agents/host.md",
-            "/t/20261023-101010/agents",
             "/t/20261023-101010",
         ] {
             assert_eq!(judged(path), refused(path), "{path}");
         }
         assert_eq!(judged("/t/20261023-101010/notes.md"), allow("이 Thread에서는 다시 묻지 않기"), "나머지 Thread 폴더는 그대로다");
-        assert_eq!(judged("/t/20261023-101010/agents-notes/a.md"), allow("이 Thread에서는 다시 묻지 않기"), "경로는 폴더 단위로 견준다");
+        assert_eq!(judged("/t/20261023-101010/thread.json.md"), allow("이 Thread에서는 다시 묻지 않기"), "경로는 마디 단위로 견준다");
+        assert_eq!(judged("/t/20261023-101010/agents/a.md"), allow("이 Thread에서는 다시 묻지 않기"), "`agents/`는 앱의 자리가 아니다");
     }
 
     #[test]
     fn 명령_글에_그_thread_기록이_나오면_알아서여도_허락이_있어도_묻는다() {
         // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만(1차 A2) 명령은 그 자리를 보지 않았다. `echo > thread.json` ·
-        // `sed -i … agents/host.md`가 「알아서」에서 묻지 않고 지났다. 글자로만 본다.
+        // `sed -i … .policy.json`이 「알아서」에서 묻지 않고 지났다. 글자로만 본다.
         let judged = |text: &str, cwd: &str| {
             let mut given = Given::act(command(text));
             given.level = AskLevel::Auto;
@@ -1053,12 +1051,12 @@ mod tests {
         let (tree, thread) = ("/w/cart/trees/fe", "/t/20261023-101010");
         for (text, cwd) in [
             ("echo '{}' > /t/20261023-101010/thread.json", tree),
-            ("sed -i '' 's/push//' ~/.atelier/threads/20261023-101010/agents/host.md", tree),
+            ("sed -i '' 's/push//' ~/.atelier/threads/20261023-101010/.policy.json", tree),
             ("rm ../../threads/20261023-101010/events.jsonl", tree),
             ("cd ~/.atelier/threads/20261023-101010 && echo '{}' > .policy.json", tree),
             ("echo '{}' > thread.json", thread),
-            ("rm -rf agents", thread),
-            ("cp x ./agents/host.md", thread),
+            ("rm -f events.jsonl", thread),
+            ("cp x ./.policy.json", thread),
             ("python3 x.py --out=../events.jsonl", thread),
         ] {
             assert_eq!(judged(text, cwd), ask(Card::Command, "Thread 기록을 건드리기 전에 묻기"), "{text:?} ({cwd})");

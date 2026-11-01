@@ -448,27 +448,23 @@ fn space를_고치면_고친_칸만_바뀌고_결과_카드가_project_수와_�
 }
 
 #[test]
-fn 머리말은_설정_도구_넷을_알리고_지우기_부탁에는_화면을_안내하라고_하며_space는_초안부터_보이라고_한다() {
+fn 설정_도구_넷의_설명은_승인_없이_하고_지우기_부탁에는_화면을_안내하라고_하며_space는_초안부터_보이라고_한다() {
     let sandbox = Sandbox::new();
-    let (host, thread) = thread_calling(&sandbox, &[]);
-    let record = first_turn(&sandbox, host, &thread);
+    let (host, thread) = thread_calling(&sandbox, &[tool("list_projects", json!({}))]);
+    first_turn(&sandbox, host, &thread);
 
-    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
-    let lines: Vec<&str> = preamble.lines().map(str::trim_start).collect();
-    for head in [
-        "- `add_project`(path, name, description)",
-        "- `edit_project`(project, name, description, baseBranch)",
-        "- `create_space`(name, projects, description)",
-        "- `edit_space`(space, name, description, add, remove)",
-    ] {
-        assert!(lines.iter().any(|line| line.starts_with(head)), "{head}:\n{preamble}");
+    let session = sandbox.thread_session_id(&thread);
+    for name in ["add_project", "edit_project", "create_space", "edit_space"] {
+        let guide = sandbox.claude_tool_guide(&session, name);
+        assert!(guide.contains("승인 카드 없이 곧바로 하고"), "{name}:\n{guide}");
+        assert!(
+            guide.contains("부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › Projects에서 api-server의 ⋯ › 제거를 눌러 주세요.」"),
+            "지우는 도구는 없다 — 화면을 안내한다(스토리 67) — {name}:\n{guide}"
+        );
+        assert!(guide.contains("Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다"), "{name}:\n{guide}");
     }
-    assert!(
-        preamble.contains("Project 제거 · Space 삭제를 부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › Projects에서 api-server의 ⋯ › 제거를 눌러 주세요.」"),
-        "지우는 도구는 없다 — 화면을 안내한다(스토리 67):\n{preamble}"
-    );
-    assert!(preamble.contains("Space를 만들기 전에 초안을 보이고 사람이 좋다고 하면 만든다"), "{preamble}");
-    assert!(preamble.contains("\n- Work: 없음 — 이 Thread 폴더에서 일한다: `"), "Work 줄의 꼴은 그대로다(L3 `workTitleOf`):\n{preamble}");
+    let guide = sandbox.claude_tool_guide(&session, "create_space");
+    assert!(guide.contains("만들기 전에 이름 · Project · 설명의 초안을 사람에게 보이고, 사람이 좋다고 하면 부른다"), "{guide}");
 }
 
 /// 캔버스 ④ F4-KitChat 「대화로 한 설정 — 결과 카드」의 자리 — Project 셋(web-app의 기준 브랜치는 develop) · Space 둘 · 아직 등록하지 않은

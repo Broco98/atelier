@@ -516,9 +516,6 @@ fn claude의_계정_이메일_플랜과_플러그인_경로는_가린_채로_나
     }
 }
 
-/// 지시문 파일의 자리 — 상태 기계는 그 경로를 claude에 넘기기만 하고 읽지 않는다.
-const INSTRUCTIONS: &str = "/tmp/gate/threads/20261023-090000/agents/host.md";
-
 /// 그 열기 요청 하나로 연 변환기가 claude를 띄운 인자.
 fn launched_by(method: &str, params: Value) -> Vec<String> {
     let mut bench = Bench::new(Claude::replaying("2.1.309/twoturn-tools"));
@@ -531,10 +528,9 @@ fn launched_by(method: &str, params: Value) -> Vec<String> {
 }
 
 #[test]
-fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_든다() {
+fn 모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_들고_시스템_프롬프트는_없다() {
     // v1 구현 스펙 §3 — `claude -p --resume`은 이 값들을 되살리지 않으므로 열 때마다 다시 받는다.
     let meta = json!({"atelier": {
-        "instructionsFile": INSTRUCTIONS,
         "model": "opus",
         "effort": "high",
         "builtinTools": ["read", "shell"],
@@ -546,9 +542,9 @@ fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는
 
     for (method, params) in [("session/new", fresh), ("session/resume", revive.clone()), ("session/load", revive)] {
         let args = launched_by(method, params);
+        assert!(!args.iter().any(|arg| arg.contains("system-prompt")), "{method}: 시스템 프롬프트를 건드리지 않는다: {args:?}");
         assert_eq!(
             (
-                flag(&args, "--append-system-prompt-file").as_deref(),
                 flag(&args, "--model").as_deref(),
                 flag(&args, "--effort").as_deref(),
                 flag(&args, "--tools"),
@@ -556,7 +552,6 @@ fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는
                 flag(&args, "--mcp-config").as_deref(),
             ),
             (
-                Some(INSTRUCTIONS),
                 Some("opus"),
                 Some("high"),
                 Some(format!("Read,Glob,Grep,LS,Bash,{RUNTIME_TOOLS}")),
@@ -571,9 +566,9 @@ fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는
         }
     }
 
-    // 정의가 비우면 플래그도 없다 — claude의 기본 시스템 프롬프트 · 사용자의 모델 설정 · 기본 도구 전부를 그대로 쓴다.
+    // 비우면 플래그도 없다 — 사용자의 모델 설정 · 기본 도구 전부를 그대로 쓴다.
     let args = launched_by("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}}));
-    for name in ["--append-system-prompt-file", "--model", "--effort", "--tools", "--disallowedTools", "--mcp-config"] {
+    for name in ["--model", "--effort", "--tools", "--disallowedTools", "--mcp-config"] {
         assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
     }
 }

@@ -40,7 +40,7 @@ pub struct AgentDefinition {
     pub policy: Policy,
     /// 받는 Runtime 이름들. `None`이면 가리지 않는다. 있으면 `claude-code`가 들어 있다 — 아니면 깨진 파일이다(S3).
     pub runtimes: Option<Vec<String>>,
-    /// 본문 — 변환기가 기본 시스템 프롬프트 뒤에 붙인다(§3).
+    /// 본문 — 앱이 Runtime에 넘기지 않는다. 01a-8이 정의와 함께 지운다.
     pub instructions: String,
 }
 

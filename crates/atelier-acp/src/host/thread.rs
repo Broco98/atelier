@@ -4,7 +4,8 @@
 //!   창구를 쓰고, 기록은 Thread의 `events.jsonl` 하나에 적는다. 줄에는 말한 이도 받는 이도 없다.
 //! - **채팅 하나가 Runtime 세션 하나다.** 세션 열쇠는 채팅 id 하나이고, Runtime · 모델 · 생각 깊이 · 세션 id · 작업 폴더 · 추가 폴더가
 //!   `thread.json`의 값이다. 모델 · 생각 깊이는 첫 말에서 정해지고(칩에서 고른 값, 없으면 Library `host.md`의 선호) 입력창 칩이 바꾼다.
-//!   지시문 · 내장 도구 · 금지는 01a-7, 01a-8까지 Session을 열 때마다 Library의 `host.md`를 고정 경로로 읽는다.
+//!   내장 도구 · 금지는 01a-8까지 Session을 열 때마다 Library의 `host.md`를 고정 경로로 읽는다.
+//! - **앱은 Runtime에 시스템 프롬프트를 덧붙이지 않는다.** 자리는 첫 말의 머리말이 말하고, 앱 기능 도구의 쓰임은 도구 설명이 말한다.
 //! - Runtime에게 가는 말은 머리말(Session의 첫 말) + 지난 말(새로 선 Session의 첫 말) + 본문이다(S10). 지난 말은 보내는 그때 기록에서
 //!   짓는다(`past`).
 //! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다). 함께 여는 폴더는
@@ -73,7 +74,7 @@ use gate::Gate;
 use seat::{Docs, Grant, Writer};
 use tool_lines::ToolLines;
 
-/// Library의 `host.md`와 그 본문을 담는 `host.instructions.md`의 이름 — 01a-7, 01a-8이 파일과 함께 지운다.
+/// Library의 `host.md` 이름 — 01a-8이 파일과 함께 지운다.
 const HOST: &str = "host";
 /// 첫 말에서 정하는 이름의 길이 한도(글자 수).
 const TITLE_LIMIT: usize = 40;
@@ -957,8 +958,8 @@ impl ConversationHost {
         opened
     }
 
-    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, `host.md`의 지시문 · 내장 도구 · 금지(v1 티켓 12)와 채팅의 모델 · 생각
-    /// 깊이로. 열리면 Session id · 작업 폴더를 `thread.json`에 적고 떠 있는 표에 넣는다.
+    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, `host.md`의 내장 도구 · 금지(v1 티켓 12)와 채팅의 모델 · 생각 깊이로.
+    /// 열리면 Session id · 작업 폴더를 `thread.json`에 적고 떠 있는 표에 넣는다.
     ///
     /// - Runtime이 로그인을 요구하면 로그인 필요 줄을 적고 로그인 창구가 그 Session을 쥔다 — 실패가 아니다.
     /// - 그 밖의 까닭으로 못 열면 죽음 줄에 까닭을 적고 실패한다.
@@ -972,7 +973,6 @@ impl ConversationHost {
     ) -> Result<(), HostError> {
         let place = self.thread_place(thread, file)?;
         let definition = self.host_definition()?;
-        let instructions = self.write_instructions(thread, &definition)?;
         let recorder = &conv.recorder;
         recorder.spawning().map_err(HostError::Record)?;
         // 기본 모드로만 띄운다 — 「계획만」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
@@ -981,7 +981,6 @@ impl ConversationHost {
             mode: Some(level.claude_mode().to_owned()),
             model: file.model.clone(),
             effort: file.effort.clone(),
-            instructions: Some(instructions),
             tools: definition.tools.builtin,
             forbid: definition.policy.forbid.clone(),
         };
@@ -1081,24 +1080,13 @@ impl ConversationHost {
     }
 
     /// Library의 `host.md` — 고정 경로다. 기본 파일이 지워졌으면 다시 세운 뒤에 읽는다. 앱이 뜰 때와 같은 규칙이고, 있는 파일은 덮지
-    /// 않는다(S14). 01a-7, 01a-8이 지시문과 정의를 걷을 때까지 있다.
+    /// 않는다(S14). 01a-8이 정의를 걷을 때까지 있다.
     fn host_definition(&self) -> Result<AgentDefinition, HostError> {
         if let Err(error) = atelier_core::ensure_default_agents(&self.data_root) {
             eprintln!("Library의 기본 Agent를 세우지 못했습니다: {error}");
         }
         atelier_core::read_agent(&atelier_core::library_agents_in(&self.data_root).join(format!("{HOST}.md")))
             .map_err(|problem| HostError::AgentBroken { handle: HOST.to_owned(), reason: problem_text(problem) })
-    }
-
-    /// 지시문 파일을 다시 짓는다 — 본문만 담는다(v1 티켓 03: frontmatter가 시스템 프롬프트에 들지 않게). 지운 파일도 다음 열기에 다시 선다.
-    fn write_instructions(&self, thread: &str, definition: &AgentDefinition) -> Result<PathBuf, HostError> {
-        let folder =
-            atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?.join(atelier_core::THREAD_SNAPSHOTS);
-        let path = folder.join(format!("{HOST}.instructions.md"));
-        std::fs::create_dir_all(&folder)
-            .and_then(|()| std::fs::write(&path, &definition.instructions))
-            .map_err(|error| HostError::Record(format!("지시문 파일을 쓰지 못했습니다: {} — {error}", path.display())))?;
-        Ok(path)
     }
 
     /// Thread의 작업 폴더(v1 구현 스펙 S11)와 함께 여는 폴더(03 구현 스펙 §7).
@@ -1141,9 +1129,10 @@ impl ConversationHost {
         Ok(place)
     }
 
-    /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이어진 Work(slug · 제목 · spec 폴더 · Project마다 worktree 또는 「읽기만」), 읽는 범위의 「- Space:」 줄(03 §11), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로
-    /// 연 뒤의 첫 말, 그리고 Session이 들은 것과 Space 줄이 다른 말에 따로 된 텍스트 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의
-    /// `prompt`에만 남는다. `note`는 끝에 붙는 한 줄이다(「새 Work로 시작」).
+    /// 머리말(v1 구현 스펙 S10) — Runtime이 어디서 일하는지를 말한다. Thread id · 제목, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
+    /// worktree 또는 「읽기만」 · 브랜치), 읽는 범위의 「- Space:」 줄(03 §11), Work면 spec 배치다. 앱 기능 도구의 쓰임은 말하지 않는다 —
+    /// 도구 설명이 말한다. Session의 첫 말과 새로 연 뒤의 첫 말, 그리고 Session이 들은 것과 Space 줄이 다른 말에 따로 된 텍스트 블록으로
+    /// 붙는다. 화면은 그리지 않고 `sent` 줄의 `prompt`에만 남는다. `note`는 자리 줄 끝에 붙는 한 줄이다(「새 Work로 시작」).
     fn thread_preamble(&self, thread: &str, note: Option<&str>) -> Result<Preamble, HostError> {
         let file = self.read_thread_file(thread)?;
         let mut text = format!("{PREAMBLE_HEAD}\n\n- Thread id: `{thread}`\n- 제목: {}\n", file.title);
@@ -1156,6 +1145,9 @@ impl ConversationHost {
             Some(slug) => match self.open_work(slug) {
                 Ok(work_at) => {
                     text.push_str(&work::work_lines(slug, &work_at));
+                    if work_at.places.worktrees.iter().any(|tree| !tree.is_dir()) {
+                        text.push_str(&format!("  - 읽기만인 Project를 고치려면 먼저 `{}`을 부른다\n", thread_tools::START_EDITING));
+                    }
                     Some(work_at.meta)
                 }
                 Err(_) => {
@@ -1167,48 +1159,12 @@ impl ConversationHost {
         // 읽는 범위(03 §7 · §11) — Work 줄 뒤의 따로 선 한 줄이다. Work 줄의 꼴은 바꾸지 않는다(화면 L3가 그 줄을 읽는다).
         let space = space::space_preamble(&self.scope_of(&file, work.as_ref()));
         text.push_str(&space);
-        if self.thread_tools.is_some() {
-            text.push_str(&format!(
-                "- Thread 도구: MCP 서버 `{}`의 도구로 이 Thread를 다룬다. Thread id는 넘기지 않는다 — 이 Session의 Thread다.\n  \
-                 - `rename_thread`(title) — Thread 이름을 바꾼다. 일이 무엇인지 드러나는 짧은 이름으로.\n  \
-                 - `{}`() — 등록된 Project와 그 저장소의 브랜치들. Work를 제안하기 전에 본다.\n  \
-                 - `{}`() — 이 Thread의 Work(spec 폴더 · 브랜치 · Project마다 worktree 또는 읽기만).\n  \
-                 - `{}`(title, slug, reason, branch, projects) — 일이 커지면 Work로 묶자고 사람에게 카드로 묻고, 사람이 고를 \
-                 때까지 기다린다. Work는 사람의 `atelier` MCP(`atelier_start_work`)가 아니라 이 도구로 만든다 — 그래야 이 Thread가 \
-                 그 Work에 이어진다.\n  \
-                 - `{}`(project, reason) — Work의 Project를 처음 고치기 전에 부른다. 그 Project에만 worktree를 만들어 경로를 \
-                 돌려준다. Work에 없는 Project면 사람에게 카드로 묻는다.\n  \
-                 - `{}`() — Space(함께 다루는 Project의 묶음)마다 slug · 이름 · Project · 설명 첫 줄과, 이 Thread의 지금 Space.\n  \
-                 - `{}`(space, projects, reason) — 이 Thread의 Space(Work에 이었으면 그 Work의 Space)를 붙이고 · 바꾸고 · 뺀다. \
-                 Atelier가 묻지 않고 붙이거나 사람에게 카드로 묻고 고를 때까지 기다린다. 바뀐 범위는 다음 말부터 읽는다.\n  \
-                 - 다루는 Project가 정해지면 `{}`로 그 Project를 담은 Space를 보고 `{}`로 붙인다. 이미 붙어 있으면 바꿀 까닭이 \
-                 있을 때만 부른다.\n  \
-                 - `{}`(path, name, description) — 사람의 폴더를 Project로 등록한다. git 저장소가 아니거나 저장소 안의 하위 폴더면 \
-                 사람에게 카드로 묻는다.\n  \
-                 - `{}`(project, name, description, baseBranch) — Project의 이름 · 설명 · 기준 브랜치를 고친다. 기준 브랜치는 그 \
-                 저장소에 있는 브랜치만 받는다.\n  \
-                 - `{}`(name, projects, description) — Space를 만든다. Space를 만들기 전에 초안을 보이고 사람이 좋다고 하면 만든다.\n  \
-                 - `{}`(space, name, description, add, remove) — Space의 이름 · 설명을 고치고 Project를 넣고 뺀다.\n  \
-                 - 이 넷은 사람이 대화로 부탁한 설정이라 승인 카드 없이 하고, 흐름에 결과 카드가 선다. Project 제거 · Space 삭제를 \
-                 부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › Projects에서 \
-                 api-server의 ⋯ › 제거를 눌러 주세요.」 Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다.\n",
-                thread_tools::SERVER_NAME,
-                thread_tools::LIST_PROJECTS,
-                thread_tools::GET_WORK,
-                thread_tools::PROPOSE_WORK,
-                thread_tools::START_EDITING,
-                thread_tools::LIST_SPACES,
-                thread_tools::SET_SPACE,
-                thread_tools::LIST_SPACES,
-                thread_tools::SET_SPACE,
-                thread_tools::ADD_PROJECT,
-                thread_tools::EDIT_PROJECT,
-                thread_tools::CREATE_SPACE,
-                thread_tools::EDIT_SPACE
-            ));
-        }
         if let Some(note) = note {
             text.push_str(note);
+        }
+        // 배치 글은 사람이 고칠 수 있으니 「- Space:」 줄 뒤에 둔다 — 기록에서 그 줄을 읽는 쪽이 먼저 만나는 것이 진짜 Space 줄이다.
+        if work.is_some() {
+            text.push_str(&format!("\n{}\n", self.spec_layout()));
         }
         Ok(Preamble { block: json!({"type": "text", "text": text}), space })
     }

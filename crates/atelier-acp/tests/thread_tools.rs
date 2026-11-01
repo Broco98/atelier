@@ -102,15 +102,58 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     assert_ne!(answer["isError"], true, "{answer}");
     assert_eq!(answer["content"][0]["text"], "Thread 이름을 바꿨다 — 환불 API 버그", "도구의 답이 claude에게 돌아간다");
 
-    let sent = of_kind(&record, "sent");
-    let preamble = sent[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말");
-    assert!(
-        preamble.contains("atelier-thread") && preamble.contains("rename_thread"),
-        "머리말이 Thread 도구를 쓰는 법을 싣는다(S42):\n{preamble}"
-    );
-
     host.shut_down();
     assert!(!place.exists(), "Session이 끝나면 소켓을 치운다: {}", place.display());
+}
+
+/// 시스템 프롬프트가 없으니 앱 기능 도구는 일반 MCP 도구다 — 첫 말은 자리만 말하고, 언제 무엇을 부르는지는 Runtime이 `tools/list`로
+/// 받는 설명이 말한다.
+#[test]
+fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명이_말한다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(calling(&sandbox, &rename_call("환불 API 버그")));
+
+    let thread = host.start_thread("환불이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
+    assert!(preamble.contains("\n- Work: 없음 — 이 Thread 폴더에서 일한다: `"), "Work 줄의 꼴은 그대로다(L3 `workTitleOf`):\n{preamble}");
+    assert!(preamble.lines().any(|line| line.starts_with("- Space:")), "{preamble}");
+    assert!(!preamble.contains("Spec layout"), "Work 없는 채팅에는 spec 배치가 없다:\n{preamble}");
+    for name in [
+        "atelier-thread",
+        "rename_thread",
+        "list_projects",
+        "get_work",
+        "propose_work",
+        "start_editing",
+        "list_spaces",
+        "set_space",
+        "add_project",
+        "edit_project",
+        "create_space",
+        "edit_space",
+    ] {
+        assert!(!preamble.contains(name), "머리말이 도구 쓰는 법을 나열하지 않는다 — {name}:\n{preamble}");
+    }
+
+    let session = sandbox.thread_session_id(&thread);
+    for (name, says) in [
+        ("rename_thread", "이름을 바꾼다"),
+        ("list_projects", "Work 만들기를 제안하기 전에 부른다"),
+        ("get_work", "이 Thread가 이어진 Work"),
+        ("propose_work", "일이 커지면 부른다"),
+        ("propose_work", "atelier_start_work가 아니라 이 도구로 만든다"),
+        ("start_editing", "처음 고치기 전에 부른다"),
+        ("list_spaces", "set_space 전에 부른다"),
+        ("add_project", "Project로 등록한다"),
+        ("edit_project", "기준 브랜치는 그 저장소에 이미 있는 브랜치만 받는다"),
+    ] {
+        let guide = sandbox.claude_tool_guide(&session, name);
+        assert!(guide.contains(says), "{name}의 설명이 쓰임을 말한다 — {says}:\n{guide}");
+    }
 }
 
 #[test]
@@ -168,7 +211,6 @@ fn agent_저장과_agent_부르기_도구는_도구_목록에도_머리말에도
     let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
     assert!(listed.contains(&"rename_thread"), "앱 기능 도구 목록: {listed:?}");
     let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
-    assert!(preamble.contains("rename_thread"), "머리말:\n{preamble}");
     for gone in ["save_agent", "call_agent"] {
         assert!(!listed.contains(&gone), "앱 기능 도구 목록: {listed:?}");
         assert!(!preamble.contains(gone), "머리말:\n{preamble}");

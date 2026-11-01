@@ -41,17 +41,14 @@ pub(crate) const SERVER_NAME: &str = "atelier-thread";
 /// 목록 · 부르기 · 글 결과)은 네 판이 같다.
 const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-/// 서버가 맞이에서 건네는 쓰는 법 — claude가 Agent에게 보인다. 도구마다의 것은 도구의 설명에 있다.
-const INSTRUCTIONS: &str = "이 서버의 도구는 지금 이 Atelier Thread를 다룬다. Thread id는 넘기지 않는다 — 부른 Session의 Thread다.";
-
 /// 「Thread 이름 바꾸기」(S13).
 const RENAME_THREAD: &str = "rename_thread";
 
 /// 「Project 목록」(S13, v1 티켓 30).
-pub(crate) const LIST_PROJECTS: &str = "list_projects";
+const LIST_PROJECTS: &str = "list_projects";
 
 /// 「Work 읽기」(S13, v1 티켓 30).
-pub(crate) const GET_WORK: &str = "get_work";
+const GET_WORK: &str = "get_work";
 
 /// 「Work 만들기 제안」(S13 · §11, v1 티켓 30).
 pub(crate) const PROPOSE_WORK: &str = "propose_work";
@@ -60,27 +57,29 @@ pub(crate) const PROPOSE_WORK: &str = "propose_work";
 pub(crate) const START_EDITING: &str = "start_editing";
 
 /// 「Space 목록」(03 구현 스펙 §11 · 티켓 08).
-pub(crate) const LIST_SPACES: &str = "list_spaces";
+const LIST_SPACES: &str = "list_spaces";
 
 /// 「Space 붙이기」(03 구현 스펙 §11 · S11 · S12 · 티켓 08).
-pub(crate) const SET_SPACE: &str = "set_space";
+const SET_SPACE: &str = "set_space";
 
 /// 「Project 추가」(03 구현 스펙 §12 · 티켓 12).
-pub(crate) const ADD_PROJECT: &str = "add_project";
+const ADD_PROJECT: &str = "add_project";
 
 /// 「Project 고치기」(03 구현 스펙 §12 · 티켓 12).
-pub(crate) const EDIT_PROJECT: &str = "edit_project";
+const EDIT_PROJECT: &str = "edit_project";
 
 /// 「Space 만들기」(03 구현 스펙 §12 · S6 · 티켓 12).
-pub(crate) const CREATE_SPACE: &str = "create_space";
+const CREATE_SPACE: &str = "create_space";
 
 /// 「Space 고치기」(03 구현 스펙 §12 · 티켓 12).
-pub(crate) const EDIT_SPACE: &str = "edit_space";
+const EDIT_SPACE: &str = "edit_space";
 
-/// 대화로 하는 설정 넷이 함께 지키는 것(§12 · S13) — 묻지 않고 하는 일, 결과 카드, 지우는 도구가 없다는 것.
+/// 대화로 하는 설정 넷이 함께 지키는 것(§12 · S13) — 묻지 않고 하는 일, 결과 카드, 지우는 도구가 없어 화면을 안내한다는 것.
 const SETTING_NOTE: &str = "사람이 대화로 부탁한 설정이다 — 승인 카드 없이 곧바로 하고, 흐름에 결과 카드가 서서 사람이 그 카드의 단추(Project \
 추가 · 고치기와 Space 만들기는 「열기」, Space 고치기는 「관계 보기」)로 그 화면에서 다시 고친다. 화면에서 하는 것과 같은 파일을 같은 꼴로 \
-쓴다. Project 제거 · Space 삭제는 도구가 없다 — 화면에서만 한다.";
+쓴다.\n\n\
+Project 제거 · Space 삭제는 도구가 없다. 부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › \
+Projects에서 api-server의 ⋯ › 제거를 눌러 주세요.」 Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다.";
 
 /// 「Project 추가」의 쓰는 법 — 폴더의 갈래마다 무엇이 일어나는지(§12 · §15).
 const ADD_PROJECT_GUIDE: &str = "사람의 폴더(git 저장소 하나)를 Atelier의 Project로 등록한다. 사람이 폴더를 등록해 달라고 할 때 부른다.\n\n\
@@ -170,13 +169,13 @@ pub fn run_thread_tools(socket: Option<OsString>) -> i32 {
     0
 }
 
-/// `initialize`의 답 — 판 · 능력(도구) · 이름 · 쓰는 법.
+/// `initialize`의 답 — 판 · 능력(도구) · 이름. 서버 지침(`instructions`)은 싣지 않는다 — claude가 그 글을 시스템 프롬프트에 넣는다. 쓰임은
+/// 도구의 설명이 말한다.
 fn welcome(params: &Value) -> Value {
     json!({
         "protocolVersion": agreed(params["protocolVersion"].as_str()),
         "capabilities": {"tools": {}},
         "serverInfo": {"name": SERVER_NAME, "title": "Atelier Thread", "version": env!("CARGO_PKG_VERSION")},
-        "instructions": INSTRUCTIONS,
     })
 }
 
@@ -486,7 +485,7 @@ pub(crate) fn list() -> Value {
                     },
                     "projects": {
                         "type": "array",
-                        "description": "고칠 Project — 카드에 「Host 추천」으로 선다. 기획만이면 빈 목록",
+                        "description": "고칠 Project — 카드에 「추천」으로 선다. 기획만이면 빈 목록",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -805,6 +804,13 @@ mod tests {
         assert_eq!(agreed(Some("2024-11-05")), "2024-11-05");
         assert_eq!(agreed(Some("2099-01-01")), "2025-11-25");
         assert_eq!(agreed(None), "2025-11-25");
+    }
+
+    #[test]
+    fn 맞이에는_서버_지침이_없다_claude가_시스템_프롬프트에_넣기_때문이다() {
+        let hello = welcome(&json!({"protocolVersion": "2025-06-18"}));
+        assert_eq!(hello["serverInfo"]["name"], SERVER_NAME);
+        assert!(hello.get("instructions").is_none(), "앱은 Runtime의 시스템 프롬프트에 글을 보태지 않는다 — 쓰임은 도구 설명이 말한다: {hello}");
     }
 
     #[test]

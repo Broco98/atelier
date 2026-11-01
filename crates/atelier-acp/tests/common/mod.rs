@@ -296,6 +296,15 @@ impl Sandbox {
         json_lines(&self.claude_receipts().join(format!("{session_id}.mcp")))
     }
 
+    /// 그 Session의 claude가 `tools/list`로 받은 도구의 설명 — 앱 기능 도구의 쓰임을 Runtime에게 말하는 자리다. 영수증은 도구를 부른
+    /// 때에 남으므로 턴에서 도구 하나는 불러야 한다.
+    pub fn claude_tool_guide(&self, session_id: &str, tool: &str) -> String {
+        let called = self.claude_mcp(session_id);
+        let tools = called[0]["tools"].as_array().expect("도구 목록");
+        let found = tools.iter().find(|one| one["name"] == tool).unwrap_or_else(|| panic!("도구 목록에 {tool}이 없다"));
+        found["description"].as_str().expect("도구 설명").to_owned()
+    }
+
     /// 가짜 claude가 `-p`로 뜰 때마다 남긴 줄 — `{pid, args}`, 뜬 차례대로. 되살리기가 실패해 곧바로 끝난 claude도 선다
     /// (three-axes 티켓 16).
     pub fn claude_launches(&self) -> Vec<Value> {

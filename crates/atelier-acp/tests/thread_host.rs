@@ -15,6 +15,9 @@ use serde_json::{json, Value};
 /// 시험의 Library `host.md` — 선호 모델과 생각 깊이를 적었다.
 const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\nmodel:\n  prefer: sonnet\n  effort: high\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
 
+/// spec 배치 글의 머리 줄 — `atelier_start_work`가 건네는 글과 같다.
+const SPEC_LAYOUT_HEAD: &str = "Spec layout — how to arrange documents inside `specDir`.";
+
 /// 두 턴(답만 하는 턴 · 도구를 쓰는 턴)을 되감는 가짜 claude의 로그인 셸.
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
     sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")])
@@ -63,20 +66,14 @@ fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thre
     );
     assert!(same_dir(Path::new(file["cwd"].as_str().expect("cwd")), &dir), "Work 없는 Thread의 cwd는 Thread 폴더다(S11)");
 
-    assert!(!dir.join("agents/host.md").exists(), "정의를 스냅숏하지 않는다");
-    let instructions = dir.join("agents/host.instructions.md");
-    assert_eq!(
-        std::fs::read_to_string(&instructions).unwrap(),
-        "너는 시험 Thread의 Host다.",
-        "지시문 파일은 본문만 담는다 — frontmatter가 프롬프트에 들면 안 된다"
-    );
+    assert!(!dir.join("agents").exists(), "앱이 지시문 파일을 두지 않는다");
 
     let session = sandbox.thread_session_id(&thread);
     assert_eq!(file["sessionId"].as_str(), Some(session.as_str()));
     let receipt = sandbox.claude_receipt(&session);
     let args = common::receipt_args(&receipt);
     assert!(has_pair(&args, "--session-id", &session), "{args:?}");
-    assert!(has_pair(&args, "--append-system-prompt-file", instructions.to_str().unwrap()), "영수증에 지시문: {args:?}");
+    assert!(!args.iter().any(|arg| arg.contains("system-prompt")), "앱이 시스템 프롬프트를 덧붙이지 않는다: {args:?}");
     assert!(has_pair(&args, "--model", "sonnet") && has_pair(&args, "--effort", "high"), "영수증에 모델 · 생각 깊이: {args:?}");
     assert!(!args.iter().any(|arg| arg == "--add-dir"), "등록된 Project가 없으면 Work 없는 Thread는 함께 여는 폴더가 없다: {args:?}");
     assert!(same_dir(Path::new(receipt["cwd"].as_str().expect("cwd")), &dir), "claude는 Thread 폴더에서 일한다");
@@ -202,8 +199,8 @@ fn 참여자가_없는_채팅이_앱을_다시_켠_뒤_같은_session으로_이�
     let thread = yesterday(&sandbox);
     let session = sandbox.thread_session_id(&thread);
     assert!(sandbox.thread_json(&thread).get("participants").is_none());
-    // 그사이 사람이 Library의 host.md를 고쳤다 — 모델 · 생각 깊이는 채팅의 값이라 그대로고, 지시문은 01a-7까지 열 때마다 고정 경로에서 읽는다.
-    sandbox.library_agent("host", &HOST_MD.replace("sonnet", "opus").replace("시험 Thread의 Host", "고친 Host"));
+    // 그사이 사람이 Library의 host.md를 고쳤다 — 모델 · 생각 깊이는 채팅의 값이라 그대로다.
+    sandbox.library_agent("host", &HOST_MD.replace("sonnet", "opus"));
 
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     assert_eq!(sandbox.claude_launches().len(), 1, "다시 지어도 띄우지 않는다");
@@ -214,14 +211,11 @@ fn 참여자가_없는_채팅이_앱을_다시_켠_뒤_같은_session으로_이�
     assert_eq!(launches.len(), 2, "보낼 때 하나가 뜬다");
     let revived = &launches[1];
     assert!(has_pair(revived, "--resume", &session), "thread.json의 Session id로 되살린다: {revived:?}");
-    let instructions = sandbox.thread_dir(&thread).join("agents/host.instructions.md");
     assert!(
-        has_pair(revived, "--append-system-prompt-file", instructions.to_str().unwrap())
-            && has_pair(revived, "--model", "sonnet")
-            && has_pair(revived, "--effort", "high"),
-        "되살릴 때도 지시문 · 모델 · 생각 깊이를 다시 싣는다 — `-p --resume`은 되살리지 않는다: {revived:?}"
+        has_pair(revived, "--model", "sonnet") && has_pair(revived, "--effort", "high"),
+        "되살릴 때도 모델 · 생각 깊이를 다시 싣는다 — `-p --resume`은 되살리지 않는다: {revived:?}"
     );
-    assert_eq!(std::fs::read_to_string(&instructions).unwrap(), "너는 고친 Host다.", "지시문은 Library의 host.md 본문이다");
+    assert!(!revived.iter().any(|arg| arg.contains("system-prompt")), "되살려도 시스템 프롬프트를 덧붙이지 않는다: {revived:?}");
     assert_eq!(common::opened_hows(&record), ["new", "resumed"], "열림 줄이 맥락을 이었다고 말한다");
     assert_eq!(sandbox.thread_session_id(&thread), session, "같은 Session이다");
     let stdin = sandbox.claude_stdin(&session);
@@ -332,6 +326,10 @@ fn 이_work에_이은_thread는_thread_json에_work를_적고_worktree에서_spe
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     let work = sandbox.work("cart", &["fe"]);
+    let meta = work.join("work.json");
+    let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&meta).unwrap()).unwrap();
+    file["branch"] = json!("feat/cart");
+    std::fs::write(&meta, file.to_string()).unwrap();
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
 
     let thread = host.start_thread("장바구니를 고치자", ThreadLink::Work { slug: "cart".into() }).expect("이 Work");
@@ -351,11 +349,31 @@ fn 이_work에_이은_thread는_thread_json에_work를_적고_worktree에서_spe
     assert!(
         preamble.contains("- Work: `cart` — cart 제목")
             && preamble.contains(&format!("spec 폴더(specDir): `{}`", spec.display()))
-            && preamble.contains(&format!("Project `fe`: worktree `{}`", work.join("trees/fe").display())),
-        "머리말이 이어진 Work를 싣는다(S10):\n{preamble}"
+            && preamble.contains(&format!("Project `fe`: worktree `{}`", work.join("trees/fe").display()))
+            && preamble.contains("브랜치: `feat/cart`"),
+        "머리말이 이어진 Work의 이름 · 브랜치 · worktree · spec 폴더를 싣는다(S10):\n{preamble}"
     );
+    assert!(preamble.contains(SPEC_LAYOUT_HEAD) && preamble.contains("overview.md"), "머리말이 spec 배치를 싣는다:\n{preamble}");
+    assert!(!preamble.contains("start_editing"), "worktree가 모두 섰으면 고치기 시작을 말할 까닭이 없다:\n{preamble}");
 
     host.shut_down();
+}
+
+#[test]
+fn 아직_worktree가_없는_project가_있으면_머리말이_고치기_전에_start_editing을_부르라고_한다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let work = sandbox.work("cart", &["fe", "be"]);
+    std::fs::remove_dir(work.join("trees/be")).unwrap();
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
+
+    let thread = host.start_thread("장바구니를 고치자", ThreadLink::Work { slug: "cart".into() }).expect("이 Work");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().unwrap().to_owned();
+    assert!(preamble.contains("Project `be`: 읽기만 — worktree가 아직 없다"), "{preamble}");
+    assert!(preamble.contains("읽기만인 Project를 고치려면 먼저 `start_editing`을 부른다"), "{preamble}");
 }
 
 #[test]
@@ -366,10 +384,13 @@ fn worktree가_없는_work의_thread는_spec_폴더에서_일하고_새_work로_
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
 
     let in_work = host.start_thread("문서부터", ThreadLink::Work { slug: "cart".into() }).expect("이 Work");
-    sandbox.wait_thread_kind(&in_work, "turn-end", 1);
+    let record = sandbox.wait_thread_kind(&in_work, "turn-end", 1);
     let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(&in_work));
     assert!(same_dir(Path::new(receipt["cwd"].as_str().unwrap()), &work.join("spec")), "worktree 없는 Work는 spec 폴더다(S11)");
     assert!(!common::receipt_args(&receipt).iter().any(|arg| arg == "--add-dir"));
+    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().unwrap().to_owned();
+    assert!(preamble.contains(SPEC_LAYOUT_HEAD), "기획만 하는 Work도 spec 배치를 받는다:\n{preamble}");
+    assert!(!preamble.contains("브랜치:") && !preamble.contains("start_editing"), "브랜치도 고칠 Project도 없다:\n{preamble}");
 
     let new_work = host.start_thread("새로 시작하자", ThreadLink::NewWork).expect("새 Work로 시작");
     sandbox.wait_thread_kind(&new_work, "turn-end", 1);
