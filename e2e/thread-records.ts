@@ -21,7 +21,7 @@ import { fireEvent } from "./harness";
 
 const RECORDS = join(REPO_ROOT, "crates/atelier-acp/tests/records");
 
-/** L1이 축복한 기록 하나 — 줄마다 `{seq, at, kind, who?, payload}`다. 끝의 빈 줄은 버린다. */
+/** L1이 축복한 기록 하나 — 줄마다 `{seq, at, kind, payload}`다. 끝의 빈 줄은 버린다. */
 export function record(name: string): RecordLine[] {
   return readFileSync(join(RECORDS, `${name}.jsonl`), "utf8")
     .split("\n")

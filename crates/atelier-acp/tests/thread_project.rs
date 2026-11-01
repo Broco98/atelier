@@ -134,7 +134,6 @@ fn work에_있는_project를_처음_고치면_묻지_않고_그_project에만_wo
     assert!(of_kind(&record, "question").is_empty(), "Work에 있는 Project는 묻지 않는다(S21)");
     let lines = of_kind(&record, "work");
     assert_eq!(lines.len(), 1, "{}", common::lines_text(&record));
-    assert!(lines[0].get("who").is_none(), "시스템 줄이다(S8): {}", lines[0]);
     assert_eq!(
         lines[0]["payload"],
         json!({"state": "worktree", "project": "api-server", "branch": "fix/refund-api",
@@ -159,7 +158,6 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
     let thread = host.start_thread("환불 버튼이 두 번 눌려요", in_refund()).expect("Work에 이은 Thread");
 
     let asked = wait_card(&sandbox, &thread, "asked");
-    assert_eq!(asked["who"], "host", "물은 Agent가 줄의 who다(S8)");
     assert_eq!(
         asked["payload"],
         json!({"state": "asked", "requestId": request_of(&asked), "card": "project", "project": "web-app", "name": "web-app",

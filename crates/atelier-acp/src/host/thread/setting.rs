@@ -173,7 +173,7 @@ impl ConversationHost {
             json!({"state": "answered", "requestId": request, "card": "project-add", "choice": choice.as_str(), "project": project})
         };
         let Some(folder) = folder else {
-            self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), answered(None)).map_err(HostError::Record)?;
+            self.thread_log(thread)?.write(RecordKind::Question, answered(None)).map_err(HostError::Record)?;
             let folder = atelier_core::collapse_home(&card.folder);
             let text = format!(
                 "사람이 추가하지 않기로 했다 — `{folder}`{} Project로 등록하지 않았다. 같은 부탁을 곧바로 다시 하지 않는다.",
@@ -193,7 +193,7 @@ impl ConversationHost {
         let slug = match &added {
             Added::New(view) | Added::Already(view) => view.project.slug.clone(),
         };
-        self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), answered(Some(&slug))).map_err(HostError::Record)?;
+        self.thread_log(thread)?.write(RecordKind::Question, answered(Some(&slug))).map_err(HostError::Record)?;
         let (text, refused) = match self.settle_added(&asked.key, added) {
             Ok(text) => (text, false),
             Err(why) => (why, true),
@@ -383,13 +383,13 @@ impl ConversationHost {
         }
     }
 
-    /// 결과 카드 줄을 남긴다 — 설정을 한 Agent가 줄의 `who`다.
+    /// 결과 카드 줄을 남긴다.
     fn note_setting(&self, key: &SessionKey, setting: Setting) -> Result<(), String> {
         let payload = json!({
             "action": setting.action.as_str(), "slug": setting.slug, "name": setting.name, "title": setting.title, "detail": setting.detail,
         });
         let log = self.thread_log(&key.thread).map_err(|error| error.to_string())?;
-        log.write(RecordKind::Setting, Some(&key.handle), payload)
+        log.write(RecordKind::Setting, payload)
             .map(drop)
             .map_err(|error| format!("설정은 했지만 Thread에 적지 못했다 — {error}"))
     }

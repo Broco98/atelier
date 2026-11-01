@@ -26,12 +26,12 @@
 //!   띄워 `initialize` → `tools/list`를 하고, 그 도구를 가진 서버에 `tools/call`한다. 진짜 claude처럼 `assistant`의
 //!   `tool_use`(`mcp__<서버>__<도구>`)를 낸 뒤에 부르고, 받은 답을 `user`의 `tool_result`로 낸다. 주고받은 것은 `<세션 id>.mcp`에
 //!   부르기마다 `{server, tools, tool, arguments, call}` 한 줄로 남는다.
-//!   - 부르기에 `"by": handle`이 있으면 그 Agent의 claude만 부른다(Thread에는 참여자마다 claude가 뜨고 env는 모두
-//!     같다). 이 claude가 누구의 것인지는 받은 `--append-system-prompt-file`의 이름(`<handle>.instructions.md`)이다.
+//!   - 부르기에 `"launch": 차례`가 있으면 그 차례(0부터)로 뜬 claude만 부른다 — 채팅마다 claude가 뜨고 env는 모두 같다.
 //!   - 부르기에 `"at": "result"`가 있으면 턴의 앞머리가 아니라 그 턴의 `result` 바로 앞(턴의 도구를 다 쓴 뒤)에서 부른다(v1 티켓
 //!     18 — 파일을 고친 Agent가 카드의 답을 기다리며 그 턴을 이어 가는 꼴). 스스로 이어 간 턴의 `result` 앞에서는 부르지 않는다.
-//! - `FAKE_CLAUDE_AGENT_FIXTURES` — `{handle: 원문}` JSON. 이 claude가 그 Agent의 것이면 `FAKE_CLAUDE_FIXTURE` 대신 그 원문을
-//!   되감는다(v1 티켓 16 — 한 Thread의 Agent들이 다른 턴을 돈다).
+//! - `FAKE_CLAUDE_LAUNCH_FIXTURES` — `[원문 | null, …]` JSON. 뜬 차례(0부터 — 영수증 `launches`의 줄 수)의 칸이 있으면
+//!   `FAKE_CLAUDE_FIXTURE` 대신 그 원문을 되감는다 — 둘째 채팅이 첫 채팅과 다른 턴을 돈다. 시험이 채팅을 하나씩 세우므로 차례가 곧
+//!   채팅의 차례다. 다시 띄운 Session도 한 차례를 먹는다.
 //! - `FAKE_CLAUDE_REBASE` — 녹음의 폴더 하나(예 `/tmp/gate/ws/g1/outside`). 있으면 내는 줄마다 그 글을 이 claude의 작업 폴더로 바꿔
 //!   낸다(v1 티켓 22). 원문의 경로는 잰 날의 임시 폴더라 판정에는 늘 「Work 밖 편집」이다 — 작업 자리 안의 편집을 재려면 가짜가
 //!   제 자리의 경로를 물어야 한다. 그 폴더는 진짜 claude처럼 심볼릭 링크를 푼 경로(`getcwd`)다.
@@ -61,7 +61,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, OnceLock};
@@ -97,8 +97,9 @@ fn main() {
         eprintln!("모르는 시나리오: {scenario} (있는 것: {})", SCENARIOS.join(", "));
         std::process::exit(2);
     }
-    let agent = agent_of(&args);
-    let fixture = agent_fixture(agent.as_deref())
+    let receipts = std::env::var_os("FAKE_CLAUDE_RECEIPTS").map(PathBuf::from);
+    let launch = launch_order(receipts.as_deref());
+    let fixture = launch_fixture(launch)
         .or_else(|| std::env::var("FAKE_CLAUDE_FIXTURE").ok())
         .unwrap_or_else(|| "2.1.309/slash-skill-noreplay".to_string());
     let Some(recorded) = claude_replay::fixture(&fixture) else {
@@ -117,9 +118,8 @@ fn main() {
     let session_id = flag_value(&args, "--session-id")
         .or_else(|| resume.clone())
         .unwrap_or_else(|| format!("claude-{}", std::process::id()));
-    let receipts = std::env::var_os("FAKE_CLAUDE_RECEIPTS").map(PathBuf::from);
     let writes = std::env::var_os("FAKE_CLAUDE_PERFORMS_WRITES").is_some();
-    let mcp_calls = mcp_calls_of(agent.as_deref());
+    let mcp_calls = mcp_calls_of(launch);
     let mcp_config = flag_value(&args, "--mcp-config")
         .map(|text| serde_json::from_str::<Value>(&text).expect("--mcp-config는 JSON 글이다"));
     let fake = Fake { receipts, session_id: session_id.clone(), writes, servers: mcp_config, answered: RefCell::default() };
@@ -165,28 +165,27 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
     args.iter().position(|arg| arg == flag).and_then(|at| args.get(at + 1)).cloned()
 }
 
-/// 이 claude가 어느 Agent의 것인가 — 받은 지시문 파일 `<handle>.instructions.md`의 handle. Thread의 Session이 아니면 없다.
-fn agent_of(args: &[String]) -> Option<String> {
-    let path = flag_value(args, "--append-system-prompt-file")?;
-    let name = std::path::Path::new(&path).file_name()?.to_str()?;
-    name.strip_suffix(".instructions.md").map(str::to_owned)
+/// 이 claude가 몇째로 떴나(0부터) — 앞서 뜬 claude가 영수증 `launches`에 남긴 줄 수다. 영수증 폴더가 없으면 첫째다.
+fn launch_order(receipts: Option<&Path>) -> usize {
+    let launches = receipts.and_then(|dir| std::fs::read_to_string(dir.join("launches")).ok());
+    launches.map_or(0, |text| text.lines().count())
 }
 
-/// 그 Agent가 되감을 원문(`FAKE_CLAUDE_AGENT_FIXTURES`) — 없으면 `FAKE_CLAUDE_FIXTURE`를 따른다.
-fn agent_fixture(agent: Option<&str>) -> Option<String> {
-    let table = std::env::var("FAKE_CLAUDE_AGENT_FIXTURES").ok()?;
-    let table: Value = serde_json::from_str(&table).expect("FAKE_CLAUDE_AGENT_FIXTURES는 JSON이다");
-    table[agent?].as_str().map(str::to_owned)
+/// 그 차례의 claude가 되감을 원문(`FAKE_CLAUDE_LAUNCH_FIXTURES`) — 없으면 `FAKE_CLAUDE_FIXTURE`를 따른다.
+fn launch_fixture(launch: usize) -> Option<String> {
+    let table = std::env::var("FAKE_CLAUDE_LAUNCH_FIXTURES").ok()?;
+    let table: Value = serde_json::from_str(&table).expect("FAKE_CLAUDE_LAUNCH_FIXTURES는 JSON이다");
+    table[launch].as_str().map(str::to_owned)
 }
 
-/// 이 claude가 부를 MCP 도구들(`FAKE_CLAUDE_MCP_CALL`) — `by`가 없거나 이 Agent인 것만.
-fn mcp_calls_of(agent: Option<&str>) -> Vec<Value> {
+/// 이 claude가 부를 MCP 도구들(`FAKE_CLAUDE_MCP_CALL`) — `launch`가 없거나 이 차례인 것만.
+fn mcp_calls_of(launch: usize) -> Vec<Value> {
     let Ok(text) = std::env::var("FAKE_CLAUDE_MCP_CALL") else { return Vec::new() };
     let calls = match serde_json::from_str::<Value>(&text).expect("FAKE_CLAUDE_MCP_CALL은 JSON이다") {
         Value::Array(calls) => calls,
         call => vec![call],
     };
-    calls.into_iter().filter(|call| call["by"].as_str().is_none_or(|by| Some(by) == agent)).collect()
+    calls.into_iter().filter(|call| call["launch"].as_u64().is_none_or(|order| order as usize == launch)).collect()
 }
 
 /// stdio MCP 서버 자리의 오래 사는 자식. stdout을 따로 문다 — stream-json 선에 섞이면 안 된다.

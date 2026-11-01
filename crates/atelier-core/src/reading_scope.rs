@@ -447,7 +447,6 @@ mod tests {
             &home.root(),
             crate::NewThread { title: "환불".into(), work: Some("refund".into()), ..Default::default() },
             crate::RecordKind::Sent,
-            None,
             serde_json::json!({"text": "환불"}),
         )
         .unwrap()

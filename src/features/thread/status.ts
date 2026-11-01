@@ -132,8 +132,8 @@ function waitingFor(request: PendingPermission): string {
 }
 
 /**
- * 그 물음이 선 때 — 기록의 물음 줄 시각이다. 요청 id는 Session마다 0부터 세므로 물은 참여자와 함께 찾는다(v1 티켓 25). Work 만들기
- * 카드(v1 티켓 30) · 질문(v1 티켓 26) · Work 밖 Project 카드(v1 티켓 32)는 `question` 줄이다.
+ * 그 물음이 선 때 — 기록의 물음 줄 시각이다. Work 만들기 카드(v1 티켓 30) · 질문(v1 티켓 26) · Work 밖 Project 카드(v1 티켓 32)는
+ * `question` 줄이다.
  */
 function askedAt(lines: readonly RecordLine[], request: PendingAsk): string {
   const kind = isCardAsk(request) ? "question" : "permission";
@@ -141,7 +141,7 @@ function askedAt(lines: readonly RecordLine[], request: PendingAsk): string {
     const line = lines[at];
     const payload = isObject(line.payload) ? line.payload : {};
     const asked = line.kind === kind && payload.state === "asked";
-    if (asked && text(payload.requestId) === request.requestId && (line.who ?? "host") === request.who) return line.at;
+    if (asked && text(payload.requestId) === request.requestId) return line.at;
   }
   return "";
 }

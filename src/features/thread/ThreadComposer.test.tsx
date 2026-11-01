@@ -31,7 +31,6 @@ const composer = (over: Partial<ThreadComposerProps> = {}, draft = "") => {
         running={false}
         onSend={quiet}
         onNewThread={none}
-        recipient={null}
         level="always"
         onLevel={none}
         {...over}

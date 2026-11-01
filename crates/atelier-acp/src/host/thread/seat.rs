@@ -6,9 +6,9 @@
 //!   Runtime의 도구 이름으로 가르지 않는다(`policy::Act`).
 //! - **턴이 끝나면 놓는다.** 그 Session의 턴 끝 · 스스로 이어 간 턴의 끝 · 죽음, 그리고 떠 있는 표에서 꺼낼 때다.
 //! - **명령은 쥐지 않는다.** 테스트를 돌리는 Session이 막히지 않게(S20). 명령 요청은 이 자리를 보지 않는다.
-//! - **다른 Session의 편집 요청은 거절한다.** 판정의 셋째 칸이다(§9) — 사람에게 묻지 않고 「<주인>이 이 Work를 고치는 중이에요 — 끝난
-//!   뒤 다시 하세요」를 그 Agent에게 돌려준다(`permission` 줄 `decided`). 물은 사이에 다른 Session이 쥐었으면, 사람이 허락해도 같은
-//!   글로 거절한다.
+//! - **다른 Session의 편집 요청은 거절한다.** 판정의 셋째 칸이다(§9) — 사람에게 묻지 않고 「「<채팅 이름>」 Thread가 이 Work를 고치는
+//!   중이에요 — 끝난 뒤 다시 하세요」를 그 Runtime에게 돌려준다(`permission` 줄 `decided`). 물은 사이에 다른 Session이 쥐었으면, 사람이
+//!   허락해도 같은 글로 거절한다.
 //! - Work 없는 Thread에는 쓰기 자리가 없다 — 그 Thread 폴더는 그 Thread만 쓴다.
 //!
 //! three-axes 승인 길(`session/request_permission`)에서만 본다. 사용자의 Claude Code 설정이 허용한 편집은 엔진에 오지 않으므로 이
@@ -255,27 +255,15 @@ impl Writer {
         })
     }
 
-    /// 거절의 글(§10) — 같은 Thread의 주인이면 handle만, 다른 Thread면 그 Thread의 이름을 앞에 단다.
+    /// 거절의 글(§10) — 주인은 그 Thread의 이름으로 부른다.
     fn busy(&self, owner: &SessionKey) -> String {
-        let who = subject(&owner.handle);
-        if owner.thread == self.key.thread {
-            return format!("{who} 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요");
-        }
         let title = atelier_core::read_thread(&self.data_root, &owner.thread)
             .map(|file| file.title)
             .ok()
             .filter(|title| !title.is_empty())
             .unwrap_or_else(|| owner.thread.clone());
-        format!("「{title}」 Thread의 {who} 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요")
+        format!("「{title}」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요")
     }
-}
-
-/// `@handle` 뒤에 주격 조사를 붙인 것 — 끝 글자가 받침 있는 한글이면 「이」, 아니면 「가」(영문 handle은 대개 모음으로 읽힌다).
-fn subject(handle: &str) -> String {
-    let batchim = handle.chars().last().is_some_and(|last| {
-        ('\u{AC00}'..='\u{D7A3}').contains(&last) && (u32::from(last) - 0xAC00) % 28 != 0
-    });
-    format!("@{handle}{}", if batchim { "이" } else { "가" })
 }
 
 /// 권한 요청의 선택지들 — (`optionId`, `kind`).
@@ -339,13 +327,6 @@ mod tests {
         assert_eq!(seats.owner_against("cart", &other), Some(host.clone()), "주인이 아닌 쪽이 놓아도 그대로다");
         seats.release(&host);
         assert_eq!(seats.take("cart", &other), Ok(true), "주인이 놓으면 빈다");
-    }
-
-    #[test]
-    fn 주인의_이름_뒤에는_받침에_맞는_주격_조사가_붙는다() {
-        assert_eq!(subject("host"), "@host가");
-        assert_eq!(subject("리뷰어"), "@리뷰어가");
-        assert_eq!(subject("검토관"), "@검토관이");
     }
 
     #[test]

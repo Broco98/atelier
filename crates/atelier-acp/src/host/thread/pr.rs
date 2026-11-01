@@ -154,7 +154,7 @@ impl ConversationHost {
             let mut payload = serde_json::to_value(pr).expect("PR은 JSON이다");
             let head = json!({"work": work, "project": project, "first": first});
             payload.as_object_mut().expect("PR은 객체다").extend(head.as_object().expect("객체").clone());
-            match log.write(RecordKind::Pr, None, payload) {
+            match log.write(RecordKind::Pr, payload) {
                 Ok(_) => {
                     marks.insert(project.to_owned(), PrMark::of(pr));
                 }

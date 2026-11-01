@@ -960,20 +960,19 @@ pub async fn thread_send_now(
     to_host(&engine, "지금 전하지 못했습니다", move |host| host.send_thread_now(&thread, &queued)).await
 }
 
-/// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다. 승인
-/// 카드(v1 티켓 24)의 「다시 묻지 않기」면 `remember`, 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
+/// 권한 답 — 그 Thread의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다. 승인 카드(v1 티켓 24)의 「다시 묻지
+/// 않기」면 `remember`, 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
 #[tauri::command]
 pub async fn thread_answer_permission(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     request: String,
     option: String,
     remember: bool,
     words: Option<String>,
 ) -> CmdResult<()> {
     to_host(&engine, "권한 요청에 답하지 못했습니다", move |host| {
-        host.reply_thread_permission(&thread, &who, &request, &atelier_acp::Reply { option, remember, words })
+        host.reply_thread_permission(&thread, &request, &atelier_acp::Reply { option, remember, words })
     })
     .await
 }
@@ -997,20 +996,19 @@ pub async fn thread_answer_work(
     to_host(&engine, "Work 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
 }
 
-/// 질문 답(v1 티켓 26) — 그 참여자의 Session에 걸린 질문(`request` — `question` 줄의 요청 id)에 물음마다의 답(`answers`)으로
+/// 질문 답(v1 티켓 26) — 그 Thread의 Session에 걸린 질문(`request` — `question` 줄의 요청 id)에 물음마다의 답(`answers`)으로
 /// 답한다. 질문 카드의 「나중에」면 `later`이고 답은 비운다.
 #[tauri::command]
 pub async fn thread_answer_question(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     request: String,
     answers: Vec<atelier_acp::QuestionAnswer>,
     later: bool,
 ) -> CmdResult<()> {
     to_host(&engine, "질문에 답하지 못했습니다", move |host| {
         let reply = if later { atelier_acp::QuestionReply::Later } else { atelier_acp::QuestionReply::Answer(answers) };
-        host.answer_thread_question(&thread, &who, &request, &reply)
+        host.answer_thread_question(&thread, &request, &reply)
     })
     .await
 }

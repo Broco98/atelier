@@ -27,23 +27,21 @@ const host = (model: string | null, effort: string | null): Participant => ({
 });
 
 describe("입력창 칩", () => {
-  it("모델 목록과 지금 값은 그 참여자의 열림 줄에서 오고, 「/」 명령은 Runtime이 보낸 마지막 목록이다", () => {
-    const lists = chipLists(blessed, "host");
+  it("모델 목록과 지금 값은 열림 줄에서 오고, 「/」 명령은 Runtime이 보낸 마지막 목록이다", () => {
+    const lists = chipLists(blessed);
     expect(lists.models?.slice(0, 2).map((option) => option.value)).toEqual(["default", "opus"]);
     expect(lists.model).toBe("sonnet");
     expect(lists.commands.length).toBeGreaterThan(0);
-    // 다른 참여자의 줄은 읽지 않는다.
-    expect(chipLists(blessed, "reviewer")).toEqual({ models: null, model: null, commands: [] });
   });
 
   it("고른 모델(참여자 줄)이 Session이 연 값을 이긴다", () => {
-    const lists = chipLists(blessed, "host");
+    const lists = chipLists(blessed);
     expect(currentModel(lists, host(null, null))).toBe("sonnet");
     expect(currentModel(lists, host("opus", "high"))).toBe("opus");
   });
 
   it("칩 글자는 「모델 · 생각 깊이」 — 모델 이름의 괄호 설명은 뗀다", () => {
-    const { models } = chipLists(blessed, "host");
+    const { models } = chipLists(blessed);
     expect(chipLabel(models, "opus", "high")).toBe("Opus 5.5 · 높음");
     expect(chipLabel(models, "default", null)).toBe("Default");
     expect(chipLabel(null, "claude-opus-9", "max")).toBe("claude-opus-9 · 최대");
@@ -53,7 +51,7 @@ describe("입력창 칩", () => {
   // 02 티켓 10 — 칩은 모델 이름을 본문색으로, 생각 깊이를 옅은 글자로 가른다(캔버스 v35 Diff-Chat 「GPT-6.1 Sol High」 · F1-Home 「Claude
   // Code Default」). 글자는 칩 글자 그대로다.
   it("칩 글자를 모델과 생각 깊이 두 조각으로 가른다 — 생각 깊이를 모르면 모델만이다", () => {
-    const { models } = chipLists(blessed, "host");
+    const { models } = chipLists(blessed);
     expect(chipParts(models, "opus", "high")).toEqual({ model: "Opus 5.5", depth: "높음" });
     expect(chipParts(CLAUDE_MODELS, "default", null)).toEqual({ model: "Default", depth: null });
     expect(chipParts(null, null, null)).toEqual({ model: "기본 모델", depth: null });
@@ -68,7 +66,7 @@ describe("입력창 칩", () => {
   // 값은 Session이 연 목록에도 그대로 있어 첫 말 뒤에도 같은 줄에 체크가 선다.
   it("Session이 열리기 전의 모델 목록은 claude가 받는 별칭이고, 열린 뒤의 목록에도 같은 값으로 있다", () => {
     expect(CLAUDE_MODELS.map((option) => option.value)).toEqual(["default", "opus", "fable", "sonnet", "haiku"]);
-    const opened = new Set(chipLists(blessed, "host").models?.map((option) => option.value));
+    const opened = new Set(chipLists(blessed).models?.map((option) => option.value));
     for (const option of CLAUDE_MODELS) expect(opened.has(option.value), option.value).toBe(true);
     expect(chipLabel(CLAUDE_MODELS, "default", null)).toBe("Default");
     expect(chipLabel(CLAUDE_MODELS, "sonnet", "low")).toBe("Sonnet · 낮음");

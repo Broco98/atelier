@@ -17,7 +17,7 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 //                   ▾(그 Work의 Space) · 빈 Space · Space 없음 · 범위 줄 넷 · 고른 Space가 첫 말과 함께 감 · 첫 말 뒤의 Space 칩 · 씨앗
 //                   (`?new=` · `?work=` · `?space=` · `?say=`) · `@` 단추 없음 · `/agent` 없음 · 입력이 있으면 짙은 보내기
 //   다른 spec이 잰다 Work 칩 메뉴의 스위치 둘 · 최근 Work · 기억 · 정도 칩(`thread-work-chip`) · Work 만들기 카드를 받아들인 뒤의 잠긴 칩
-//                   (`thread-work`) · 글로 친 `@`의 Agent 메뉴(`thread-mention`) · 흐름의 Space 줄과 머리 줄의 Space(흐름 「대화 속 Space와
+//                   (`thread-work`) · 흐름의 Space 줄과 머리 줄의 Space(흐름 「대화 속 Space와
 //                   설정」 — `thread-space-setting`)
 //
 // 세계는 시안의 Project 셋 · Space 셋 · Work 넷이다(`thread-space-world`). 읽는 범위는 core가 짓는 모양을 그 세계로 적어 둔 답이고, 이 층은

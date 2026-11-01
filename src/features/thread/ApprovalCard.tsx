@@ -106,7 +106,7 @@ function ApprovalCard({ thread, name, request, scope, cwd, place, count = null, 
   }, [writing]);
 
   const answer = (choice: CardChoice, said: string | null = null) =>
-    send(() => threadApi.answerPermission(thread, request.who, request.requestId, choice.option, choice.remember, said));
+    send(() => threadApi.answerPermission(thread, request.requestId, choice.option, choice.remember, said));
   const choose = (at: number) => {
     const choice = choices[at];
     if (!choice || sent) return;

@@ -27,7 +27,6 @@ import {
 import { SentAttachments } from "./ComposerAttachments";
 import { DocCard } from "./DocCard";
 import { createdDocs } from "./expanded";
-import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
 import { answeredCards } from "./question";
@@ -127,7 +126,7 @@ function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
             runtime={runtime}
             open={expanded[turnKey(thread, turn.key)] === true}
             onToggle={() => toggleTurn(turnKey(thread, turn.key))}
-            waiting={turn.end === null ? waitingFor(model, turn.who ?? "host") : null}
+            waiting={turn.end === null ? waitingFor(model) : null}
             last={turn === last}
             onRetry={onRetry}
             lead={model.system
@@ -179,8 +178,8 @@ function NoticeLine({ notice }: { notice: Notice }) {
  * 도는 턴의 머리줄 끝에 붙는 기다림 — 그 턴이 물은 것이 있으면 무엇을 기다리는지다. 승인은 시안 문장 그대로(「승인을 기다립니다」),
  * 시안에 없는 셋은 해요체다(코드 리뷰 1차 A4).
  */
-function waitingFor(model: ThreadModel, who: string): string | null {
-  const ask = model.asks.find((one) => one.who === who);
+function waitingFor(model: ThreadModel): string | null {
+  const ask = model.asks[0];
   if (!ask) return null;
   if (isToolCardAsk(ask)) return toolCardRow(ask.card).waiting;
   return ask.card === "question" ? "질문의 답을 기다려요" : "승인을 기다립니다";
@@ -256,7 +255,7 @@ function TurnView({
       {turn.sent !== null && (
         // 말풍선 앞은 흐름의 줄 사이(`TURN_GAP`)보다 2를 더 띄운다 — 답 끝 → 다음 말풍선 52(`TURN_GAP` 머리말).
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col not-first:mt-0.5">
-          <UserMessage text={turn.sent} to={turn.who} attachments={turn.attachments} quote={turn.quote} />
+          <UserMessage text={turn.sent} attachments={turn.attachments} quote={turn.quote} />
         </div>
       )}
       {lead}
@@ -430,32 +429,20 @@ function DecisionRow({ entry }: { entry: DecisionEntry }) {
 /**
  * 사람이 보낸 말(02 구현 스펙 §8 · Diff-Chat 「말풍선」) — 오른쪽 정렬, 줄 폭의 70%까지, 안쪽 10 / 16, 옅은 파랑 바탕(`bubble-user`)에
  * 짙은 남색 글자(`fg-bubble`). 둥글기는 superellipse 22이고 `corner-shape`가 없는 WebKit(앱 · L3)에서는 16의 둥근 네모다(S24 —
- * `speech`). 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로 선다. 받는 이를 고른 멘션은 링크 색 500이다(보드 「길게 · 멘션」, v1 티켓
- * 14 — `mentionOf`).
+ * `speech`). 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로 선다.
  */
 export function UserMessage({
   text,
-  to = null,
   attachments = [],
   quote = null,
 }: {
   text: string;
-  to?: string | null;
   attachments?: readonly Attachment[];
   quote?: Quote | null;
 }) {
-  const mention = to === null ? null : mentionOf(text, to);
   const bubble = (
     <p className="max-w-[70%] self-end rounded-speech corner-superellipse bg-bubble-user px-4 py-2.5 text-fg-bubble whitespace-pre-wrap wrap-anywhere">
-      {mention ? (
-        <>
-          {text.slice(0, mention.start)}
-          <span className="font-medium text-link">{text.slice(mention.start, mention.end)}</span>
-          {text.slice(mention.end)}
-        </>
-      ) : (
-        text
-      )}
+      {text}
     </p>
   );
   if (attachments.length === 0 && quote === null) return bubble;

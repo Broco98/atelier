@@ -4,7 +4,7 @@
 //! 종류 · 「반쪽 줄」 규칙이 두 곳으로 갈리면 한쪽이 적은 줄을 다른 쪽 읽기가 조용히 버린다. 대화 호스트(`atelier-acp`)가
 //! 이 크레이트에 의존하므로 정본은 이쪽에 산다(v1 티켓 02).
 //!
-//! - 한 줄은 `{seq, at, kind, who?, payload}`이고 seq는 기록마다 1부터 는다. 줄 하나는 쓰기 한 번에 붙는다.
+//! - 한 줄은 `{seq, at, kind, payload}`이고 seq는 기록마다 1부터 는다. 줄 하나는 쓰기 한 번에 붙는다.
 //! - 끝에 줄바꿈이 없는 꼬리는 쓰는 중이거나 쓰다 끊긴 줄이라 읽기가 버린다. 반쪽 줄은 끝에만 생긴다.
 
 use std::fs::{File, OpenOptions};
@@ -22,10 +22,6 @@ pub struct RecordLine {
     pub seq: u64,
     pub at: String,
     pub kind: RecordKind,
-    /// 그 줄을 낸 참여자의 handle(v1 구현 스펙 S8). **사람과 시스템의 줄에는 칸이 없다** — three-axes 대화 기록은 이 칸 없이
-    /// 적혀 축복한 기록(`tests/records/`)과 글자 하나 다르지 않다.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub who: Option<String>,
     pub payload: Value,
 }
 
@@ -35,7 +31,7 @@ pub struct RecordLine {
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
     /// 보낸 말 — 화면에 보일 글 · 인용(붙었으면) · 실제로 보낸 내용 블록(머리말 · 인용 블록 포함) · 지금 보내기였는지. Thread는
-    /// 받는 Agent · 첨부 경로 · 넘긴 머리말과 지난 말을 함께 담는다.
+    /// 첨부 경로 · 넘긴 머리말과 지난 말을 함께 담는다.
     Sent,
     /// `session/update` 원문(턴 밖 것 포함).
     Update,
@@ -55,10 +51,6 @@ pub enum RecordKind {
     Config,
     /// Agent가 낸 질문과 답. Work 만들기 카드도 이 종류다.
     Question,
-    /// 참여 — 참여자가 Thread에 들어왔다.
-    Joined,
-    /// 나감 — 참여자가 Thread에서 나갔다.
-    Left,
     /// Work 연결 · worktree 생성 · Project 붙임.
     Work,
     /// Thread 이름 바꿈.
@@ -103,9 +95,9 @@ impl RecordLog {
         self.last_seq
     }
 
-    /// 한 줄을 적고 그 줄을 돌려준다 — 부르는 쪽이 같은 값을 이벤트로 내보낸다. `who`는 참여자의 줄에만 준다(S8).
-    pub fn append(&mut self, kind: RecordKind, who: Option<&str>, payload: Value) -> Result<RecordLine> {
-        let line = RecordLine { seq: self.last_seq + 1, at: record_time(), kind, who: who.map(str::to_owned), payload };
+    /// 한 줄을 적고 그 줄을 돌려준다 — 부르는 쪽이 같은 값을 이벤트로 내보낸다.
+    pub fn append(&mut self, kind: RecordKind, payload: Value) -> Result<RecordLine> {
+        let line = RecordLine { seq: self.last_seq + 1, at: record_time(), kind, payload };
         let mut text = serde_json::to_string(&line).expect("기록 줄은 JSON이다");
         text.push('\n');
         // 한 번의 쓰기로 줄 전체를 붙인다 — 반쪽 줄은 끝에만 생길 수 있고, 읽기가 그것을 버린다.

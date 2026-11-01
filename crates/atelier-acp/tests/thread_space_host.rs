@@ -141,7 +141,6 @@ fn 알아서이고_space가_없고_맞는_space가_넘긴_것_하나뿐이면_�
     assert_eq!(sandbox.thread_json(&thread)["space"], "결제-서비스", "Thread 파일의 space만 고친다");
     let lines = of_kind(&record, "space");
     assert_eq!(lines.len(), 1, "{}", common::lines_text(&record));
-    assert!(lines[0].get("who").is_none(), "Space 줄은 시스템 줄이다(S8): {}", lines[0]);
     assert_eq!(
         lines[0]["payload"],
         json!({"change": "attached", "space": "결제-서비스", "name": "결제 서비스", "before": null, "work": null,
@@ -188,7 +187,6 @@ fn 알아서가_아니면_질문_카드가_추천_후보_space_없이로_서고_
     let (host, thread) = asking_thread(&sandbox, &[set_payments(&["api-server"])]);
 
     let asked = wait_card(&sandbox, &thread, "asked");
-    assert_eq!(asked["who"], "host", "물은 Agent가 줄의 who다(S8)");
     let mut card = asked["payload"].clone();
     card.as_object_mut().unwrap().remove("requestId");
     assert_eq!(

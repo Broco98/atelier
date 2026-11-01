@@ -123,7 +123,6 @@ fn work_없는_thread에_space를_붙이면_다음_말부터_같은_session을_�
     host.set_thread_space(&thread, Some("결제-서비스")).expect("Space 붙이기");
     assert_eq!(sandbox.thread_json(&thread)["space"], "결제-서비스", "그 Thread 파일의 space만 고친다");
     let line = of_kind(&sandbox.thread_record(&thread), "space").last().map(|line| (*line).clone()).expect("Space 줄");
-    assert!(line.get("who").is_none(), "사람이 바꾼 시스템 줄이다(S8): {line}");
     assert_eq!(
         line["payload"],
         json!({"change": "changed", "space": "결제-서비스", "name": "결제 서비스", "before": null, "work": null,

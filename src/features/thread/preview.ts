@@ -2,8 +2,8 @@ import { finalMessages, foldThread, type Turn } from "./fold";
 import type { RecordLine } from "./types";
 
 // 사이드바 Thread 줄의 둘째 줄 — 마지막 말(v1 티켓 07 · 구현 스펙 스토리 128 · 캔버스 「Thread 목록과 아바타」 보드). **순수 함수다**:
-// 기록 줄을 접어(`foldThread` — Thread 화면과 같은 접기) 턴마다의 「말」 가운데 **말한 때가 가장 늦은** 것을 고른다 — 함께 도는 턴(멘션,
-// v1 티켓 14)은 선 차례와 끝난 차례가 다르다. 때가 같으면 뒤에 선 턴의 말이다.
+// 기록 줄을 접어(`foldThread` — Thread 화면과 같은 접기) 턴마다의 「말」 가운데 **말한 때가 가장 늦은** 것을 고른다. 때가 같으면 뒤에 선 턴의
+// 말이다.
 //
 // - **말은 둘이다** — 사람이 보낸 말, 그리고 끝난 턴의 답(접힌 턴에 남는 턴 끝 메시지 — `finalMessages`). 화면이 접어 보이는 것과 같은
 //   말이라, 사이드바와 Thread가 다른 말을 하지 않는다. 엔진의 지난 말(`past.rs`)도 사람의 말과 끝난 턴의 마지막 메시지만 넘긴다.
@@ -11,9 +11,8 @@ import type { RecordLine } from "./types";
 //   상태 칸의 일이다(v1 티켓 41).
 // - 상태(내 차례 · 작업 중 · 실패 · 중단)에 따라 다른 것을 보이는 일은 `status.ts`의 몫이다(v1 티켓 41) — 그 상태가 글을 주지 않으면 이 말이 선다.
 
-/** 마지막 말 — 누가(기록의 `who`, 사람이면 `null`) · 무엇을(한 줄) · 언제. */
+/** 마지막 말 — 무엇을(한 줄) · 언제. */
 export interface Said {
-  who: string | null;
   text: string;
   at: string;
 }
@@ -34,10 +33,10 @@ function saidIn(turn: Turn): Said | null {
     const answers = finalMessages(turn);
     const answer = answers[answers.length - 1];
     const text = answer?.kind === "message" ? oneLine(answer.text) : "";
-    if (text !== "") return { who: turn.who, text, at: turn.end.at };
+    if (text !== "") return { text, at: turn.end.at };
   }
   const sent = turn.sent === null ? "" : oneLine(turn.sent);
-  return sent === "" ? null : { who: null, text: sent, at: turn.startedAt };
+  return sent === "" ? null : { text: sent, at: turn.startedAt };
 }
 
 /**

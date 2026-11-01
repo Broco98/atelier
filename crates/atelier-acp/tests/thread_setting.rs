@@ -135,7 +135,6 @@ fn git_저장소를_추가하면_화면과_같은_project_파일이_서고_결�
     assert!(of_kind(&record, "question").is_empty() && of_kind(&record, "permission").is_empty(), "묻지 않는다(S13)");
     let lines = settings(&record);
     assert_eq!(lines.len(), 1, "{}", common::lines_text(&record));
-    assert_eq!(lines[0]["who"], "host", "한 Agent가 줄의 who다");
     assert_eq!(
         lines[0]["payload"],
         json!({
@@ -224,7 +223,6 @@ fn git이_아닌_폴더는_질문_카드로_묻고_git_init_하고_추가를_고
     let (host, thread) = thread_calling(&sandbox, &[tool("add_project", json!({"path": folder}))]);
 
     let asked = wait_card(&sandbox, &thread, "asked");
-    assert_eq!(asked["who"], "host");
     let mut card = asked["payload"].clone();
     card.as_object_mut().unwrap().remove("requestId");
     let path = atelier_core::collapse_home(&folder);

@@ -152,7 +152,7 @@ impl ConversationHost {
         let text = match choice {
             WorkChoice::Continue => {
                 let line = json!({"state": "answered", "requestId": request, "card": "work", "choice": "continue"});
-                self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), line).map_err(HostError::Record)?;
+                self.thread_log(thread)?.write(RecordKind::Question, line).map_err(HostError::Record)?;
                 CONTINUED.to_owned()
             }
             WorkChoice::Create { projects, branch } => match self.create_work(request, &asked, &projects, branch.as_deref()) {
@@ -225,11 +225,11 @@ impl ConversationHost {
             "state": "answered", "requestId": request, "card": "work", "choice": "create",
             "work": slug, "projects": projects, "branch": work_at.meta.branch,
         });
-        log.write(RecordKind::Question, Some(&asked.key.handle), answered).map_err(HostError::Record)?;
+        log.write(RecordKind::Question, answered).map_err(HostError::Record)?;
         let created = json!({
             "state": "created", "slug": slug, "title": work_at.meta.title, "branch": work_at.meta.branch, "projects": projects,
         });
-        log.write(RecordKind::Work, None, created).map_err(HostError::Record)?;
+        log.write(RecordKind::Work, created).map_err(HostError::Record)?;
         Ok(format!(
             "사람이 Work를 만들었다 — 이 Thread가 그 Work에 이어졌다. 사람이 카드에서 Project와 브랜치를 고쳤을 수 있다: 아래가 \
              정본이다.\n\n{}",
@@ -288,7 +288,7 @@ impl ConversationHost {
         let mut asked = json!({"state": "asked", "requestId": request, "card": kind});
         asked.as_object_mut().expect("객체").extend(fields.as_object().expect("객체").clone());
         let written = self.thread_log(&key.thread).map_err(|error| error.to_string()).and_then(|log| {
-            log.write(RecordKind::Question, Some(&key.handle), asked).map(drop)
+            log.write(RecordKind::Question, asked).map(drop)
         });
         if let Err(why) = written {
             self.threads.proposals.take(&key.thread, &request, kind);
@@ -317,7 +317,7 @@ impl ConversationHost {
     fn withdraw_card(&self, key: &SessionKey, request: &str, kind: &str, reason: &str) {
         let line = json!({"state": "withdrawn", "requestId": request, "card": kind, "reason": reason});
         let written = self.thread_log(&key.thread).map_err(|error| error.to_string()).and_then(|log| {
-            log.write(RecordKind::Question, Some(&key.handle), line).map(drop)
+            log.write(RecordKind::Question, line).map(drop)
         });
         if let Err(error) = written {
             eprintln!("{error}");

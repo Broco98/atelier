@@ -99,7 +99,6 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
 
     let record = sandbox.wait_thread_kind(&thread, "permission", 1);
     let line = of_kind(&record, "permission")[0];
-    assert_eq!(line["who"], "host", "권한 줄은 물은 참여자의 것이다(S8)");
     let asked = &line["payload"];
     assert_eq!((asked["state"].clone(), asked["requestId"].clone()), (json!("asked"), json!("0")));
     assert_eq!(
@@ -118,7 +117,7 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
         "답하지 않은 승인도 끌 때 센다 — 앱을 끄면 그 턴을 잃는다(S40)"
     );
 
-    host.answer_thread_permission(&thread, "host", "0", "allow_once").expect("한 번 허락");
+    host.answer_thread_permission(&thread, "0", "allow_once").expect("한 번 허락");
 
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     assert_eq!(payloads_of(&record, "permission")[1], json!({"requestId": "0", "state": "answered", "optionId": "allow_once"}));
@@ -130,7 +129,7 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
     assert_eq!(answers[0]["response"]["request_id"], "45001ea8-89cb-4f55-b62e-03bd27dbd536", "claude가 물은 그 요청의 답이다");
     assert_eq!(answers[0]["response"]["response"]["behavior"], "allow");
     assert_eq!(
-        host.answer_thread_permission(&thread, "host", "0", "allow_once"),
+        host.answer_thread_permission(&thread, "0", "allow_once"),
         Err(HostError::PermissionClosed { thread: thread.clone(), request: "0".into() }),
         "이미 답한 요청에는 다시 답할 수 없다"
     );
@@ -202,7 +201,6 @@ fn 백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴
     );
     let between = &record[second_end + 1..turn_end_at(&record, 2)];
     assert!(between.iter().all(|line| line["kind"] != "sent"), "보낸 말 없이 온 턴이다");
-    assert!(between.iter().all(|line| line["who"] == "host"), "스스로 이어 간 턴도 Host의 줄이다(S8)");
     assert_eq!(answers_after(between, 0), [SELF_ANSWER], "스스로 이어 간 턴의 답이 턴 밖 update로 적힌다");
     assert!(
         between.iter().any(|line| line["payload"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "started"),
@@ -303,7 +301,7 @@ fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남�
     assert!(sandbox.all_claude_receipts().is_empty(), "판을 본 뒤에는 session/new를 보내지 않는다 — claude가 뜨지 않는다");
     let record = sandbox.thread_record(thread);
     assert!(
-        record.iter().any(|line| line["who"] == "host" && line["payload"]["state"] == "died" && line["payload"]["reason"] == json!(reason)),
+        record.iter().any(|line| line["payload"]["state"] == "died" && line["payload"]["reason"] == json!(reason)),
         "Thread는 남고 기록에 까닭이 선다 — 다음 말에서 다시 띄운다:\n{}",
         common::lines_text(&record)
     );

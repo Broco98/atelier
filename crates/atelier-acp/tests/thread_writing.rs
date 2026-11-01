@@ -57,7 +57,7 @@ fn spec_폴더의_문서에_편집_도구가_서면_그_work의_쓰는_중_목�
 
     // 허락하면 그 도구가 끝나 빠진다 — 빈 목록을 한 번 내고, 턴 끝은 걷을 것이 없어 다시 내지 않는다.
     let request = asked["payload"]["requestId"].as_str().expect("요청 id").to_owned();
-    host.answer_thread_permission(&thread, "host", &request, "allow_once").expect("사람의 답");
+    host.answer_thread_permission(&thread, &request, "allow_once").expect("사람의 답");
     let seen = wait_until("쓰는 중 목록이 비지 않았다", || {
         let seen = writings(&events, "plan");
         if seen.last().is_some_and(Vec::is_empty) {

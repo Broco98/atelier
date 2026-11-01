@@ -20,27 +20,18 @@ const OPTIONS = [
   { optionId: "allow_once", name: "Yes", kind: "allow_once" },
   { optionId: "reject", name: "No", kind: "reject_once" },
 ];
-const joined = (seq: number, handle: string, name: string): RecordLine => ({
-  seq,
-  at: at(seq),
-  kind: "joined",
-  who: handle,
-  payload: { handle, name, avatar: null, from: "library" },
-});
-const sent = (seq: number, to: string, text: string): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text, to } });
-const toolCall = (seq: number, who: string, body: Record<string, unknown>): RecordLine => ({
+const sent = (seq: number, text: string): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text } });
+const toolCall = (seq: number, body: Record<string, unknown>): RecordLine => ({
   seq,
   at: at(seq),
   kind: "update",
-  who,
-  payload: { sessionId: who, update: { sessionUpdate: "tool_call", status: "pending", ...body } },
+  payload: { sessionId: "s", update: { sessionUpdate: "tool_call", status: "pending", ...body } },
 });
-/** 물음 줄 — 요청 id는 Session마다 따로 센다(엔진 `answer_thread_permission`). 두 Agent의 첫 물음은 둘 다 「0」이다. */
-const asked = (seq: number, who: string, call: Record<string, unknown>, requestId = "0"): RecordLine => ({
+/** 물음 줄 — 요청 id는 세션 안에서 겹치지 않는다. */
+const asked = (seq: number, call: Record<string, unknown>, requestId: string): RecordLine => ({
   seq,
   at: at(seq),
   kind: "permission",
-  who,
   payload: {
     state: "asked",
     requestId,
@@ -50,78 +41,71 @@ const asked = (seq: number, who: string, call: Record<string, unknown>, requestI
     policy: "매번 묻기",
   },
 });
-const answered = (seq: number, who: string, optionId: string, requestId = "0"): RecordLine => ({
+const answered = (seq: number, optionId: string, requestId: string): RecordLine => ({
   seq,
   at: at(seq),
   kind: "permission",
-  who,
   payload: { state: "answered", requestId, optionId },
 });
 
 const migrate = {
-  toolCallId: "toolu_host",
+  toolCallId: "toolu_migrate",
   kind: "execute",
   title: "pnpm prisma migrate dev --name partial_refund",
   rawInput: { command: "pnpm prisma migrate dev --name partial_refund" },
 };
 const playwright = {
-  toolCallId: "toolu_tester",
+  toolCallId: "toolu_playwright",
   kind: "execute",
   title: "pnpm playwright test",
   rawInput: { command: "pnpm playwright test e2e/refund.spec.ts" },
 };
 
-/** 보드 「두 Agent가 함께 물을 때」 — Host는 마이그레이션을, 테스터는 e2e 테스트 실행을 기다린다. */
+/** 세션이 도구 둘을 함께 부르고 마이그레이션과 e2e 테스트 실행을 함께 기다린다. */
 const bothAsking: RecordLine[] = [
-  joined(1, "host", "Host"),
-  sent(2, "host", "환불 API 버그 고쳐줘"),
-  toolCall(3, "host", migrate),
-  asked(4, "host", migrate),
-  joined(5, "tester", "테스터"),
-  sent(6, "tester", "@tester e2e 돌려 줘"),
-  toolCall(7, "tester", playwright),
-  asked(8, "tester", playwright),
+  sent(1, "환불 API 버그 고쳐줘"),
+  toolCall(2, migrate),
+  asked(3, migrate, "0"),
+  toolCall(4, playwright),
+  asked(5, playwright, "1"),
 ];
-const who = (turn: ReturnType<typeof askTurn>) => turn && [turn.current.who, turn.count, turn.next?.who ?? null];
+const order = (turn: ReturnType<typeof askTurn>) => turn && [turn.current.requestId, turn.count, turn.next?.requestId ?? null];
 
 describe("물음 차례", () => {
   it("물음이 하나면 그것만 서고 「1 / 2」도 다음 줄도 없다", () => {
-    expect(who(askTurn(foldThread(bothAsking.slice(0, 4))))).toEqual(["host", null, null]);
+    expect(order(askTurn(foldThread(bothAsking.slice(0, 3))))).toEqual(["0", null, null]);
   });
 
-  it("두 Agent가 함께 물으면 먼저 온 것이 서고, 「1 / 2」와 다음 차례가 선다 — 요청 id가 같아도 둘이다", () => {
-    expect(who(askTurn(foldThread(bothAsking)))).toEqual(["host", { at: 1, total: 2 }, "tester"]);
+  it("함께 물으면 먼저 온 것이 서고, 「1 / 2」와 다음 차례가 선다", () => {
+    expect(order(askTurn(foldThread(bothAsking)))).toEqual(["0", { at: 1, total: 2 }, "1"]);
   });
 
   it("앞의 것에 답하면 다음 것이 「2 / 2」로 서고, 다 답하면 차례가 걷힌다 — 묶음은 물음이 다 닫힐 때 끝난다", () => {
-    const first = [...bothAsking, answered(9, "host", "allow_once")];
-    expect(who(askTurn(foldThread(first)))).toEqual(["tester", { at: 2, total: 2 }, null]);
-    const both = [...first, answered(10, "tester", "reject")];
+    const first = [...bothAsking, answered(6, "allow_once", "0")];
+    expect(order(askTurn(foldThread(first)))).toEqual(["1", { at: 2, total: 2 }, null]);
+    const both = [...first, answered(7, "reject", "1")];
     expect(askTurn(foldThread(both))).toBeNull();
     // 다 닫힌 뒤에 온 물음은 새 묶음이다.
     const again = { ...migrate, toolCallId: "toolu_again" };
-    expect(who(askTurn(foldThread([...both, toolCall(11, "host", again), asked(12, "host", again, "1")])))).toEqual([
-      "host",
-      null,
-      null,
-    ]);
+    expect(order(askTurn(foldThread([...both, toolCall(8, again), asked(9, again, "2")])))).toEqual(["2", null, null]);
   });
 
   it("답을 기다리는 사이 앞의 것이 답하고 새 물음이 오면 묶음의 수가 는다", () => {
     const again = { ...migrate, toolCallId: "toolu_again" };
-    const lines = [...bothAsking, answered(9, "host", "allow_once"), toolCall(10, "host", again), asked(11, "host", again, "1")];
-    expect(who(askTurn(foldThread(lines)))).toEqual(["tester", { at: 2, total: 3 }, "host"]);
+    const lines = [...bothAsking, answered(6, "allow_once", "0"), toolCall(7, again), asked(8, again, "2")];
+    expect(order(askTurn(foldThread(lines)))).toEqual(["1", { at: 2, total: 3 }, "2"]);
   });
 
-  it("승인을 기다리는 참여자는 「답하는 중」에 서지 않는다 — 그 턴의 머리줄이 「승인을 기다립니다」를 말한다", () => {
-    // 테스터의 턴이 흐름 끝이라 Host의 도는 턴은 끝이 아닌 자리에 있다 — 묻지 않았다면 「Host가 답하는 중」이다.
-    expect(answeringLine(foldThread(bothAsking.filter((line) => line.kind !== "permission")))).toEqual(["host"]);
-    expect(answeringLine(foldThread(bothAsking))).toBeNull();
+  it("승인을 기다리는 세션은 「답하는 중」에 서지 않는다 — 입력창 자리의 카드가 말한다", () => {
+    // 물음 줄이 도구 줄보다 먼저 왔다 — 턴에 아직 아무 줄도 없어 묻지 않았다면 「답하는 중」이다.
+    const lines = [sent(1, "환불 API 버그 고쳐줘"), asked(2, migrate, "0")];
+    expect(answeringLine(foldThread(lines.slice(0, 1)))).toBe(true);
+    expect(answeringLine(foldThread(lines))).toBe(false);
   });
 
-  it("물은 참여자의 Session이 사라지면 그 물음은 차례에서 빠진다 — 닫힌 물음으로 센다", () => {
-    const died: RecordLine = { seq: 9, at: at(9), kind: "session", who: "host", payload: { state: "died", reason: "끝났어요" } };
-    expect(who(askTurn(foldThread([...bothAsking, died])))).toEqual(["tester", { at: 2, total: 2 }, null]);
+  it("세션이 사라지면 걸린 물음이 모두 걷힌다 — 답할 곳이 없다", () => {
+    const died: RecordLine = { seq: 6, at: at(6), kind: "session", payload: { state: "died", reason: "끝났어요" } };
+    expect(askTurn(foldThread([...bothAsking, died]))).toBeNull();
   });
 });
 
@@ -131,7 +115,6 @@ describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같�
     seq,
     at: at(seq),
     kind: "question",
-    who: "host",
     payload: {
       state: "asked",
       requestId,
@@ -143,19 +126,11 @@ describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같�
       projects: [{ slug: "api-server", name: "api-server", description: null, recommended: true, reason: null, branches: ["main"] }],
     },
   });
-  const testerAsks: RecordLine[] = [
-    joined(1, "host", "Host"),
-    joined(2, "tester", "테스터"),
-    sent(3, "tester", "@tester e2e 돌려 줘"),
-    toolCall(4, "tester", playwright),
-    asked(5, "tester", playwright),
-    sent(6, "host", "환불 API 버그 고쳐줘"),
-    proposed(7),
-  ];
+  const commandAsks: RecordLine[] = [sent(1, "e2e 돌려 줘"), toolCall(2, playwright), asked(3, playwright, "0"), proposed(4)];
 
   it("먼저 온 승인 카드 뒤에 Work 만들기 카드가 「다음 · Work 만들기 답을 기다려요」로 선다", () => {
-    const turn = askTurn(foldThread(testerAsks));
-    expect(who(turn)).toEqual(["tester", { at: 1, total: 2 }, "host"]);
+    const turn = askTurn(foldThread(commandAsks));
+    expect(order(turn)).toEqual(["0", { at: 1, total: 2 }, "w-1"]);
     expect(turn?.next && nextOf(turn.next)).toEqual({
       subject: "Work 만들기",
       mono: false,
@@ -164,15 +139,14 @@ describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같�
   });
 
   it("앞의 것에 답하면 Work 만들기 카드가 「2 / 2」로 서고, 그 카드에 답하면 차례가 걷힌다", () => {
-    const first = [...testerAsks, answered(8, "tester", "allow_once")];
+    const first = [...commandAsks, answered(5, "allow_once", "0")];
     const turn = askTurn(foldThread(first));
-    expect(who(turn)).toEqual(["host", { at: 2, total: 2 }, null]);
+    expect(order(turn)).toEqual(["w-1", { at: 2, total: 2 }, null]);
     expect(turn?.current.card).toBe("work");
     const done: RecordLine = {
-      seq: 9,
-      at: at(9),
+      seq: 6,
+      at: at(6),
       kind: "question",
-      who: "host",
       payload: { state: "answered", requestId: "w-1", card: "work", choice: "continue" },
     };
     expect(askTurn(foldThread([...first, done]))).toBeNull();
@@ -182,7 +156,6 @@ describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같�
 describe("카드 아래 다음 줄", () => {
   const pendingOf = (toolCall: Record<string, unknown>): PendingPermission => ({
     requestId: "0",
-    who: "tester",
     options: OPTIONS,
     toolCall,
     tool: null,
@@ -223,7 +196,7 @@ describe("카드 아래 다음 줄", () => {
   });
 
   it("질문은 대상 없이 답을 기다린다(v1 티켓 26)", () => {
-    const question: PendingQuestion = { card: "question", requestId: "0", who: "host", toolCall: {}, questions: [] };
+    const question: PendingQuestion = { card: "question", requestId: "0", toolCall: {}, questions: [] };
     expect(nextOf(question)).toEqual({ subject: null, mono: false, what: "질문의 답을 기다려요" });
   });
 
@@ -231,7 +204,6 @@ describe("카드 아래 다음 줄", () => {
     const outside: PendingProject = {
       card: "project",
       requestId: "o-1",
-      who: "host",
       project: "web-app",
       name: "web-app",
       reason: null,
@@ -245,7 +217,6 @@ describe("카드 아래 다음 줄", () => {
     const space: PendingSpace = {
       card: "space",
       requestId: "s-1",
-      who: "host",
       recommended: null,
       spaces: [],
       registered: 0,
@@ -257,7 +228,6 @@ describe("카드 아래 다음 줄", () => {
     const adding: PendingProjectAdd = {
       card: "project-add",
       requestId: "p-1",
-      who: "host",
       look: "notGit",
       path: "~/MyProjects/notes",
       folder: "notes",

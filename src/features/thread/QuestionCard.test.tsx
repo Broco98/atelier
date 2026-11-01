@@ -8,7 +8,6 @@ describe("질문 카드", () => {
   const request: PendingQuestion = {
     card: "question",
     requestId: "0",
-    who: "host",
     toolCall: {},
     questions: [{ question: "어느 화면에 보일까요?", description: null, multiSelect: false, options: [{ label: "주문 상세", description: null }] }],
   };

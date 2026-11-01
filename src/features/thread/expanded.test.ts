@@ -57,13 +57,13 @@ const write = (id: string, content: unknown[], status = "completed"): ToolEntry 
   endedAt: status === "completed" ? "2026-10-23T14:31:02.000+09:00" : null,
 });
 
-const turnOf = (entries: Turn["entries"], who = "host"): Pick<Turn, "entries" | "who"> => ({ who, entries });
+const turnOf = (entries: Turn["entries"]): Pick<Turn, "entries"> => ({ entries });
 
 const SPEC = "/Users/me/.atelier/works/refund-api/spec";
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `줄 ${i + 1}`).join("\n");
 
 describe("대화 속 문서 카드(Messages 보드 「Agent가 만든 파일」)", () => {
-  it("그 턴의 끝난 쓰기 가운데 이은 Work의 spec 폴더에 새로 쓴 문서만 — spec 기준 경로 · 줄 수 · 쓴 Agent다", () => {
+  it("그 턴의 끝난 쓰기 가운데 이은 Work의 spec 폴더에 새로 쓴 문서만 — spec 기준 경로 · 줄 수다", () => {
     const turn = turnOf([
       write("a", [{ type: "diff", path: `${SPEC}/design.md`, oldText: null, newText: `${lines(32)}\n` }]),
       write("b", [{ type: "diff", path: `${SPEC}/notes/review.md`, newText: lines(3) }]),
@@ -72,20 +72,17 @@ describe("대화 속 문서 카드(Messages 보드 「Agent가 만든 파일」)
       write("e", [{ type: "diff", path: `${SPEC}/later.md`, newText: "아직" }], "in_progress"),
     ]);
     expect(createdDocs(turn, SPEC)).toEqual([
-      { path: "design.md", lines: 32, who: "host" },
-      { path: "notes/review.md", lines: 3, who: "host" },
+      { path: "design.md", lines: 32 },
+      { path: "notes/review.md", lines: 3 },
     ]);
   });
 
   it("같은 문서를 두 번 쓰면 마지막 글의 줄 수로 한 장이다. spec 폴더를 모르면(Work 없음) 카드가 없다", () => {
-    const turn = turnOf(
-      [
-        write("a", [{ type: "diff", path: `${SPEC}/design.md`, newText: lines(10) }]),
-        write("b", [{ type: "diff", path: `${SPEC}/design.md`, newText: lines(12) }]),
-      ],
-      "writer",
-    );
-    expect(createdDocs(turn, `${SPEC}/`)).toEqual([{ path: "design.md", lines: 12, who: "writer" }]);
+    const turn = turnOf([
+      write("a", [{ type: "diff", path: `${SPEC}/design.md`, newText: lines(10) }]),
+      write("b", [{ type: "diff", path: `${SPEC}/design.md`, newText: lines(12) }]),
+    ]);
+    expect(createdDocs(turn, `${SPEC}/`)).toEqual([{ path: "design.md", lines: 12 }]);
     expect(createdDocs(turn, null)).toEqual([]);
   });
 });

@@ -1138,7 +1138,7 @@ fn 거부하면_claude는_deny와_거부의_글을_받고_그_도구_호출만_�
 fn 엔진이_거부의_답에_글을_실으면_claude는_고정_문구_대신_그_글을_deny로_받는다() {
     let mut bench = Bench::open(Claude::replaying("2.1.309/permission-stdio"));
     let first = bench.prompt("outside/allowed.txt를 Write로 만들어");
-    let busy = "「장바구니」 Thread의 @host가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+    let busy = "「장바구니」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
 
     // 쓰기 자리(v1 티켓 18) — 엔진이 사람에게 묻지 않고 거부하며 Agent에게 돌려줄 글을 `_meta.atelier.message`에 싣는다.
     bench.send(json!({"jsonrpc": "2.0", "id": 0, "result": {

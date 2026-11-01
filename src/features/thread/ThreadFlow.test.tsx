@@ -64,14 +64,14 @@ describe("흐름의 물음 자리", () => {
     return markup.slice(start, end).replace(/<[^>]*>/g, "");
   };
 
-  it("도는 턴의 머리줄 끝은 그 참여자가 기다리는 물음을 말한다 — 승인은 시안 문장, 나머지는 무엇의 답인지다", () => {
+  it("도는 턴의 머리줄 끝은 기다리는 물음을 말한다 — 승인은 시안 문장, 나머지는 무엇의 답인지다", () => {
     const waiting = (lines: readonly RecordLine[]) => /<span class="text-link">([^<]*)<\/span>/.exec(flow(lines))?.[1] ?? null;
-    expect(waiting(through(record("thread-permission"), 9))).toBe("승인을 기다립니다");
-    expect(waiting(through(record("thread-question"), 8))).toBe("질문의 답을 기다려요");
-    expect(waiting(through(record("thread-work"), 56))).toBe("Work 만들기 답을 기다려요");
-    expect(waiting(through(record("thread-project"), 8))).toBe("Work 밖 Project 답을 기다려요");
-    expect(waiting(through(record("thread-space-ask"), 8))).toBe("Space 답을 기다려요");
-    expect(waiting(through(record("thread-project-add"), 8))).toBe("Project 추가 답을 기다려요");
+    expect(waiting(through(record("thread-permission"), 8))).toBe("승인을 기다립니다");
+    expect(waiting(through(record("thread-question"), 7))).toBe("질문의 답을 기다려요");
+    expect(waiting(through(record("thread-work"), 55))).toBe("Work 만들기 답을 기다려요");
+    expect(waiting(through(record("thread-project"), 7))).toBe("Work 밖 Project 답을 기다려요");
+    expect(waiting(through(record("thread-space-ask"), 7))).toBe("Space 답을 기다려요");
+    expect(waiting(through(record("thread-project-add"), 7))).toBe("Project 추가 답을 기다려요");
   });
 
   // 답한 카드의 상자는 무슨 카드였나(`data-answered`)와 고른 갈래(`data-choice`)를 따로 든다(03 코드 리뷰 — 한때 질문만 답 갈래를 `data-answered`에 실었다).
@@ -92,30 +92,20 @@ describe("흐름의 물음 자리", () => {
   });
 });
 
-// 채팅은 Runtime 세션 하나라 말한 이를 가를 일이 없다(스토리 2 · 구현 지도 「얼굴」) — 얼굴도 이름 줄도 들고 난 줄도 없고, 말은 Runtime 이름으로 선다.
-// `who`는 기록에 아직 남아 있다(01a-5가 지운다) — 다른 handle이 말한 기록으로 화면이 그 값을 보이지 않는 것을 잰다.
+// 채팅은 Runtime 세션 하나라 말한 이를 가를 일이 없다(스토리 2 · 구현 지도 「얼굴」) — 얼굴도 이름 줄도 없고, 말은 Runtime 이름으로 선다.
 describe("Runtime 이름으로 말하는 흐름", () => {
   const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
-  const sent = (seq: number, to: string, text: string): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text, to } });
-  const joined = (seq: number, handle: string, name: string): RecordLine => ({
-    seq,
-    at: at(seq),
-    kind: "joined",
-    who: handle,
-    payload: { handle, name, avatar: { shape: "circle", color: "green" }, from: "library" },
-  });
-  const said = (seq: number, who: string, text: string): RecordLine => ({
+  const sent = (seq: number, text: string): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text } });
+  const said = (seq: number, text: string): RecordLine => ({
     seq,
     at: at(seq),
     kind: "update",
-    who,
     payload: { sessionId: "s", update: { sessionUpdate: "agent_message_chunk", messageId: `m${seq}`, content: { type: "text", text } } },
   });
-  const ended = (seq: number, who: string): RecordLine => ({
+  const ended = (seq: number): RecordLine => ({
     seq,
     at: at(seq),
     kind: "turn-end",
-    who,
     payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
   });
   const flow = (lines: readonly RecordLine[]) =>
@@ -124,30 +114,16 @@ describe("Runtime 이름으로 말하는 흐름", () => {
   const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
 
   it("답을 기다리는 동안 얼굴 없이 Runtime 이름으로 「답하는 중」이 선다", () => {
-    const row = answeringRow(flow([joined(1, "host", "Host"), sent(2, "host", "고쳐 줘")]));
+    const row = answeringRow(flow([sent(1, "고쳐 줘")]));
     expect(words(row)).toBe("Claude Code가 답하는 중");
     expect(row).not.toContain("<svg");
   });
 
-  it("도는 턴이 둘이어도 「답하는 중」은 Runtime 이름 하나다", () => {
-    const row = answeringRow(flow([joined(1, "host", "Host"), sent(2, "host", "고쳐 줘"), sent(3, "reviewer", "봐 줘")]));
-    expect(words(row)).toBe("Claude Code가 답하는 중");
-    expect(row).not.toContain("<svg");
-  });
-
-  it("다른 handle이 답한 턴에도 이름 줄이 없고, 참여자의 이름이 흐름 어디에도 서지 않는다", () => {
-    const markup = flow([
-      joined(1, "host", "Host"),
-      joined(2, "reviewer", "리뷰어"),
-      sent(3, "reviewer", "봐 줘"),
-      said(4, "reviewer", "봤어요"),
-      ended(5, "reviewer"),
-      { seq: 6, at: at(6), kind: "left", who: "reviewer", payload: { handle: "reviewer", name: "리뷰어" } },
-    ]);
+  it("답한 턴에 이름 줄이 없다", () => {
+    const markup = flow([sent(1, "봐 줘"), said(2, "봤어요"), ended(3)]);
     expect(words(markup)).toContain("봤어요");
     expect(markup).not.toContain("data-who");
     expect(markup).not.toContain("data-system");
-    expect(words(markup)).not.toMatch(/리뷰어|reviewer|참여함|나감/);
   });
 
   it("턴이 spec 폴더에 쓴 문서 카드는 Runtime 이름으로 말한다", () => {

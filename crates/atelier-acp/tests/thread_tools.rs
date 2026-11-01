@@ -64,7 +64,6 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     assert_eq!(sandbox.thread_json(&other)["title"], "다른 일", "다른 Thread는 그대로다 — 소켓이 부른 Thread를 안다");
     let titles = of_kind(&record, "title");
     assert_eq!(titles.len(), 1, "{}", common::lines_text(&record));
-    assert_eq!(titles[0]["who"], "host", "부른 Agent가 줄의 who다(S8) — 소켓이 부른 Agent를 안다");
     assert_eq!(titles[0]["payload"], json!({"title": "환불 API 버그", "before": "환불이 두 번 빠져요"}));
     let at = |line: &Value| record.iter().position(|seen| seen == line).unwrap();
     let ended = record.iter().position(|line| line["kind"] == "turn-end").unwrap();

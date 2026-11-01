@@ -8,7 +8,6 @@ import { describeSpaceCard, spaceChoiceCard } from "./space-card";
 const card = (over: Partial<PendingSpace> = {}): PendingSpace => ({
   card: "space",
   requestId: "r1",
-  who: "host",
   recommended: "결제-서비스",
   spaces: [
     { slug: "결제-서비스", name: "결제 서비스", projects: ["web-app", "api-server"] },

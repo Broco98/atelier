@@ -50,7 +50,7 @@ interface ToolCardRow<C extends ToolCard> {
   /** 결정 줄의 `kind`. */
   choice: ToolCardShapes[C]["choice"]["kind"];
   /** 카드 줄(`question` `asked`) → 카드. 꼴이 틀린 칸은 버리거나 빈 값으로 둔다. */
-  ask: (requestId: string, who: string, payload: Json) => ToolCardShapes[C]["ask"];
+  ask: (requestId: string, payload: Json) => ToolCardShapes[C]["ask"];
   /** 답 줄(`question` `answered`) → 결정 줄. 물은 카드(`asked`)의 칸을 다시 싣는 갈래도 있다(Project 추가 — 접힌 줄이 물음을 다시 짓는다). */
   answer: (asked: ToolCardShapes[C]["ask"], payload: Json, at: ChoiceAt) => ToolCardShapes[C]["choice"];
   /** 도는 턴 머리줄 끝의 기다림(`ThreadFlow`) — 「Space 답을 기다려요」. */
@@ -173,12 +173,11 @@ export function isToolChoice(entry: Entry): entry is ToolChoiceEntry {
 }
 
 /** Project 추가 카드 줄(`question` `asked`, `card: project-add`) → 카드. 하위 폴더가 아니면 git이 아닌 폴더다. */
-function projectAddOf(requestId: string, who: string, payload: Json): PendingProjectAdd {
+function projectAddOf(requestId: string, payload: Json): PendingProjectAdd {
   const path = text(payload.path) ?? "";
   return {
     card: "project-add",
     requestId,
-    who,
     look: payload.look === "subfolder" ? "subfolder" : "notGit",
     path,
     folder: nonEmpty(payload.folder) ?? path,
@@ -190,7 +189,7 @@ function projectAddOf(requestId: string, who: string, payload: Json): PendingPro
  * Space 질문 카드 줄(`question` `asked`, `card: space`) → 카드. 꼴이 틀린 후보 줄은 버린다. 줄이 함께 싣는 지금 Space(`current`)와 Host가 든
  * 까닭(`reason`)은 카드가 그리지 않아(§11 — 물음 아래 줄은 정해진 글이다) 읽지 않는다.
  */
-function spaceAskOf(requestId: string, who: string, payload: Json): PendingSpace {
+function spaceAskOf(requestId: string, payload: Json): PendingSpace {
   const spaces = (Array.isArray(payload.spaces) ? payload.spaces : []).filter(isObject).flatMap((row): SpaceOption[] => {
     const slug = text(row.slug);
     if (slug === null) return [];
@@ -200,7 +199,6 @@ function spaceAskOf(requestId: string, who: string, payload: Json): PendingSpace
   return {
     card: "space",
     requestId,
-    who,
     recommended: nonEmpty(payload.recommended),
     spaces,
     registered: typeof payload.registered === "number" ? payload.registered : 0,
@@ -208,12 +206,11 @@ function spaceAskOf(requestId: string, who: string, payload: Json): PendingSpace
 }
 
 /** Work 밖 Project 카드 줄(`question` `asked`, `card: project`) → 카드. */
-function outsideOf(requestId: string, who: string, payload: Json): PendingProject {
+function outsideOf(requestId: string, payload: Json): PendingProject {
   const project = text(payload.project) ?? "";
   return {
     card: "project",
     requestId,
-    who,
     project,
     name: nonEmpty(payload.name) ?? project,
     reason: nonEmpty(payload.reason),
@@ -223,7 +220,7 @@ function outsideOf(requestId: string, who: string, payload: Json): PendingProjec
 }
 
 /** 제안 줄(`question` `asked`, `card: work`) → 카드. 꼴이 틀린 Project 줄은 버린다. */
-function proposalOf(requestId: string, who: string, payload: Json): PendingWork {
+function proposalOf(requestId: string, payload: Json): PendingWork {
   const projects = (Array.isArray(payload.projects) ? payload.projects : []).filter(isObject).flatMap((row): WorkProjectChoice[] => {
     const slug = text(row.slug);
     if (slug === null) return [];
@@ -242,7 +239,6 @@ function proposalOf(requestId: string, who: string, payload: Json): PendingWork 
   return {
     card: "work",
     requestId,
-    who,
     title: text(payload.title) ?? "",
     slug: text(payload.slug) ?? "",
     reason: text(payload.reason) ?? "",

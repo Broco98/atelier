@@ -1,14 +1,13 @@
-import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp, Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { useArrival, useChanged } from "./arrival";
+import { useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
 import { AskChip, LockedWorkChip, ModelChip, ScopeLineText, SpaceChip, WorkChip, type ComposerTray } from "./ComposerChips";
-import type { Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
 import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
@@ -17,15 +16,12 @@ import type { AskLevel, Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · Screen-Live · v52 F4-KitComposer) — Codex
 // 입력창이다: 대화 열과 같은 737 폭에 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소
-// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6 — 받는 이 칩은 걷었다).
+// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6).
 // Work 칩 · Space 칩 · 범위 줄은 상자 **밖** 트레이에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
 //   꺼짐), 쓰면 ↑, 새 Thread의 첫 말을 보내는 중이면 옅은 파랑(`accent-solid-pending`)에 스피너, 턴이 도는 동안 비어 있으면 멈추기(■)다.
 //   도는 동안 쓰면 원은 ↑다 — 쓴 말도 보낸다(엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다). 그동안 멈추기는 Esc가 맡는다.
-// - **받는 이의 멘션은 칩으로 칠한다**(Composer 보드 「입력 중 · 멘션 칩」) — 입력칸 뒤에 같은 글을 투명하게 깐 층(`MentionPaint`)이
-//   받는 이로 고른 `@이름` 자리에만 옅은 파랑 면을 깐다. 글자는 입력칸의 것 그대로라 커서 · 고르기 · 붙여 넣기가 여느 입력칸과 같다.
-//   받는 이를 고르는 칩은 따로 없다 — 이 칠이 받는 이를 말한다.
 // - **`+`와 끌어다 놓기는 첨부다**(v1 티켓 06 · S30) — 받은 파일 · 폴더가 입력칸 위에 칩(이름 · 크기)으로 쌓이고, 끌어다 놓는 동안은
 //   입력창 자리에 「놓으면 첨부합니다」가 선다. 보내면 경로만 간다(`ComposerAttachments.tsx`).
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글(「❝ 이 자리를 두고 말하기」)이 입력칸 위에 인용 칩으로 붙는다(×로 뗀다). 보내면
@@ -37,8 +33,8 @@ import type { AskLevel, Attachment } from "./types";
 //
 // - **움직임**(v1 티켓 43 · 02 §12 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜),
 //   보내기 원의 글리프가 바뀌면 옛 글리프가 .6배로 줄며 사라지고 새 글리프가 .6배에서 커지며 선다(보내기 아이콘 모핑 .52s — 원의 면
-//   색 · 옅음도 같은 박자로 바뀐다). 글 칸이 줄 수만큼 자라고 줄 때 높이가 패널 박자로 옮겨 간다(입력창 바닥 줄 높이 .22s). 멘션 칠 ·
-//   첨부 · 인용 칩은 붙을 때 칩으로 나타난다(칩 등장). 화면이 처음 설 때 이미 있던 것은 움직이지 않는다(`arrival.tsx`).
+//   색 · 옅음도 같은 박자로 바뀐다). 글 칸이 줄 수만큼 자라고 줄 때 높이가 패널 박자로 옮겨 간다(입력창 바닥 줄 높이 .22s). 첨부 ·
+//   인용 칩은 붙을 때 칩으로 나타난다(칩 등장). 화면이 처음 설 때 이미 있던 것은 움직이지 않는다(`arrival.tsx`).
 //
 // 입력 중인 글 · 쌓인 첨부 · 붙은 인용은 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore` · `threadUiStore.quotes`). 보낸 말은 여기서 그리지
 // 않는다 — 엔진이 기록에 적은 `sent` 줄이 말풍선으로 선다.
@@ -79,10 +75,6 @@ export interface ThreadComposerProps {
   onNewThread: () => void;
   /** 화면이 바깥에서 보이는 거절 글(이름 바꾸기 · 칩) — 입력창 아래에 함께 선다. */
   problem?: string | null;
-  /** 지금 쓴 말의 받는 이(`recipientOf`) — `null`이면 Host다. 화면이 모델 칩도 이 참여자의 값으로 세우므로 바깥에서 읽어 준다. */
-  recipient: Recipient | null;
-  /** 받는 이의 턴이 도는가 — 모델 칩의 생각 깊이를 잠근다(엔진이 그 Session의 턴 동안 거절한다). 없으면 `running`이다. */
-  recipientRunning?: boolean;
   /** 지금 물어보는 정도(v1 티켓 23) — 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
   level: AskLevel;
   onLevel: (level: AskLevel) => void;
@@ -112,8 +104,6 @@ function ThreadComposer({
   onStop,
   onNewThread,
   problem: outside = null,
-  recipient,
-  recipientRunning = running,
   level,
   onLevel,
   tray,
@@ -243,7 +233,6 @@ function ThreadComposer({
     setProblem(null);
     onStop?.().catch((error: unknown) => setProblem(String(error)));
   };
-  const paint = useRef<HTMLDivElement>(null);
 
   const shown = outside ?? problem;
   const trayed = tray && !card && (
@@ -283,7 +272,6 @@ function ThreadComposer({
           {quote && <DraftQuoteChip quote={quote} onDrop={() => setQuote(draftKey, null)} />}
           {attachments.length > 0 && <ComposerAttachmentChips draftKey={draftKey} attachments={attachments} />}
           <div className="relative flex">
-            {recipient?.agent && <MentionPaint ref={paint} text={draft} at={recipient.at} />}
             <textarea
               ref={field}
               aria-label="보낼 말"
@@ -300,9 +288,6 @@ function ThreadComposer({
                       : (placeholder ?? PLACEHOLDER.idle)
               }
               onChange={(event) => setDraft(draftKey, event.target.value)}
-              onScroll={(event) => {
-                if (paint.current) paint.current.scrollTop = event.currentTarget.scrollTop;
-              }}
               aria-controls={menuOpen ? menuId : undefined}
               aria-autocomplete={menuOpen ? "list" : undefined}
               aria-activedescendant={menuOpen ? optionId(menuId, active) : undefined}
@@ -352,7 +337,7 @@ function ThreadComposer({
                 models={models}
                 model={model}
                 effort={effort}
-                running={recipientRunning}
+                running={running}
                 onModel={onModel}
                 onEffort={onEffort}
                 open={choosingModel}
@@ -453,31 +438,5 @@ function SendFace({ glyph, motion }: { glyph: SendGlyph; motion?: "morph-in" | "
     </span>
   );
 }
-
-/**
- * 받는 이 멘션의 칩 면(Composer 보드 `.mchip`) — 입력칸 바로 뒤에 같은 글자 · 같은 줄바꿈으로 투명한 글을 깔고, 받는 이로 고른 `@이름`
- * 자리에만 옅은 회색 면(`fill-hover`)을 깐다. 한때 옅은 파랑(`accent-soft`)이었다 — 사용자가 「Grok bot스럽다」의 예로 든 그 알약이다(v1
- * 티켓 46). 파랑은 「내 차례」 하나에 남기고, 멘션은 Codex의 입력칸 칩처럼 무채색 면 하나로 선다. 글자 폭을 바꾸지 않으려고 면의 여백은
- * 고리(`ring`)로 준다 — 안쪽 여백을 주면 뒤의 글이 입력칸의 글자와 어긋난다. 입력칸이 구르면 같이 구른다(`scrollTop`). 받는 이가 서면 면이 칩으로 나타난다(칩 나타남 — 글 안의 면이라
- * 옅음만 움직인다).
- */
-const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: number; end: number } }>(
-  function MentionPaint({ text, at }, ref) {
-    const motion = useArrival("chip-in");
-    return (
-      <div
-        ref={ref}
-        aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden px-1 text-sm whitespace-pre-wrap wrap-break-word text-transparent"
-      >
-        {text.slice(0, at.start)}
-        <mark className={cn("rounded-sm bg-fill-hover text-transparent ring-2 ring-fill-hover", motion)}>
-          {text.slice(at.start, at.end)}
-        </mark>
-        {text.slice(at.end)}
-      </div>
-    );
-  },
-);
 
 export default ThreadComposer;

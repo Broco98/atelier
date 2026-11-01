@@ -211,8 +211,6 @@ export type RecordKind =
   | "permission"
   | "config"
   | "question"
-  | "joined"
-  | "left"
   | "work"
   | "title"
   | "mode"
@@ -221,15 +219,13 @@ export type RecordKind =
   | "setting";
 
 /**
- * 기록 줄 하나 — `threads/<id>/events.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. `who`는 그 줄을 낸 참여자의 handle이고,
- * 사람의 말(`sent`)과 Thread의 일(`title` …)에는 없다. payload는 종류마다 다르고 ACP 원문을 그대로 싣기도 해서 접기(`fold.ts`)가
- * 읽으며 좁힌다.
+ * 기록 줄 하나 — `threads/<id>/events.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. payload는 종류마다 다르고 ACP 원문을 그대로 싣기도
+ * 해서 접기(`fold.ts`)가 읽으며 좁힌다.
  */
 export interface RecordLine {
   seq: number;
   at: string;
   kind: RecordKind;
-  who?: string;
   payload: unknown;
 }
 

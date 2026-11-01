@@ -84,7 +84,7 @@ impl ConversationHost {
         let (text, refused) = match choice {
             ProjectChoice::Attach => match self.plant(&outside.work, &outside.project) {
                 Ok(planted) => {
-                    self.note(thread, Some(&asked.key.handle), answered)?;
+                    self.note(thread, answered)?;
                     self.stop_reading_only(thread, &outside.project)?;
                     self.note_planted(thread, &outside.project, &planted)?;
                     self.planted_text(thread, &outside.project, &planted)
@@ -101,7 +101,7 @@ impl ConversationHost {
                         file.read_only_projects.push(project.clone());
                     }
                 })?;
-                self.note(thread, Some(&asked.key.handle), answered)?;
+                self.note(thread, answered)?;
                 let folder = atelier_core::project_folders(&self.data_root)
                     .into_iter()
                     .find(|(slug, _)| slug == &outside.project)
@@ -113,7 +113,7 @@ impl ConversationHost {
                 (text, false)
             }
             ProjectChoice::Decline => {
-                self.note(thread, Some(&asked.key.handle), answered)?;
+                self.note(thread, answered)?;
                 let only = if outside.work_projects.is_empty() {
                     "이 Work의 spec 폴더에서만 고친다".to_owned()
                 } else {
@@ -206,7 +206,7 @@ impl ConversationHost {
         self.change_thread(thread, |file| file.read_only_projects.retain(|one| one != project)).map(drop)
     }
 
-    /// 세운 것을 `work` 줄로 남긴다 — 붙임(`attached`)과 worktree(`worktree`). 사람이나 시스템의 일이라 `who`가 없다(S8).
+    /// 세운 것을 `work` 줄로 남긴다 — 붙임(`attached`)과 worktree(`worktree`).
     fn note_planted(&self, thread: &str, project: &str, planted: &Planted) -> Result<(), HostError> {
         if planted.attached {
             self.note_work(thread, json!({"state": "attached", "project": project}))?;
@@ -238,11 +238,11 @@ impl ConversationHost {
     }
 
     /// 사람의 결정 줄(`question`) 하나를 적는다.
-    fn note(&self, thread: &str, who: Option<&str>, payload: Value) -> Result<(), HostError> {
-        self.thread_log(thread)?.write(RecordKind::Question, who, payload).map(drop).map_err(HostError::Record)
+    fn note(&self, thread: &str, payload: Value) -> Result<(), HostError> {
+        self.thread_log(thread)?.write(RecordKind::Question, payload).map(drop).map_err(HostError::Record)
     }
 
     fn note_work(&self, thread: &str, payload: Value) -> Result<(), HostError> {
-        self.thread_log(thread)?.write(RecordKind::Work, None, payload).map(drop).map_err(HostError::Record)
+        self.thread_log(thread)?.write(RecordKind::Work, payload).map(drop).map_err(HostError::Record)
     }
 }

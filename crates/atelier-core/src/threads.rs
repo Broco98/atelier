@@ -4,7 +4,7 @@
 //!   [`ThreadIndex`]를 한 번 읽고, 쓸 때마다 [`ThreadIndex::put`]으로 고친다.
 //! - **Work와의 연결은 `thread.json`의 `work`에만 적는다.** Work 쪽에는 Thread 목록이 없고, 보관이 Work 폴더를 옮겨도 Thread
 //!   폴더는 그대로다 — 보관 · 지운 Work의 Thread는 [`work_gone`]으로 읽기만이 된다(v1 티켓 38).
-//! - 기록 줄은 코어의 기록 줄(`records.rs`) 한 벌이다 — three-axes 대화 기록과 같은 모양에 `who`만 더했다(S8).
+//! - 기록 줄은 코어의 기록 줄(`records.rs`) 한 벌이다 — three-axes 대화 기록과 같은 모양이다.
 //! - three-axes가 `works/<slug>/agents/`에 남긴 대화 기록은 옮기지 않는다(v1 구현 스펙 §4 끝).
 
 use std::path::{Path, PathBuf};
@@ -122,15 +122,9 @@ pub struct CreatedThread {
 /// 첫 줄을 적는다.
 ///
 /// **첫 줄 없이는 Thread를 세우지 않는다.** 열어만 둔 새 Thread는 엔진의 메모리에만 있고, 첫 말을 보낼 때 이것을 부른다 — 빈
-/// Thread 폴더가 쌓이지 않는다. 첫 줄은 엔진이 고른다(사람의 `sent` 또는 Host의 `joined`).
-pub fn create_thread(
-    data_root: &Path,
-    thread: NewThread,
-    kind: RecordKind,
-    who: Option<&str>,
-    payload: Value,
-) -> Result<CreatedThread> {
-    create_thread_at(data_root, chrono::Local::now().fixed_offset(), thread, kind, who, payload)
+/// Thread 폴더가 쌓이지 않는다. 첫 줄은 엔진이 고른다(첫 Session의 `spawning`).
+pub fn create_thread(data_root: &Path, thread: NewThread, kind: RecordKind, payload: Value) -> Result<CreatedThread> {
+    create_thread_at(data_root, chrono::Local::now().fixed_offset(), thread, kind, payload)
 }
 
 /// [`create_thread`]의 몸 — 시각을 받는다. 시험이 같은 초를 세운다.
@@ -139,7 +133,6 @@ pub(crate) fn create_thread_at(
     at: DateTime<FixedOffset>,
     thread: NewThread,
     kind: RecordKind,
-    who: Option<&str>,
     payload: Value,
 ) -> Result<CreatedThread> {
     let (id, dir) = claim_id(&crate::paths::threads_in(data_root), at)?;
@@ -154,7 +147,7 @@ pub(crate) fn create_thread_at(
     };
     crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "Thread를")?;
     let mut log = RecordLog::open(&dir.join(RECORD_FILE))?;
-    let first = log.append(kind, who, payload)?;
+    let first = log.append(kind, payload)?;
     Ok(CreatedThread { id, log, first })
 }
 
@@ -438,7 +431,7 @@ mod tests {
 
     /// 사람이 보낸 첫 말로 Thread를 세운다.
     fn create(root: &Path, when: &str, thread: NewThread, text: &str) -> CreatedThread {
-        create_thread_at(root, at(when), thread, RecordKind::Sent, None, json!({"text": text})).unwrap()
+        create_thread_at(root, at(when), thread, RecordKind::Sent, json!({"text": text})).unwrap()
     }
 
     fn raw_thread_json(root: &Path, id: &str) -> Value {
@@ -469,8 +462,8 @@ mod tests {
         let lines = read_thread_records(root.path(), &created.id, 0).unwrap();
         assert_eq!(lines, vec![created.first.clone()]);
         assert_eq!(
-            (lines[0].seq, lines[0].kind, &lines[0].who, &lines[0].payload),
-            (1, RecordKind::Sent, &None, &json!({"text": "카트를 고쳐 줘"}))
+            (lines[0].seq, lines[0].kind, &lines[0].payload),
+            (1, RecordKind::Sent, &json!({"text": "카트를 고쳐 줘"}))
         );
         assert_eq!(read_thread(root.path(), &created.id).unwrap().title, "카트 고치기");
     }
@@ -528,11 +521,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let created = create(root.path(), "2026-10-23T21:05:09.000+09:00", new_thread("카트 고치기"), "카트를 고쳐 줘");
         let mut log = created.log;
-        log.append(RecordKind::Joined, Some("host"), json!({"from": "library"})).unwrap();
+        log.append(RecordKind::Session, json!({"state": "spawning"})).unwrap();
         drop(log);
         let events = root.path().join("threads").join(&created.id).join("events.jsonl");
         let mut text = std::fs::read_to_string(&events).unwrap();
-        text.push_str(r#"{"seq":3,"at":"2026-10-23T21:05:10.000+09:00","kind":"update","who":"host","payload":{"sessionUp"#);
+        text.push_str(r#"{"seq":3,"at":"2026-10-23T21:05:10.000+09:00","kind":"update","payload":{"sessionUp"#);
         std::fs::write(&events, text).unwrap();
 
         let seqs: Vec<u64> = read_thread_records(root.path(), &created.id, 0).unwrap().iter().map(|line| line.seq).collect();
@@ -540,23 +533,30 @@ mod tests {
 
         let mut log = open_thread_log(root.path(), &created.id).unwrap();
         assert_eq!(log.last_seq(), 2);
-        let next = log.append(RecordKind::Sent, None, json!({"text": "다시 켠 뒤의 말"})).unwrap();
+        let next = log.append(RecordKind::Sent, json!({"text": "다시 켠 뒤의 말"})).unwrap();
         assert_eq!(next.seq, 3);
         assert_eq!(read_thread_records(root.path(), &created.id, 2).unwrap(), vec![next], "이어 적은 줄이 꼬리에 붙지 않고 읽힌다");
     }
 
-    /// S8 — **`who`는 참여자의 줄에만 선다.** 사람과 시스템의 줄에는 그 칸이 없다 — three-axes 줄과 같은 모양이다.
+    /// 채팅 하나가 Runtime 세션 하나라 **기록 줄에 말한 이가 없다** — 줄은 `{seq, at, kind, payload}`뿐이다.
     #[test]
-    fn 참여자의_줄에만_who가_선다() {
+    fn 기록_줄에는_말한_이_칸이_없다() {
         let root = tempfile::tempdir().unwrap();
         let created = create(root.path(), "2026-10-23T21:05:09.000+09:00", new_thread("카트 고치기"), "카트를 고쳐 줘");
         let mut log = created.log;
-        log.append(RecordKind::Update, Some("host"), json!({"sessionUpdate": "agent_message_chunk"})).unwrap();
+        log.append(RecordKind::Update, json!({"sessionUpdate": "agent_message_chunk"})).unwrap();
 
         let events = std::fs::read_to_string(root.path().join("threads").join(&created.id).join("events.jsonl")).unwrap();
-        let lines: Vec<Value> = events.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
-        assert_eq!(lines[0].get("who"), None, "사람의 줄: {}", lines[0]);
-        assert_eq!(lines[1]["who"], "host");
+        let keys: Vec<Vec<String>> = events
+            .lines()
+            .map(|line| {
+                let line: Value = serde_json::from_str(line).unwrap();
+                let mut keys: Vec<String> = line.as_object().unwrap().keys().cloned().collect();
+                keys.sort();
+                keys
+            })
+            .collect();
+        assert_eq!(keys, [["at", "kind", "payload", "seq"], ["at", "kind", "payload", "seq"]]);
     }
 
     fn joined(handle: &str) -> Participant {

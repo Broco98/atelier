@@ -66,11 +66,10 @@ export function freshLines(before: string | undefined, after: string): number[] 
   return fresh;
 }
 
-/** 대화 속 문서 카드 하나 — spec 기준 경로 · 줄 수 · 쓴 Agent. */
+/** 대화 속 문서 카드 하나 — spec 기준 경로 · 줄 수. */
 export interface CreatedDoc {
   path: string;
   lines: number;
-  who: string | null;
 }
 
 /**
@@ -79,7 +78,7 @@ export interface CreatedDoc {
  * `written`). 옛 글이 있는 고치기는 카드가 아니다 — 바뀐 파일 알약 · 요약 카드의 「변경 사항」이 든다. 같은 문서를 두 번 쓰면 한 장이고 줄 수는
  * 마지막 글의 것이다. spec 폴더를 모르면(Work 없는 Thread) 카드가 없다.
  */
-export function createdDocs(turn: Pick<Turn, "entries" | "who">, specRoot: string | null): CreatedDoc[] {
+export function createdDocs(turn: Pick<Turn, "entries">, specRoot: string | null): CreatedDoc[] {
   if (specRoot === null) return [];
   const root = `${specRoot.replace(/\/+$/, "")}/`;
   const byPath = new Map<string, CreatedDoc>();
@@ -89,7 +88,7 @@ export function createdDocs(turn: Pick<Turn, "entries" | "who">, specRoot: strin
       if (!piece.written || !piece.path.startsWith(root) || piece.path.length === root.length) continue;
       const path = piece.path.slice(root.length);
       byPath.delete(path);
-      byPath.set(path, { path, lines: piece.added, who: turn.who });
+      byPath.set(path, { path, lines: piece.added });
     }
   }
   return [...byPath.values()];

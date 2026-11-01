@@ -49,7 +49,7 @@ function QuestionCard({ thread, name, request, count = null, next }: QuestionCar
 
   const reply = (later: boolean) => {
     if (!later && answers === null) return;
-    send(() => threadApi.answerQuestion(thread, request.who, request.requestId, later ? [] : (answers ?? []), later));
+    send(() => threadApi.answerQuestion(thread, request.requestId, later ? [] : (answers ?? []), later));
   };
   const change = (at: number, pick: QuestionPick) => setPicks((all) => all.map((one, index) => (index === at ? pick : one)));
   const choose = (at: number, option: number) => {

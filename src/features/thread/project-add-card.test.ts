@@ -8,7 +8,6 @@ import { describeProjectAddCard, projectAddChoiceCard } from "./project-add-card
 const notGit: PendingProjectAdd = {
   card: "project-add",
   requestId: "r1",
-  who: "host",
   look: "notGit",
   path: "~/MyProjects/notes",
   folder: "notes",

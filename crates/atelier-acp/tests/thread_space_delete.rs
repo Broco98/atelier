@@ -152,8 +152,6 @@ fn space를_지우면_비운_곳마다_지워짐_줄이_서고_다음_말은_spa
     }
     assert_eq!(space_lines(&sandbox, &other).len(), before[3], "다른 Space의 Thread에는 서지 않는다");
     assert_eq!(thread_space(&sandbox, &other), "사내-도구");
-    let line = of_kind(&sandbox.thread_record(&loose), "space").last().map(|line| (*line).clone()).unwrap();
-    assert!(line.get("who").is_none(), "사람이 한 일의 시스템 줄이다: {line}");
 
     let session = sandbox.thread_session_id(&loose, "host");
     host.send_to_thread(&loose, "이어서 봐 줘").expect("지운 뒤의 말");

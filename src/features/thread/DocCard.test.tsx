@@ -9,14 +9,14 @@ const none = () => {};
 
 describe("대화 속 문서 카드", () => {
   it("이름 · 「Claude Code가 만듦 · 32줄 · 같이 고칠 수 있어요」 · 「열기」가 선다(보드 글자 그대로)", () => {
-    const markup = renderToStaticMarkup(<DocCard doc={{ path: "design.md", lines: 32, who: "host" }} name="Claude Code" onOpen={none} />);
+    const markup = renderToStaticMarkup(<DocCard doc={{ path: "design.md", lines: 32 }} name="Claude Code" onOpen={none} />);
     expect(markup).toMatch(/<button type="button" data-doc-card="design.md"/);
     expect(markup).toMatch(/>design.md<.*>Claude Code가 만듦 · 32줄 · 같이 고칠 수 있어요<.*>열기</);
   });
 
   it("받침 있는 이름에는 「이」를 단다", () => {
     const markup = renderToStaticMarkup(
-      <DocCard doc={{ path: "notes/review.md", lines: 3, who: "reviewer" }} name="리뷰어 진" onOpen={none} />,
+      <DocCard doc={{ path: "notes/review.md", lines: 3 }} name="리뷰어 진" onOpen={none} />,
     );
     expect(markup).toContain(">notes/review.md<");
     expect(markup).toContain("리뷰어 진이 만듦 · 3줄");

@@ -8,7 +8,6 @@ import { describeProjectCard, projectChoiceText } from "./project-card";
 const card = (extra: Partial<PendingProject> = {}): PendingProject => ({
   card: "project",
   requestId: "r",
-  who: "host",
   project: "web-app",
   name: "web-app",
   reason: "환불 버튼이 두 번 눌리는 문제는 web-app에 있어요",

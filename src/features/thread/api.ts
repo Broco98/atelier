@@ -72,11 +72,11 @@ export const threadApi = {
   /** 지금 보내기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. */
   sendNow: (thread: string, queued: string) => invoke<void>("thread_send_now", { thread, queued }),
   /**
-   * 권한 답 — 그 참여자(`who`)가 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 「… 늘 허용」이면 `remember`, 「아니요,
+   * 권한 답 — 세션이 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 「… 늘 허용」이면 `remember`, 「아니요,
    * 다르게」의 입력칸에 쓴 말이 있으면 `words`다.
    */
-  answerPermission: (thread: string, who: string, request: string, option: string, remember = false, words: string | null = null) =>
-    invoke<void>("thread_answer_permission", { thread, who, request, option, remember, words }),
+  answerPermission: (thread: string, request: string, option: string, remember = false, words: string | null = null) =>
+    invoke<void>("thread_answer_permission", { thread, request, option, remember, words }),
   /**
    * Work 만들기 카드의 답(v1 티켓 30) — 「Work 만들기」면 `create`와 고른 Project · 고친 브랜치(Project가 없으면 null), 「Work 없이 계속」이면
    * `create: false`다. 만들지 못하면 실패로 오고 카드는 그대로 선다(다시 고를 수 있다). 고른 것은 기록의 답 줄로 온다.
@@ -84,11 +84,11 @@ export const threadApi = {
   answerWork: (thread: string, request: string, create: boolean, projects: string[] = [], branch: string | null = null) =>
     invoke<void>("thread_answer_work", { thread, request, create, projects, branch }),
   /**
-   * 질문 답(v1 티켓 26) — 그 참여자(`who`)가 낸 질문(`question` 줄의 요청 id)에 물음마다의 답으로 답한다. 질문 카드의 「나중에」면
+   * 질문 답(v1 티켓 26) — 세션이 낸 질문(`question` 줄의 요청 id)에 물음마다의 답으로 답한다. 질문 카드의 「나중에」면
    * `answers`를 비우고 `later`다.
    */
-  answerQuestion: (thread: string, who: string, request: string, answers: readonly QuestionAnswer[], later = false) =>
-    invoke<void>("thread_answer_question", { thread, who, request, answers, later }),
+  answerQuestion: (thread: string, request: string, answers: readonly QuestionAnswer[], later = false) =>
+    invoke<void>("thread_answer_question", { thread, request, answers, later }),
   /**
    * Work 밖 Project 카드의 답(v1 티켓 32 · S22) — 「붙이고 고치기」(`attach`) · 「읽기만 하기」(`read`) · 「아니요」(`decline`). 붙이지
    * 못하면 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 온다.

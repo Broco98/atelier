@@ -29,34 +29,34 @@ const button = (markup: string, label: string) =>
 
 describe("입력창 자리의 Thread 도구 카드", () => {
   it("갈래마다 그 카드가 선다 — Work 만들기 · Work 밖 Project · Space 질문 · Project 추가", () => {
-    expect(slot("thread-work", 56)).toContain("이 일을 Work로 묶을까요?");
-    expect(slot("thread-project", 8)).toContain("Claude Code가 이 Work에 없는 Project를 고치려고 해요");
-    expect(slot("thread-space-ask", 8)).toContain("어느 Space에서 할까요?");
-    expect(slot("thread-project-add", 8)).toContain("notes는 git 저장소가 아니에요. 어떻게 할까요?");
+    expect(slot("thread-work", 55)).toContain("이 일을 Work로 묶을까요?");
+    expect(slot("thread-project", 7)).toContain("Claude Code가 이 Work에 없는 Project를 고치려고 해요");
+    expect(slot("thread-space-ask", 7)).toContain("어느 Space에서 할까요?");
+    expect(slot("thread-project-add", 7)).toContain("notes는 git 저장소가 아니에요. 어떻게 할까요?");
   });
 
   // 채팅은 Runtime 세션 하나라 카드에 얼굴이 없다(스토리 2) — Project 카드의 그림은 Project 상자의 폴더 하나, 도구 질문 카드에는 그림이 없다.
   it("얼굴 없이 Runtime 이름으로 묻는다", () => {
-    const project = slot("thread-project", 8);
+    const project = slot("thread-project", 7);
     expect(project.match(/<svg/g)).toHaveLength(1);
     expect(project).toContain("lucide-folder");
-    const space = slot("thread-space-ask", 8);
+    const space = slot("thread-space-ask", 7);
     expect(space).toContain("Claude Code · 질문");
     expect(space).not.toContain("<svg");
   });
 
   it("Work 만들기 카드의 추천 꼬리표는 「추천」이다", () => {
-    const work = slot("thread-work", 56);
+    const work = slot("thread-work", 55);
     expect(work).toMatch(/>추천</);
     expect(work).not.toContain("Host");
   });
 
   // 「나중에」는 esc가 고르는 단추다 — 승인 카드의 esc 단추처럼 단축키 표의 그 키를 `aria-keyshortcuts`로 말한다. 글쇠 그림은 시안대로 없다.
   it("Space 질문 카드의 「나중에」는 esc를 단축키로 말하고, 「나중에」가 없는 Project 추가 카드는 「고르기」만 선다", () => {
-    const space = slot("thread-space-ask", 8);
+    const space = slot("thread-space-ask", 7);
     expect(button(space, "나중에")).toContain('aria-keyshortcuts="Escape"');
     expect(button(space, "고르기")).not.toContain("aria-keyshortcuts");
-    const adding = slot("thread-project-add", 8);
+    const adding = slot("thread-project-add", 7);
     expect(button(adding, "나중에")).toBeNull();
     expect(button(adding, "고르기")).not.toBeNull();
   });

@@ -32,7 +32,7 @@ import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 //                   Thread마다 기억 · 첫 화면에 없음)
 //                   승인 카드의 늘 허용 갈래(이은 Work면 「이 Work에서」) · 입력창 자리 카드의 겉 · 대기 「지금 보내기」 · 작업 중 점 ·
 //                   Thread 화면이 서기 전에 「새 Thread」로 돌아온 첫 화면
-//   다른 spec이 잰다 Host 답 머리 없음 · 다른 Agent 이름 줄(`thread-mention`) · 도구 없는 턴의 구분선 사라짐(`thread`) · 승인 단추 글자 ·
+//   다른 spec이 잰다 Host 답 머리 없음 · 도구 없는 턴의 구분선 사라짐(`thread`) · 승인 단추 글자 ·
 //                   ↵ · esc · 숫자 키 없음 · 답한 질문 한 줄(`thread-approval`) · Thread 안에 고르는 Work 칩 없음(`thread-work`) · 넓힌
 //                   카드의 줄 · 480 · 작은 카드 앞 16(`thread-work-card`) · 첫 화면 Work 칩의 스위치 · 기억(`thread-work-chip`) · 트레이의
 //                   두 자리 · 잠긴 칩 · Space 칩 · 범위 줄(03 흐름 「트레이」 — `thread-tray`) · Work 없는 Thread 머리 줄의 Space(03 흐름

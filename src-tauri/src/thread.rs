@@ -75,12 +75,12 @@ fn wire(event: &HostEvent) -> (&'static str, Value) {
 mod tests {
     use super::*;
 
-    /// **Thread의 기록 줄 이벤트는 Thread id · seq · 줄을 싣는다**(v1 구현 스펙 §18). 줄은 `events.jsonl`의 한 줄 그대로다 —
-    /// 참여자의 줄에는 `who`가 있고 사람의 줄에는 없다(S8). 칸 이름이 어긋나면 tsc도 IPC 검사도 못 본다.
+    /// **Thread의 기록 줄 이벤트는 Thread id · seq · 줄을 싣는다**(v1 구현 스펙 §18). 줄은 `events.jsonl`의 한 줄 그대로다.
+    /// 칸 이름이 어긋나면 tsc도 IPC 검사도 못 본다.
     #[test]
     fn a_thread_record_event_carries_the_thread_the_seq_and_the_line() {
         let line = serde_json::from_value(json!({
-            "seq": 7, "at": "2026-10-23T10:00:07.000+09:00", "kind": "turn-end", "who": "host",
+            "seq": 7, "at": "2026-10-23T10:00:07.000+09:00", "kind": "turn-end",
             "payload": {"stopReason": "end_turn"},
         }))
         .expect("기록 줄");
@@ -91,7 +91,7 @@ mod tests {
             json!({
                 "thread": "20261023-100000",
                 "seq": 7,
-                "line": {"seq": 7, "at": "2026-10-23T10:00:07.000+09:00", "kind": "turn-end", "who": "host",
+                "line": {"seq": 7, "at": "2026-10-23T10:00:07.000+09:00", "kind": "turn-end",
                          "payload": {"stopReason": "end_turn"}},
             })
         );

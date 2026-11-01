@@ -2,7 +2,7 @@
 //!
 //! - **Work에 이은 Thread의 Space는 그 Work의 것이다**(§9) — Thread에서 바꾸면(Space 칩) 그 Work의 Space가 바뀐다(스토리 42). Work의
 //!   Space가 바뀌면 그 Work의 Thread마다 Space 줄이 선다(S9) — 그 Thread들의 범위가 모두 바뀐다.
-//! - **Space 줄**(`space`)은 시스템 줄이다(`who`가 없다 — S8). 갈래 다섯(`change` — 사람이 칩 · 메뉴로 한 바꿈 `changed` · 뺌 `removed`,
+//! - **Space 줄**(`space`)은 시스템 줄이다. 갈래 다섯(`change` — 사람이 칩 · 메뉴로 한 바꿈 `changed` · 뺌 `removed`,
 //!   Host 「알아서」의 붙임 `attached`(08), 지워짐 `deleted` · 되돌림 `restored`(07))과 바뀐 뒤의 범위(읽는 Project의 이름 · 등록된
 //!   Project 수 · worktree에서 일하는 Project의 이름)를 싣는다 — 화면은 그때의 범위를 다시 셀 수 없다(기록은 덧붙이기만 한다).
 //! - 떠 있는 Session은 건드리지 않는다 — 다음 말을 보낼 때 새 자리로 이어 연다([`ConversationHost::move_if_needed`] — 범위가 바뀌면 함께
@@ -320,7 +320,7 @@ impl ConversationHost {
             "state": "answered", "requestId": request, "card": "space", "choice": choice.as_str(),
             "space": space.map(|space| &space.slug), "name": space.map(|space| &space.name),
         });
-        self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), line).map_err(HostError::Record)?;
+        self.thread_log(thread)?.write(RecordKind::Question, line).map_err(HostError::Record)?;
         let text = match choice {
             SpaceChoice::Later => format!(
                 "사람이 나중에 정하기로 함 — Space를 바꾸지 않았다. {}. 같은 물음을 곧바로 다시 하지 않는다.",
@@ -363,7 +363,7 @@ impl ConversationHost {
     fn note_space(&self, thread: &str, file: &ThreadFile, work: Option<&Work>, before: Option<&str>, change: Change) -> Result<(), HostError> {
         let scope = self.scope_of(file, work);
         let line = space_line(change, &scope, before, work.map(|work| work.slug.as_str()));
-        self.thread_log(thread)?.write(RecordKind::Space, None, line).map_err(HostError::Record).map(drop)
+        self.thread_log(thread)?.write(RecordKind::Space, line).map_err(HostError::Record).map(drop)
     }
 }
 
@@ -509,10 +509,10 @@ fn space_error(error: atelier_core::Error) -> HostError {
     }
 }
 
-/// 그 참여자가 마지막으로 들은 머리말의 「- Space:」 줄 — 받은 말(`sent`) 가운데 머리말 블록을 실은 마지막 것에서 읽는다.
+/// Session이 마지막으로 들은 머리말의 「- Space:」 줄 — 보낸 말(`sent`) 가운데 머리말 블록을 실은 마지막 것에서 읽는다.
 /// 이어 연 Session이 그사이 바뀐 Space를 듣게 한다(앱을 끈 동안 고친 파일도). 못 찾으면 없다 — 견주지 않는다.
-pub(super) fn heard_space(lines: &[atelier_core::RecordLine], who: &str) -> Option<String> {
-    lines.iter().rev().filter(|line| crate::past::addressed_to(line, who)).find_map(|line| {
+pub(super) fn heard_space(lines: &[atelier_core::RecordLine]) -> Option<String> {
+    lines.iter().rev().filter(|line| line.kind == atelier_core::RecordKind::Sent).find_map(|line| {
         let blocks = line.payload["prompt"].as_array()?;
         let preamble = blocks.iter().filter_map(|block| block["text"].as_str()).find(|text| text.starts_with(super::PREAMBLE_HEAD))?;
         preamble.lines().find(|row| row.starts_with("- Space:")).map(|row| format!("{row}\n"))

@@ -107,7 +107,6 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
 
     let asked = wait_card(&sandbox, &thread, "asked");
-    assert_eq!(asked["who"], "host", "제안한 Agent가 줄의 who다(S8)");
     let card = &asked["payload"];
     assert_eq!(card["title"], "환불 API 버그 수정");
     assert_eq!(card["slug"], "refund-api");
@@ -148,7 +147,6 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
     );
     let linked = of_kind(&record, "work");
     assert_eq!(linked.len(), 1, "{}", common::lines_text(&record));
-    assert!(linked[0].get("who").is_none(), "사람이 고른 일이라 work 줄에 who가 없다(S8): {}", linked[0]);
     assert_eq!(
         linked[0]["payload"],
         json!({"state": "created", "slug": "refund-api", "title": "환불 API 버그 수정", "branch": "fix/refund-api",
@@ -421,7 +419,7 @@ fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같�
             host.answer_work(&thread, &request, create(&["api-server"], "fix/refund-partial-amount")).expect("Work 만들기");
             card = Some(request.clone());
         } else {
-            host.answer_thread_permission(&thread, "host", &request, "allow_once").expect("이번만 허락");
+            host.answer_thread_permission(&thread, &request, "allow_once").expect("이번만 허락");
         }
         sandbox.wait_thread_record(&thread, |record| unanswered(record).is_none_or(|next| request_of(&next) != request));
     };

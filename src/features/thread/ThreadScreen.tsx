@@ -41,7 +41,6 @@ import {
 } from "./hooks";
 import { changedFiles } from "./log";
 import { reducedMotion } from "./motion";
-import { recipientOf } from "./mentions";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
@@ -54,7 +53,7 @@ import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
-import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
+import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
 import type { ComposerTray, SpaceChoice } from "./ComposerChips";
 import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
@@ -210,7 +209,6 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
       busy={starting !== null}
       onSend={start}
       onNewThread={() => {}}
-      recipient={null}
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
       // 트레이는 첫 말 전에 상자 아래에서 Work · Space를 고르고, 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 상자 위에서
@@ -513,12 +511,7 @@ function ThreadBody({
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread));
   // 다시 켠 뒤면 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model: ThreadModel = foldOf(lines, view.live ? null : view.lastSeq);
-  const draft = useStore(threadUiStore, (state) => state.drafts[thread] ?? "");
-  const recipient = recipientOf(draft, view.participants);
-  // 다음 말을 받을 참여자 — 멘션이 없거나 앉지 않은 이름이면 Host, 앉은 Agent를 멘션하면 그다.
-  const who = recipient?.agent?.handle ?? "host";
-  const participant = view.participants.find((one) => one.handle === who) ?? null;
-  const lists = useMemo(() => chipLists(lines, participant?.handle ?? "host"), [lines, participant?.handle]);
+  const lists = useMemo(() => chipLists(lines), [lines]);
   const host = view.participants.find((one) => one.handle === "host") ?? null;
   const change = useChangeChip();
   const setMode = useSetMode();
@@ -549,7 +542,7 @@ function ThreadBody({
   const changes = last ? changedFiles(last) : null;
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
-  const askingCwd = asking ? (view.participants.find((one) => one.handle === asking.who)?.cwd ?? null) : null;
+  const askingCwd = asking ? (host?.cwd ?? null) : null;
   // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
   // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
   const working = model.running && asking === null;
@@ -621,10 +614,10 @@ function ThreadBody({
   };
 
   const chip = (next: ChipChange) => {
-    if (!participant) return;
+    if (!host) return;
     setChipProblem(null);
     change.mutate(
-      { thread, who: participant.handle, change: next },
+      { thread, who: host.handle, change: next },
       { onError: (failure) => setChipProblem(String(failure)) },
     );
   };
@@ -672,10 +665,10 @@ function ThreadBody({
           <Beside open={beside}>
             <ThreadComposer
               draftKey={thread}
-              // Session을 연 적 없는 참여자(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
-              models={participant ? (lists.models ?? CLAUDE_MODELS) : null}
-              model={participant ? currentModel(lists, participant) : null}
-              effort={participant ? participant.effort : null}
+              // Session을 연 적 없는 채팅(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
+              models={host ? (lists.models ?? CLAUDE_MODELS) : null}
+              model={host ? currentModel(lists, host) : null}
+              effort={host ? host.effort : null}
               onModel={(value) => chip({ field: "model", value })}
               onEffort={(value) => chip({ field: "effort", value })}
               commands={lists.commands}
@@ -688,8 +681,6 @@ function ThreadBody({
               onStop={() => threadApi.stop(thread)}
               onNewThread={() => void navigate({ to: "/" })}
               problem={problem ?? chipProblem}
-              recipient={recipient}
-              recipientRunning={participant !== null && model.answering.includes(participant.handle)}
               level={view.askLevel}
               onLevel={pickLevel}
               tray={tray}
@@ -697,7 +688,7 @@ function ThreadBody({
                 // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
                 // 새 카드가 올라온다 — 자리의 열쇠가 그 물음이다.
                 asking && slot ? (
-                  <Arriving key={`${asking.who}\u0000${asking.requestId}`} motion="card-rise">
+                  <Arriving key={asking.requestId} motion="card-rise">
                     {asking.card === "question" ? (
                       <QuestionCard {...slot} request={asking} />
                     ) : isToolCardAsk(asking) ? (

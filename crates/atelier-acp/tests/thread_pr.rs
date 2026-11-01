@@ -116,7 +116,6 @@ fn 턴이_끝나면_pr을_읽어_처음_보인_pr을_그_thread에_pr_줄로_남
     let record = sandbox.wait_thread_kind(&thread, "pr", 1);
 
     let line = of_kind(&record, "pr")[0];
-    assert_eq!(line.get("who"), None, "시스템의 줄이다");
     assert_eq!(
         line["payload"],
         json!({

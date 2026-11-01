@@ -82,14 +82,21 @@ fn 새_thread의_첫_말에_host가_답하고_thread_폴더에_thread_json과_�
     assert!(!args.iter().any(|arg| arg == "--add-dir"), "등록된 Project가 없으면 Work 없는 Thread는 함께 여는 폴더가 없다: {args:?}");
     assert!(same_dir(Path::new(receipt["cwd"].as_str().expect("cwd")), &dir), "claude는 Thread 폴더에서 일한다");
 
-    let kinds: Vec<(&str, Option<&str>)> =
-        record.iter().map(|line| (line["kind"].as_str().unwrap(), line["who"].as_str())).collect();
-    assert_eq!(kinds[0], ("joined", Some("host")), "첫 줄은 Host의 참여다");
-    assert_eq!(record[0]["payload"], json!({"handle": "host", "name": "Host", "from": "library"}));
+    assert_eq!(
+        (record[0]["seq"].clone(), record[0]["kind"].clone(), record[0]["payload"].clone()),
+        (json!(1), json!("session"), json!({"state": "spawning"})),
+        "첫 줄은 첫 Session의 띄우는 줄이다"
+    );
+    let spawning = record.iter().filter(|line| line["payload"]["state"] == "spawning").count();
+    assert_eq!(spawning, 1, "첫 열기가 그 줄을 다시 쓰지 않는다:\n{}", common::lines_text(&record));
+    assert!(
+        record.iter().all(|line| line.get("who").is_none() && !["joined", "left"].contains(&line["kind"].as_str().unwrap())),
+        "기록에 말한 이도 참여 줄도 없다:\n{}",
+        common::lines_text(&record)
+    );
     let sent = of_kind(&record, "sent");
     assert_eq!(sent.len(), 1);
-    assert_eq!(sent[0].get("who"), None, "사람의 줄에는 who가 없다(S8)");
-    assert_eq!(sent[0]["payload"]["to"], "host", "받는 이는 Host다");
+    assert!(sent[0]["payload"].get("to").is_none(), "받는 이가 없다: {}", sent[0]);
     assert_eq!(
         sent[0]["payload"]["prompt"][1],
         json!({"type": "text", "text": "세 낱말로 답해 줘: hello from turn"}),
@@ -97,11 +104,6 @@ fn 새_thread의_첫_말에_host가_답하고_thread_폴더에_thread_json과_�
     );
     let preamble = sent[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말");
     assert!(preamble.contains(&thread) && preamble.contains("@host"), "머리말은 Thread id와 handle을 싣는다:\n{preamble}");
-    assert!(
-        record.iter().filter(|line| line["kind"] != "sent").all(|line| line["who"] == "host"),
-        "Session의 줄은 모두 Host의 것이다:\n{}",
-        common::lines_text(&record)
-    );
     let stdin = sandbox.claude_stdin(&session);
     let user = stdin.iter().find(|line| line["type"] == "user").expect("claude가 받은 말");
     assert_eq!(user["message"]["content"], sent[0]["payload"]["prompt"], "claude가 받은 블록이 sent 줄에 남는다");
@@ -208,14 +210,16 @@ fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_�
     assert_ne!(second, first, "새 Session의 id가 thread.json에 적힌다");
     assert!(has_pair(&launches[2], "--session-id", &second), "{:?}", launches[2]);
     assert_eq!(common::opened_hows(&record), ["new", "fresh"], "맥락을 잇지 못했다고 열림 줄이 말한다");
+    let spawning = record.iter().filter(|line| line["payload"]["state"] == "spawning").count();
+    assert_eq!(spawning, 2, "새 Thread의 첫 줄 · 되살리기의 줄:\n{}", common::lines_text(&record));
     let user = sandbox.claude_stdin(&second).into_iter().find(|line| line["type"] == "user").expect("새 Session이 받은 말");
     let content = user["message"]["content"].as_array().expect("블록들").clone();
     assert_eq!(content.len(), 3, "새 Session의 첫 말에 머리말 · 지난 말이 다시 붙는다(S10): {content:?}");
     assert!(content[0]["text"].as_str().unwrap().starts_with("Atelier Thread 안에서 열린 Session이다."));
     let past = content[1]["text"].as_str().unwrap();
     assert!(
-        past.starts_with("지난 말 — ") && past.ends_with("[사람 → @host]\n어제의 말\n\n[@host]\nPROBE-SKILL-OK\n\n"),
-        "새 Session은 앞 Session을 모르므로 Thread 처음부터 — 어제의 말과 Host 제 답까지 받는다(v1 티켓 13):\n{past}"
+        past.starts_with("지난 말 — ") && past.ends_with("[사람]\n어제의 말\n\n[답]\nPROBE-SKILL-OK\n\n"),
+        "새 Session은 앞 Session을 모르므로 Thread 처음부터 — 어제의 말과 제 답까지 받는다(v1 티켓 13):\n{past}"
     );
     assert_eq!(content[2]["text"], "오늘의 말");
 
@@ -429,9 +433,8 @@ fn 로그인이_풀린_claude는_thread에_로그인_필요_줄을_남기고_로
         sandbox.wait_thread_record(&thread, |record| record.iter().any(|line| line["payload"]["state"] == "login-required"));
     let session = sandbox.thread_session_id(&thread, "host");
 
-    let tail: Vec<(Value, Value)> =
-        record.iter().rev().take(2).rev().map(|line| (line["kind"].clone(), line["who"].clone())).collect();
-    assert_eq!(tail, [(json!("turn-end"), json!("host")), (json!("session"), json!("host"))], "턴 끝 바로 뒤에 Host의 로그인 필요 줄");
+    let tail: Vec<Value> = record.iter().rev().take(2).rev().map(|line| line["kind"].clone()).collect();
+    assert_eq!(tail, [json!("turn-end"), json!("session")], "턴 끝 바로 뒤에 로그인 필요 줄");
     assert_eq!(record.last().unwrap()["payload"], json!({"state": "login-required"}));
     assert_eq!(
         events.engine_states().last(),
@@ -468,9 +471,7 @@ fn 에이전트_프로세스가_죽으면_host의_죽음_줄이_서고_다음_�
     // 변환기와 claude의 그룹을 바깥에서 끈다 — 앱이 끈 것이 아니다.
     // SAFETY: 이 시험이 띄운 변환기의 프로세스 그룹에 신호를 보낼 뿐이다.
     unsafe { libc::killpg(translator, libc::SIGKILL) };
-    let record = sandbox.wait_thread_record(&thread, |record| record.iter().any(|line| line["payload"]["state"] == "died"));
-    let died = record.iter().find(|line| line["payload"]["state"] == "died").unwrap();
-    assert_eq!(died["who"], "host", "죽음 줄은 그 참여자의 것이다");
+    sandbox.wait_thread_record(&thread, |record| record.iter().any(|line| line["payload"]["state"] == "died"));
     assert!(!host.thread(&thread).unwrap().live, "죽은 Session은 떠 있지 않다");
 
     host.send_to_thread(&thread, "다시 말").expect("다음 말이 되살린다");
@@ -524,7 +525,7 @@ fn 모델을_바꾸면_떠_있는_claude가_set_model을_받고_참여자_줄과
     assert_eq!(sandbox.participant(&thread, "host")["model"], "opus");
     let record = sandbox.wait_thread_kind(&thread, "config", 1);
     let config = of_kind(&record, "config")[0];
-    assert_eq!((config["who"].clone(), config["payload"].clone()), (json!("host"), json!({"model": "opus"})));
+    assert_eq!(config["payload"], json!({"model": "opus"}));
 
     // 앱을 다시 켠 뒤 — 떠 있지 않은 Session의 바꾸기는 참여자 줄에만 남고 띄울 때 플래그로 준다.
     host.shut_down();
@@ -566,7 +567,7 @@ fn 생각_깊이를_바꾸면_쉬는_session은_같은_session으로_다시_뜨�
     );
     let record = sandbox.wait_thread_kind(&thread, "config", 1);
     let config = of_kind(&record, "config")[0];
-    assert_eq!((config["who"].clone(), config["payload"].clone()), (json!("host"), json!({"effort": "low"})));
+    assert_eq!(config["payload"], json!({"effort": "low"}));
     assert_eq!(sandbox.thread_session_id(&thread, "host"), session, "Session id는 그대로다");
     assert_eq!(
         host.set_thread_effort(&thread, "host", "extreme").map(|_| ()),
@@ -646,7 +647,6 @@ fn 이름을_바꾸면_thread_json과_title_줄과_목록_요약이_바뀌고_�
     assert_eq!(sandbox.thread_json(&thread)["title"], "환불 API 버그");
     let record = sandbox.wait_thread_kind(&thread, "title", 1);
     let line = of_kind(&record, "title")[0];
-    assert_eq!(line.get("who"), None, "사람이 바꾼 이름의 줄에는 who가 없다(S8)");
     assert_eq!(line["payload"], json!({"title": "환불 API 버그", "before": "세 낱말로 답해 줘: hello from turn"}));
     assert_eq!(events.thread_lists().last().map(|summary| summary.title.clone()).as_deref(), Some("환불 API 버그"));
     assert_eq!(host.list_threads().expect("목록")[0].title, "환불 API 버그");

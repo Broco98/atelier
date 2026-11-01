@@ -15,15 +15,8 @@ use serde_json::{json, Value};
 /// 시험의 Library `host.md`.
 const HOST_MD: &str = "---\nname: Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
 
-/// 시험의 Library `reviewer.md`.
-const REVIEWER_MD: &str = "---\nname: 리뷰어\ntools:\n  builtin: [read, search]\n---\n\n너는 시험 Thread의 리뷰어다.\n";
-
 /// 첨부 블록의 머리 — 엔진의 글과 따로 적는다(시험의 기댓값).
 const ATTACHED_HEAD: &str = "첨부 — 사람이 이 말에 붙인 파일 · 폴더의 절대 경로다. 내용은 싣지 않았다. 필요하면 그 경로를 읽어라.";
-
-/// 지난 말 블록의 머리(`past.rs`).
-const PAST_HEAD: &str =
-    "지난 말 — 이 Thread에서 네가 아직 보지 못한 말이다. 사람의 말과 다른 Agent의 마지막 메시지만 누가 했는지와 함께 담았다.";
 
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
     sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")])
@@ -130,34 +123,6 @@ fn 첨부가_절대_경로가_아니거나_없으면_보내기_전에_거절하�
     let refused = host.send_to_thread_with(&thread, "이것도", &["error.log".to_owned()]).unwrap_err();
     assert_eq!(refused.to_string(), "첨부는 절대 경로여야 해요: error.log");
     assert_eq!(sandbox.thread_record(&thread).len(), before, "기록에 아무것도 적지 않는다");
-
-    host.shut_down();
-}
-
-#[test]
-fn 나중에_들어온_agent의_지난_말에도_사람이_첨부한_경로가_든다() {
-    let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
-    sandbox.library_agent("reviewer", REVIEWER_MD);
-    let (log, _) = dropped(&sandbox);
-    let host = sandbox.host(two_turns(&sandbox));
-    let thread =
-        host.start_thread_with("이 로그 봐 줘", &[text(&log)], ThreadLink::NoWork).expect("첨부한 첫 말로 새 Thread");
-    sandbox.wait_thread_kind(&thread, "turn-end", 1);
-
-    host.send_to_thread(&thread, "@reviewer 확인해 줘").expect("리뷰어를 부른다");
-    sandbox.wait_thread_kind(&thread, "turn-end", 2);
-
-    let reviewer = sandbox.thread_session_id(&thread, "reviewer");
-    let first = &heard(&sandbox, &reviewer)[0];
-    assert_eq!(
-        first[1]["text"],
-        format!(
-            "{PAST_HEAD}\n\n[사람 → @host]\n{ATTACHED_HEAD}\n- {}\n이 로그 봐 줘\n\n[@host]\nhello from turn\n\n",
-            log.display()
-        ),
-        "사람의 말에 붙은 경로도 지난 말에 함께 간다 — 리뷰어도 그 파일을 읽을 수 있다"
-    );
 
     host.shut_down();
 }

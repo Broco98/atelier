@@ -592,7 +592,7 @@ mod tests {
         Verdict::Ask { card, policy: policy.to_owned(), grant: names(grant) }
     }
 
-    const BUSY: &str = "@host가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+    const BUSY: &str = "「장바구니」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
 
     #[test]
     fn 판정은_forbid_밖_편집_쓰기_자리_ask_before_허락_물어보는_정도의_차례로_처음_걸린_것을_낸다() {

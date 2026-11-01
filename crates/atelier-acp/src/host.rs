@@ -179,7 +179,7 @@ pub struct HostCore {
     /// 읽는 동안 잠금을 쥔다. 두 엔진 확인이 함께 와도 셸은 한 번만 뜨고, 뒤의 것이 앞의 결과를 쓴다.
     login_env: Mutex<Option<AgentEnv>>,
     /// Session마다 띄우기(되살리기 · 다시 띄우기 · 참여)를 하나씩 세우는 잠금 — 함께 온 보내기 둘이 Runtime을 둘 띄우지 않고,
-    /// 같은 Agent를 멘션한 말 둘이 엇갈려도 한 번만 들어오게(three-axes 티켓 10 · v1 티켓 13). 설정 바꾸기도 되살리기의 끝을 이것으로
+    /// 말 둘이 엇갈려도 한 번만 들어오게(three-axes 티켓 10 · v1 티켓 13). 설정 바꾸기도 되살리기의 끝을 이것으로
     /// 기다린다. 잠금 차례의 맨 바깥이다 — 이 문 → 설정 → Session 표 → Session의 대화(`state`) → 기록. 문의 이름으로 찾는다.
     revivals: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 Session과 도는 로그인 명령을 쥔다(three-axes 티켓 12).
@@ -566,13 +566,6 @@ pub enum HostError {
     AgentBroken { handle: String, reason: String },
     /// 그 Thread에 그 handle의 참여자가 없다.
     ParticipantNotFound { thread: String, handle: String },
-    /// 멘션한 이름(`call` — @ 뒤)이 이 Thread의 범위에 없다(v1 구현 스펙 §6 범위) — Work 없는 Thread는 Library만, Work에 이은
-    /// Thread는 Library와 그 Work의 Project들이다. 보내기 전에 거절한다(v1 티켓 13).
-    AgentNotFound { call: String, work: Option<String> },
-    /// 멘션한 맨 이름이 Project 여럿에 있다 — 붙인 이름(`calls`) 가운데 하나로 불러야 한다(v1 티켓 11).
-    AgentAmbiguous { call: String, calls: Vec<String> },
-    /// 멘션한 Agent와 같은 handle의 다른 Agent가 이미 이 Thread에 있다 — Session은 (Thread, handle)마다 하나다.
-    HandleTaken { call: String, handle: String },
     /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
     BadTitle,
     /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
@@ -622,20 +615,6 @@ impl fmt::Display for HostError {
             HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없어요: {thread}"),
             HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했어요: {reason}"),
             HostError::ParticipantNotFound { thread, handle } => write!(f, "Thread {thread}에 @{handle} Agent가 없어요"),
-            HostError::AgentNotFound { call, work: None } => {
-                write!(f, "@{call} — 이 Thread에서 부를 수 없는 Agent예요. Work 없는 Thread에서는 Library의 Agent만 불러요")
-            }
-            HostError::AgentNotFound { call, work: Some(work) } => write!(
-                f,
-                "@{call} — 이 Thread에서 부를 수 없는 Agent예요. Library와 Work `{work}`의 Project에 있는 Agent만 불러요"
-            ),
-            HostError::AgentAmbiguous { call, calls } => {
-                let calls: Vec<String> = calls.iter().map(|call| format!("@{call}")).collect();
-                write!(f, "@{call} — 같은 handle이 Project 여럿에 있어요. {} 가운데 하나로 불러 주세요", calls.join(" · "))
-            }
-            HostError::HandleTaken { call, handle } => {
-                write!(f, "@{call} — 이 Thread에는 이미 다른 @{handle} Agent가 들어와 있어요")
-            }
             HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
             HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),

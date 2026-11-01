@@ -1,10 +1,8 @@
 import { isObject, text } from "./json";
 import type { AskLevel, Participant, RecordLine } from "./types";
 
-// 입력창 칩과 「/」 메뉴의 원천(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 스토리 33) — 기록 줄에서 그 참여자 Session의 모델 목록 ·
-// 명령을, 참여자 줄(`thread.json`)에서 고른 모델 · 생각 깊이를 읽는 **순수 함수**다. three-axes 칩(`chat/chips.ts`)을 옮겨 왔고, Thread
-// 에서 달라진 것은 둘이다.
-// - **목록은 그 참여자의 줄에서만 읽는다**(`who`) — Thread에는 여러 참여자의 Session이 함께 적힌다(14).
+// 입력창 칩과 「/」 메뉴의 원천(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 스토리 33) — 기록 줄에서 Session의 모델 목록 ·
+// 명령을, 참여자 줄(`thread.json`)에서 고른 모델 · 생각 깊이를 읽는 **순수 함수**다. three-axes 칩(`chat/chips.ts`)을 옮겨 왔다.
 // - **지금 값은 참여자 줄이 이긴다.** 모델 · 생각 깊이 바꾸기는 참여자 줄을 먼저 고치고(Session이 떠 있으면 다음 턴부터 든다), 떠
 //   있지 않으면 다음에 띄울 때 그 값으로 연다. 그래서 고른 값이 있으면 그것이고, 없으면(정의 파일에도 없다) Session이 연 값이다.
 // 모드 칩은 없다 — 물어보는 정도(v1 티켓 23)가 그 자리를 맡는다. 정도는 Session이 아니라 Thread(Work에 이었으면 Work)의 값이라 기록이
@@ -94,10 +92,9 @@ export const ASK_LEVELS: readonly { value: AskLevel; name: string; description: 
 export const askLevelOf = (value: unknown): (typeof ASK_LEVELS)[number] | null =>
   ASK_LEVELS.find((level) => level.value === value) ?? null;
 
-export function chipLists(lines: readonly RecordLine[], who: string): ChipLists {
+export function chipLists(lines: readonly RecordLine[]): ChipLists {
   const lists: ChipLists = { models: null, model: null, commands: [] };
   for (const line of lines) {
-    if (line.who !== who) continue;
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
       case "session": {

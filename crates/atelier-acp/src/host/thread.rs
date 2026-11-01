@@ -1,15 +1,12 @@
 //! Thread 엔진 — 대화 호스트에 Thread를 자리로 더한다(v1 티켓 04 · 구현 스펙 §5 · §18).
 //!
-//! - **Session** 하나 = (Thread, 참여자) 하나 = Runtime 프로세스 하나 · 턴 차례 하나다. work 대화와 같은 턴 차례 · 런타임 · 로그인
-//!   창구를 쓰고, 기록은 Thread의 `events.jsonl` 하나에 참여자의 handle(`who`)을 달아 함께 적는다(S8).
-//! - **받는 이는 말의 첫 @멘션이다(S9, v1 티켓 13).** 멘션이 없으면 Host다. 나머지 멘션은 글자로만 남는다. 이미 참여자인
-//!   이름은 범위를 다시 보지 않고 그 참여자다(스토리 52). 아니면 범위(v1 티켓 11)에서 풀고, 범위 밖 · 깨진 파일 · 겹친 맨
-//!   이름이면 아무것도 적지 않고 거절한다.
-//! - 받는 Agent가 아직 참여자가 아니면 들인다 — 정의 파일을 Thread 폴더에 스냅숏하고(S4) `joined` 줄 · 참여자 줄을 적은 뒤
-//!   그 Agent의 새 Session을 연다. 그 Session은 스냅숏만 읽는다 — 지시문은 스냅숏의 본문, 내장 도구 · 금지는 스냅숏의
-//!   frontmatter(v1 티켓 12), 모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때 스냅숏에서 옮겨 적고, 입력창 칩이
-//!   바꾼다)이다.
-//! - Agent에게 가는 말은 머리말(Session의 첫 말) + 지난 말 + 본문이다(S10). 지난 말은 보내는 그때 기록에서 짓는다(`past`).
+//! - **Session** 하나 = Thread 하나 = Runtime 프로세스 하나 · 턴 차례 하나다. work 대화와 같은 턴 차례 · 런타임 · 로그인
+//!   창구를 쓰고, 기록은 Thread의 `events.jsonl` 하나에 적는다. 줄에는 말한 이도 받는 이도 없다.
+//! - 말은 언제나 Host의 Session이 받는다. 아직 참여자가 아니면 들인다 — 정의 파일을 Thread 폴더에 스냅숏하고(S4) 참여자 줄을 적은 뒤
+//!   새 Session을 연다. 그 Session은 스냅숏만 읽는다 — 지시문은 스냅숏의 본문, 내장 도구 · 금지는 스냅숏의 frontmatter(v1 티켓 12),
+//!   모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때 스냅숏에서 옮겨 적고, 입력창 칩이 바꾼다)이다.
+//! - Runtime에게 가는 말은 머리말(Session의 첫 말) + 지난 말(새로 선 Session의 첫 말) + 본문이다(S10). 지난 말은 보내는 그때 기록에서
+//!   짓는다(`past`).
 //! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다). 함께 여는 폴더는
 //!   읽는 범위다(03 구현 스펙 §7 — Space가 있으면 그 Project, 없으면 등록된 Project 전부, [`space`]).
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
@@ -56,8 +53,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use atelier_core::{
-    AgentDefinition, AgentProblem, AgentRoster, Attachment, DefinitionSource, FoundAgent, NewThread, Participant, RecordKind,
-    RecordLine, ThreadFile, ThreadIndex, ThreadSummary, Unresolved, WorkGone,
+    AgentDefinition, AgentProblem, AgentRoster, Attachment, FoundAgent, NewThread, Participant, RecordKind, RecordLine, ThreadFile,
+    ThreadIndex, ThreadSummary, Unresolved, WorkGone,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -71,14 +68,14 @@ use crate::login::Waiter;
 use crate::login_env::AgentEnv;
 use crate::policy::{AskLevel, Card};
 use crate::quote::{Attached, Quote};
-use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
+use crate::records::{heard_since_session_start, session_payload, Recorder, SessionState, ThreadLog};
 use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, QuestionAnswer, SessionPlace};
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use gate::Gate;
 use seat::{Docs, Grant, Writer};
 use tool_lines::ToolLines;
 
-/// 받는 이를 고르지 않은 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S9 · S14).
+/// 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S14).
 const HOST: &str = "host";
 /// v1이 띄우는 Runtime 하나(S3).
 const RUNTIME: &str = "claude-code";
@@ -375,12 +372,10 @@ impl ConversationHost {
         atelier_core::read_thread_records(&self.data_root, thread, after).map_err(|error| thread_error(thread, error))
     }
 
-    /// 새 Thread의 첫 말 — Thread를 세우고 받는 Agent가 들어와 답한다(S6 · S9). 받는 이는 첫 @멘션의 Agent, 없으면 Host다.
-    /// 세운 Thread의 id를 돌려준다.
+    /// 새 Thread의 첫 말 — Thread를 세우고 Host가 들어와 답한다(S6). 세운 Thread의 id를 돌려준다.
     ///
-    /// 1. 잇는 Work가 있는지 · Claude를 찾는지 · 받는 Agent가 범위 안에서 읽히는지 먼저 본다 — 하나라도 막히면 아무것도 세우지
-    ///    않는다.
-    /// 2. Thread 폴더를 첫 줄(받는 Agent의 `joined`)과 함께 세운다. 이름은 첫 말의 앞부분이다.
+    /// 1. 잇는 Work가 있는지 · Claude를 찾는지 · Host의 정의가 읽히는지 먼저 본다 — 하나라도 막히면 아무것도 세우지 않는다.
+    /// 2. Thread 폴더를 첫 줄(첫 Session의 `spawning`)과 함께 세운다. 이름은 첫 말의 앞부분이다. 그 줄을 첫 열기가 다시 쓰지 않는다.
     /// 3. 정의를 Thread 폴더에 스냅숏하고 `thread.json`에 참여자로 적는다(S4).
     /// 4. Session을 열고(S11의 작업 폴더) 머리말 + 본문을 보낸다(S10). 답은 기록 줄 이벤트로 흐른다.
     ///
@@ -438,9 +433,7 @@ impl ConversationHost {
         };
         let env = self.login_env(false)?;
         find_programs(Agent::Claude, &env)?;
-        let Recipient::Newcomer(found) = self.recipient(&[], work.as_deref(), text)? else {
-            unreachable!("새 Thread에는 참여자가 없다")
-        };
+        let Recipient::Newcomer(found) = self.recipient(&[])? else { unreachable!("새 Thread에는 참여자가 없다") };
         let handle = found.definition.handle.clone();
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
@@ -451,7 +444,7 @@ impl ConversationHost {
         }
         let space = space.flatten().filter(|_| work.is_none()).map(str::to_owned);
         let new = NewThread { title: title_of(text), work: work.clone(), mode, new_work, space };
-        let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Joined, Some(&handle), joined(&found))
+        let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Session, session_payload(SessionState::Spawning))
             .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
@@ -467,11 +460,9 @@ impl ConversationHost {
         Ok(created.id)
     }
 
-    /// 보내기 — 있는 Thread에 말한다. 받는 이는 첫 @멘션의 Agent, 없으면 Host다(S9). 기다리지 않는다: 답과 턴 끝은 기록 줄
-    /// 이벤트로 온다.
+    /// 보내기 — 있는 Thread에 말한다. 기다리지 않는다: 답과 턴 끝은 기록 줄 이벤트로 온다.
     ///
-    /// - 멘션한 이름이 범위 밖이거나 깨졌거나 Project 여럿에 겹치면 아무것도 적지 않고 거절한다 — 그 글이 화면의 답이다.
-    /// - 받는 Agent가 아직 참여자가 아니면 먼저 들인다 — 스냅숏 · `joined` 줄 · 참여자 줄. 그 Session은 새로 연다.
+    /// - Host가 아직 참여자가 아니면 먼저 들인다 — 스냅숏 · 참여자 줄. 그 Session은 새로 연다.
     /// - Session이 떠 있지 않거나 죽었으면(다시 켠 뒤 · 죽은 뒤) 먼저 띄워 되살린다 — `thread.json`의 Session id로 resume → load →
     ///   새로 순이다. 그래서 막히는 호출일 수 있다. 새로 선 Session의 첫 말에는 머리말이 다시 붙고, 지난 말은 Thread 처음부터
     ///   간다(S10).
@@ -489,7 +480,7 @@ impl ConversationHost {
 
     /// 인용한 말(v1 티켓 35 · S41) — [`Self::send_to_thread_with`]와 같고, 넓힌 카드의 문서에서 고른 글(`quote` — 이은 Work의 spec 폴더
     /// 기준 파일 · 원문 줄 범위 · 글)이 인용 블록으로 본문 앞에 가고 `sent` 줄에 남는다(three-axes 티켓 27의 꼴). 인용이 spec 폴더 밖을
-    /// 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면, 또 Work에 이어지지 않은 Thread면 아무것도 적지 않고 거절한다 — 받는 이를 들이기
+    /// 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면, 또 Work에 이어지지 않은 Thread면 아무것도 적지 않고 거절한다 — Host를 들이기
     /// 전에 잰다. 대기 줄에 들면 지은 인용 블록을 들고 간다.
     pub fn send_to_thread_quoting(
         &self,
@@ -504,7 +495,7 @@ impl ConversationHost {
             Some(quote) => Some(self.quote_in(file.work.as_deref(), quote)?),
             None => None,
         };
-        let handle = match self.recipient(&file.participants, file.work.as_deref(), text)? {
+        let handle = match self.recipient(&file.participants)? {
             Recipient::Seated(handle) => handle,
             Recipient::Newcomer(found) => self.join(thread, &found)?,
         };
@@ -565,10 +556,10 @@ impl ConversationHost {
         conv.seat(&mut state).send_now(queued).map_err(|refused| refused.into_host(thread))
     }
 
-    /// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청에 고른 선택지로 답한다. 요청 id는 Session마다
-    /// 따로 센다. 기다리지 않는다. 승인 카드의 셋째 · 넷째 것(다시 묻지 않기 · 남긴 말)은 [`Self::reply_thread_permission`]이다.
-    pub fn answer_thread_permission(&self, thread: &str, who: &str, request: &str, option: &str) -> Result<(), HostError> {
-        self.reply_thread_permission(thread, who, request, &Reply::pick(option))
+    /// 권한 답 — 그 Thread의 Session에 걸린 요청에 고른 선택지로 답한다. 기다리지 않는다. 승인 카드의 셋째 · 넷째 것(다시 묻지 않기 ·
+    /// 남긴 말)은 [`Self::reply_thread_permission`]이다.
+    pub fn answer_thread_permission(&self, thread: &str, request: &str, option: &str) -> Result<(), HostError> {
+        self.reply_thread_permission(thread, request, &Reply::pick(option))
     }
 
     /// 승인 카드의 답(v1 티켓 24) — 걸린 요청에 사람이 고른 것으로 답한다. 기다리지 않는다.
@@ -588,9 +579,9 @@ impl ConversationHost {
     /// 뒤에 맞춘다(물은 claude는 허락을 받으며 스스로 계획 모드를 나간다).
     ///
     /// 질문 카드의 요청에는 답하지 않는다([`HostError::NotPermission`] — [`Self::answer_thread_question`]의 몫이다).
-    pub fn reply_thread_permission(&self, thread: &str, who: &str, request: &str, reply: &Reply) -> Result<(), HostError> {
+    pub fn reply_thread_permission(&self, thread: &str, request: &str, reply: &Reply) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
-        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
+        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, HOST)).ok_or_else(closed)?;
         let asked = writer.asked(request);
         if asked.as_ref().is_some_and(|(card, _)| *card == Card::Question) {
             return Err(HostError::NotPermission { request: request.to_owned() });
@@ -658,9 +649,9 @@ impl ConversationHost {
     /// - 둘 다 `question` 줄의 답(`choice: answer | later`)으로 남는다 — 화면의 「답함: …」 줄이 읽는다.
     ///
     /// 걸려 있지 않은 질문이면 [`HostError::PermissionClosed`], 승인 카드의 요청이면 [`HostError::NotQuestion`]이다 — 요청은 그대로다.
-    pub fn answer_thread_question(&self, thread: &str, who: &str, request: &str, reply: &QuestionReply) -> Result<(), HostError> {
+    pub fn answer_thread_question(&self, thread: &str, request: &str, reply: &QuestionReply) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
-        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
+        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, HOST)).ok_or_else(closed)?;
         let (card, options) = writer.asked(request).ok_or_else(closed)?;
         if card != Card::Question {
             return Err(HostError::NotQuestion { request: request.to_owned() });
@@ -715,7 +706,7 @@ impl ConversationHost {
             }
         }
         let line = json!({"mode": mode.as_str(), "work": file.work});
-        self.thread_log(thread)?.write(RecordKind::Mode, None, line).map_err(HostError::Record)?;
+        self.thread_log(thread)?.write(RecordKind::Mode, line).map_err(HostError::Record)?;
         Ok((file, before))
     }
 
@@ -830,12 +821,6 @@ impl ConversationHost {
         participant_of(&file, thread, who)
     }
 
-    /// 이름 바꾸기 — 사람이 위 막대에서 고친 이름(v1 티켓 05 · 구현 스펙 §14 · §18). 사람의 줄이라 `title` 줄에 `who`가 없다(S8).
-    /// 규칙은 [`ConversationHost::rename`]이다. 답은 바뀐 목록 요약이다.
-    pub fn rename_thread(&self, thread: &str, title: &str) -> Result<ThreadSummary, HostError> {
-        self.rename(thread, title, None)
-    }
-
     /// 읽은 자리 적기(v1 티켓 41 · 구현 스펙 §17 · S38) — 화면은 Thread를 열고 맨 아래가 보일 때 끝 줄의 seq를 적는다. `thread.json`의
     /// `lastRead`를 고치고 목록 요약을 알린다(사이드바의 「새 결과」가 걷힌다). 답은 목록 요약이다.
     ///
@@ -849,15 +834,15 @@ impl ConversationHost {
             .ok_or_else(|| HostError::ThreadNotFound(thread.to_owned()))
     }
 
-    /// 이름 바꾸기의 몸 — 사람(위 막대)과 Agent(Thread 도구 「Thread 이름 바꾸기」, v1 티켓 15)가 함께 쓴다. `thread.json`의 `title`을
-    /// 고치고 목록 요약을 알리고(사이드바 · 위 막대), `title` 줄을 남긴다 — `who`는 바꾼 Agent의 handle이고 사람이면 없다(S8).
-    /// payload는 `{title, before}`다(흐름의 시스템 줄 「Thread 이름을 … 로 바꿈」이 이것을 읽는다).
+    /// 이름 바꾸기(v1 티켓 05 · 구현 스펙 §14 · §18) — 사람(위 막대)과 Runtime(Thread 도구 「Thread 이름 바꾸기」, v1 티켓 15)이 함께
+    /// 쓴다. `thread.json`의 `title`을 고치고 목록 요약을 알리고(사이드바 · 위 막대), `title` 줄을 남긴다. payload는 `{title, before}`다
+    /// (흐름의 시스템 줄 「Thread 이름을 … 로 바꿈」이 이것을 읽는다). 답은 바뀐 목록 요약이다.
     ///
     /// - 줄바꿈 · 앞뒤 빈칸은 걷어 한 줄로 둔다. 빈 이름은 거절하고 아무것도 바꾸지 않는다.
     /// - 같은 이름이면 아무것도 쓰지 않는다 — 고치는 칸을 그대로 닫아도 줄이 쌓이지 않는다.
     /// - Session을 띄우지 않는다. 머리말의 제목은 다음에 여는 Session부터 바뀐다(S10).
     /// - 읽기만 된 Thread의 이름은 바꾸지 않는다(v1 티켓 38) — 끝난 일의 기록이다.
-    fn rename(&self, thread: &str, title: &str, who: Option<&str>) -> Result<ThreadSummary, HostError> {
+    pub fn rename_thread(&self, thread: &str, title: &str) -> Result<ThreadSummary, HostError> {
         let title = one_line(title);
         if title.is_empty() {
             return Err(HostError::BadTitle);
@@ -866,7 +851,7 @@ impl ConversationHost {
             let log = self.thread_log(thread)?;
             let mut before = String::new();
             self.change_thread(thread, |file| before = std::mem::replace(&mut file.title, title.clone()))?;
-            log.write(RecordKind::Title, who, json!({"title": title, "before": before})).map_err(HostError::Record)?;
+            log.write(RecordKind::Title, json!({"title": title, "before": before})).map_err(HostError::Record)?;
         }
         self.with_index(|index| index.all().iter().find(|summary| summary.id == thread).cloned())?
             .ok_or_else(|| HostError::ThreadNotFound(thread.to_owned()))
@@ -885,7 +870,7 @@ impl ConversationHost {
             lines.wait(params["name"].as_str().unwrap_or_default());
         }
         Ok(match call {
-            Ok(Call::RenameThread { title }) => match self.rename(&key.thread, &title, Some(&key.handle)) {
+            Ok(Call::RenameThread { title }) => match self.rename_thread(&key.thread, &title) {
                 Ok(summary) => thread_tools::said(&format!("Thread 이름을 바꿨다 — {}", summary.title), false),
                 Err(error) => thread_tools::said(&error.to_string(), true),
             },
@@ -944,7 +929,7 @@ impl ConversationHost {
         Ok(())
     }
 
-    /// 받는 이의 Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
+    /// Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
     /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다). 인용(`quote`, v1 티켓 35)과 머리말 끝의 한 줄(`note`)을
     /// 함께 받는다 — 새 Thread의 첫 말이 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그
     /// 줄도 그때만 간다. 이은 Space의 파일이 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_space`]).
@@ -1046,7 +1031,7 @@ impl ConversationHost {
         let place = self.thread_place(&key.thread, file)?;
         let (definition, instructions) = self.read_snapshot(key)?;
         let recorder = &conv.recorder;
-        recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
+        recorder.spawning().map_err(HostError::Record)?;
         // 기본 모드로만 띄운다 — 「계획만」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
         let (level, _) = gate::asking(&self.data_root, &key.thread, file.work.as_deref());
         let choice = ClaudeChoice {
@@ -1106,11 +1091,11 @@ impl ConversationHost {
         // 옮겨 연 Session에도 붙인다(v1 티켓 32) — 이은 Work · 새 worktree · 읽기만 폴더를 그 Agent가 알게.
         let heard = self.read_thread_record(&key.thread, 0)?;
         let needs_preamble =
-            opened.how.starts_session() || !heard_since_session_start(&heard, &key.handle) || moved(participant, &place);
+            opened.how.starts_session() || !heard_since_session_start(&heard) || moved(participant, &place);
         {
             let mut state = conv.lock_state();
             // 이어 연 Session이 앞서 들은 Space — 그사이 Space가 바뀌었으면(앱을 끈 동안 고친 파일도) 다음 말에 머리말이 다시 간다.
-            state.order.opened(needs_preamble, space::heard_space(&heard, &key.handle));
+            state.order.opened(needs_preamble, space::heard_space(&heard));
             state.turns = agent.turns();
         }
         // 기록의 자리를 알려고 cwd를 쓰지 않는다 — Runtime은 Session id만으로 이어 연다(S11). 그래서 지금 작업 폴더를 적는다.
@@ -1135,7 +1120,7 @@ impl ConversationHost {
         self.threads.find(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up() && !state.order.turning()))
     }
 
-    /// 떠 있을 Session의 대화 — 그 Thread의 기록에 그 handle로 적고, 턴 도중의 로그인 요구를 창구에 쥐게 하고, 턴 끝에 그 Thread가
+    /// 떠 있을 Session의 대화 — 그 Thread의 기록에 적고, 턴 도중의 로그인 요구를 창구에 쥐게 하고, 턴 끝에 그 Thread가
     /// 읽기만 됐으면 끄러 보낸다(v1 티켓 38). spec 폴더를 찍지 않는다.
     fn session_conv(&self, key: &SessionKey) -> Result<Arc<Conv>, HostError> {
         let recorder = Recorder::of_thread(self.thread_log(&key.thread)?, &key.handle);
@@ -1164,57 +1149,33 @@ impl ConversationHost {
             .find(|(_, conv)| conv.lock_found().is_some_and(|state| state.order.contains(queued)))
     }
 
-    /// 말을 받는 이(S9) — 첫 @멘션의 이름, 없으면 Host다. 읽기만 한다.
-    ///
-    /// - 이미 참여자인 이름이면 그 참여자다 — 범위를 다시 보지 않는다. 정의 파일이 바뀌거나 지워져도, Work가 붙어 같은 handle의
-    ///   Project 정의가 보여도 처음 들어온 정의 그대로 이어 쓴다(S4 · 스토리 52).
-    /// - 아니면 이 Thread의 범위(`work`가 없으면 Library만)에서 푼다(v1 티켓 11). 없음 · 겹친 맨 이름 · 깨진 파일은 거절이다.
-    /// - 멘션은 이름 글자가 이어지는 데까지 읽고, 그 가운데 **가장 긴 앞부분**이 아는 이름이면 그것이다 — 「@reviewer가 봐 줘」의
-    ///   `가`처럼 이름에 붙은 조사를 떼어 낸다([`first_mention`]).
-    fn recipient(&self, seated: &[Participant], work: Option<&str>, text: &str) -> Result<Recipient, HostError> {
-        let Some(mention) = first_mention(text) else {
-            if seated.iter().any(|participant| participant.handle == HOST) {
-                return Ok(Recipient::Seated(HOST.to_owned()));
-            }
-            // Host는 Library에만 있다 — 이은 Work의 범위를 읽지 않는다(사라진 Work의 Thread도 Host는 부른다).
-            let roster = self.agents_in_scope(None)?;
-            let host = newcomer(&roster, seated, HOST)?;
-            return host.map(Recipient::Newcomer).ok_or_else(|| HostError::AgentBroken {
-                handle: HOST.to_owned(),
-                reason: "Library에 host.md가 없습니다".to_owned(),
-            });
-        };
-        let mut roster = None;
-        for call in name_prefixes(mention) {
-            if let Some(participant) = seated.iter().find(|participant| answers_to(participant, call)) {
-                return Ok(Recipient::Seated(participant.handle.clone()));
-            }
-            let roster = match &roster {
-                Some(roster) => roster,
-                None => roster.insert(self.agents_in_scope(work)?),
-            };
-            if let Some(found) = newcomer(roster, seated, call)? {
-                return Ok(Recipient::Newcomer(found));
-            }
+    /// 말을 받는 이 — Host다. 이미 참여자면 범위를 다시 보지 않고 그 참여자다 — 정의 파일이 바뀌거나 지워져도 처음 들어온 정의 그대로
+    /// 이어 쓴다(S4 · 스토리 52). 아니면 Library에서 읽는다. 읽기만 한다.
+    fn recipient(&self, seated: &[Participant]) -> Result<Recipient, HostError> {
+        if seated.iter().any(|participant| participant.handle == HOST) {
+            return Ok(Recipient::Seated(HOST.to_owned()));
         }
-        Err(HostError::AgentNotFound { call: mention.to_owned(), work: work.map(str::to_owned) })
+        let broken = |reason: String| HostError::AgentBroken { handle: HOST.to_owned(), reason };
+        match self.agents_in_library()?.resolve(HOST) {
+            Ok(found) => Ok(Recipient::Newcomer(found.clone())),
+            Err(Unresolved::NotFound) => Err(broken("Library에 host.md가 없습니다".to_owned())),
+            Err(Unresolved::Ambiguous { calls }) => Err(broken(format!("host가 여럿입니다: {}", calls.join(" · ")))),
+            Err(Unresolved::Broken(problem)) => Err(broken(problem_text(problem))),
+        }
     }
 
-    /// 범위 안의 Agent — 기본 파일이 지워졌으면 다시 세운 뒤에 찾는다. 앱이 뜰 때와 같은 규칙이고, 있는 파일은 덮지 않는다
-    /// (S14). 이은 Work가 사라졌으면 `WorkNotFound`다 — Library로 줄여 답하지 않는다(v1 티켓 11).
-    fn agents_in_scope(&self, work: Option<&str>) -> Result<AgentRoster, HostError> {
+    /// Library의 Agent — 기본 파일이 지워졌으면 다시 세운 뒤에 찾는다. 앱이 뜰 때와 같은 규칙이고, 있는 파일은 덮지 않는다(S14). Host는
+    /// Library에만 있어 이은 Work의 범위를 읽지 않는다 — 사라진 Work의 Thread도 Host는 부른다.
+    fn agents_in_library(&self) -> Result<AgentRoster, HostError> {
         if let Err(error) = atelier_core::ensure_default_agents(&self.data_root) {
             eprintln!("Library의 기본 Agent를 세우지 못했습니다: {error}");
         }
-        atelier_core::find_agents(&self.data_root, work).map_err(|error| match error {
-            atelier_core::Error::WorkNotFound(slug) => HostError::WorkNotFound(slug),
-            other => HostError::Record(format!("Agent를 찾지 못했습니다: {other}")),
-        })
+        atelier_core::find_agents(&self.data_root, None).map_err(|error| HostError::Record(format!("Agent를 찾지 못했습니다: {error}")))
     }
 
-    /// 아직 참여자가 아닌 Agent를 Thread에 들인다 — `joined` 줄을 적고 정의를 스냅숏한다(S4). 들인 handle을 돌려준다.
+    /// 아직 참여자가 아닌 Agent를 Thread에 들인다 — 정의를 스냅숏한다(S4). 들인 handle을 돌려준다.
     ///
-    /// 그 handle의 띄우기 문을 쥔 채 `thread.json`을 다시 읽는다 — 같은 Agent를 멘션한 말 둘이 엇갈려도 한 번만 들어온다.
+    /// 그 handle의 띄우기 문을 쥔 채 `thread.json`을 다시 읽는다 — 말 둘이 엇갈려도 한 번만 들어온다.
     fn join(&self, thread: &str, found: &FoundAgent) -> Result<String, HostError> {
         let handle = found.definition.handle.clone();
         let gate = self.revival_gate(&SessionKey::new(thread, &handle).gate());
@@ -1222,14 +1183,13 @@ impl ConversationHost {
         if self.read_thread_file(thread)?.participants.iter().any(|participant| participant.handle == handle) {
             return Ok(handle);
         }
-        let line = self.thread_log(thread)?.write(RecordKind::Joined, Some(&handle), joined(found)).map_err(HostError::Record)?;
-        self.seat(thread, found, &line.at, &StartPicks::default())?;
+        self.seat(thread, found, &atelier_core::record_time(), &StartPicks::default())?;
         Ok(handle)
     }
 
     /// Agent를 Thread에 앉힌다 — 정의 파일을 Thread 폴더에 스냅숏하고(S4) `thread.json`에 참여자로 적는다. 정의가 온 곳은 범위가
     /// 준 그대로(Library · Project)이고, 모델 · 생각 깊이는 스냅숏의 것을 옮겨 적는다 — 새 Thread의 칩에서 고른 칸(`picks`)이
-    /// 있으면 그것이다(v1 티켓 31). `joined` 줄은 부르는 쪽이 먼저 적었다.
+    /// 있으면 그것이다(v1 티켓 31).
     fn seat(&self, thread: &str, found: &FoundAgent, joined_at: &str, picks: &StartPicks) -> Result<(), HostError> {
         let definition = &found.definition;
         let snapshots = self.snapshots(thread)?;
@@ -1435,86 +1395,12 @@ impl ConversationHost {
     }
 }
 
-/// 말을 받는 이(S9) — 사람이 멘션한 Agent.
+/// 말을 받는 이.
 enum Recipient {
     /// 이미 참여자인 Agent — 그 handle.
     Seated(String),
-    /// 아직 참여자가 아닌 범위 안의 Agent — 들인 뒤에 받는다.
+    /// 아직 참여자가 아닌 Agent — 들인 뒤에 받는다.
     Newcomer(FoundAgent),
-}
-
-/// 범위에서 그 이름의 Agent — 범위에 없으면 `None`이다. 겹친 맨 이름 · 깨진 파일은 거절이고, 이미 앉은 다른 Agent와 handle이
-/// 같아도 들일 수 없다(Session은 (Thread, handle)마다 하나다).
-fn newcomer(roster: &AgentRoster, seated: &[Participant], call: &str) -> Result<Option<FoundAgent>, HostError> {
-    let found = match roster.resolve(call) {
-        Ok(found) => found,
-        Err(Unresolved::NotFound) => return Ok(None),
-        Err(Unresolved::Ambiguous { calls }) => return Err(HostError::AgentAmbiguous { call: call.to_owned(), calls }),
-        Err(Unresolved::Broken(problem)) => {
-            return Err(HostError::AgentBroken { handle: call.to_owned(), reason: problem_text(problem) })
-        }
-    };
-    let handle = &found.definition.handle;
-    if seated.iter().any(|participant| &participant.handle == handle) {
-        return Err(HostError::HandleTaken { call: call.to_owned(), handle: handle.clone() });
-    }
-    Ok(Some(found.clone()))
-}
-
-/// 그 참여자를 이 이름으로 부르나 — handle 그대로, 또는 Project에서 온 참여자면 `project/handle`.
-fn answers_to(participant: &Participant, call: &str) -> bool {
-    match (&participant.from, call.split_once('/')) {
-        (_, None) => participant.handle == call,
-        (Some(DefinitionSource::Project(project)), Some((named, handle))) => project == named && participant.handle == handle,
-        _ => false,
-    }
-}
-
-/// 말의 첫 @멘션 — `@` 뒤에 이어진 이름 글자들(S9). 없으면 `None`이다.
-///
-/// - `@`가 말의 처음이거나 이름 글자가 아닌 것 뒤에 설 때만 멘션이다 — `a@b.com`은 멘션이 아니다.
-/// - 백틱 안(인라인 코드 · 코드 블록)의 `@`는 멘션이 아니다 — 붙여 넣은 코드의 `@media` · `@tauri-apps/api`가 받는 이를 바꾸거나
-///   말을 거절시키지 않게.
-/// - 이름 글자는 글자 · 숫자와 `_` `-` `.` `/`(`project/handle`)이다. 끝의 `.` `-` `/`는 문장 부호로 보고 뗀다. 이름에 붙은
-///   조사(「@reviewer가」)는 여기서 떼지 않는다 — 받는 이를 고를 때 아는 이름의 가장 긴 앞부분으로 고른다([`name_prefixes`]).
-fn first_mention(text: &str) -> Option<&str> {
-    let mut before: Option<char> = None;
-    let mut in_code = false;
-    for (at, c) in text.char_indices() {
-        if c == '`' {
-            in_code = !in_code;
-        } else if c == '@' && !in_code && !before.is_some_and(is_name_char) {
-            let rest = &text[at + c.len_utf8()..];
-            let end = rest.find(|c: char| !is_name_char(c)).unwrap_or(rest.len());
-            let name = rest[..end].trim_end_matches(['.', '-', '/']);
-            if !name.is_empty() {
-                return Some(name);
-            }
-        }
-        before = Some(c);
-    }
-    None
-}
-
-fn is_name_char(c: char) -> bool {
-    c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '/')
-}
-
-/// 멘션한 이름과 그 앞부분들 — 긴 것부터. 받는 이는 이 가운데 처음으로 아는 이름이다.
-fn name_prefixes(name: &str) -> impl Iterator<Item = &str> {
-    let ends: Vec<usize> = name.char_indices().map(|(at, c)| at + c.len_utf8()).rev().collect();
-    ends.into_iter().map(move |end| &name[..end])
-}
-
-/// `joined` 줄의 payload — 들어온 참여자와 정의가 온 곳(Library · Project). 이름 · 얼굴(`avatar`)은 화면이 그 참여자를 그리는
-/// 정본이다(v1 티켓 14) — 들어올 때의 정의 그대로라(S4) Agent 파일을 고치거나 지워도 이 Thread의 얼굴은 바뀌지 않는다. 파일에
-/// `avatar`가 없으면 칸째 빠진다 — 화면이 handle에서 정한다(S36).
-fn joined(found: &FoundAgent) -> Value {
-    let mut payload = json!({"handle": found.definition.handle, "name": found.definition.name, "from": found.from});
-    if let Some(avatar) = &found.definition.avatar {
-        payload["avatar"] = json!(avatar);
-    }
-    payload
 }
 
 /// 첫 말에서 정하는 이름 — 비지 않은 첫 줄, 길면 앞 [`TITLE_LIMIT`]글자에 말줄임표.
@@ -1554,7 +1440,7 @@ fn problem_text(problem: AgentProblem) -> String {
         AgentProblem::Unreadable { message } => message,
         AgentProblem::UnknownTool { tool } => format!("모르는 도구입니다: {tool}"),
         AgentProblem::RuntimeNotAccepted => "runtimes가 claude-code를 받지 않습니다".to_owned(),
-        // 범위 찾기(v1 티켓 11)에서만 나는 까닭이다 — Project 안의 `host.md`를 `@project/host`로 멘션했다.
+        // 범위 찾기(v1 티켓 11)에서만 나는 까닭이다.
         AgentProblem::HostOutsideLibrary => "host는 Library에만 둘 수 있습니다".to_owned(),
     }
 }
@@ -1586,24 +1472,6 @@ mod tests {
         assert_eq!(title_of(&long), format!("{}…", "가".repeat(40)));
         assert_eq!(title_of(&"가".repeat(40)), "가".repeat(40), "마흔 글자는 그대로다");
         assert_eq!(title_of("   \n"), "");
-    }
-
-    #[test]
-    fn 첫_멘션은_말의_처음이나_이름_글자가_아닌_것_뒤의_at이고_백틱_안은_멘션이_아니다() {
-        assert_eq!(first_mention("@reviewer 봐 줘. @host는 기다려"), Some("reviewer"), "첫 멘션 하나다(S9)");
-        assert_eq!(first_mention("다 됐으면 (@api-server/reviewer)."), Some("api-server/reviewer"));
-        assert_eq!(first_mention("끝나면 @reviewer."), Some("reviewer"), "끝의 마침표는 문장 부호다");
-        assert_eq!(first_mention("@reviewer가 봐 줘"), Some("reviewer가"), "조사는 받는 이를 고를 때 뗀다");
-        assert_eq!(first_mention("me@example.com으로 보내 줘"), None, "메일 주소는 멘션이 아니다");
-        assert_eq!(first_mention("`@media` 쿼리를 고쳐 줘"), None, "인라인 코드 안은 멘션이 아니다");
-        assert_eq!(first_mention("```\n@app.route(\"/\")\n```\n@tester 돌려 줘"), Some("tester"), "코드 블록 안도 아니다");
-        assert_eq!(first_mention("@ 혼자 선 골뱅이"), None);
-        assert_eq!(first_mention("멘션 없는 말"), None);
-    }
-
-    #[test]
-    fn 멘션의_앞부분은_긴_것부터_한_글자까지다() {
-        assert_eq!(name_prefixes("ab가").collect::<Vec<_>>(), ["ab가", "ab", "a"]);
     }
 
     #[test]

@@ -127,7 +127,6 @@ describe("Space 질문 카드의 답 줄", () => {
     seq: 9,
     at: "2026-10-23T15:00:09.000+09:00",
     kind: "question",
-    who: "host",
     payload: { state: "answered", requestId: "r", card, choice: "space", space: "결제-서비스", name: "결제 서비스" },
   });
   const stale = (client: QueryClient, id: string) => client.getQueryState(threadQuery(id).queryKey)?.isInvalidated;

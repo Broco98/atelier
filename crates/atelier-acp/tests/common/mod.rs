@@ -661,17 +661,14 @@ pub fn fix_thread_record(record: &[Value], data_root: &Path, thread: &str, sessi
     fixed
 }
 
-/// 명령 목록 줄(`available_commands_update`)마다 그 참여자의 열림 줄 바로 뒤로 옮기고 seq를 다시 센다. 명령 목록은 Session을 연
+/// 명령 목록 줄(`available_commands_update`)을 첫 열림 줄 바로 뒤로 옮기고 seq를 다시 센다. 명령 목록은 Session을 연
 /// 답 뒤에 따로 오는데 새 Thread는 열자마자 첫 말을 보내므로, 그 줄과 `sent`의 차례가 매번 다르다. 축복 자료는 하나의 차례로 둔다.
 pub fn commands_after_opened(record: &[Value]) -> Vec<Value> {
     let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
     let commands: Vec<Value> = record.iter().filter(|line| is_commands(line)).cloned().collect();
     let mut lines: Vec<Value> = record.iter().filter(|line| !is_commands(line)).cloned().collect();
     for command in commands {
-        let opened = lines
-            .iter()
-            .position(|line| line["payload"]["state"] == "opened" && line["who"] == command["who"])
-            .expect("그 참여자의 열림 줄");
+        let opened = lines.iter().position(|line| line["payload"]["state"] == "opened").expect("열림 줄");
         lines.insert(opened + 1, command);
     }
     for (n, line) in lines.iter_mut().enumerate() {
@@ -681,7 +678,7 @@ pub fn commands_after_opened(record: &[Value]) -> Vec<Value> {
 }
 
 /// 명령 목록 줄(`available_commands_update`)마다 그 앞의 가장 가까운 열림 줄 바로 뒤로 옮기고 seq를 다시 센다 — 다시 연 Session도 명령
-/// 목록을 한 번 더 낸다([`commands_after_opened`]는 그 참여자의 첫 열림 뒤로만 옮긴다). 03의 기록 축복(Space · 설정)이 쓴다.
+/// 목록을 한 번 더 낸다([`commands_after_opened`]는 첫 열림 뒤로만 옮긴다). 03의 기록 축복(Space · 설정)이 쓴다.
 pub fn commands_after_each_opened(record: &[Value]) -> Vec<Value> {
     let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
     let mut lines: Vec<Value> = Vec::new();

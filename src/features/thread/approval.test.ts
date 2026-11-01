@@ -13,7 +13,6 @@ const OPTIONS = [
 
 const request = (toolCall: Record<string, unknown>, extra: Partial<PendingPermission> = {}): PendingPermission => ({
   requestId: "r1",
-  who: "host",
   options: OPTIONS,
   toolCall,
   tool: null,
