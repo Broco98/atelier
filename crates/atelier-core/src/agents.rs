@@ -18,7 +18,7 @@ use crate::paths::library_agents_in;
 use crate::project::split_frontmatter;
 
 mod scope;
-pub use scope::{find_agents, AgentRoster, BrokenAgent, FoundAgent, Unresolved};
+pub use scope::{find_agents, AgentRoster, BrokenAgent, DefinitionSource, FoundAgent, Unresolved};
 
 /// 읽은 Agent 정의 하나.
 ///

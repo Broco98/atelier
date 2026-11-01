@@ -78,7 +78,7 @@ fn payments_world(sandbox: &Sandbox) -> (PathBuf, PathBuf, PathBuf) {
 
 /// 그 Session의 claude가 부른 도구의 답 — 부른 차례대로.
 fn answers(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
-    sandbox.claude_mcp(&sandbox.thread_session_id(thread, "host")).into_iter().map(|call| call["call"].clone()).collect()
+    sandbox.claude_mcp(&sandbox.thread_session_id(thread)).into_iter().map(|call| call["call"].clone()).collect()
 }
 
 fn said(answer: &Value) -> &str {
@@ -113,7 +113,7 @@ fn space_목록은_space마다_slug_이름_project_설명_첫_줄과_이_thread�
 
 /// Host Session의 claude가 마지막으로 뜬 때 함께 연 폴더들(`--add-dir`) — 받은 차례대로.
 fn added_dirs(sandbox: &Sandbox, thread: &str) -> Vec<PathBuf> {
-    let args = common::receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host")));
+    let args = common::receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(thread)));
     args.windows(2).filter(|pair| pair[0] == "--add-dir").map(|pair| PathBuf::from(&pair[1])).collect()
 }
 
@@ -475,7 +475,7 @@ fn host가_space를_묻고_사람이_고른_턴의_기록이_검사_자료와_�
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&common::commands_after_each_opened(&record), &sandbox.data_root(), &thread, &[&session]);
     let fixed: Vec<Value> = fixed
         .iter()
@@ -494,7 +494,7 @@ fn host가_묻지_않고_space를_붙인_턴의_기록이_검사_자료와_같�
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&common::commands_after_each_opened(&record), &sandbox.data_root(), &thread, &[&session]);
     common::assert_record("thread-space-attached", &fixed);
 }

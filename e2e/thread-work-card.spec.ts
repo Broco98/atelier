@@ -162,7 +162,7 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   // Host가 그 문서를 쓰는 중이다 — 보기의 머리와 카드의 줄에 「Host가 쓰는 중」이 선다. 다시 읽은 글은 바뀐 블록만 칠한다.
   const writing: WorkWritingEvent = {
     work: MADE.slug,
-    writing: [{ path: OVERVIEW, who: "host", name: "Host", thread: view.id }],
+    writing: [{ path: OVERVIEW, thread: view.id }],
   };
   await fireEvent(page, WORK_WRITING_EVENT, writing);
   await expect(보기(page, "doc").locator('[data-writer="host"]')).toHaveText("Host가 쓰는 중");

@@ -6,6 +6,7 @@
 //!   폴더는 그대로다 — 보관 · 지운 Work의 Thread는 [`work_gone`]으로 읽기만이 된다(v1 티켓 38).
 //! - 기록 줄은 코어의 기록 줄(`records.rs`) 한 벌이다 — three-axes 대화 기록과 같은 모양이다.
 //! - three-axes가 `works/<slug>/agents/`에 남긴 대화 기록은 옮기지 않는다(v1 구현 스펙 §4 끝).
+//! - **채팅 하나가 Runtime 세션 하나다.** `thread.json`이 Runtime · 모델 · 생각 깊이 · 세션 id · 작업 폴더 · 추가 폴더를 채팅의 값으로 든다.
 
 use std::path::{Path, PathBuf};
 
@@ -18,8 +19,10 @@ use crate::Result;
 
 const THREAD_FILE: &str = "thread.json";
 const RECORD_FILE: &str = "events.jsonl";
-/// Thread 폴더 안에서 참여자의 정의 스냅숏(`<handle>.md`)과 지시문 파일(`<handle>.instructions.md`)이 사는 폴더(S4).
+/// Thread 폴더 안에서 지시문 파일(`host.instructions.md`)이 사는 폴더. 01a-7이 지시문을 걷을 때까지 있다.
 pub const THREAD_SNAPSHOTS: &str = "agents";
+/// 지금 띄우는 Runtime 하나(S3) — 새 Thread가 이 값으로 선다.
+const RUNTIME: &str = "claude-code";
 
 /// `thread.json` 한 장(v1 구현 스펙 §4 표). 칸이 빠진 파일도 읽힌다 — 다른 판의 앱이 쓴 파일을 깨진 것으로 보지 않게.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -37,8 +40,24 @@ pub struct ThreadFile {
     /// 물어보는 정도. Work가 없을 때만 쓴다(v1 구현 스펙 §9 · S18).
     #[serde(default)]
     pub mode: Option<String>,
+    /// Runtime 이름(`claude-code`) — 채팅 하나가 Runtime 세션 하나다. 이 값이 없는 폴더는 옛 판의 것이라 목록에서 빠지고 없는 Thread처럼
+    /// 읽힌다(스펙 「옛 기록」, [`Loaded::Old`]).
     #[serde(default)]
-    pub participants: Vec<Participant>,
+    pub runtime: Option<String>,
+    /// Runtime의 세션 id — 다시 열 때 이 세션을 잇는다. Session이 처음 열리면 선다.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// 지금 작업 폴더. Session 기록의 자리를 알려고 쓰지 않는다 — Runtime은 Session id만으로 기록을 찾는다(S11).
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    /// 작업 폴더와 함께 여는 폴더.
+    #[serde(default)]
+    pub additional_directories: Vec<PathBuf>,
+    #[serde(default)]
+    pub model: Option<String>,
+    /// 생각 깊이.
+    #[serde(default)]
+    pub effort: Option<String>,
     /// 사람이 마지막으로 본 줄의 seq. 0이면 아무것도 보지 않았다(S38).
     #[serde(default)]
     pub last_read: u64,
@@ -59,47 +78,7 @@ pub struct ThreadFile {
     pub extra: Map<String, Value>,
 }
 
-/// 참여한 Agent 하나(v1 구현 스펙 §4 표). handle 밖의 칸은 비어 있어도 읽힌다 — 들어온 뒤 Session이 열리며 채워진다.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Participant {
-    pub handle: String,
-    /// 정의가 온 곳.
-    #[serde(default)]
-    pub from: Option<DefinitionSource>,
-    /// 들어온 시각.
-    #[serde(default)]
-    pub joined_at: String,
-    /// Runtime 이름(`claude-code`).
-    #[serde(default)]
-    pub runtime: String,
-    #[serde(default)]
-    pub session_id: Option<String>,
-    /// 지금 작업 폴더. Session 기록의 자리를 알려고 쓰지 않는다 — Runtime은 Session id만으로 기록을 찾는다(S11).
-    #[serde(default)]
-    pub cwd: Option<PathBuf>,
-    /// 작업 폴더와 함께 여는 폴더.
-    #[serde(default)]
-    pub additional_directories: Vec<PathBuf>,
-    #[serde(default)]
-    pub model: Option<String>,
-    /// 생각 깊이.
-    #[serde(default)]
-    pub effort: Option<String>,
-    /// 모르는 칸은 다시 써도 남는다.
-    #[serde(flatten)]
-    pub extra: Map<String, Value>,
-}
-
-/// Agent 정의가 온 곳(v1 구현 스펙 §6 범위) — `"library"` 또는 `{"project": "<slug>"}`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DefinitionSource {
-    Library,
-    Project(String),
-}
-
-/// 새 Thread의 처음 값 — 나머지 칸은 비어서 선다(참여자는 엔진이 Session을 연 뒤 적는다).
+/// 새 Thread의 처음 값 — 나머지 칸은 비어서 선다(세션 id · 작업 폴더는 엔진이 Session을 연 뒤 적는다).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NewThread {
     pub title: String,
@@ -109,13 +88,18 @@ pub struct NewThread {
     pub new_work: bool,
     /// 첫 말 전에 트레이 Space 칩에서 고른 Space — [`ThreadFile::space`]. Work에 이은 Thread는 쓰지 않는다.
     pub space: Option<String>,
+    /// 첫 Session의 모델 — [`ThreadFile::model`].
+    pub model: Option<String>,
+    /// 첫 Session의 생각 깊이 — [`ThreadFile::effort`].
+    pub effort: Option<String>,
 }
 
-/// 첫 줄과 함께 선 Thread — 이어 적을 기록과, 방금 적은 첫 줄(엔진이 이벤트로 내보낸다).
+/// 첫 줄과 함께 선 Thread — 이어 적을 기록과, 방금 적은 첫 줄 · 파일(엔진이 이벤트로 내보낸다).
 pub struct CreatedThread {
     pub id: String,
     pub log: RecordLog,
     pub first: RecordLine,
+    pub file: ThreadFile,
 }
 
 /// 새 Thread를 첫 줄과 함께 디스크에 세운다(S6) — id를 지금 시각으로 잡고(S5), 폴더 · `thread.json` · `events.jsonl`을 만들고,
@@ -143,12 +127,19 @@ pub(crate) fn create_thread_at(
         mode: thread.mode,
         new_work: thread.new_work,
         space: thread.space,
-        ..ThreadFile::default()
+        model: thread.model,
+        effort: thread.effort,
+        ..blank_thread()
     };
     crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "Thread를")?;
     let mut log = RecordLog::open(&dir.join(RECORD_FILE))?;
     let first = log.append(kind, payload)?;
-    Ok(CreatedThread { id, log, first })
+    Ok(CreatedThread { id, log, first, file })
+}
+
+/// 빈 채팅 값 — 새로 쓰는 `thread.json`은 늘 Runtime 값을 든다. 없으면 옛 폴더로 읽혀 목록에서 빠진다.
+fn blank_thread() -> ThreadFile {
+    ThreadFile { runtime: Some(RUNTIME.to_owned()), ..ThreadFile::default() }
 }
 
 /// 그 시각의 id로 Thread 폴더를 잡는다(S5) — `YYYYMMDD-HHMMSS`, 그 이름의 폴더가 이미 있으면 `-2` · `-3` ….
@@ -170,8 +161,7 @@ fn claim_id(threads: &Path, at: DateTime<FixedOffset>) -> Result<(String, PathBu
     unreachable!("Thread id 번호가 다 찼다")
 }
 
-/// Thread 하나의 폴더 `threads/<id>`. 있다고 보증하지 않는다. Work 없는 Thread의 작업 폴더이고(S11), Agent 정의의 스냅숏이
-/// 사는 곳이다(S4).
+/// Thread 하나의 폴더 `threads/<id>`. 있다고 보증하지 않는다. Work 없는 Thread의 작업 폴더다(S11).
 ///
 /// **경로를 품은 id는 거절한다** — id는 화면에서 명령 인자로 오므로, `..`이 `threads/` 밖을 가리키면 남의 폴더에 기록을 쓴다
 /// (slug와 같은 규칙, `slug.rs`의 `is_safe_slug`).
@@ -183,23 +173,28 @@ pub fn thread_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
 }
 
 /// Thread 폴더 안에서 Atelier만 쓰는 자리(S7 · §19, 코드 리뷰 1차 A2) — `thread.json` · `events.jsonl` · 점 파일 `.policy.json` ·
-/// 정의 스냅숏 폴더. 판정이 이 자리의 편집을 거절한다. 나머지 Thread 폴더는 Work 없는 Thread의 작업 폴더라 Agent가 고친다(S11).
+/// 지시문 폴더. 판정이 이 자리의 편집을 거절한다. 나머지 Thread 폴더는 Work 없는 Thread의 작업 폴더라 Agent가 고친다(S11).
 pub fn thread_kept(dir: &Path) -> Vec<PathBuf> {
     [THREAD_FILE, RECORD_FILE, crate::policy_file::POLICY_FILE, THREAD_SNAPSHOTS].iter().map(|name| dir.join(name)).collect()
 }
 
-/// `thread.json`을 읽는다. 없으면 `NotFound`, 깨졌으면 `InvalidData` — 까닭은 색인의 깨진 줄과 같은 말이다.
+/// `thread.json`을 읽는다. 없거나 Runtime 값이 없는 옛 폴더면 `NotFound`, 깨졌으면 `InvalidData` — 까닭은 색인의 깨진 줄과 같은 말이다.
 pub fn read_thread(data_root: &Path, id: &str) -> Result<ThreadFile> {
     match load_thread(&thread_dir(data_root, id)?)? {
         Loaded::Fine(thread) => Ok(thread),
-        Loaded::Missing => Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Thread를 찾지 못했습니다: {id}")).into()),
+        Loaded::Old | Loaded::Missing => Err(not_found(id)),
         Loaded::Broken { reason, .. } => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{reason} ({id})")).into()),
     }
+}
+
+fn not_found(id: &str) -> crate::Error {
+    std::io::Error::new(std::io::ErrorKind::NotFound, format!("Thread를 찾지 못했습니다: {id}")).into()
 }
 
 /// `thread.json`을 읽어 고쳐 쓰고, 고친 값을 돌려준다. tmp에 쓴 뒤 rename한다.
 ///
 /// - **Thread 폴더를 만들지 않는다** — 사라진 Thread를 되살리지 않는다(폴더가 없으면 `NotFound`).
+/// - **Runtime 값이 없는 옛 폴더는 고쳐 쓰지 않는다** — 없는 Thread처럼 `NotFound`다. 다른 설치본의 기록을 건드리지 않는다.
 /// - **깨진 파일이었으면 원문 바이트를 먼저 옆에 비켜 두고**(`atomic.rs`의 `keep_aside` — `thread.json.bak`, 이미 있으면
 ///   `.1.bak` …) 빈 값에서 고쳐 쓴다. 벌을 못 뜨면 쓰지 않는다. 순서 파일 다시 쓰기(`order.rs`의 `rewrite_order`)와 같은 규칙이다
 ///   — 덮이는 것은 사람이 손으로 고치다 깨뜨린 파일이다.
@@ -207,7 +202,8 @@ pub fn update_thread(data_root: &Path, id: &str, change: impl FnOnce(&mut Thread
     let dir = thread_dir(data_root, id)?;
     let mut thread = match load_thread(&dir)? {
         Loaded::Fine(thread) => thread,
-        Loaded::Missing => ThreadFile::default(),
+        Loaded::Old => return Err(not_found(id)),
+        Loaded::Missing => blank_thread(),
         Loaded::Broken { bytes, .. } => {
             let kept = crate::atomic::keep_aside(&dir, THREAD_FILE, &bytes)?;
             eprintln!(
@@ -215,7 +211,7 @@ pub fn update_thread(data_root: &Path, id: &str, change: impl FnOnce(&mut Thread
                 dir.join(THREAD_FILE).display(),
                 kept.display()
             );
-            ThreadFile::default()
+            blank_thread()
         }
     };
     change(&mut thread);
@@ -223,9 +219,11 @@ pub fn update_thread(data_root: &Path, id: &str, change: impl FnOnce(&mut Thread
     Ok(thread)
 }
 
-/// 읽은 `thread.json`의 세 갈래. 깨진 파일은 원문 바이트를 함께 든다 — 다시 쓰는 쪽이 그것을 떠 두지 않고는 덮지 못하게.
+/// 읽은 `thread.json`의 네 갈래. 깨진 파일은 원문 바이트를 함께 든다 — 다시 쓰는 쪽이 그것을 떠 두지 않고는 덮지 못하게.
 enum Loaded {
     Fine(ThreadFile),
+    /// Runtime 값이 없는 옛 폴더 — 목록에서 빠지고 없는 Thread처럼 읽히며 고쳐 쓰이지 않는다. 지우지도 않는다(스펙 「옛 기록」).
+    Old,
     Missing,
     Broken { bytes: Vec<u8>, reason: String },
 }
@@ -237,7 +235,8 @@ fn load_thread(dir: &Path) -> Result<Loaded> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Loaded::Missing),
         Err(e) => return Err(e.into()),
     };
-    Ok(match serde_json::from_slice(&bytes) {
+    Ok(match serde_json::from_slice::<ThreadFile>(&bytes) {
+        Ok(thread) if thread.runtime.is_none() => Loaded::Old,
         Ok(thread) => Loaded::Fine(thread),
         Err(e) => Loaded::Broken { reason: format!("{THREAD_FILE}을 읽지 못했습니다: {e}"), bytes },
     })
@@ -282,7 +281,7 @@ pub fn work_gone(data_root: &Path, slug: &str) -> Option<WorkGone> {
     }
 }
 
-/// 색인의 한 줄 — Thread 하나의 요약(제목 · 시각 · work · 참여자 handle · 읽은 자리). 깨진 Thread도 줄이 선다 — 그때는 `broken`에
+/// 색인의 한 줄 — Thread 하나의 요약(제목 · 시각 · work · 읽은 자리). 깨진 Thread도 줄이 선다 — 그때는 `broken`에
 /// 까닭만 있고 나머지 칸은 비었다. 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -291,7 +290,6 @@ pub struct ThreadSummary {
     pub title: String,
     pub created_at: String,
     pub work: Option<String>,
-    pub handles: Vec<String>,
     /// 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」(끝난 턴이 이 뒤에 있다)를 가른다(v1 티켓 41).
     pub last_read: u64,
     /// 이은 Work가 보관됐거나 지워졌으면 그 까닭(v1 티켓 38) — 그 Thread는 읽기만이고 사이드바에서 빠지며, ⌘K는 보관됨을 단다(S43).
@@ -326,6 +324,7 @@ impl ThreadIndex {
             }
             threads.push(match load_thread(&entry.path()) {
                 Ok(Loaded::Fine(thread)) => summarize(data_root, &id, &thread),
+                Ok(Loaded::Old) => continue,
                 Ok(Loaded::Missing) => broken(id, format!("{THREAD_FILE}이 없습니다")),
                 Ok(Loaded::Broken { reason, .. }) => broken(id, reason),
                 Err(e) => broken(id, format!("{THREAD_FILE}을 읽지 못했습니다: {e}")),
@@ -382,21 +381,19 @@ fn summarize(data_root: &Path, id: &str, thread: &ThreadFile) -> ThreadSummary {
         title: thread.title.clone(),
         created_at: thread.created_at.clone(),
         work: thread.work.clone(),
-        handles: thread.participants.iter().map(|participant| participant.handle.clone()).collect(),
         last_read: thread.last_read,
         read_only: thread.work.as_deref().and_then(|slug| work_gone(data_root, slug)),
         broken: None,
     }
 }
 
-/// 깨진 Thread의 줄 — 까닭만 있다. 제목 · 시각 · work · 참여자는 읽지 못했다.
+/// 깨진 Thread의 줄 — 까닭만 있다. 제목 · 시각 · work는 읽지 못했다.
 fn broken(id: String, reason: String) -> ThreadSummary {
     ThreadSummary {
         id,
         title: String::new(),
         created_at: String::new(),
         work: None,
-        handles: Vec::new(),
         last_read: 0,
         read_only: None,
         broken: Some(reason),
@@ -455,7 +452,12 @@ mod tests {
                 "createdAt": "2026-10-23T21:05:09.417+09:00",
                 "work": null,
                 "mode": "ask",
-                "participants": [],
+                "runtime": "claude-code",
+                "sessionId": null,
+                "cwd": null,
+                "additionalDirectories": [],
+                "model": null,
+                "effort": null,
                 "lastRead": 0,
             })
         );
@@ -484,34 +486,49 @@ mod tests {
         }
     }
 
-    /// **다시 써도 이 판이 모르는 키는 남는다** — 다른 판의 앱이 더한 칸(Thread에도, 참여자에도)을 지우지 않는다. 바꾼 칸만
-    /// 바뀌고 나머지는 글자 그대로다.
+    /// **다시 써도 이 판이 모르는 키는 남는다** — 다른 판의 앱이 더한 칸을 지우지 않는다. 바꾼 칸만 바뀌고 나머지는 글자 그대로다.
     #[test]
     fn 다시_써도_이_판이_모르는_키는_남는다() {
         let root = tempfile::tempdir().unwrap();
         let id = create(root.path(), "2026-10-23T21:05:09.000+09:00", new_thread("카트 고치기"), "카트를 고쳐 줘").id;
         let mut written = raw_thread_json(root.path(), &id);
         written["pinnedBy"] = json!("다음 판");
-        written["participants"] = json!([{
-            "handle": "host",
-            "from": "library",
-            "joinedAt": "2026-10-23T21:05:09.120+09:00",
-            "runtime": "claude-code",
-            "sessionId": "5f0c-host",
-            "cwd": "/tmp/threads/20261023-210509",
-            "additionalDirectories": [],
-            "model": "opus",
-            "effort": "high",
-            "avatar": {"shape": "square"},
-        }]);
+        written["sessionId"] = json!("5f0c");
+        written["cwd"] = json!("/tmp/threads/20261023-210509");
+        written["model"] = json!("opus");
+        written["effort"] = json!("high");
         let path = root.path().join("threads").join(&id).join("thread.json");
         std::fs::write(&path, serde_json::to_string_pretty(&written).unwrap()).unwrap();
 
         let updated = update_thread(root.path(), &id, |thread| thread.last_read = 4).unwrap();
 
-        assert_eq!(updated.participants[0].session_id.as_deref(), Some("5f0c-host"), "참여자 칸을 이 판이 읽는다");
+        assert_eq!(updated.session_id.as_deref(), Some("5f0c"), "세션 id는 채팅의 값이다");
         written["lastRead"] = json!(4);
         assert_eq!(raw_thread_json(root.path(), &id), written);
+    }
+
+    /// 스펙 「옛 기록」 — **Runtime 값이 없는 채팅 폴더는 목록에서 빠지고 지워지지 않는다.** 이행도 읽기 호환도 없다. 없는 Thread처럼
+    /// 읽혀 아무도 그 파일을 고쳐 쓰지 않는다 — 다른 설치본의 기록을 조용히 망가뜨리지 않기 위해서다.
+    #[test]
+    fn runtime_값이_없는_옛_채팅_폴더는_목록에서_빠지고_읽히지_않으며_고쳐_쓰이지도_않는다() {
+        let root = tempfile::tempdir().unwrap();
+        let kept = create(root.path(), "2026-10-23T09:00:00.000+09:00", linked("요즘 채팅", "cart"), "말").id;
+        let old = create(root.path(), "2026-10-23T09:10:00.000+09:00", linked("옛 채팅", "cart"), "말").id;
+        let dir = root.path().join("threads").join(&old);
+        let bytes = r#"{"title": "옛 채팅", "work": "cart", "participants": [{"handle": "host", "runtime": "claude-code", "sessionId": "옛-세션"}]}"#;
+        std::fs::write(dir.join("thread.json"), bytes).unwrap();
+
+        let index = ThreadIndex::load(root.path()).unwrap();
+        assert_eq!(ids(index.all()), [kept.as_str()], "목록에서 빠진다");
+        assert_eq!(ids(index.of_work("cart")), [kept.as_str()], "Work의 채팅에도 들지 않는다");
+
+        let read = read_thread(root.path(), &old).map(drop);
+        assert!(matches!(&read, Err(crate::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound), "없는 Thread다: {read:?}");
+        let updated = update_thread(root.path(), &old, |thread| thread.last_read = 9).map(drop);
+        assert!(matches!(&updated, Err(crate::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound), "{updated:?}");
+
+        assert_eq!(std::fs::read_to_string(dir.join("thread.json")).unwrap(), bytes, "파일은 글자 그대로다");
+        assert_eq!(read_thread_records(root.path(), &old, 0).unwrap().len(), 1, "기록도 그대로다");
     }
 
     /// **반쯤 쓴 마지막 줄은 버린다**(three-axes와 같다). 앱이 줄을 쓰다 죽으면 끝에 줄바꿈 없는 꼬리가 남는다 — 읽기는 그것을
@@ -559,21 +576,6 @@ mod tests {
         assert_eq!(keys, [["at", "kind", "payload", "seq"], ["at", "kind", "payload", "seq"]]);
     }
 
-    fn joined(handle: &str) -> Participant {
-        Participant {
-            handle: handle.to_owned(),
-            from: Some(DefinitionSource::Library),
-            joined_at: "2026-10-23T21:05:09.120+09:00".to_owned(),
-            runtime: "claude-code".to_owned(),
-            session_id: None,
-            cwd: None,
-            additional_directories: Vec::new(),
-            model: None,
-            effort: None,
-            extra: Map::new(),
-        }
-    }
-
     fn linked(title: &str, work: &str) -> NewThread {
         NewThread { title: title.to_owned(), work: Some(work.to_owned()), ..NewThread::default() }
     }
@@ -582,8 +584,8 @@ mod tests {
         summaries.into_iter().map(|summary| summary.id.as_str()).collect()
     }
 
-    /// 색인 — **모든 Thread의 요약(제목 · 시각 · work · 참여자 handle)을 새것부터 내고, Work slug로 찾는다.** 엔진은 시작할 때 한
-    /// 번 읽고, 쓸 때마다 고친다 — 나중에 Work에 이은 Thread도 그 Work로 찾힌다.
+    /// 색인 — **모든 Thread의 요약(제목 · 시각 · work)을 새것부터 내고, Work slug로 찾는다.** 엔진은 시작할 때 한 번 읽고, 쓸 때마다
+    /// 고친다 — 나중에 Work에 이은 Thread도 그 Work로 찾힌다.
     #[test]
     fn 색인은_모든_thread를_새것부터_요약하고_work로_찾는다() {
         let root = tempfile::tempdir().unwrap();
@@ -593,24 +595,16 @@ mod tests {
         let alone = create(root.path(), "2026-10-23T09:00:00.000+09:00", new_thread("혼자 묻기"), "이거 뭐야").id;
         let cart = create(root.path(), "2026-10-23T09:10:00.000+09:00", linked("카트 고치기", "cart"), "카트를 고쳐 줘").id;
         let billing = create(root.path(), "2026-10-23T09:20:00.000+09:00", linked("청구 정리", "billing"), "청구서").id;
-        update_thread(root.path(), &cart, |thread| thread.participants = vec![joined("host"), joined("reviewer")]).unwrap();
 
         let mut index = ThreadIndex::load(root.path()).unwrap();
-        let summary = |summary: &ThreadSummary| {
-            (summary.id.clone(), summary.title.clone(), summary.created_at.clone(), summary.work.clone(), summary.handles.clone())
-        };
+        let summary =
+            |summary: &ThreadSummary| (summary.id.clone(), summary.title.clone(), summary.created_at.clone(), summary.work.clone());
         assert_eq!(
             index.all().iter().map(summary).collect::<Vec<_>>(),
             [
-                (billing.clone(), "청구 정리".to_owned(), "2026-10-23T09:20:00.000+09:00".to_owned(), Some("billing".to_owned()), vec![]),
-                (
-                    cart.clone(),
-                    "카트 고치기".to_owned(),
-                    "2026-10-23T09:10:00.000+09:00".to_owned(),
-                    Some("cart".to_owned()),
-                    vec!["host".to_owned(), "reviewer".to_owned()]
-                ),
-                (alone.clone(), "혼자 묻기".to_owned(), "2026-10-23T09:00:00.000+09:00".to_owned(), None, vec![]),
+                (billing.clone(), "청구 정리".to_owned(), "2026-10-23T09:20:00.000+09:00".to_owned(), Some("billing".to_owned())),
+                (cart.clone(), "카트 고치기".to_owned(), "2026-10-23T09:10:00.000+09:00".to_owned(), Some("cart".to_owned())),
+                (alone.clone(), "혼자 묻기".to_owned(), "2026-10-23T09:00:00.000+09:00".to_owned(), None),
             ]
         );
         assert_eq!(ids(index.of_work("cart")), [cart.as_str()]);

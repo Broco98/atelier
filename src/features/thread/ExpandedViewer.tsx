@@ -145,7 +145,7 @@ function ViewerNote({
     const writer = writing.find((one) => one.path === opened.path);
     if (!writer) return null;
     return (
-      <span data-writer={writer.who} className="shrink-0 px-1 text-xs text-fg-tertiary">
+      <span data-writer={writer.thread} className="shrink-0 px-1 text-xs text-fg-tertiary">
         쓰는 중
       </span>
     );

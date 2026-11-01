@@ -9,7 +9,7 @@
 //! - **아직 서지 않은 worktree의 자리는 고칠 수 있는 자리가 아니다**(S21 · v1 티켓 32) — 그 자리에 먼저 쓰면 git worktree가 아닌 폴더가
 //!   서고, 뒤의 「Project 고치기 시작」이 그것을 worktree로 알고 짓지 않는다. 그 자리는 그 Project의 자리로 쳐서 거절 글이 도구를
 //!   가리킨다.
-//! - **Session을 열 때 읽는다** — 그 Agent의 Policy · `tools.cli`(정의 스냅숏, §19)와 작업 폴더(상대 경로를 푸는 자리).
+//! - **Session을 열 때 읽는다** — Library `host.md`의 Policy · `tools.cli`와 작업 폴더(상대 경로를 푸는 자리).
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
 //!   `..`는 링크를 푼 뒤에 접는다(코드 리뷰 2차 A2) — 링크 뒤의 `..`가 고칠 수 있는 자리 · Thread 기록 판정을 비켜 가지 않게.
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
@@ -32,9 +32,9 @@ pub(super) struct Gate {
     pub(super) thread: String,
     /// 이 Session의 작업 폴더 — 상대 경로를 여기서 푼다.
     pub(super) cwd: PathBuf,
-    /// 그 Agent의 Policy(정의 스냅숏).
+    /// `host.md`의 Policy.
     pub(super) policy: Policy,
-    /// 그 Agent의 `tools.cli`(정의 스냅숏).
+    /// `host.md`의 `tools.cli`.
     pub(super) cli: Vec<String>,
     pub(super) writer: Arc<Writer>,
 }

@@ -48,7 +48,6 @@ const summary = (id: string, over: Partial<ThreadSummary> = {}): ThreadSummary =
   title: id,
   createdAt: "2026-10-10T09:00:00.000+09:00",
   work: null,
-  handles: ["host"],
   lastRead: 0,
   readOnly: null,
   broken: null,

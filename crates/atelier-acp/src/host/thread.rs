@@ -2,9 +2,9 @@
 //!
 //! - **Session** 하나 = Thread 하나 = Runtime 프로세스 하나 · 턴 차례 하나다. work 대화와 같은 턴 차례 · 런타임 · 로그인
 //!   창구를 쓰고, 기록은 Thread의 `events.jsonl` 하나에 적는다. 줄에는 말한 이도 받는 이도 없다.
-//! - 말은 언제나 Host의 Session이 받는다. 아직 참여자가 아니면 들인다 — 정의 파일을 Thread 폴더에 스냅숏하고(S4) 참여자 줄을 적은 뒤
-//!   새 Session을 연다. 그 Session은 스냅숏만 읽는다 — 지시문은 스냅숏의 본문, 내장 도구 · 금지는 스냅숏의 frontmatter(v1 티켓 12),
-//!   모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때 스냅숏에서 옮겨 적고, 입력창 칩이 바꾼다)이다.
+//! - **채팅 하나가 Runtime 세션 하나다.** 세션 열쇠는 채팅 id 하나이고, Runtime · 모델 · 생각 깊이 · 세션 id · 작업 폴더 · 추가 폴더가
+//!   `thread.json`의 값이다. 모델 · 생각 깊이는 첫 말에서 정해지고(칩에서 고른 값, 없으면 Library `host.md`의 선호) 입력창 칩이 바꾼다.
+//!   지시문 · 내장 도구 · 금지는 01a-7, 01a-8까지 Session을 열 때마다 Library의 `host.md`를 고정 경로로 읽는다.
 //! - Runtime에게 가는 말은 머리말(Session의 첫 말) + 지난 말(새로 선 Session의 첫 말) + 본문이다(S10). 지난 말은 보내는 그때 기록에서
 //!   짓는다(`past`).
 //! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다). 함께 여는 폴더는
@@ -13,7 +13,7 @@
 //! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 three-axes
 //!   대화 호스트의 길 그대로다.
 //! - **Session마다 Thread 도구의 소켓을 연다(v1 티켓 15 · S12).** Session을 열 때 소켓을 열어 ACP `mcpServers`로 중계 서버를 넘기고,
-//!   그 소켓으로 온 도구 호출은 그 Session의 Thread와 Agent의 것으로 받는다([`ConversationHost::answer_tool`]). 소켓은 Session의
+//!   그 소켓으로 온 도구 호출은 그 Session의 Thread의 것으로 받는다([`ConversationHost::answer_tool`]). 소켓은 Session의
 //!   프로세스와 함께 산다 — 끄거나 되살릴 때 놓여 치워진다.
 //! - **Work 하나에서 고치는 Session은 하나다(v1 티켓 18 · §10, [`seat`]).** 편집을 허락받은 Session이 그 Work의 쓰기 자리를 쥐고 턴이
 //!   끝나면 놓는다. 그동안 다른 Session의 편집 요청은 묻지 않고 거절한다.
@@ -48,13 +48,12 @@ pub(super) use read_only::VanishWatch;
 pub use work::WorkChoice;
 pub use writing::DocWriting;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use atelier_core::{
-    AgentDefinition, AgentProblem, AgentRoster, Attachment, FoundAgent, NewThread, Participant, RecordKind, RecordLine, ThreadFile,
-    ThreadIndex, ThreadSummary, Unresolved, WorkGone,
+    AgentDefinition, AgentProblem, Attachment, NewThread, RecordKind, RecordLine, ThreadFile, ThreadIndex, ThreadSummary, WorkGone,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -64,7 +63,6 @@ use super::{
     HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
 };
 use crate::discovery::{Agent, FoundProgram};
-use crate::login::Waiter;
 use crate::login_env::AgentEnv;
 use crate::policy::{AskLevel, Card};
 use crate::quote::{Attached, Quote};
@@ -75,10 +73,8 @@ use gate::Gate;
 use seat::{Docs, Grant, Writer};
 use tool_lines::ToolLines;
 
-/// 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S14).
+/// Library의 `host.md`와 그 본문을 담는 `host.instructions.md`의 이름 — 01a-7, 01a-8이 파일과 함께 지운다.
 const HOST: &str = "host";
-/// v1이 띄우는 Runtime 하나(S3).
-const RUNTIME: &str = "claude-code";
 /// 첫 말에서 정하는 이름의 길이 한도(글자 수).
 const TITLE_LIMIT: usize = 40;
 /// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
@@ -107,10 +103,10 @@ pub enum ThreadLink {
 pub struct StartPicks {
     /// 물어보는 정도 — Work 없는 Thread면 `thread.json`의 `mode`로 서고, 이은 Work면 다를 때 그 Work의 정도가 된다(S18).
     pub mode: Option<AskLevel>,
-    /// 첫 Session의 모델 — 받는 Agent 정의의 `model.prefer` 대신 참여자 줄에 선다(스토리 33). claude `--model`이 받는 값(별칭 ·
-    /// 모델 이름)이다.
+    /// 첫 Session의 모델 — `host.md`의 `model.prefer` 대신 채팅의 값으로 선다(스토리 33). claude `--model`이 받는 값(별칭 · 모델
+    /// 이름)이다.
     pub model: Option<String>,
-    /// 첫 Session의 생각 깊이 — 정의의 `model.effort` 대신 선다. claude `--effort`가 받는 값만 받는다.
+    /// 첫 Session의 생각 깊이 — `host.md`의 `model.effort` 대신 선다. claude `--effort`가 받는 값만 받는다.
     pub effort: Option<String>,
     /// 트레이 Space 칩에서 고른 Space(03 §5 · 티켓 06) — 첫 말이 그 범위로 시작하고 Space 줄은 남기지 않는다. Work 없는 Thread면
     /// `thread.json`의 `space`로 서고, 이은 Work면 다를 때 그 Work의 Space가 된다(S4 — 그 Work의 다른 Thread에는 Space 줄이 선다). 고르지
@@ -165,12 +161,11 @@ pub struct ThreadView {
     /// 지금 물어보는 정도(S18 · v1 티켓 23) — Work에 이은 Thread면 Work 폴더의 점 파일, 아니면 `thread.json`의 `mode`다. 입력창 아래 칩이
     /// 이것을 그린다. 판정이 요청마다 읽는 값과 같은 길로 읽는다([`gate::asking`]).
     pub ask_level: AskLevel,
-    /// 참여자의 Session 가운데 하나라도 지금 이 앱에 떠 있고 살아 있나 — 아니면 기록 끝에 열린 채 남은 턴은 끝난 프로세스의 것이다
-    /// (three-axes 티켓 23의 `live`와 같은 뜻).
+    /// 그 Session이 지금 이 앱에 떠 있고 살아 있나 — 아니면 기록 끝에 열린 채 남은 턴은 끝난 프로세스의 것이다(three-axes 티켓 23의
+    /// `live`와 같은 뜻).
     pub live: bool,
-    /// 참여자마다의 대기 줄 — handle → 그 Session의 대기 줄(대기 줄 바뀜 이벤트의 `who` · `queue`와 같은 열쇠 · 값). 대기 말이
-    /// 있는 참여자만 칸이 선다. 메모리에만 있으므로 다시 켠 뒤에는 비어 있다.
-    pub queues: BTreeMap<String, Vec<QueuedMessage>>,
+    /// 그 Session의 대기 줄(대기 줄 바뀜 이벤트의 `queue`와 같은 값). 메모리에만 있으므로 다시 켠 뒤에는 비어 있다.
+    pub queue: Vec<QueuedMessage>,
     /// 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 그 Thread는 읽기만이다(v1 티켓 38). 화면이 입력창 자리에 그 까닭을 보인다.
     pub read_only: Option<WorkGone>,
 }
@@ -181,8 +176,8 @@ pub struct ThreadView {
 /// `thread.json` 잠금은 그 밖에서 잠깐씩만 쥔다.
 #[derive(Default)]
 pub(super) struct Threads {
-    /// 떠 있는 Session들 — (Thread id, handle)로 찾는다.
-    sessions: Mutex<HashMap<SessionKey, Session>>,
+    /// 떠 있는 Session들 — 세션 열쇠는 채팅 id 하나다.
+    sessions: Mutex<HashMap<String, Session>>,
     /// 연 기록 — Thread마다 하나다. Session들의 쓰는 손이 쥐고, 다 놓으면 닫힌다.
     logs: Mutex<HashMap<String, Weak<ThreadLog>>>,
     /// 모든 `thread.json`의 색인 — 처음 쓸 때 한 번 읽고, 엔진이 쓸 때마다 고친다(S7).
@@ -201,29 +196,6 @@ pub(super) struct Threads {
     prs: pr::PrWatch,
 }
 
-/// Session의 열쇠 — (Thread, 참여자 handle).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct SessionKey {
-    thread: String,
-    handle: String,
-}
-
-impl SessionKey {
-    fn new(thread: &str, handle: &str) -> Self {
-        Self { thread: thread.to_owned(), handle: handle.to_owned() }
-    }
-
-    /// 로그인 창구에서 이 Session의 자리.
-    fn waiter(&self) -> Waiter {
-        Waiter { thread: self.thread.clone(), handle: self.handle.clone() }
-    }
-
-    /// 띄우기 문의 이름.
-    fn gate(&self) -> String {
-        format!("thread {}/{}", self.thread, self.handle)
-    }
-}
-
 /// 떠 있는 Session 하나.
 pub(super) struct Session {
     pub(super) agent: AgentProcess,
@@ -237,7 +209,7 @@ pub(super) struct Session {
 }
 
 impl Threads {
-    fn lock_sessions(&self) -> MutexGuard<'_, HashMap<SessionKey, Session>> {
+    fn lock_sessions(&self) -> MutexGuard<'_, HashMap<String, Session>> {
         self.sessions.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
@@ -252,70 +224,56 @@ impl Threads {
         self.lock_sessions().drain().map(|(_, session)| session).collect()
     }
 
-    /// 그 Thread가 Work에 이어졌다 — 떠 있는 Session들의 판정 · 쓰기 자리가 곧바로 그 Work를 쓴다(v1 티켓 30).
-    fn link_sessions(&self, thread: &str, work: &str) {
-        for (key, session) in self.lock_sessions().iter() {
-            if key.thread == thread {
-                session.writer.link(work);
-            }
+    /// 그 Thread가 Work에 이어졌다 — 떠 있는 Session의 판정 · 쓰기 자리가 곧바로 그 Work를 쓴다(v1 티켓 30).
+    fn link_session(&self, thread: &str, work: &str) {
+        if let Some(session) = self.lock_sessions().get(thread) {
+            session.writer.link(work);
         }
     }
 
     /// 그 Session이 떠 있으면 그 대화 — 표의 잠금은 곧바로 놓는다(S2). 부른 쪽은 그 대화의 잠금만 쥐고 일하고, 그 잠금은
     /// [`Conv::lock_found`]로 쥔다 — 찾은 뒤 다른 명령이 꺼냈으면 거기서 물러난다.
-    fn find(&self, key: &SessionKey) -> Option<Arc<Conv>> {
-        self.lock_sessions().get(key).map(|session| Arc::clone(&session.conv))
-    }
-
-    /// 그 Thread의 떠 있는 Session들 — handle 차례.
-    fn of_thread(&self, thread: &str) -> Vec<(SessionKey, Arc<Conv>)> {
-        let mut found: Vec<(SessionKey, Arc<Conv>)> = self
-            .lock_sessions()
-            .iter()
-            .filter(|(key, _)| key.thread == thread)
-            .map(|(key, session)| (key.clone(), Arc::clone(&session.conv)))
-            .collect();
-        found.sort_by(|a, b| a.0.handle.cmp(&b.0.handle));
-        found
+    fn find(&self, thread: &str) -> Option<Arc<Conv>> {
+        self.lock_sessions().get(thread).map(|session| Arc::clone(&session.conv))
     }
 
     /// 그 Work에 이어 열린 떠 있는 Session들 — Work의 물어보는 정도를 함께 쓴다(S18 · v1 티켓 23).
-    fn of_work(&self, work: &str) -> Vec<SessionKey> {
+    fn of_work(&self, work: &str) -> Vec<String> {
         self.lock_sessions()
             .iter()
             .filter(|(_, session)| session.writer.work().as_deref() == Some(work))
-            .map(|(key, _)| key.clone())
+            .map(|(thread, _)| thread.clone())
             .collect()
     }
 
     /// 그 Session이 떠 있으면 그 Session이 적은 Thread 도구 줄.
-    fn find_tool_lines(&self, key: &SessionKey) -> Option<Arc<ToolLines>> {
-        self.lock_sessions().get(key).map(|session| Arc::clone(&session.tool_lines))
+    fn find_tool_lines(&self, thread: &str) -> Option<Arc<ToolLines>> {
+        self.lock_sessions().get(thread).map(|session| Arc::clone(&session.tool_lines))
     }
 
     /// 그 Session이 떠 있으면 그 대화와 쓰기 자리 손.
-    fn find_writer(&self, key: &SessionKey) -> Option<(Arc<Conv>, Arc<Writer>)> {
-        self.lock_sessions().get(key).map(|session| (Arc::clone(&session.conv), Arc::clone(&session.writer)))
+    fn find_writer(&self, thread: &str) -> Option<(Arc<Conv>, Arc<Writer>)> {
+        self.lock_sessions().get(thread).map(|session| (Arc::clone(&session.conv), Arc::clone(&session.writer)))
     }
 
     /// 그 Session을 표에서 꺼낸다 — 꺼낸 대화라고 적는다([`mark_taken`]). 꺼낸 뒤로는 어느 명령도 이 Session에
     /// 닿지 않는다. 꺼낸 Session의 턴은 끝 없이 사라지므로 그 쓰기 자리를 놓고(v1 티켓 18) 그 Session이 세운 Work 만들기 카드를
     /// 닫는다(v1 티켓 30).
-    fn take(&self, key: &SessionKey) -> Option<Session> {
-        let taken = self.lock_sessions().remove(key);
+    fn take(&self, thread: &str) -> Option<Session> {
+        let taken = self.lock_sessions().remove(thread);
         mark_taken(taken.iter().map(|session| &*session.conv));
         if let Some(session) = &taken {
             session.writer.release();
             session.writer.put_pens_down();
-            self.proposals.close_for(key);
+            self.proposals.close_for(thread);
         }
         taken
     }
 
     /// Session을 표에 넣는다 — 꺼냄 표시를 걷은 뒤에.
-    fn put(&self, key: SessionKey, session: Session) {
+    fn put(&self, thread: String, session: Session) {
         session.conv.lock_state().taken = false;
-        self.lock_sessions().insert(key, session);
+        self.lock_sessions().insert(thread, session);
     }
 
     fn lock_logs(&self) -> MutexGuard<'_, HashMap<String, Weak<ThreadLog>>> {
@@ -347,14 +305,11 @@ impl ConversationHost {
     pub fn thread(&self, thread: &str) -> Result<ThreadView, HostError> {
         let file = self.read_thread_file(thread)?;
         let mut live = false;
-        let mut queues = BTreeMap::new();
-        for (key, conv) in self.threads.of_thread(thread) {
+        let mut queue = Vec::new();
+        if let Some(conv) = self.threads.find(thread) {
             if let Some(state) = conv.lock_found() {
-                live |= state.is_up();
-                let queue = state.order.queue();
-                if !queue.is_empty() {
-                    queues.insert(key.handle, queue);
-                }
+                live = state.is_up();
+                queue = state.order.queue();
             }
         }
         let last_seq = match self.threads.held_log(thread) {
@@ -363,7 +318,7 @@ impl ConversationHost {
         };
         let (ask_level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
         let read_only = read_only::gone_of(&self.data_root, &file);
-        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queues, read_only })
+        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queue, read_only })
     }
 
     /// 기록 읽기 — 그 Thread의 기록에서 `after` 다음 seq의 줄들. 화면은 이것으로 그리고 그 뒤는 기록 줄 이벤트로 잇는다.
@@ -372,12 +327,12 @@ impl ConversationHost {
         atelier_core::read_thread_records(&self.data_root, thread, after).map_err(|error| thread_error(thread, error))
     }
 
-    /// 새 Thread의 첫 말 — Thread를 세우고 Host가 들어와 답한다(S6). 세운 Thread의 id를 돌려준다.
+    /// 새 Thread의 첫 말 — Thread를 세우고 Runtime이 답한다(S6). 세운 Thread의 id를 돌려준다.
     ///
-    /// 1. 잇는 Work가 있는지 · Claude를 찾는지 · Host의 정의가 읽히는지 먼저 본다 — 하나라도 막히면 아무것도 세우지 않는다.
-    /// 2. Thread 폴더를 첫 줄(첫 Session의 `spawning`)과 함께 세운다. 이름은 첫 말의 앞부분이다. 그 줄을 첫 열기가 다시 쓰지 않는다.
-    /// 3. 정의를 Thread 폴더에 스냅숏하고 `thread.json`에 참여자로 적는다(S4).
-    /// 4. Session을 열고(S11의 작업 폴더) 머리말 + 본문을 보낸다(S10). 답은 기록 줄 이벤트로 흐른다.
+    /// 1. 잇는 Work가 있는지 · Claude를 찾는지 · `host.md`가 읽히는지 먼저 본다 — 하나라도 막히면 아무것도 세우지 않는다.
+    /// 2. Thread 폴더를 채팅의 값과 첫 줄(첫 Session의 `spawning`)과 함께 세운다. 이름은 첫 말의 앞부분이다. 그 줄을 첫 열기가 다시 쓰지
+    ///    않는다.
+    /// 3. Session을 열고(S11의 작업 폴더) 머리말 + 본문을 보낸다(S10). 답은 기록 줄 이벤트로 흐른다.
     ///
     /// 막히는 호출이다 — Session이 열릴 때까지 기다린다. 세운 뒤에 Session을 열지 못하면 Thread는 남고(기록에 까닭이 선다) 그
     /// 오류를 돌려준다 — 다음 말에서 다시 띄운다.
@@ -406,7 +361,7 @@ impl ConversationHost {
     }
 
     /// 입력창 칩에서 고른 것과 함께 새 Thread — [`Self::start_thread_asking`]과 같고, 첫 말 전에 고른 모델 · 생각 깊이(v1 티켓 31 ·
-    /// 스토리 33)가 받는 Agent 정의의 선호 대신 참여자 줄에 서서 첫 Session이 그 값(`--model` · `--effort`)으로 뜬다. claude가 받지
+    /// 스토리 33)가 `host.md`의 선호 대신 채팅의 값으로 서서 첫 Session이 그 값(`--model` · `--effort`)으로 뜬다. claude가 받지
     /// 않는 생각 깊이면 아무것도 세우지 않고 거절한다. 트레이 Space 칩에서 고른 Space(03 §5)는 첫 말의 범위다 — 없는 Space면 아무것도
     /// 세우지 않고 거절한다.
     pub fn start_thread_picking(
@@ -433,8 +388,7 @@ impl ConversationHost {
         };
         let env = self.login_env(false)?;
         find_programs(Agent::Claude, &env)?;
-        let Recipient::Newcomer(found) = self.recipient(&[])? else { unreachable!("새 Thread에는 참여자가 없다") };
-        let handle = found.definition.handle.clone();
+        let definition = self.host_definition()?;
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
         // 고른 Space — Work 없는 Thread는 제 파일에, 이은 Work는 그 Work에 적는다(S4). Work의 것은 Thread를 세우기 전에 바꾼다 — 새 Thread는
@@ -443,26 +397,35 @@ impl ConversationHost {
             self.set_work_space(slug, space)?;
         }
         let space = space.flatten().filter(|_| work.is_none()).map(str::to_owned);
-        let new = NewThread { title: title_of(text), work: work.clone(), mode, new_work, space };
+        let new = NewThread {
+            title: title_of(text),
+            work: work.clone(),
+            mode,
+            new_work,
+            space,
+            model: picks.model.or(definition.model.prefer),
+            effort: picks.effort.or(definition.model.effort),
+        };
+        // 색인을 먼저 쥔다 — 처음 읽는 색인이 새 Thread를 읽으면 요약이 바뀐 것으로 보이지 않는다(`announce_thread`).
+        self.with_index(|_| ())?;
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Session, session_payload(SessionState::Spawning))
             .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
         log.written(created.first.clone());
-        self.seat(&created.id, &found, &created.first.at, &picks)?;
+        self.announce_thread(&created.id, &created.file)?;
         if let (Some(slug), Some(mode)) = (&work, picks.mode) {
             if gate::work_asking(&self.data_root, slug).0 != mode {
                 self.set_thread_mode(&created.id, mode)?;
             }
         }
-        self.say_noting(&SessionKey::new(&created.id, &handle), text, None, attachments, note)?;
+        self.say_noting(&created.id, text, None, attachments, note)?;
         drop(log);
         Ok(created.id)
     }
 
     /// 보내기 — 있는 Thread에 말한다. 기다리지 않는다: 답과 턴 끝은 기록 줄 이벤트로 온다.
     ///
-    /// - Host가 아직 참여자가 아니면 먼저 들인다 — 스냅숏 · 참여자 줄. 그 Session은 새로 연다.
     /// - Session이 떠 있지 않거나 죽었으면(다시 켠 뒤 · 죽은 뒤) 먼저 띄워 되살린다 — `thread.json`의 Session id로 resume → load →
     ///   새로 순이다. 그래서 막히는 호출일 수 있다. 새로 선 Session의 첫 말에는 머리말이 다시 붙고, 지난 말은 Thread 처음부터
     ///   간다(S10).
@@ -480,8 +443,7 @@ impl ConversationHost {
 
     /// 인용한 말(v1 티켓 35 · S41) — [`Self::send_to_thread_with`]와 같고, 넓힌 카드의 문서에서 고른 글(`quote` — 이은 Work의 spec 폴더
     /// 기준 파일 · 원문 줄 범위 · 글)이 인용 블록으로 본문 앞에 가고 `sent` 줄에 남는다(three-axes 티켓 27의 꼴). 인용이 spec 폴더 밖을
-    /// 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면, 또 Work에 이어지지 않은 Thread면 아무것도 적지 않고 거절한다 — Host를 들이기
-    /// 전에 잰다. 대기 줄에 들면 지은 인용 블록을 들고 간다.
+    /// 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면, 또 Work에 이어지지 않은 Thread면 아무것도 적지 않고 거절한다. 대기 줄에 들면 지은 인용 블록을 들고 간다.
     pub fn send_to_thread_quoting(
         &self,
         thread: &str,
@@ -495,11 +457,7 @@ impl ConversationHost {
             Some(quote) => Some(self.quote_in(file.work.as_deref(), quote)?),
             None => None,
         };
-        let handle = match self.recipient(&file.participants)? {
-            Recipient::Seated(handle) => handle,
-            Recipient::Newcomer(found) => self.join(thread, &found)?,
-        };
-        self.say_noting(&SessionKey::new(thread, &handle), text, quote, attachments, None)
+        self.say_noting(thread, text, quote, attachments, None)
     }
 
     /// 인용을 이은 Work의 spec 폴더 것으로 붙인다 — 인용 블록이 그 폴더 안의 실제 경로를 가리킨다.
@@ -511,23 +469,21 @@ impl ConversationHost {
         quote.attach(&spec).map_err(|bad| HostError::BadQuote(bad.to_string()))
     }
 
-    /// 멈추기 — Thread 전체에 건다(§5): 그 Thread의 도는 턴마다 멈춤을 보낸다. 기다리지 않는다 — 멈춘 턴의 끝(`cancelled`)은
+    /// 멈추기 — 그 Thread의 도는 턴에 멈춤을 보낸다(§5). 기다리지 않는다 — 멈춘 턴의 끝(`cancelled`)은
     /// 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다. 사람의 대기 줄은 거두지 않는다.
     ///
     /// 서 있는 Work 만들기 카드도 거둔다(v1 티켓 30).
     pub fn stop_thread(&self, thread: &str) -> Result<(), HostError> {
         self.stop_work_cards(thread);
-        for (_, conv) in self.threads.of_thread(thread) {
-            let Some(mut state) = conv.lock_found() else { continue };
-            conv.seat(&mut state).stop().map_err(|refused| refused.into_host(thread))?;
-        }
-        Ok(())
+        let Some(conv) = self.threads.find(thread) else { return Ok(()) };
+        let Some(mut state) = conv.lock_found() else { return Ok(()) };
+        conv.seat(&mut state).stop().map_err(|refused| refused.into_host(thread))
     }
 
     /// 대기 고치기 — 그 대기 id의 말의 글을 바꾸고 대기 줄 바뀜을 낸다.
     pub fn edit_thread_queued(&self, thread: &str, queued: &str, text: &str) -> Result<(), HostError> {
         let not_found = || HostError::QueuedNotFound(queued.to_owned());
-        let (_, conv) = self.holding(thread, queued).ok_or_else(not_found)?;
+        let conv = self.holding(thread, queued).ok_or_else(not_found)?;
         let mut state = conv.lock_found().ok_or_else(not_found)?;
         conv.seat(&mut state).edit(queued, text).map_err(|refused| refused.into_host(thread))
     }
@@ -535,7 +491,7 @@ impl ConversationHost {
     /// 대기 지우기 — 그 대기 id의 말을 빼고 대기 줄 바뀜을 낸다.
     pub fn delete_thread_queued(&self, thread: &str, queued: &str) -> Result<(), HostError> {
         let not_found = || HostError::QueuedNotFound(queued.to_owned());
-        let (_, conv) = self.holding(thread, queued).ok_or_else(not_found)?;
+        let conv = self.holding(thread, queued).ok_or_else(not_found)?;
         let mut state = conv.lock_found().ok_or_else(not_found)?;
         conv.seat(&mut state).delete(queued).map_err(|refused| refused.into_host(thread))
     }
@@ -544,14 +500,14 @@ impl ConversationHost {
     /// `sendNow`가 true). 죽은 Session이면 먼저 되살려 곧바로 보낸다 — 막히는 호출일 수 있다. 읽기만 된 Thread에는 보내지 않는다.
     pub fn send_thread_now(&self, thread: &str, queued: &str) -> Result<(), HostError> {
         self.writable(thread)?;
-        if let Some((key, conv)) = self.holding(thread, queued) {
+        if let Some(conv) = self.holding(thread, queued) {
             let dead = conv.lock_found().is_some_and(|state| !state.is_up());
-            if dead && self.logins.waiting_for(&key.waiter()).is_none() {
-                self.revive_session(&key, Revive::IfNotRunning)?;
+            if dead && self.logins.waiting_for(thread).is_none() {
+                self.revive_session(thread, Revive::IfNotRunning)?;
             }
         }
         let not_found = || HostError::QueuedNotFound(queued.to_owned());
-        let (_, conv) = self.holding(thread, queued).ok_or_else(not_found)?;
+        let conv = self.holding(thread, queued).ok_or_else(not_found)?;
         let mut state = conv.lock_found().ok_or_else(not_found)?;
         conv.seat(&mut state).send_now(queued).map_err(|refused| refused.into_host(thread))
     }
@@ -581,7 +537,7 @@ impl ConversationHost {
     /// 질문 카드의 요청에는 답하지 않는다([`HostError::NotPermission`] — [`Self::answer_thread_question`]의 몫이다).
     pub fn reply_thread_permission(&self, thread: &str, request: &str, reply: &Reply) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
-        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, HOST)).ok_or_else(closed)?;
+        let (conv, writer) = self.threads.find_writer(thread).ok_or_else(closed)?;
         let asked = writer.asked(request);
         if asked.as_ref().is_some_and(|(card, _)| *card == Card::Question) {
             return Err(HostError::NotPermission { request: request.to_owned() });
@@ -651,7 +607,7 @@ impl ConversationHost {
     /// 걸려 있지 않은 질문이면 [`HostError::PermissionClosed`], 승인 카드의 요청이면 [`HostError::NotQuestion`]이다 — 요청은 그대로다.
     pub fn answer_thread_question(&self, thread: &str, request: &str, reply: &QuestionReply) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
-        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, HOST)).ok_or_else(closed)?;
+        let (conv, writer) = self.threads.find_writer(thread).ok_or_else(closed)?;
         let (card, options) = writer.asked(request).ok_or_else(closed)?;
         if card != Card::Question {
             return Err(HostError::NotQuestion { request: request.to_owned() });
@@ -710,27 +666,27 @@ impl ConversationHost {
         Ok((file, before))
     }
 
-    /// 그 정도를 쓰는 떠 있는 Session의 `claude` 권한 모드를 맞춘다(S17 · v1 티켓 23) — 그 Thread의 참여자들과, Work에 이었으면 그 Work에
-    /// 이어 열린 다른 Thread의 Session들. 다시 띄우지 않고 `session/set_mode`를 넣는다 — 턴이 돌고 있으면 그 턴의 다음 도구부터 든다.
+    /// 그 정도를 쓰는 떠 있는 Session의 `claude` 권한 모드를 맞춘다(S17 · v1 티켓 23) — 그 Thread와, Work에 이었으면 그 Work에 이어 열린
+    /// 다른 Thread의 Session들. 다시 띄우지 않고 `session/set_mode`를 넣는다 — 턴이 돌고 있으면 그 턴의 다음 도구부터 든다.
     /// 넣은 바꾸기는 그 Session의 `config` 줄로 남는다. 떠 있지 않은 Session은 다음에 열 때 이 정도로 뜬다.
     ///
     /// 되살리는 중인 Session은 그 끝을 기다린다 — 옛 정도로 열리는 중일 수 있다. 한 Session이 거절해도 나머지는 바꾸고, 처음 거절의
     /// 까닭으로 실패한다(정도는 이미 바뀌었다 — 판정은 요청마다 그것을 읽는다).
     fn retune_sessions(&self, thread: &str, file: &ThreadFile, mode: AskLevel) -> Result<(), HostError> {
-        let mut keys: Vec<SessionKey> = file.participants.iter().map(|one| SessionKey::new(thread, &one.handle)).collect();
+        let mut threads = vec![thread.to_owned()];
         if let Some(slug) = &file.work {
-            for key in self.threads.of_work(slug) {
-                if !keys.contains(&key) {
-                    keys.push(key);
+            for other in self.threads.of_work(slug) {
+                if !threads.contains(&other) {
+                    threads.push(other);
                 }
             }
         }
         let setting = Setting::Mode(mode.claude_mode());
         let mut refused = None;
-        for key in keys {
-            let gate = self.revival_gate(&key.gate());
+        for thread in threads {
+            let gate = self.revival_gate(&thread);
             let _not_while_reviving = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let Some(conv) = self.threads.find(&key) else { continue };
+            let Some(conv) = self.threads.find(&thread) else { continue };
             let turns = {
                 let Some(state) = conv.lock_found() else { continue };
                 state.turns.clone().filter(|_| state.order.alive())
@@ -748,18 +704,17 @@ impl ConversationHost {
         refused.map_or(Ok(()), |why| Err(HostError::Setting(why)))
     }
 
-    /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다(스토리 33 · three-axes 티켓 09).
+    /// 모델 바꾸기 — 그 채팅의 모델을 바꾼다(스토리 33 · three-axes 티켓 09).
     ///
     /// - Session이 떠 있으면 곧바로 넣고 답을 기다린다 — 다음 턴부터 든다. 넣은 바꾸기는 `config` 줄로 남는다.
-    /// - 떠 있지 않으면 `thread.json`의 참여자 줄에만 남고, 띄울 때 플래그로 준다.
+    /// - 떠 있지 않으면 `thread.json`에만 남고, 띄울 때 플래그로 준다.
     ///
-    /// 답은 바뀐 참여자 줄이다. 막히는 호출이다 — 엔진의 답을 기다린다(한도 10초). 되살리는 중이면 그 끝을 기다린다.
-    pub fn set_thread_model(&self, thread: &str, who: &str, model: &str) -> Result<Participant, HostError> {
-        let key = SessionKey::new(thread, who);
-        let gate = self.revival_gate(&key.gate());
+    /// 답은 바뀐 채팅의 값이다. 막히는 호출이다 — 엔진의 답을 기다린다(한도 10초). 되살리는 중이면 그 끝을 기다린다.
+    pub fn set_thread_model(&self, thread: &str, model: &str) -> Result<ThreadFile, HostError> {
+        let gate = self.revival_gate(thread);
         let _not_while_reviving = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        self.participant(thread, who)?;
-        let running = self.threads.find(&key).and_then(|conv| {
+        self.read_thread_file(thread)?;
+        let running = self.threads.find(thread).and_then(|conv| {
             let turns = {
                 let state = conv.lock_found()?;
                 state.turns.clone().filter(|_| state.order.alive())
@@ -772,32 +727,27 @@ impl ConversationHost {
             let (method, fields) = setting.request();
             turns.change(method, fields, SETTING_LIMIT).map_err(HostError::Setting)?;
         }
-        let file = self.change_thread(thread, |file| {
-            if let Some(participant) = file.participants.iter_mut().find(|participant| participant.handle == who) {
-                participant.model = Some(model.to_owned());
-            }
-        })?;
+        let file = self.change_thread(thread, |file| file.model = Some(model.to_owned()))?;
         if let Some((conv, _)) = &running {
             conv.recorder.config(setting.changed()).map_err(HostError::Record)?;
         }
-        participant_of(&file, thread, who)
+        Ok(file)
     }
 
-    /// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — 그 참여자의 생각 깊이(claude `--effort`의 값 하나)를 바꾼다. claude는 떠 있는
-    /// Session의 생각 깊이를 바꾸는 요청이 없어 플래그로만 받는다. 그래서 모델 바꾸기와 길이 갈린다.
+    /// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — 그 채팅의 생각 깊이(claude `--effort`의 값 하나)를 바꾼다. claude는 떠 있는 Session의
+    /// 생각 깊이를 바꾸는 요청이 없어 플래그로만 받는다. 그래서 모델 바꾸기와 길이 갈린다.
     ///
-    /// - 떠 있지 않으면 `thread.json`의 참여자 줄에만 남고, 띄울 때 플래그로 준다.
+    /// - 떠 있지 않으면 `thread.json`에만 남고, 띄울 때 플래그로 준다.
     /// - 떠 있고 쉬면 같은 Session으로 다시 띄운다(`--resume` + 새 `--effort`) — 다음 턴부터 든다. 넣은 바꾸기는 `config` 줄로 남는다.
     /// - 턴이 도는 동안은 거절한다 — 다시 띄우면 그 턴이 끊긴다. 입력창 칩도 그동안 잠긴다.
     ///
-    /// 답은 바뀐 참여자 줄이다. 다시 띄우면 막히는 호출이다(Session이 열릴 때까지).
-    pub fn set_thread_effort(&self, thread: &str, who: &str, effort: &str) -> Result<Participant, HostError> {
+    /// 답은 바뀐 채팅의 값이다. 다시 띄우면 막히는 호출이다(Session이 열릴 때까지).
+    pub fn set_thread_effort(&self, thread: &str, effort: &str) -> Result<ThreadFile, HostError> {
         if !EFFORTS.contains(&effort) {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
-        self.participant(thread, who)?;
-        let key = SessionKey::new(thread, who);
-        let up = match self.threads.find(&key) {
+        self.read_thread_file(thread)?;
+        let up = match self.threads.find(thread) {
             Some(conv) => {
                 let state = conv.lock_found();
                 if state.as_ref().is_some_and(|state| state.order.turning()) {
@@ -807,18 +757,14 @@ impl ConversationHost {
             }
             None => false,
         };
-        let file = self.change_thread(thread, |file| {
-            if let Some(participant) = file.participants.iter_mut().find(|participant| participant.handle == who) {
-                participant.effort = Some(effort.to_owned());
-            }
-        })?;
+        let file = self.change_thread(thread, |file| file.effort = Some(effort.to_owned()))?;
         if up {
-            self.relaunch_session(thread, who)?;
-            if let Some(conv) = self.threads.find(&key) {
+            self.relaunch_session(thread)?;
+            if let Some(conv) = self.threads.find(thread) {
                 conv.recorder.config(json!({"effort": effort})).map_err(HostError::Record)?;
             }
         }
-        participant_of(&file, thread, who)
+        Ok(file)
     }
 
     /// 읽은 자리 적기(v1 티켓 41 · 구현 스펙 §17 · S38) — 화면은 Thread를 열고 맨 아래가 보일 때 끝 줄의 seq를 적는다. `thread.json`의
@@ -857,33 +803,33 @@ impl ConversationHost {
             .ok_or_else(|| HostError::ThreadNotFound(thread.to_owned()))
     }
 
-    /// Thread 도구 호출 하나에 답한다(v1 티켓 15 · S12 · S13) — 그 Session의 소켓으로 왔으므로 부른 Thread와 Agent는 `key`다. 도구의
-    /// 거절(빈 이름 · 사라진 Thread)은 도구의 실패로 돌려준다 — Agent가 그 글을 읽는다. 연결마다의 스레드에서 불린다.
-    fn answer_tool(&self, key: &SessionKey, method: &str, params: &Value) -> Result<Value, Fault> {
+    /// Thread 도구 호출 하나에 답한다(v1 티켓 15 · S12 · S13) — 그 Session의 소켓으로 왔으므로 부른 Thread는 `thread`다. 도구의
+    /// 거절(빈 이름 · 사라진 Thread)은 도구의 실패로 돌려준다 — Runtime이 그 글을 읽는다. 연결마다의 스레드에서 불린다.
+    fn answer_tool(&self, thread: &str, method: &str, params: &Value) -> Result<Value, Fault> {
         let call = match method {
             "tools/list" => return Ok(thread_tools::list()),
             "tools/call" => thread_tools::read_call(params),
             _ => return Err(Fault::unknown_method(method)),
         };
         // 부르기는 그 도구 줄이 기록에 선 뒤에 받는다 — 결과의 줄이 그 앞에 서지 않게(`tool_lines.rs`).
-        if let Some(lines) = self.threads.find_tool_lines(key) {
+        if let Some(lines) = self.threads.find_tool_lines(thread) {
             lines.wait(params["name"].as_str().unwrap_or_default());
         }
         Ok(match call {
-            Ok(Call::RenameThread { title }) => match self.rename_thread(&key.thread, &title) {
+            Ok(Call::RenameThread { title }) => match self.rename_thread(thread, &title) {
                 Ok(summary) => thread_tools::said(&format!("Thread 이름을 바꿨다 — {}", summary.title), false),
                 Err(error) => thread_tools::said(&error.to_string(), true),
             },
             Ok(Call::ListProjects) => self.list_projects_tool(),
-            Ok(Call::GetWork) => self.get_work_tool(key),
-            Ok(Call::ProposeWork(proposal)) => self.propose_work(key, proposal),
-            Ok(Call::StartEditing { project, reason }) => self.start_editing(key, &project, reason.as_deref()),
-            Ok(Call::ListSpaces) => self.list_spaces_tool(key),
-            Ok(Call::SetSpace(ask)) => self.set_space_tool(key, ask),
-            Ok(Call::AddProject(ask)) => self.add_project_tool(key, ask),
-            Ok(Call::EditProject(edit)) => self.edit_project_tool(key, edit),
-            Ok(Call::CreateSpace(new)) => self.create_space_tool(key, new),
-            Ok(Call::EditSpace(edit)) => self.edit_space_tool(key, edit),
+            Ok(Call::GetWork) => self.get_work_tool(thread),
+            Ok(Call::ProposeWork(proposal)) => self.propose_work(thread, proposal),
+            Ok(Call::StartEditing { project, reason }) => self.start_editing(thread, &project, reason.as_deref()),
+            Ok(Call::ListSpaces) => self.list_spaces_tool(thread),
+            Ok(Call::SetSpace(ask)) => self.set_space_tool(thread, ask),
+            Ok(Call::AddProject(ask)) => self.add_project_tool(thread, ask),
+            Ok(Call::EditProject(edit)) => self.edit_project_tool(thread, edit),
+            Ok(Call::CreateSpace(new)) => self.create_space_tool(thread, new),
+            Ok(Call::EditSpace(edit)) => self.edit_space_tool(thread, edit),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -891,10 +837,10 @@ impl ConversationHost {
 
     /// 그 Session의 Thread 도구 소켓을 연다 — 중계 서버 명령이 없으면 없다. 열지 못하면 Thread 도구 없이 Session을 연다: 까닭은
     /// 기록의 `stderr` 줄로 남긴다(Agent는 일하되 Thread를 다루지 못한다).
-    fn open_tools(&self, key: &SessionKey, conv: &Conv) -> Option<(Bridge, Value)> {
+    fn open_tools(&self, thread: &str, conv: &Conv) -> Option<(Bridge, Value)> {
         let relay = self.thread_tools.as_ref()?;
         let host = self.weak();
-        let at = key.clone();
+        let at = thread.to_owned();
         let answer: thread_tools::Answer = Arc::new(move |method, params| match ConversationHost::upgrade(&host) {
             Some(host) => host.answer_tool(&at, method, params),
             None => Err(Fault::gone()),
@@ -915,13 +861,12 @@ impl ConversationHost {
 
     /// 로그인을 기다리던 Session을 다시 띄운다(three-axes 티켓 12의 길) — 떠 있으면 끄고 새로, 같은 Session id로 이어 연다. 대기
     /// 줄은 걸림이 풀린 이 자리에서 맨 앞부터 간다. Thread가 사라졌으면 아무것도 하지 않는다.
-    pub(super) fn relaunch_session(&self, thread: &str, handle: &str) -> Result<(), HostError> {
-        let key = SessionKey::new(thread, handle);
-        match self.revive_session(&key, Revive::EvenIfRunning) {
+    pub(super) fn relaunch_session(&self, thread: &str) -> Result<(), HostError> {
+        match self.revive_session(thread, Revive::EvenIfRunning) {
             Err(HostError::ThreadNotFound(_)) => return Ok(()),
             revived => revived?,
         }
-        if let Some(conv) = self.threads.find(&key) {
+        if let Some(conv) = self.threads.find(thread) {
             if let Some(mut state) = conv.lock_found() {
                 conv.seat(&mut state).resume();
             }
@@ -935,27 +880,27 @@ impl ConversationHost {
     /// 줄도 그때만 간다. 이은 Space의 파일이 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_space`]).
     fn say_noting(
         &self,
-        key: &SessionKey,
+        thread: &str,
         text: &str,
         quote: Option<Attached>,
         attachments: Vec<Attachment>,
         note: Option<&str>,
     ) -> Result<(), HostError> {
-        self.close_lost_space(&key.thread)?;
-        if !self.session_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
-            self.revive_session(key, Revive::IfNotRunning)?;
+        self.close_lost_space(thread)?;
+        if !self.session_running(thread) && self.logins.waiting_for(thread).is_none() {
+            self.revive_session(thread, Revive::IfNotRunning)?;
         } else {
-            self.move_if_needed(key)?;
+            self.move_if_needed(thread)?;
         }
-        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote, attachments };
-        let found = self.threads.find(key);
+        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(thread, note)?, quote, attachments };
+        let found = self.threads.find(thread);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
-            return Err(match self.logins.waiting_for(&key.waiter()) {
-                Some(agent) => HostError::LoginRequired { agent, thread: key.thread.clone() },
-                None => HostError::NotRunning(key.thread.clone()),
+            return Err(match self.logins.waiting_for(thread) {
+                Some(agent) => HostError::LoginRequired { agent, thread: thread.to_owned() },
+                None => HostError::NotRunning(thread.to_owned()),
             });
         };
-        conv.seat(&mut state).say(draft, ()).map_err(|refused| refused.into_host(&key.thread))
+        conv.seat(&mut state).say(draft, ()).map_err(|refused| refused.into_host(thread))
     }
 
     /// 작업 폴더가 바뀐 Session을 새 작업 폴더에서 이어 연다(S11 「바꿔 이어 열기」 · v1 티켓 32) — Work가 나중에 붙었거나, worktree가
@@ -964,20 +909,19 @@ impl ConversationHost {
     ///
     /// **쉬는 Session만 옮긴다** — 턴이 도는 동안의 말은 대기 줄에 들어 그 프로세스(옛 폴더)에 간다. 그 Session은 다음에 쉬는 때 받는
     /// 말에서 옮긴다. 바뀐 것이 없으면 아무것도 하지 않는다. 막히는 호출일 수 있다(Session이 열릴 때까지).
-    fn move_if_needed(&self, key: &SessionKey) -> Result<(), HostError> {
-        if !self.place_moved(key) {
+    fn move_if_needed(&self, thread: &str) -> Result<(), HostError> {
+        if !self.place_moved(thread) {
             return Ok(());
         }
-        self.revive_session(key, Revive::IfMoved)
+        self.revive_session(thread, Revive::IfMoved)
     }
 
-    /// 그 Session이 연 작업 폴더 · 함께 여는 폴더(`thread.json`의 참여자 줄)가 지금 S11 표의 자리와 다른가. 처음 열기 전이거나 자리를
-    /// 셀 수 없으면(사라진 Work) 다르지 않다고 본다 — 옮기지 못하는 일로 말을 막지 않는다.
-    fn place_moved(&self, key: &SessionKey) -> bool {
-        let Ok(file) = self.read_thread_file(&key.thread) else { return false };
-        let Ok(participant) = participant_of(&file, &key.thread, &key.handle) else { return false };
-        let Ok(place) = self.thread_place(&key.thread, &file) else { return false };
-        moved(&participant, &place)
+    /// 그 Session이 연 작업 폴더 · 함께 여는 폴더(`thread.json`)가 지금 S11 표의 자리와 다른가. 처음 열기 전이거나 자리를 셀 수
+    /// 없으면(사라진 Work) 다르지 않다고 본다 — 옮기지 못하는 일로 말을 막지 않는다.
+    fn place_moved(&self, thread: &str) -> bool {
+        let Ok(file) = self.read_thread_file(thread) else { return false };
+        let Ok(place) = self.thread_place(thread, &file) else { return false };
+        moved(&file, &place)
     }
 
     /// 떠 있지 않거나 죽은 Session을 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 Session과 죽은 Session은 말을 보낼 때 띄운다
@@ -985,82 +929,75 @@ impl ConversationHost {
     /// 그대로 이어 쓴다. 다시 뜨지 못하면 대기 줄은 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
     ///
     /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다. Session마다 하나씩 돈다 — 앞선 것이 되살렸으면 아무것도 하지 않는다.
-    fn revive_session(&self, key: &SessionKey, when: Revive) -> Result<(), HostError> {
-        let gate = self.revival_gate(&key.gate());
+    fn revive_session(&self, thread: &str, when: Revive) -> Result<(), HostError> {
+        let gate = self.revival_gate(thread);
         let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        if when == Revive::IfNotRunning && self.session_running(key) {
+        if when == Revive::IfNotRunning && self.session_running(thread) {
             return Ok(());
         }
         // 앞선 것이 옮겼거나, 그사이 턴이 섰다 — 도는 턴을 끊지 않는다(v1 티켓 32).
-        if when == Revive::IfMoved && !(self.session_idle(key) && self.place_moved(key)) {
+        if when == Revive::IfMoved && !(self.session_idle(thread) && self.place_moved(thread)) {
             return Ok(());
         }
-        let file = self.read_thread_file(&key.thread)?;
-        let participant = participant_of(&file, &key.thread, &key.handle)?;
+        let file = self.read_thread_file(thread)?;
         let env = self.login_env(false)?;
         let programs = find_programs(Agent::Claude, &env)?;
-        let conv = match self.threads.take(key) {
+        let conv = match self.threads.take(thread) {
             Some(mut session) => {
                 end_together(vec![(&mut session.agent, &*session.conv)]);
                 session.conv
             }
-            None => self.session_conv(key)?,
+            None => self.session_conv(thread)?,
         };
         let queued = conv.lock_state().order.queued() > 0;
-        let opened = self.open_session(key, &file, &participant, Arc::clone(&conv), &env, &programs);
-        if queued && self.threads.find(key).is_none() {
+        let opened = self.open_session(thread, &file, Arc::clone(&conv), &env, &programs);
+        if queued && self.threads.find(thread).is_none() {
             conv.recorder.queue_changed(Vec::new());
         }
         opened
     }
 
-    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, 스냅숏의 지시문 · 내장 도구 · 금지(v1 티켓 12)와 참여자 줄의 모델 ·
-    /// 생각 깊이로. 열리면 Session id · 작업 폴더를 참여자 줄에 적고 떠 있는 표에 넣는다.
+    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, `host.md`의 지시문 · 내장 도구 · 금지(v1 티켓 12)와 채팅의 모델 · 생각
+    /// 깊이로. 열리면 Session id · 작업 폴더를 `thread.json`에 적고 떠 있는 표에 넣는다.
     ///
     /// - Runtime이 로그인을 요구하면 로그인 필요 줄을 적고 로그인 창구가 그 Session을 쥔다 — 실패가 아니다.
     /// - 그 밖의 까닭으로 못 열면 죽음 줄에 까닭을 적고 실패한다.
     fn open_session(
         &self,
-        key: &SessionKey,
+        thread: &str,
         file: &ThreadFile,
-        participant: &Participant,
         conv: Arc<Conv>,
         env: &AgentEnv,
         programs: &[FoundProgram],
     ) -> Result<(), HostError> {
-        let place = self.thread_place(&key.thread, file)?;
-        let (definition, instructions) = self.read_snapshot(key)?;
+        let place = self.thread_place(thread, file)?;
+        let definition = self.host_definition()?;
+        let instructions = self.write_instructions(thread, &definition)?;
         let recorder = &conv.recorder;
         recorder.spawning().map_err(HostError::Record)?;
         // 기본 모드로만 띄운다 — 「계획만」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
-        let (level, _) = gate::asking(&self.data_root, &key.thread, file.work.as_deref());
+        let (level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
         let choice = ClaudeChoice {
             mode: Some(level.claude_mode().to_owned()),
-            model: participant.model.clone(),
-            effort: participant.effort.clone(),
+            model: file.model.clone(),
+            effort: file.effort.clone(),
             instructions: Some(instructions),
             tools: definition.tools.builtin,
             forbid: definition.policy.forbid.clone(),
         };
         let (launch, mut terms) = claude_launch(&self.translator, programs, env, &place, &choice);
-        // 참여자의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
-        terms.revive = participant.session_id.clone();
+        // 채팅의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
+        terms.revive = file.session_id.clone();
         // 열 때마다 새 소켓이다 — 되살린 Session도 앞 프로세스의 소켓은 이미 치웠다. 열지 못하면 여기서 놓여 치워진다.
-        let (tools, server) = self.open_tools(key, &conv).unzip();
+        let (tools, server) = self.open_tools(thread, &conv).unzip();
         terms.mcp_servers.extend(server);
         // 판정(v1 티켓 22) — 받은 권한 요청은 모두 판정을 지난다. 쓰기 자리(v1 티켓 18)는 판정의 입력이고, 턴이 끝나면 쥔 자리를 놓는다.
-        // 쓰는 문서(v1 티켓 34)는 그 Agent의 이름으로 낸다 — Host는 정의 이름과 상관없이 「Host」다(머리줄 · 흐름과 같다). 턴이 끝나면 이은
-        // Work의 PR을 읽는다(v1 티켓 36).
-        let docs = Docs {
-            desk: Arc::clone(&self.threads.docs),
-            emit: Arc::clone(&self.emit),
-            cwd: place.cwd.clone(),
-            name: if key.handle == HOST { "Host".to_owned() } else { definition.name.clone() },
-        };
-        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), docs);
+        // 턴이 끝나면 이은 Work의 PR을 읽는다(v1 티켓 36).
+        let docs = Docs { desk: Arc::clone(&self.threads.docs), emit: Arc::clone(&self.emit), cwd: place.cwd.clone() };
+        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), thread.to_owned(), file.work.clone(), docs);
         let gate = Gate {
             data_root: self.data_root.clone(),
-            thread: key.thread.clone(),
+            thread: thread.to_owned(),
             cwd: place.cwd.clone(),
             policy: definition.policy,
             cli: definition.tools.cli,
@@ -1076,7 +1013,7 @@ impl ConversationHost {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {
                 recorder.session(SessionState::LoginRequired).map_err(HostError::Record)?;
-                self.logins.login_required(Agent::Claude, key.waiter());
+                self.logins.login_required(Agent::Claude, thread.to_owned());
                 return Ok(());
             }
             Err(error) => {
@@ -1084,14 +1021,13 @@ impl ConversationHost {
                 recorder
                     .session(SessionState::Died { reason: reason.clone(), stderr_tail: Vec::new() })
                     .map_err(HostError::Record)?;
-                return Err(HostError::Open { thread: key.thread.clone(), reason });
+                return Err(HostError::Open { thread: thread.to_owned(), reason });
             }
         };
         // 그 Session의 첫 말이면 머리말을 붙인다(S10) — 새로 섰거나, 되살린 Session이 아직 말을 받은 적이 없다. 작업 폴더가 바뀌어
         // 옮겨 연 Session에도 붙인다(v1 티켓 32) — 이은 Work · 새 worktree · 읽기만 폴더를 그 Agent가 알게.
-        let heard = self.read_thread_record(&key.thread, 0)?;
-        let needs_preamble =
-            opened.how.starts_session() || !heard_since_session_start(&heard) || moved(participant, &place);
+        let heard = self.read_thread_record(thread, 0)?;
+        let needs_preamble = opened.how.starts_session() || !heard_since_session_start(&heard) || moved(file, &place);
         {
             let mut state = conv.lock_state();
             // 이어 연 Session이 앞서 들은 Space — 그사이 Space가 바뀌었으면(앱을 끈 동안 고친 파일도) 다음 말에 머리말이 다시 간다.
@@ -1099,33 +1035,31 @@ impl ConversationHost {
             state.turns = agent.turns();
         }
         // 기록의 자리를 알려고 cwd를 쓰지 않는다 — Runtime은 Session id만으로 이어 연다(S11). 그래서 지금 작업 폴더를 적는다.
-        self.change_thread(&key.thread, |file| {
-            if let Some(slot) = file.participants.iter_mut().find(|slot| slot.handle == key.handle) {
-                slot.session_id = Some(opened.session_id.clone());
-                slot.cwd = Some(place.cwd.clone());
-                slot.additional_directories = place.additional_directories.clone();
-            }
+        self.change_thread(thread, |file| {
+            file.session_id = Some(opened.session_id.clone());
+            file.cwd = Some(place.cwd.clone());
+            file.additional_directories = place.additional_directories.clone();
         })?;
-        self.threads.put(key.clone(), Session { agent, conv, writer, _tools: tools, tool_lines });
+        self.threads.put(thread.to_owned(), Session { agent, conv, writer, _tools: tools, tool_lines });
         Ok(())
     }
 
     /// 그 Session이 떠 있고 살아 있나 — 아니면 보내기가 먼저 되살린다.
-    fn session_running(&self, key: &SessionKey) -> bool {
-        self.threads.find(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up()))
+    fn session_running(&self, thread: &str) -> bool {
+        self.threads.find(thread).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up()))
     }
 
     /// 그 Session이 떠 있고 살아 있고 턴이 돌지 않나 — 작업 폴더를 옮겨도 끊길 턴이 없다.
-    fn session_idle(&self, key: &SessionKey) -> bool {
-        self.threads.find(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up() && !state.order.turning()))
+    fn session_idle(&self, thread: &str) -> bool {
+        self.threads.find(thread).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up() && !state.order.turning()))
     }
 
     /// 떠 있을 Session의 대화 — 그 Thread의 기록에 적고, 턴 도중의 로그인 요구를 창구에 쥐게 하고, 턴 끝에 그 Thread가
     /// 읽기만 됐으면 끄러 보낸다(v1 티켓 38). spec 폴더를 찍지 않는다.
-    fn session_conv(&self, key: &SessionKey) -> Result<Arc<Conv>, HostError> {
-        let recorder = Recorder::of_thread(self.thread_log(&key.thread)?, &key.handle);
-        let vanish = VanishWatch::new(self.data_root.clone(), key.clone(), self.weak());
-        Ok(Conv::new(recorder, self.login_watch(Agent::Claude, key.waiter()), vanish))
+    fn session_conv(&self, thread: &str) -> Result<Arc<Conv>, HostError> {
+        let recorder = Recorder::of_thread(self.thread_log(thread)?);
+        let vanish = VanishWatch::new(self.data_root.clone(), thread.to_owned(), self.weak());
+        Ok(Conv::new(recorder, self.login_watch(Agent::Claude, thread.to_owned()), vanish))
     }
 
     /// 그 Thread의 기록 — 연 것이 있으면 그것, 없으면 이어 열어 쥔다. Thread 폴더를 만들지 않는다.
@@ -1141,97 +1075,30 @@ impl ConversationHost {
         Ok(log)
     }
 
-    /// 그 대기 id의 말을 쥔 Session.
-    fn holding(&self, thread: &str, queued: &str) -> Option<(SessionKey, Arc<Conv>)> {
-        self.threads
-            .of_thread(thread)
-            .into_iter()
-            .find(|(_, conv)| conv.lock_found().is_some_and(|state| state.order.contains(queued)))
+    /// 그 대기 id의 말을 쥔 Session의 대화.
+    fn holding(&self, thread: &str, queued: &str) -> Option<Arc<Conv>> {
+        self.threads.find(thread).filter(|conv| conv.lock_found().is_some_and(|state| state.order.contains(queued)))
     }
 
-    /// 말을 받는 이 — Host다. 이미 참여자면 범위를 다시 보지 않고 그 참여자다 — 정의 파일이 바뀌거나 지워져도 처음 들어온 정의 그대로
-    /// 이어 쓴다(S4 · 스토리 52). 아니면 Library에서 읽는다. 읽기만 한다.
-    fn recipient(&self, seated: &[Participant]) -> Result<Recipient, HostError> {
-        if seated.iter().any(|participant| participant.handle == HOST) {
-            return Ok(Recipient::Seated(HOST.to_owned()));
-        }
-        let broken = |reason: String| HostError::AgentBroken { handle: HOST.to_owned(), reason };
-        match self.agents_in_library()?.resolve(HOST) {
-            Ok(found) => Ok(Recipient::Newcomer(found.clone())),
-            Err(Unresolved::NotFound) => Err(broken("Library에 host.md가 없습니다".to_owned())),
-            Err(Unresolved::Ambiguous { calls }) => Err(broken(format!("host가 여럿입니다: {}", calls.join(" · ")))),
-            Err(Unresolved::Broken(problem)) => Err(broken(problem_text(problem))),
-        }
-    }
-
-    /// Library의 Agent — 기본 파일이 지워졌으면 다시 세운 뒤에 찾는다. 앱이 뜰 때와 같은 규칙이고, 있는 파일은 덮지 않는다(S14). Host는
-    /// Library에만 있어 이은 Work의 범위를 읽지 않는다 — 사라진 Work의 Thread도 Host는 부른다.
-    fn agents_in_library(&self) -> Result<AgentRoster, HostError> {
+    /// Library의 `host.md` — 고정 경로다. 기본 파일이 지워졌으면 다시 세운 뒤에 읽는다. 앱이 뜰 때와 같은 규칙이고, 있는 파일은 덮지
+    /// 않는다(S14). 01a-7, 01a-8이 지시문과 정의를 걷을 때까지 있다.
+    fn host_definition(&self) -> Result<AgentDefinition, HostError> {
         if let Err(error) = atelier_core::ensure_default_agents(&self.data_root) {
             eprintln!("Library의 기본 Agent를 세우지 못했습니다: {error}");
         }
-        atelier_core::find_agents(&self.data_root, None).map_err(|error| HostError::Record(format!("Agent를 찾지 못했습니다: {error}")))
+        atelier_core::read_agent(&atelier_core::library_agents_in(&self.data_root).join(format!("{HOST}.md")))
+            .map_err(|problem| HostError::AgentBroken { handle: HOST.to_owned(), reason: problem_text(problem) })
     }
 
-    /// 아직 참여자가 아닌 Agent를 Thread에 들인다 — 정의를 스냅숏한다(S4). 들인 handle을 돌려준다.
-    ///
-    /// 그 handle의 띄우기 문을 쥔 채 `thread.json`을 다시 읽는다 — 말 둘이 엇갈려도 한 번만 들어온다.
-    fn join(&self, thread: &str, found: &FoundAgent) -> Result<String, HostError> {
-        let handle = found.definition.handle.clone();
-        let gate = self.revival_gate(&SessionKey::new(thread, &handle).gate());
-        let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        if self.read_thread_file(thread)?.participants.iter().any(|participant| participant.handle == handle) {
-            return Ok(handle);
-        }
-        self.seat(thread, found, &atelier_core::record_time(), &StartPicks::default())?;
-        Ok(handle)
-    }
-
-    /// Agent를 Thread에 앉힌다 — 정의 파일을 Thread 폴더에 스냅숏하고(S4) `thread.json`에 참여자로 적는다. 정의가 온 곳은 범위가
-    /// 준 그대로(Library · Project)이고, 모델 · 생각 깊이는 스냅숏의 것을 옮겨 적는다 — 새 Thread의 칩에서 고른 칸(`picks`)이
-    /// 있으면 그것이다(v1 티켓 31).
-    fn seat(&self, thread: &str, found: &FoundAgent, joined_at: &str, picks: &StartPicks) -> Result<(), HostError> {
-        let definition = &found.definition;
-        let snapshots = self.snapshots(thread)?;
-        std::fs::create_dir_all(&snapshots)
-            .and_then(|()| std::fs::copy(&found.path, snapshots.join(format!("{}.md", definition.handle))))
-            .map_err(|error| HostError::Record(format!("@{}의 정의를 스냅숏하지 못했습니다: {error}", definition.handle)))?;
-        let participant = Participant {
-            handle: definition.handle.clone(),
-            from: Some(found.from.clone()),
-            joined_at: joined_at.to_owned(),
-            runtime: RUNTIME.to_owned(),
-            session_id: None,
-            cwd: None,
-            additional_directories: Vec::new(),
-            model: picks.model.clone().or_else(|| definition.model.prefer.clone()),
-            effort: picks.effort.clone().or_else(|| definition.model.effort.clone()),
-            extra: Default::default(),
-        };
-        self.change_thread(thread, |file| file.participants.push(participant)).map(drop)
-    }
-
-    /// 그 참여자의 정의 스냅숏과 지시문 파일 — Session을 열 때마다 스냅숏을 읽어 지시문 파일을 다시 짓는다. 정의는 스냅숏에서만
-    /// 읽고(§19), 지운 지시문 파일도 다음 열기에 다시 선다. 내장 도구 · 금지도 여기서 읽는다(v1 티켓 12) — 이어 열 때마다 다시
-    /// 싣는다.
-    ///
-    /// 지시문 파일은 본문만 담는다(v1 티켓 03: frontmatter가 시스템 프롬프트에 들지 않게).
-    fn read_snapshot(&self, key: &SessionKey) -> Result<(AgentDefinition, PathBuf), HostError> {
-        let definition = self.snapshot_definition(key)?;
-        let path = self.snapshots(&key.thread)?.join(format!("{}.instructions.md", key.handle));
-        std::fs::write(&path, &definition.instructions)
+    /// 지시문 파일을 다시 짓는다 — 본문만 담는다(v1 티켓 03: frontmatter가 시스템 프롬프트에 들지 않게). 지운 파일도 다음 열기에 다시 선다.
+    fn write_instructions(&self, thread: &str, definition: &AgentDefinition) -> Result<PathBuf, HostError> {
+        let folder =
+            atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?.join(atelier_core::THREAD_SNAPSHOTS);
+        let path = folder.join(format!("{HOST}.instructions.md"));
+        std::fs::create_dir_all(&folder)
+            .and_then(|()| std::fs::write(&path, &definition.instructions))
             .map_err(|error| HostError::Record(format!("지시문 파일을 쓰지 못했습니다: {} — {error}", path.display())))?;
-        Ok((definition, path))
-    }
-
-    /// 그 참여자의 정의 — Thread 폴더의 스냅숏에서만 읽는다(§19).
-    fn snapshot_definition(&self, key: &SessionKey) -> Result<AgentDefinition, HostError> {
-        atelier_core::read_agent(&self.snapshots(&key.thread)?.join(format!("{}.md", key.handle)))
-            .map_err(|problem| HostError::AgentBroken { handle: key.handle.clone(), reason: problem_text(problem) })
-    }
-
-    fn snapshots(&self, thread: &str) -> Result<PathBuf, HostError> {
-        Ok(atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?.join(atelier_core::THREAD_SNAPSHOTS))
+        Ok(path)
     }
 
     /// Thread의 작업 폴더(v1 구현 스펙 S11)와 함께 여는 폴더(03 구현 스펙 §7).
@@ -1274,24 +1141,15 @@ impl ConversationHost {
         Ok(place)
     }
 
-    /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이 Agent의 handle, 참여자, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
-    /// worktree 또는 「읽기만」), 읽는 범위의 「- Space:」 줄(03 §11), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로
+    /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이어진 Work(slug · 제목 · spec 폴더 · Project마다 worktree 또는 「읽기만」), 읽는 범위의 「- Space:」 줄(03 §11), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로
     /// 연 뒤의 첫 말, 그리고 Session이 들은 것과 Space 줄이 다른 말에 따로 된 텍스트 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의
     /// `prompt`에만 남는다. `note`는 끝에 붙는 한 줄이다(「새 Work로 시작」).
-    fn thread_preamble(&self, key: &SessionKey, note: Option<&str>) -> Result<Preamble, HostError> {
-        let file = self.read_thread_file(&key.thread)?;
-        let participants: Vec<String> =
-            file.participants.iter().map(|participant| format!("`@{}`", participant.handle)).collect();
-        let mut text = format!(
-            "{PREAMBLE_HEAD}\n\n- Thread id: `{}`\n- 제목: {}\n- 너의 handle: `@{}`\n- 참여자: {}\n",
-            key.thread,
-            file.title,
-            key.handle,
-            participants.join(", ")
-        );
+    fn thread_preamble(&self, thread: &str, note: Option<&str>) -> Result<Preamble, HostError> {
+        let file = self.read_thread_file(thread)?;
+        let mut text = format!("{PREAMBLE_HEAD}\n\n- Thread id: `{thread}`\n- 제목: {}\n", file.title);
         let work = match &file.work {
             None => {
-                let dir = atelier_core::thread_dir(&self.data_root, &key.thread).map_err(|error| thread_error(&key.thread, error))?;
+                let dir = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
                 text.push_str(&format!("- Work: 없음 — 이 Thread 폴더에서 일한다: `{}`\n", dir.display()));
                 None
             }
@@ -1359,11 +1217,7 @@ impl ConversationHost {
         atelier_core::read_thread(&self.data_root, thread).map_err(|error| thread_error(thread, error))
     }
 
-    fn participant(&self, thread: &str, handle: &str) -> Result<Participant, HostError> {
-        participant_of(&self.read_thread_file(thread)?, thread, handle)
-    }
-
-    /// `thread.json`을 고쳐 쓰고 색인을 고친다. 목록 요약이 바뀌었으면 알린다(S7 — 감시가 없으므로 엔진이 알린다).
+    /// `thread.json`을 고쳐 쓰고 색인을 고친다. 목록 요약이 바뀌었으면 알린다([`Self::announce_thread`]).
     fn change_thread(&self, thread: &str, change: impl FnOnce(&mut ThreadFile)) -> Result<ThreadFile, HostError> {
         // 색인을 먼저 쥔다 — 처음 읽는 색인이 고친 뒤의 파일을 읽으면 바뀜을 못 본다.
         self.with_index(|_| ())?;
@@ -1371,16 +1225,22 @@ impl ConversationHost {
             let _file = self.threads.lock_files();
             atelier_core::update_thread(&self.data_root, thread, change).map_err(|error| thread_error(thread, error))?
         };
+        self.announce_thread(thread, &file)?;
+        Ok(file)
+    }
+
+    /// 방금 쓴 `thread.json`으로 색인을 고치고, 목록 요약이 바뀌었으면 알린다(S7 — 감시가 없으므로 엔진이 알린다).
+    fn announce_thread(&self, thread: &str, file: &ThreadFile) -> Result<(), HostError> {
         let changed = self.with_index(|index| {
             let before = index.all().iter().find(|summary| summary.id == thread).cloned();
-            index.put(thread, &file);
+            index.put(thread, file);
             let after = index.all().iter().find(|summary| summary.id == thread).cloned();
             after.filter(|after| before.as_ref() != Some(after))
         })?;
         if let Some(summary) = changed {
             (self.emit)(HostEvent::ThreadList(summary));
         }
-        Ok(file)
+        Ok(())
     }
 
     /// 색인 — 처음 쓸 때 모든 `thread.json`을 한 번 읽는다(S7).
@@ -1393,14 +1253,6 @@ impl ConversationHost {
         }
         Ok(use_it(held.as_mut().expect("방금 읽었다")))
     }
-}
-
-/// 말을 받는 이.
-enum Recipient {
-    /// 이미 참여자인 Agent — 그 handle.
-    Seated(String),
-    /// 아직 참여자가 아닌 Agent — 들인 뒤에 받는다.
-    Newcomer(FoundAgent),
 }
 
 /// 첫 말에서 정하는 이름 — 비지 않은 첫 줄, 길면 앞 [`TITLE_LIMIT`]글자에 말줄임표.
@@ -1417,21 +1269,9 @@ fn one_line(text: &str) -> String {
     text.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
-/// 그 참여자의 Session이 연 자리(`thread.json`의 참여자 줄)가 지금 자리와 다른가(v1 티켓 32) — 처음 열기 전(작업 폴더가 없다)이면
-/// 다르지 않다.
-fn moved(participant: &Participant, place: &SessionPlace) -> bool {
-    participant
-        .cwd
-        .as_ref()
-        .is_some_and(|cwd| cwd != &place.cwd || participant.additional_directories != place.additional_directories)
-}
-
-fn participant_of(file: &ThreadFile, thread: &str, handle: &str) -> Result<Participant, HostError> {
-    file.participants
-        .iter()
-        .find(|participant| participant.handle == handle)
-        .cloned()
-        .ok_or_else(|| HostError::ParticipantNotFound { thread: thread.to_owned(), handle: handle.to_owned() })
+/// 그 Session이 연 자리(`thread.json`)가 지금 자리와 다른가(v1 티켓 32) — 처음 열기 전(작업 폴더가 없다)이면 다르지 않다.
+fn moved(file: &ThreadFile, place: &SessionPlace) -> bool {
+    file.cwd.as_ref().is_some_and(|cwd| cwd != &place.cwd || file.additional_directories != place.additional_directories)
 }
 
 /// 깨진 Agent 파일의 까닭을 사람이 읽을 글로.

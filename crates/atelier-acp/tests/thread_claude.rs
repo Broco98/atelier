@@ -29,7 +29,7 @@ fn thread_on(sandbox: &Sandbox, fixture: &str, extra: &[(&str, &str)], first: &s
     env.extend_from_slice(extra);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &env));
     let thread = host.start_thread(first, ThreadLink::NoWork).expect("새 Thread의 첫 말");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     (host, thread, session)
 }
 
@@ -59,7 +59,7 @@ fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록
     let picks = StartPicks { mode: Some(AskLevel::Auto), ..StartPicks::default() };
     let first = "멈춤 확인 — Bash로 `python3 -c 'import time; time.sleep(40)'`를 앞에서 돌리고 끝나면 FINISHED라고 해";
     let thread = host.start_thread_picking(first, &[], ThreadLink::NoWork, picks).expect("새 Thread의 첫 말");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     // 원문은 판정이 허락한 그 명령이 도는 동안 interrupt를 보냈다 — 허락의 판정 줄이 선 뒤에 멈춘다.
     sandbox.wait_thread_record(&thread, |record| {
         of_kind(record, "permission").iter().any(|line| line["payload"]["state"] == "decided")
@@ -225,7 +225,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     host.send_to_thread(&thread, "그동안 보낸 말").expect("스스로 이어 간 턴 동안의 말은 대기 줄에 든다");
 
     let queue: Vec<String> =
-        host.thread(&thread).expect("Thread의 지금").queues["host"].iter().map(|queued| queued.text.clone()).collect();
+        host.thread(&thread).expect("Thread의 지금").queue.iter().map(|queued| queued.text.clone()).collect();
     assert_eq!(queue, ["그동안 보낸 말"], "스스로 이어 간 턴이 도는 동안은 대기 줄을 보내지 않는다");
     std::thread::sleep(Duration::from_millis(200));
     assert_eq!(user_lines(&sandbox, &session), 2, "claude에는 아직 가지 않았다 — 도는 턴에 합쳐지지 않게(three-axes 결정 20)");
@@ -244,7 +244,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     assert!(self_end < sent_at, "턴 밖 끝이 적힌 뒤에 대기 줄의 맨 앞이 간다:\n{}", common::lines_text(&record));
     assert_eq!(sent_texts(&record), ["15초 명령을 앞에서 돌리고 TURN-A-END라고 해", "백그라운드로 걸어", "그동안 보낸 말"]);
     common::wait_for("대기 줄의 말이 claude에 가지 않았다", || user_lines(&sandbox, &session) >= 3);
-    assert!(host.thread(&thread).unwrap().queues.is_empty());
+    assert!(host.thread(&thread).unwrap().queue.is_empty());
 
     host.shut_down();
 }
@@ -313,7 +313,7 @@ fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남�
 fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_남은_프로세스가_없다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
-    let (builder, _events) = sandbox.host_builder_with_events(sandbox.claude_login_shell("silent-initialize", &[]));
+    let (builder, events) = sandbox.host_builder_with_events(sandbox.claude_login_shell("silent-initialize", &[]));
     let host = builder.open_limit(Duration::from_millis(800)).build();
 
     let started = Instant::now();
@@ -321,6 +321,12 @@ fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_�
 
     assert!(started.elapsed() < Duration::from_secs(5), "한도에서 끊는다: {:?}", started.elapsed());
     assert!(matches!(&failed, HostError::Open { reason, .. } if reason.contains("안에 세션을 열지 않았습니다")), "{failed:?}");
+    let HostError::Open { thread, .. } = &failed else { unreachable!() };
+    assert_eq!(
+        events.thread_lists().first().map(|summary| summary.id.clone()).as_ref(),
+        Some(thread),
+        "세션이 열리지 못해도 Thread는 남으므로 목록 요약이 나간다"
+    );
     let receipts = sandbox.all_claude_receipts();
     assert_eq!(receipts.len(), 1, "claude는 떴다");
     let claude = receipts[0]["pid"].as_u64().unwrap() as u32;
@@ -344,7 +350,7 @@ fn claude는_변환기의_프로세스_그룹_안에_있고_호스트를_끄면_
     sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("mcp-child", &[]));
     let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let receipt = sandbox.claude_receipt(&session);
     let (claude, translator) = (receipt["pid"].as_u64().unwrap() as u32, receipt["ppid"].as_u64().unwrap() as u32);
     let mcp_child = receipt["descendants"][0].as_u64().unwrap() as u32;

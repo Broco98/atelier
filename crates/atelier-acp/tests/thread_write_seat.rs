@@ -130,7 +130,7 @@ fn 편집을_허락받은_session이_쓰기_자리를_쥐면_같은_work의_다�
     );
     assert_eq!(decided["toolCall"]["kind"], "edit", "받은 요청을 함께 남긴다: {decided}");
     assert!(decided["request"]["options"].is_array(), "요청 원문: {decided}");
-    let session = sandbox.thread_session_id(&other, "host");
+    let session = sandbox.thread_session_id(&other);
     assert_eq!(
         decisions(&sandbox, &session),
         [json!({"behavior": "deny", "message": FIXING_HOLDS})],
@@ -175,7 +175,7 @@ fn 먼저_쥔_채팅이_놓으면_다른_채팅이_쥐고_먼저_쥐었던_채�
         (refused["payload"]["optionId"].clone(), refused["payload"]["reason"].clone()),
         (json!("reject"), json!("「장바구니 문서를 고쳐 줘」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요"))
     );
-    let session = sandbox.thread_session_id(&first, "host");
+    let session = sandbox.thread_session_id(&first);
     assert_eq!(decisions(&sandbox, &session).last().expect("둘째 편집의 답")["behavior"], "deny");
 
     host.shut_down();
@@ -221,7 +221,7 @@ fn 쓰기_자리를_쥔_session이_있어도_같은_work의_다른_session의_�
         permissions(&record).iter().all(|line| line["payload"]["state"] != "decided"),
         "명령은 거절하지 않는다:\n{text}"
     );
-    let session = sandbox.thread_session_id(&other, "host");
+    let session = sandbox.thread_session_id(&other);
     assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow", "그 채팅의 claude는 허락을 받는다");
     assert!(sandbox.thread_record(&writing).iter().all(|line| line["kind"] != "turn-end"), "그동안 첫 채팅의 턴은 돈다");
 
@@ -250,7 +250,7 @@ fn 물은_사이에_다른_session이_쓰기_자리를_쥐었으면_사람이_�
         json!({"state": "decided", "requestId": second["payload"]["requestId"], "optionId": "reject", "reason": FIXING_HOLDS}),
         "물음 줄이 이미 요청을 담았다 — 판정 줄은 답과 까닭만 싣는다"
     );
-    let session = sandbox.thread_session_id(&other, "host");
+    let session = sandbox.thread_session_id(&other);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": FIXING_HOLDS})]);
 
     host.shut_down();

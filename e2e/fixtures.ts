@@ -13,7 +13,6 @@ import type { CloseCheck } from "@/features/terminal/types";
 import type {
   Attachment,
   EngineCheck,
-  Participant,
   QuitCounts as ThreadQuitCounts,
   RecordLine as ThreadRecordLine,
   ThreadSummary,
@@ -970,31 +969,25 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   },
 };
 
-// Thread 기본 자료(v1 티켓 05) — L1이 축복한 두 턴짜리 Thread(`thread-two-turns.jsonl`)의 Thread 줄. Host 하나가 참여했고 앱에 떠 있지 않다.
+// Thread 기본 자료(v1 티켓 05) — L1이 축복한 두 턴짜리 Thread(`thread-two-turns.jsonl`)의 Thread 줄. 앱에 떠 있지 않다.
 // Thread spec(v1 티켓 10)이 이것을 바탕으로 제 Thread를 짓는다 — `lastSeq`는 그 기록의 마지막 줄이다.
-export const FIXTURE_HOST: Participant = {
-  handle: "host",
-  from: "library",
-  joinedAt: "2026-10-10T10:00:01.000+09:00",
-  runtime: "claude-code",
-  sessionId: "fake-session",
-  cwd: "~/.atelier/threads/20261010-100000",
-  additionalDirectories: [],
-  model: null,
-  effort: null,
-};
 export const FIXTURE_THREAD: ThreadView = {
   id: "20261010-100000",
   title: "세 낱말로 답해 줘: hello from turn",
   createdAt: "2026-10-10T10:00:00.000+09:00",
   work: null,
   mode: null,
-  participants: [FIXTURE_HOST],
+  runtime: "claude-code",
+  sessionId: "fake-session",
+  cwd: "~/.atelier/threads/20261010-100000",
+  additionalDirectories: [],
+  model: null,
+  effort: null,
   lastRead: 0,
   lastSeq: 20,
   askLevel: "always",
   live: false,
-  queues: {},
+  queue: [],
   readOnly: null,
 };
 
@@ -1277,8 +1270,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 넓힌 카드의 diff(v1 티켓 35) — 변경 줄을 누르면 읽는다. 기본은 바뀐 것이 없다는 답이다.
   read_work_diff: { kind: "unchanged" },
   // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.
-  thread_set_model: FIXTURE_HOST,
-  thread_set_effort: FIXTURE_HOST,
+  thread_set_model: FIXTURE_THREAD,
+  thread_set_effort: FIXTURE_THREAD,
   // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
   thread_set_mode: null,
   // Space 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `space` 줄과 Work 목록 다시 읽기로 온다.
@@ -1296,7 +1289,6 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     title: FIXTURE_THREAD.title,
     createdAt: FIXTURE_THREAD.createdAt,
     work: null,
-    handles: ["host"],
     lastRead: 0,
     readOnly: null,
     broken: null,
@@ -1307,7 +1299,6 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     title: FIXTURE_THREAD.title,
     createdAt: FIXTURE_THREAD.createdAt,
     work: null,
-    handles: ["host"],
     lastRead: FIXTURE_THREAD.lastSeq,
     readOnly: null,
     broken: null,

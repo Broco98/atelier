@@ -81,7 +81,7 @@ fn work_json(sandbox: &Sandbox) -> Value {
 
 /// Host Session의 claude가 마지막으로 뜬 때의 받은 인자와 작업 폴더.
 fn last_launch(sandbox: &Sandbox, thread: &str) -> (Vec<String>, PathBuf) {
-    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host"));
+    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread));
     (receipt_args(&receipt), PathBuf::from(receipt["cwd"].as_str().expect("cwd")))
 }
 
@@ -116,7 +116,7 @@ fn work_없는_thread에_space를_붙이면_다음_말부터_같은_session을_�
     let host = sandbox.host(two_turns(&sandbox));
     let thread = host.start_thread("환불 금액 확인해 줘", ThreadLink::NoWork).expect("Work 없는 Thread");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(added_dirs(&last_launch(&sandbox, &thread).0), [api.clone(), back.clone(), web.clone()], "Space가 없으면 등록된 Project 전부");
     assert_eq!(space_preamble(&record, 0), "- Space: 없음 — 등록된 Project 3개를 모두 읽는다");
 
@@ -450,7 +450,7 @@ fn space만_바뀌고_함께_여는_폴더가_같으면_다시_열지_않고_다
     let host = sandbox.host(two_turns(&sandbox));
     host.send_to_thread(&thread, "이어서").expect("셋째 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
-    assert!(has_pair(&last_launch(&sandbox, &thread).0, "--resume", &sandbox.thread_session_id(&thread, "host")), "같은 Session을 이어 연다");
+    assert!(has_pair(&last_launch(&sandbox, &thread).0, "--resume", &sandbox.thread_session_id(&thread)), "같은 Session을 이어 연다");
     assert_eq!(space_preamble(&record, 2), format!("- Space: 환불 · 정산(`{}`) — 읽는 Project: web-app, api-server", refund.display()));
 
     host.send_to_thread(&thread, "마저").expect("넷째 말");
@@ -480,7 +480,7 @@ fn space를_붙이고_뺀_대화의_기록이_검사_자료와_같다() {
     let record = sandbox.thread_record(&thread);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&common::commands_after_each_opened(&record), &sandbox.data_root(), &thread, &[&session]);
     common::assert_record("thread-space", &fixed);
 }

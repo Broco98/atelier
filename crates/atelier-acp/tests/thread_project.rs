@@ -97,7 +97,7 @@ fn request_of(asked: &Value) -> String {
 
 /// 그 Session의 claude가 부른 도구의 답 — 부른 차례대로.
 fn answers(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
-    sandbox.claude_mcp(&sandbox.thread_session_id(thread, "host")).into_iter().map(|call| call["call"].clone()).collect()
+    sandbox.claude_mcp(&sandbox.thread_session_id(thread)).into_iter().map(|call| call["call"].clone()).collect()
 }
 
 fn said(answer: &Value) -> &str {
@@ -106,7 +106,7 @@ fn said(answer: &Value) -> &str {
 
 /// Host Session의 claude가 마지막으로 뜬 때의 받은 인자와 작업 폴더.
 fn last_launch(sandbox: &Sandbox, thread: &str) -> (Vec<String>, PathBuf) {
-    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host"));
+    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread));
     (receipt_args(&receipt), PathBuf::from(receipt["cwd"].as_str().expect("cwd")))
 }
 
@@ -192,7 +192,7 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
     assert_eq!(cwd, real(&sandbox.work_dir("refund-api").join("spec")), "이 턴의 작업 폴더는 그대로다 — 다음 턴부터 옮긴다");
 
     // 다음 턴 — 같은 Session을 새 작업 폴더(그 worktree)에서 이어 연다(S11 「바꿔 이어 열기」).
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     host.send_to_thread(&thread, "고쳐 줘").expect("다음 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
     host.shut_down();
@@ -200,8 +200,8 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
     assert_eq!(cwd, real(&tree(&sandbox, "web-app")), "다음 턴은 그 worktree에서 일한다");
     assert!(has_pair(&args, "--resume", &session), "같은 Session을 이어 연다 — 앞 맥락을 기억한다: {args:?}");
     assert!(has_pair(&args, "--add-dir", &sandbox.work_dir("refund-api").join("spec").display().to_string()), "{args:?}");
-    assert_eq!(sandbox.thread_session_id(&thread, "host"), session);
-    assert_eq!(sandbox.participant(&thread, "host")["cwd"], json!(tree(&sandbox, "web-app")), "thread.json은 지금 작업 폴더를 적는다");
+    assert_eq!(sandbox.thread_session_id(&thread), session);
+    assert_eq!(sandbox.thread_json(&thread)["cwd"], json!(tree(&sandbox, "web-app")), "thread.json은 지금 작업 폴더를 적는다");
     let sent = of_kind(&record, "sent");
     let prompt = sent[1]["payload"]["prompt"].to_string();
     assert!(
@@ -382,7 +382,7 @@ fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로
         [api.display().to_string(), web.display().to_string()],
         "등록된 Project 폴더를 모두 함께 연다: {args:?}"
     );
-    assert_eq!(sandbox.participant(&thread, "host")["additionalDirectories"], json!([api, web]), "thread.json은 함께 연 폴더를 적는다");
+    assert_eq!(sandbox.thread_json(&thread)["additionalDirectories"], json!([api, web]), "thread.json은 함께 연 폴더를 적는다");
 
     let decided = of_kind(&record, "permission").into_iter().find(|line| line["payload"]["state"] == "decided").unwrap().clone();
     let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
@@ -422,7 +422,7 @@ fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다�
     let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[]));
     let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("Work 없는 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(added_dirs(&last_launch(&sandbox, &thread).0), [api.display().to_string()]);
 
     let web = register(&sandbox, "web-app");
@@ -441,7 +441,7 @@ fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다�
     let (args, _) = last_launch(&sandbox, &thread);
     assert!(has_pair(&args, "--resume", &session), "{args:?}");
     assert_eq!(added_dirs(&args), [web.display().to_string()], "등록을 푼 Project는 더 열지 않는다");
-    assert_eq!(sandbox.participant(&thread, "host")["additionalDirectories"], json!([web]));
+    assert_eq!(sandbox.thread_json(&thread)["additionalDirectories"], json!([web]));
     let prompts: Vec<usize> =
         of_kind(&record, "sent").iter().map(|line| line["payload"]["prompt"].as_array().unwrap().len()).collect();
     assert_eq!(prompts, [2, 2, 2], "옮겨 연 Session의 첫 말에는 머리말이 다시 붙는다");
@@ -488,7 +488,7 @@ fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴
     assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "이은 턴의 작업 폴더는 Thread 폴더 그대로다(v1 티켓 30)");
     assert_eq!(added_dirs(&args), [api.display().to_string()], "Work 전에는 등록된 Project를 읽기로 함께 열었다(끝 점검 39(a))");
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     host.send_to_thread(&thread, "설계 문서부터 써 줘").expect("다음 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
     host.shut_down();
@@ -522,7 +522,7 @@ fn work_밖_project를_붙이고_고친_턴의_기록이_검사_자료와_같다
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]);
     let fixed: Vec<Value> = fixed
         .iter()

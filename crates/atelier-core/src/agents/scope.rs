@@ -15,15 +15,14 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{read_agent, AgentDefinition, AgentProblem};
 use crate::paths::{library_agents_in, projects_in, repo_agents_in, works_in};
 use crate::store::read_project;
-use crate::threads::DefinitionSource;
 use crate::{expand_home, read_work, work_places};
 
-/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것. 엔진의 참여가 이것으로 고른다.
+/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentRoster {
@@ -33,13 +32,21 @@ pub struct AgentRoster {
     pub broken: Vec<BrokenAgent>,
 }
 
+/// Agent 정의가 온 곳(v1 구현 스펙 §6 범위) — `"library"` 또는 `{"project": "<slug>"}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DefinitionSource {
+    Library,
+    Project(String),
+}
+
 /// 범위 안에서 부를 수 있는 Agent 하나.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FoundAgent {
     /// 부르는 이름(@ 뒤) — 대개 handle이고, Project 둘 이상이 같은 handle을 가지면 `project/handle`이다.
     pub call: String,
-    /// 정의가 온 곳 — Thread의 참여자에 그대로 적힌다(v1 티켓 02 · 13).
+    /// 정의가 온 곳(v1 티켓 02 · 13).
     pub from: DefinitionSource,
     /// 읽은 파일.
     pub path: PathBuf,

@@ -148,18 +148,11 @@ fn run_to_end(program: &Path, args: &[&str], env: &AgentEnv, cwd: &Path) -> Ran 
     Ran { exit, stdout }
 }
 
-/// 로그인을 기다리는 것 하나 — 그 엔진과 다시 띄울 자리.
+/// 로그인을 기다리는 것 하나 — 그 엔진과 다시 띄울 Session의 Thread(v1 티켓 04). three-axes의 work 대화 자리는 v1 티켓 08이 걷었다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Waiting {
     pub agent: Agent,
-    pub waiter: Waiter,
-}
-
-/// 로그인을 기다리는 자리 — Thread의 참여자 하나의 Session이다(v1 티켓 04). three-axes의 work 대화 자리는 v1 티켓 08이 걷었다.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Waiter {
     pub thread: String,
-    pub handle: String,
 }
 
 /// 도는 로그인 명령 하나.
@@ -368,20 +361,20 @@ impl LoginDesk {
     }
 
     /// 그 자리가 로그인을 기다린다 — 에이전트가 `-32000`으로 답했다. 쥐고, 엔진 상태(찾음 · 안 됨)를 알린다.
-    pub(crate) fn login_required(&self, agent: Agent, waiter: Waiter) {
+    pub(crate) fn login_required(&self, agent: Agent, thread: String) {
         let login = self.progress(agent);
         {
             let mut waiting = self.lock_waiting();
-            if !waiting.iter().any(|held| held.waiter == waiter) {
-                waiting.push(Waiting { agent, waiter });
+            if !waiting.iter().any(|held| held.thread == thread) {
+                waiting.push(Waiting { agent, thread });
             }
         }
         self.announce(EngineState { agent, found: true, logged_in: Some(false), login });
     }
 
     /// 그 자리가 로그인을 기다리면 그 엔진.
-    pub(crate) fn waiting_for(&self, waiter: &Waiter) -> Option<Agent> {
-        self.lock_waiting().iter().find(|held| held.waiter == *waiter).map(|held| held.agent)
+    pub(crate) fn waiting_for(&self, thread: &str) -> Option<Agent> {
+        self.lock_waiting().iter().find(|held| held.thread == thread).map(|held| held.agent)
     }
 
     /// 그 엔진의 로그인을 기다리던 Session들을 꺼낸다 — 다시 띄울 차례다. 꺼낸 것은 다시 쥐지 않는다(두 길이 함께

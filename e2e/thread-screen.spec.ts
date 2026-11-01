@@ -439,7 +439,7 @@ test("작업 중에는 입력창 위 가운데에 작업 중 점이 서고, 그�
   expect((await ipcCallArgs(page, "thread_send", "text")).map(({ args }) => args)).toEqual([
     { thread: runningView.id, text: later, attachments: [], quote: null },
   ]);
-  const queued: ThreadQueueEvent = { thread: runningView.id, who: "host", queue: [{ id: "queued-1", text: later, sendNow: false }] };
+  const queued: ThreadQueueEvent = { thread: runningView.id, queue: [{ id: "queued-1", text: later, sendNow: false }] };
   await fireEvent(page, THREAD_QUEUE_EVENT, queued);
   const row = page.getByRole("list", { name: "기다리는 말", exact: true }).getByRole("listitem");
   await expect(row).toHaveText([new RegExp(`^대기${later}지금 보내기$`)]);

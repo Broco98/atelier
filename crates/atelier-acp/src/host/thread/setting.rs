@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 
 use super::space::{listed, no_such_space, not_registered, registered_list};
 use super::work::{Card, Settled};
-use super::{ConversationHost, SessionKey};
+use super::ConversationHost;
 use crate::thread_tools::{self, ProjectAdd, ProjectEdit, SpaceEdit, SpaceNew};
 use crate::HostError;
 
@@ -118,7 +118,7 @@ struct Setting {
 impl ConversationHost {
     /// Thread 도구 「Project 추가」(§12) — 폴더를 살펴(§15) 저장소의 뿌리면 곧바로 등록하고, git이 아니거나 하위 폴더면 질문 카드를 세우고
     /// 사람이 고를 때까지 기다린다(**막히는 호출일 수 있다**). 이미 등록된 폴더는 바꾸지 않는다. 없는 폴더는 도구의 실패다.
-    pub(super) fn add_project_tool(&self, key: &SessionKey, ask: ProjectAdd) -> Value {
+    pub(super) fn add_project_tool(&self, thread: &str, ask: ProjectAdd) -> Value {
         let registry = atelier_core::projects_in(&self.data_root);
         let card = |folder: &str, root: Option<String>| ProjectAddCard {
             folder: atelier_core::expand_home(folder),
@@ -134,18 +134,18 @@ impl ConversationHost {
             FolderLook::Registered { project, .. } => thread_tools::said(&already_text(&project.project), false),
             FolderLook::Repo { path, .. } => {
                 let added = self.add_folder(&atelier_core::expand_home(&path), false, ask.name.clone(), ask.description.clone());
-                match added.and_then(|added| self.settle_added(key, added)) {
+                match added.and_then(|added| self.settle_added(thread, added)) {
                     Ok(text) => thread_tools::said(&text, false),
                     Err(why) => thread_tools::said(&why, true),
                 }
             }
             FolderLook::NotGit { path } => {
                 let fields = json!({"look": kind, "path": path, "folder": folder_name(&path), "root": null});
-                self.ask_card(key, Card::ProjectAdd(card(&path, None)), fields)
+                self.ask_card(thread, Card::ProjectAdd(card(&path, None)), fields)
             }
             FolderLook::Subfolder { path, root, .. } => {
                 let fields = json!({"look": kind, "path": path, "folder": folder_name(&path), "root": root});
-                self.ask_card(key, Card::ProjectAdd(card(&path, Some(root))), fields)
+                self.ask_card(thread, Card::ProjectAdd(card(&path, Some(root))), fields)
             }
         }
     }
@@ -194,7 +194,7 @@ impl ConversationHost {
             Added::New(view) | Added::Already(view) => view.project.slug.clone(),
         };
         self.thread_log(thread)?.write(RecordKind::Question, answered(Some(&slug))).map_err(HostError::Record)?;
-        let (text, refused) = match self.settle_added(&asked.key, added) {
+        let (text, refused) = match self.settle_added(&asked.thread, added) {
             Ok(text) => (text, false),
             Err(why) => (why, true),
         };
@@ -225,14 +225,14 @@ impl ConversationHost {
 
     /// 등록한 결과를 남기고 Agent에게 돌려줄 글을 짓는다 — 새로 등록했으면 결과 카드 줄 「Project를 추가했어요 — …」, 이미 등록된 폴더면
     /// 줄 없이 그렇다는 글이다.
-    fn settle_added(&self, key: &SessionKey, added: Added) -> Result<String, String> {
+    fn settle_added(&self, thread: &str, added: Added) -> Result<String, String> {
         let view = match added {
             Added::Already(view) => return Ok(already_text(&view.project)),
             Added::New(view) => view,
         };
         let project = &view.project;
         self.note_setting(
-            key,
+            thread,
             Setting {
                 action: Action::ProjectAdded,
                 slug: project.slug.clone(),
@@ -254,7 +254,7 @@ impl ConversationHost {
 
     /// Thread 도구 「Project 고치기」(§12 · §15 「고치기」) — 준 칸만 core 고치기 하나로 바꾼다. 기준 브랜치가 그 저장소에 없으면 아무것도
     /// 쓰지 않고 고를 수 있는 브랜치를 돌려준다(스토리 63). 바뀐 것이 있으면 결과 카드 줄이 선다.
-    pub(super) fn edit_project_tool(&self, key: &SessionKey, edit: ProjectEdit) -> Value {
+    pub(super) fn edit_project_tool(&self, thread: &str, edit: ProjectEdit) -> Value {
         let registry = atelier_core::projects_in(&self.data_root);
         let Ok(before) = atelier_core::get_project(&registry, &edit.project) else {
             return thread_tools::said(&self.unknown_project(&edit.project), true);
@@ -277,7 +277,7 @@ impl ConversationHost {
         };
         let action = Action::ProjectEdited;
         let setting = Setting { action, slug: after.project.slug.clone(), name: after.project.name.clone(), title, detail };
-        match self.note_setting(key, setting) {
+        match self.note_setting(thread, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
                     "Project `{}`{} 고쳤다 — {}. {}",
@@ -293,7 +293,7 @@ impl ConversationHost {
     }
 
     /// Thread 도구 「Space 만들기」(§12 · §8 「만들기」) — 만든 이는 `host`다(S6). 문제가 있으면 만들지 않고 그 문제를 돌려준다.
-    pub(super) fn create_space_tool(&self, key: &SessionKey, new: SpaceNew) -> Value {
+    pub(super) fn create_space_tool(&self, thread: &str, new: SpaceNew) -> Value {
         let made = atelier_core::create_space(
             &self.data_root,
             NewSpace {
@@ -317,7 +317,7 @@ impl ConversationHost {
             detail: format!("{} · {file}", if names.is_empty() { "Project 없음".to_owned() } else { names.join(" · ") }),
         };
         let read = listed(space.projects.iter().map(String::as_str));
-        match self.note_setting(key, setting) {
+        match self.note_setting(thread, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
                     "Space `{}`({}){} 만들었다 — 파일 `{file}` · Project: {read}. {} 이 Thread를 이 Space에 붙이려면 \
@@ -335,7 +335,7 @@ impl ConversationHost {
 
     /// Thread 도구 「Space 고치기」(§12 · §8 「고치기」) — 준 칸만 글 단위로 고친다(나머지 글은 그대로). 새 문제가 생기면 쓰지 않고 그 문제를
     /// 돌려준다. 바뀐 것이 있으면 결과 카드 줄(「관계 보기」)이 선다.
-    pub(super) fn edit_space_tool(&self, key: &SessionKey, edit: SpaceEdit) -> Value {
+    pub(super) fn edit_space_tool(&self, thread: &str, edit: SpaceEdit) -> Value {
         let Ok(before) = atelier_core::get_space(&self.data_root, &edit.space) else {
             return thread_tools::said(&self.unknown_space(&edit.space), true);
         };
@@ -368,7 +368,7 @@ impl ConversationHost {
             detail: format!("Project {} · 함께 쓰는 Space {shared}", after.projects.len()),
         };
         let read = listed(after.projects.iter().map(String::as_str));
-        match self.note_setting(key, setting) {
+        match self.note_setting(thread, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
                     "Space `{}`({}){} 고쳤다 — Project: {read}. {} 이 Space로 읽는 Thread는 다음 말부터 바뀐 Project를 읽는다.",
@@ -384,11 +384,11 @@ impl ConversationHost {
     }
 
     /// 결과 카드 줄을 남긴다.
-    fn note_setting(&self, key: &SessionKey, setting: Setting) -> Result<(), String> {
+    fn note_setting(&self, thread: &str, setting: Setting) -> Result<(), String> {
         let payload = json!({
             "action": setting.action.as_str(), "slug": setting.slug, "name": setting.name, "title": setting.title, "detail": setting.detail,
         });
-        let log = self.thread_log(&key.thread).map_err(|error| error.to_string())?;
+        let log = self.thread_log(thread).map_err(|error| error.to_string())?;
         log.write(RecordKind::Setting, payload)
             .map(drop)
             .map_err(|error| format!("설정은 했지만 Thread에 적지 못했다 — {error}"))

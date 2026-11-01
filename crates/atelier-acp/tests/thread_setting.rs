@@ -104,7 +104,7 @@ fn first_turn(sandbox: &Sandbox, host: ConversationHost, thread: &str) -> Vec<Va
 /// 그 Session의 claude가 부른 도구의 답 — 부른 차례대로 (실패인가, 글).
 fn answers(sandbox: &Sandbox, thread: &str) -> Vec<(bool, String)> {
     sandbox
-        .claude_mcp(&sandbox.thread_session_id(thread, "host"))
+        .claude_mcp(&sandbox.thread_session_id(thread))
         .into_iter()
         .map(|call| (call["call"]["isError"] == true, call["call"]["content"][0]["text"].as_str().expect("글 결과").to_owned()))
         .collect()
@@ -498,7 +498,7 @@ fn fixed_record(sandbox: &Sandbox, thread: &str, record: &[Value], request: Opti
             serde_json::from_str(&text).unwrap()
         })
         .collect();
-    let session = sandbox.thread_session_id(thread, "host");
+    let session = sandbox.thread_session_id(thread);
     common::fix_thread_record(&homed, &sandbox.data_root(), thread, &[&session])
 }
 

@@ -48,7 +48,7 @@ export function sentPayloads(lines: readonly RecordLine[]) {
 }
 
 /**
- * 기록 하나의 Thread — 제목은 첫 말이고 Host 하나다. 따로 주지 않으면 아직 아무것도 읽지 않았고(`lastRead` 0) 떠 있는 Session이 없다.
+ * 기록 하나의 Thread — 제목은 첫 말이다. 따로 주지 않으면 아직 아무것도 읽지 않았고(`lastRead` 0) 떠 있는 Session이 없다.
  * 떠 있는지 · 끝 줄 · 읽은 자리 · 이은 Work는 부르는 쪽이 준다.
  */
 export const threadOf = (id: string, lines: readonly RecordLine[], seen: Partial<ThreadView>): ThreadView => ({
@@ -75,7 +75,6 @@ export const summaryOf = (view: ThreadView): ThreadSummary => ({
   title: view.title,
   createdAt: view.createdAt,
   work: view.work,
-  handles: view.participants.map((one) => one.handle),
   lastRead: view.lastRead,
   readOnly: view.readOnly,
   broken: null,

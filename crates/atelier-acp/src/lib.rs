@@ -1,4 +1,4 @@
-//! 아틀리에의 ACP 코어 — Thread의 참여자(Agent)마다 Session 하나를 세운다(v1 구현 스펙 §3). three-axes의 Work 안
+//! 아틀리에의 ACP 코어 — Thread 하나마다 Runtime Session 하나를 세운다(v1 구현 스펙 §3). three-axes의 Work 안
 //! 대화창이 지은 코어를 Thread가 이어 쓴다(three-axes 결정 12 · v1 티켓 08).
 //!
 //! 앱 명령은 [`ConversationHost`] 하나만 부른다. 그 아래의 런타임 · 변환기 · 찾기는 호스트가 감춘다.

@@ -516,7 +516,7 @@ fn claude의_계정_이메일_플랜과_플러그인_경로는_가린_채로_나
     }
 }
 
-/// Agent 정의 스냅숏 파일의 자리 — 상태 기계는 그 경로를 claude에 넘기기만 하고 읽지 않는다.
+/// 지시문 파일의 자리 — 상태 기계는 그 경로를 claude에 넘기기만 하고 읽지 않는다.
 const INSTRUCTIONS: &str = "/tmp/gate/threads/20261023-090000/agents/host.md";
 
 /// 그 열기 요청 하나로 연 변환기가 claude를 띄운 인자.

@@ -129,7 +129,7 @@ export interface WorkPlaces {
 }
 
 /**
- * 명령을 실행할 자리 — 물은 참여자의 Session 작업 폴더(`cwd`)를 이은 Work의 자리들과 견준다(v1 구현 스펙 §11 · three-axes 결정 17).
+ * 명령을 실행할 자리 — 그 Session의 작업 폴더(`cwd`)를 이은 Work의 자리들과 견준다(v1 구현 스펙 §11 · three-axes 결정 17).
  * worktree면 「Project · 브랜치 worktree」, worktree들을 품은 폴더(Project 여럿)면 「Work의 worktree 폴더」, spec 폴더면 그 이름, 그 밖은
  * 폴더 이름이다. Work 없는 Thread의 Session은 Thread 폴더에서 일한다(S11). **폴더 이름으로 가르지 않는다** — 프런트는 Work 폴더의
  * 짜임을 모른다(`shell-registry.test.ts`의 경로 조각 지킴). 모르면 null이다.

@@ -84,7 +84,7 @@ fn thread_space(sandbox: &Sandbox, thread: &str) -> Value {
 
 /// Host Session의 claude가 마지막으로 뜬 때의 받은 인자.
 fn last_args(sandbox: &Sandbox, thread: &str) -> Vec<String> {
-    receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host")))
+    receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(thread)))
 }
 
 /// 함께 연 폴더들(`--add-dir`) — 받은 차례대로.
@@ -153,7 +153,7 @@ fn space를_지우면_비운_곳마다_지워짐_줄이_서고_다음_말은_spa
     assert_eq!(space_lines(&sandbox, &other).len(), before[3], "다른 Space의 Thread에는 서지 않는다");
     assert_eq!(thread_space(&sandbox, &other), "사내-도구");
 
-    let session = sandbox.thread_session_id(&loose, "host");
+    let session = sandbox.thread_session_id(&loose);
     host.send_to_thread(&loose, "이어서 봐 줘").expect("지운 뒤의 말");
     sandbox.wait_thread_kind(&loose, "turn-end", 3);
     let args = last_args(&sandbox, &loose);
@@ -228,7 +228,7 @@ fn 손으로_지운_space_파일은_그_thread의_다음_말에서_칸을_비우
     std::fs::remove_file(space_file(&sandbox, "결제-서비스")).unwrap();
     assert_eq!(space_lines(&sandbox, &loose).len(), seen[0], "파일이 사라진 것만으로는 아무것도 적지 않는다");
 
-    let session = sandbox.thread_session_id(&loose, "host");
+    let session = sandbox.thread_session_id(&loose);
     host.send_to_thread(&loose, "이어서 봐 줘").expect("Work 없는 Thread의 다음 말");
     sandbox.wait_thread_kind(&loose, "turn-end", 3);
     assert_eq!(thread_space(&sandbox, &loose), Value::Null, "칸을 비운다");
@@ -279,7 +279,7 @@ fn space를_지우고_되돌린_대화의_기록이_검사_자료와_같다() {
     let record = sandbox.thread_record(&thread);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&common::commands_after_each_opened(&record), &sandbox.data_root(), &thread, &[&session]);
     common::assert_record("thread-space-deleted", &fixed);
 }

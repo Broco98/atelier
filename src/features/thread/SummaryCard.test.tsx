@@ -103,7 +103,7 @@ describe("요약 카드의 몸", () => {
       ...live,
       docs: [
         { path: "overview.md", writer: null },
-        { path: "설계.md", writer: { path: "설계.md", who: "host", name: "Host", thread: "a" } },
+        { path: "설계.md", writer: { path: "설계.md", thread: "a" } },
       ],
     });
     expect(writing).toMatch(/data-doc="설계.md".*writing-pulse.*>쓰는 중</);

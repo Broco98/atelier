@@ -27,7 +27,7 @@ import type { LockedWork } from "./work-chip";
 // 다듬기」) — 받는 이는 말의 첫 멘션이 정하고 입력칸의 멘션 칠이 보인다.
 // - **칩은 Codex의 ghost 알약이다**(Diff-Chat 「칩」) — 테두리 · 면 없는 28 알약 · 좌우 6 · 13px `fg-subtle`. 모델 칩만 본문색 · 좌우 8이다
 //   (시안의 「Claude Code Default」 칩). 내용과 메뉴는 v1 그대로다.
-// - **모델 · 생각 깊이**(「Opus · 높음」)는 다음 말을 받을 참여자 Session의 값이다(스토리 33). 앞에 Runtime 표시(Claude 마크)가 선다.
+// - **모델 · 생각 깊이**(「Opus · 높음」)는 그 채팅의 값이다(스토리 33). 앞에 Runtime 표시(Claude 마크)가 선다.
 //   누르면 16 반경 메뉴에 「Claude Code」 모델 목록과 「생각 깊이」 칸 줄이 선다. 생각 깊이는 턴이 도는 동안 바꿀 수 없다(엔진이
 //   거절한다 — 그래서 그동안 잠근다). 목록이 없으면(앉지 않은 Agent를 멘션했다) 보이기만 한다.
 // - **Work 칩**(03 §5 · F4-KitComposer · F4-HomeWorkMenu)은 스위치다 — 첫 말 전의 메뉴에 「새 Work」 · 「Work 없이 대화」(설명 한 줄 · 지금

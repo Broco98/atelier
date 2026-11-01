@@ -11,8 +11,8 @@
 //! 1. `forbid`에 걸리면 거절한다. 볼 수 없는 조각이 있어 걸렸을 수 있으면 묻는다(아래 「모를 때」).
 //! 2. 고치는 경로가 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더) 밖이면 거절한다. 그 경로가 등록된 Project 안이면
 //!    Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터 만들라고.
-//!    Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json` · `agents/` 스냅숏)이면 거절한다(S7 ·
-//!    §19, 코드 리뷰 1차 A2) — 그대로면 Agent가 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓히거나 스냅숏의 Policy를 지운다.
+//!    Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json` · `agents/` 지시문 폴더)이면 거절한다(S7 ·
+//!    §19, 코드 리뷰 1차 A2) — 그대로면 Agent가 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓히거나 지시문을 고친다.
 //!    명령 글에 그 파일이 나오면 「알아서」 · 허락이 있어도 묻는다(코드 리뷰 2차 A3 — 글자로만 본다, [`mentions_kept`]).
 //! 3. 쓰기 자리를 다른 Session이 쥐고 있으면 거절한다(§10 · v1 티켓 18).
 //! 4. `ask_before`에 걸리면(걸렸을 수 있으면) 묻는다.
@@ -164,7 +164,7 @@ pub(crate) enum Card {
 pub(crate) struct Case<'a> {
     /// 요청이 하는 일.
     pub act: &'a Act,
-    /// 그 Agent의 Policy — 정의 스냅숏의 `ask_before` · `forbid`.
+    /// `host.md`의 Policy — `ask_before` · `forbid`.
     pub policy: &'a Policy,
     /// 그 Agent의 `tools.cli` — 묻지 않는 명령.
     pub cli: &'a [String],
@@ -1010,7 +1010,7 @@ mod tests {
     }
 
     #[test]
-    fn thread_폴더의_기록_파일과_정의_스냅숏은_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
+    fn thread_폴더의_기록_파일과_지시문_폴더는_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
         // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 알아서 · 편집 허락이 있어도 거절이다.
         let judged = |path: &str| {
             let mut given = Given::act(edit(path));
@@ -1042,7 +1042,7 @@ mod tests {
     #[test]
     fn 명령_글에_그_thread_기록이_나오면_알아서여도_허락이_있어도_묻는다() {
         // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만(1차 A2) 명령은 그 자리를 보지 않았다. `echo > thread.json` ·
-        // `sed -i … agents/host.md`가 「알아서」에서 묻지 않고 지나 스냅숏의 Policy를 지웠다. 글자로만 본다.
+        // `sed -i … agents/host.md`가 「알아서」에서 묻지 않고 지났다. 글자로만 본다.
         let judged = |text: &str, cwd: &str| {
             let mut given = Given::act(command(text));
             given.level = AskLevel::Auto;

@@ -215,7 +215,7 @@ fn pr이_처음_보이고_ci가_실패했다가_병합된_thread의_기록이_�
     let record = sandbox.wait_thread_kind(&thread, "pr", 3);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let settled = common::commands_after_opened(&record);
     common::assert_record("thread-pr", &common::fix_thread_record(&settled, &sandbox.data_root(), &thread, &[&session]));
 }

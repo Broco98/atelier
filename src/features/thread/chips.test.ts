@@ -3,9 +3,9 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { ASK_LEVELS, chipLabel, chipLists, chipParts, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
-import type { Participant, RecordLine } from "./types";
+import type { RecordLine } from "./types";
 
-// 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 참여자 줄에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
+// 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 채팅의 값에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
 const blessed: RecordLine[] = readFileSync(
   fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-two-turns.jsonl", import.meta.url)),
   "utf8",
@@ -13,18 +13,6 @@ const blessed: RecordLine[] = readFileSync(
   .split("\n")
   .filter((line) => line.trim() !== "")
   .map((line) => JSON.parse(line) as RecordLine);
-
-const host = (model: string | null, effort: string | null): Participant => ({
-  handle: "host",
-  from: "library",
-  joinedAt: "",
-  runtime: "claude-code",
-  sessionId: null,
-  cwd: null,
-  additionalDirectories: [],
-  model,
-  effort,
-});
 
 describe("입력창 칩", () => {
   it("모델 목록과 지금 값은 열림 줄에서 오고, 「/」 명령은 Runtime이 보낸 마지막 목록이다", () => {
@@ -34,10 +22,10 @@ describe("입력창 칩", () => {
     expect(lists.commands.length).toBeGreaterThan(0);
   });
 
-  it("고른 모델(참여자 줄)이 Session이 연 값을 이긴다", () => {
+  it("고른 모델(채팅의 값)이 Session이 연 값을 이긴다", () => {
     const lists = chipLists(blessed);
-    expect(currentModel(lists, host(null, null))).toBe("sonnet");
-    expect(currentModel(lists, host("opus", "high"))).toBe("opus");
+    expect(currentModel(lists, { model: null })).toBe("sonnet");
+    expect(currentModel(lists, { model: "opus" })).toBe("opus");
   });
 
   it("칩 글자는 「모델 · 생각 깊이」 — 모델 이름의 괄호 설명은 뗀다", () => {

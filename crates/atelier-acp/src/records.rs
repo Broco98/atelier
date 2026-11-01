@@ -158,13 +158,12 @@ pub(crate) struct TurnEndLine {
 /// 기록 하나의 쓰는 손 — Thread의 Session 하나(v1 티켓 04). 런타임이 넘긴 것과 턴 차례의 줄은 모두 이것으로 적는다.
 pub(crate) struct Recorder {
     log: Arc<ThreadLog>,
-    who: String,
 }
 
 impl Recorder {
-    /// Thread 참여자 하나의 쓰는 손 — 그 Thread의 기록에 적고, 대기 줄 바뀜을 그 handle로 낸다.
-    pub(crate) fn of_thread(log: Arc<ThreadLog>, who: &str) -> Self {
-        Self { log, who: who.to_owned() }
+    /// 그 Thread의 쓰는 손 — 그 Thread의 기록에 적고, 대기 줄 바뀜을 낸다.
+    pub(crate) fn of_thread(log: Arc<ThreadLog>) -> Self {
+        Self { log }
     }
 
     /// 이 기록의 Thread id — 사람이 읽을 오류에 싣는다.
@@ -174,7 +173,7 @@ impl Recorder {
 
     /// 대기 줄 바뀜(기록 밖의 소식)을 기록 줄과 같은 길로 내보낸다. 받는 closure는 호스트를 다시 부르면 안 된다.
     pub(crate) fn queue_changed(&self, queue: Vec<QueuedMessage>) {
-        self.log.announce(HostEvent::ThreadQueue { thread: self.log.thread().to_owned(), who: self.who.clone(), queue })
+        self.log.announce(HostEvent::ThreadQueue { thread: self.log.thread().to_owned(), queue })
     }
 
     pub(crate) fn session(&self, state: SessionState) -> Result<(), RecordError> {

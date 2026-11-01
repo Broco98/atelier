@@ -86,10 +86,9 @@ pub use paths::{
     projects_dir, projects_in, spaces_dir, spaces_in, threads_dir, works_dir, works_in,
 };
 // Agent 정의(v1 구현 스펙 §6) — 앱이 뜰 때 Library의 기본 파일을 세우고, Thread 엔진(`atelier-acp`)이 Host를 읽는다.
-// 범위 찾기 · 고르기(v1 티켓 11)는 엔진의 참여가 쓴다.
 pub use agents::{
     ensure_default_agents, find_agents, read_agent, AgentCalls, AgentDefinition, AgentProblem, AgentRoster, Avatar, BrokenAgent,
-    BuiltinTool, FoundAgent, ModelPreference, Policy, Tools, Unresolved,
+    BuiltinTool, DefinitionSource, FoundAgent, ModelPreference, Policy, Tools, Unresolved,
 };
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
 // (`search.rs`가 `crate::recent::read_recent`로 직접 부른다) 나머지를 내면 아무도 안 읽는
@@ -144,7 +143,7 @@ pub use records::{last_record_seq, parse_records, read_records, record_time, Rec
 // Thread 저장(v1 구현 스펙 §4) — Thread 엔진(`atelier-acp`)이 쓴다.
 pub use threads::{
     create_thread, open_thread_log, read_thread, read_thread_records, thread_dir, thread_kept, update_thread, work_gone,
-    CreatedThread, DefinitionSource, NewThread, Participant, ThreadFile, ThreadIndex, ThreadSummary, WorkGone, THREAD_SNAPSHOTS,
+    CreatedThread, NewThread, ThreadFile, ThreadIndex, ThreadSummary, WorkGone, THREAD_SNAPSHOTS,
 };
 // 물어보는 정도와 「다시 묻지 않기」 허락의 점 파일(v1 구현 스펙 S18 · v1 티켓 22) — Thread 엔진의 판정이 받은 요청마다 읽는다.
 pub use policy_file::{read_policy, update_policy, PolicyFile, PolicyPlace};

@@ -22,7 +22,7 @@ use atelier_core::RecordKind;
 use serde_json::{json, Value};
 
 use super::work::Card;
-use super::{ConversationHost, SessionKey};
+use super::ConversationHost;
 use crate::thread_tools;
 use crate::HostError;
 
@@ -128,8 +128,8 @@ impl ConversationHost {
 
     /// 「Project 고치기 시작」(S13) — Work에 있는 Project면 worktree를 세워(이미 있으면 그대로) 그 경로를 돌려주고, 없는 Project면 Work 밖
     /// Project 카드를 세우고 사람이 고를 때까지 기다린다. **막히는 호출일 수 있다**(연결마다의 스레드에서 불린다).
-    pub(super) fn start_editing(&self, key: &SessionKey, project: &str, reason: Option<&str>) -> Value {
-        let file = match self.read_thread_file(&key.thread) {
+    pub(super) fn start_editing(&self, thread: &str, project: &str, reason: Option<&str>) -> Value {
+        let file = match self.read_thread_file(thread) {
             Ok(file) => file,
             Err(error) => return thread_tools::said(&error.to_string(), true),
         };
@@ -156,11 +156,11 @@ impl ConversationHost {
         if work_at.meta.projects.iter().any(|one| one == project) {
             return match self.plant(&slug, project) {
                 Ok(planted) => match self
-                    .stop_reading_only(&key.thread, project)
-                    .and_then(|()| self.note_planted(&key.thread, project, &planted))
+                    .stop_reading_only(thread, project)
+                    .and_then(|()| self.note_planted(thread, project, &planted))
                 {
                     Ok(()) => {
-                        let (text, refused) = self.planted_text(&key.thread, project, &planted);
+                        let (text, refused) = self.planted_text(thread, project, &planted);
                         thread_tools::said(&text, refused)
                     }
                     Err(error) => thread_tools::said(&error.to_string(), true),
@@ -176,7 +176,7 @@ impl ConversationHost {
             "workProjects": work_at.meta.projects,
         });
         let outside = Outside { project: project.to_owned(), work: slug, work_projects: work_at.meta.projects.clone() };
-        self.ask_card(key, Card::Project(outside), fields)
+        self.ask_card(thread, Card::Project(outside), fields)
     }
 
     /// 그 Project에 worktree를 세운다 — core의 Project 붙이기로, Work에 없으면 붙이고 Work의 브랜치로 짓는다. 이미 있으면 그대로다.

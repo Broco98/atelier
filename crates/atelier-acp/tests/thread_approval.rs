@@ -81,7 +81,7 @@ fn work_없는_thread에서_다시_묻지_않기를_고르면_thread_폴더에_�
     assert_eq!(answered["payload"]["optionId"], "allow_once", "Runtime에는 이번만 허락으로 답한다 — 기억은 Atelier가 한다");
     assert_eq!(answered["payload"]["granted"], json!({"rules": ["edit"], "work": null}));
     assert_eq!(policy_file(&sandbox.thread_dir(&thread))["grants"], json!(["edit"]), "Work가 없으면 Thread 폴더의 점 파일이다");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session, 1)[0]["behavior"], "allow");
 
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -145,7 +145,7 @@ fn 아니요를_고르며_쓴_말은_거절과_함께_agent에게_가고_답_줄
     let answered = wait_permission(&sandbox, &thread, "answered", 1);
     assert_eq!((answered["payload"]["optionId"].clone(), answered["payload"]["words"].clone()), (json!("reject"), json!(words)));
     assert!(answered["payload"].get("granted").is_none(), "{answered}");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let told = format!("사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n{words}");
     assert_eq!(decisions(&sandbox, &session, 1), [json!({"behavior": "deny", "message": told})]);
 

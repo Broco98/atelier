@@ -11,7 +11,7 @@ import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-s
 import { isObject } from "./json";
 import { prLineOf } from "./pr";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
-import type { AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
+import type { AskLevel, ChipValues, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { workPrsKey } from "./summary-card";
 import { workMarks, type WorkMarks } from "./work-threads";
@@ -28,7 +28,7 @@ export const threadsQuery = () =>
 
 /**
  * Thread 하나 — `get` 다음에 `readRecord(0)`이다(구현 스펙 §18 「여는 차례」). 읽은 기록은 기록 줄 스토어에 seq로 합치고, 그 뒤는 앱 층이
- * 받은 기록 줄 이벤트가 잇는다. 한 번 읽으면 다시 읽지 않는다 — 이름 · 참여자는 바꾸기의 답과 요약 이벤트가 캐시를 고친다.
+ * 받은 기록 줄 이벤트가 잇는다. 한 번 읽으면 다시 읽지 않는다 — 이름 · 모델은 바꾸기의 답과 요약 이벤트가 캐시를 고친다.
  */
 export const threadQuery = (thread: string) =>
   queryOptions({
@@ -122,8 +122,6 @@ function readingOf(
 /**
  * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름 · 이은 Work도 따라
  * 바꾼다(Work 만들기 카드로 Thread가 Work에 이어졌다 — v1 티켓 30). 읽기만인 까닭도 따라 바꾼다(이은 Work가 보관됐다 — v1 티켓 38).
- * **참여자가 바뀌었으면 연 Thread를 다시 읽는다**(v1 티켓 14) — 멘션으로 들어온 Agent의 참여자 줄(`thread.json` — 온 곳 · 모델 · 생각
- * 깊이)은 요약에 없다. 그것이 있어야 그 Agent의 멘션 칠 · 모델 칩이 선다.
  */
 export function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
   queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
@@ -139,10 +137,6 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
       ? { ...view, title: summary.title, work: summary.work, readOnly: summary.readOnly }
       : view,
   );
-  const view = queryClient.getQueryData<ThreadView>(threadKey(summary.id));
-  if (view && view.participants.map((one) => one.handle).join("\n") !== summary.handles.join("\n")) {
-    void queryClient.invalidateQueries({ queryKey: threadKey(summary.id) });
-  }
 }
 
 /**
@@ -159,7 +153,7 @@ export function useThreadFeeds(): void {
         if (isLoginRequired(line)) markLoginRequired();
         followRecordLine(queryClient, thread, line);
       }),
-      onThreadQueue(({ thread, who, queue }) => setQueue(thread, who, queue)),
+      onThreadQueue(({ thread, queue }) => setQueue(thread, queue)),
       onThreadList((summary) => putSummary(queryClient, summary)),
       onThreadEngine(applyEngineEvent),
       onWorkWriting(({ work, writing }) => setWriting(work, writing)),
@@ -202,11 +196,9 @@ export function followRecordLine(queryClient: QueryClient, thread: string, line:
   }
 }
 
-/** 그 Thread의 대기 줄 — 참여자마다의 것을 차례로 잇는다. 이벤트가 온 Session은 그 값, 아니면 열 때 읽은 값이다. */
-export function useQueue(view: ThreadView): readonly (QueuedMessage & { who: string })[] {
-  const fed = useStore(threadQueueStore, (state) => state[view.id]);
-  const queues = { ...view.queues, ...fed };
-  return Object.entries(queues).flatMap(([who, queue]) => queue.map((message) => ({ ...message, who })));
+/** 그 Thread의 대기 줄 — 이벤트가 왔으면 그 값, 아니면 열 때 읽은 값이다. */
+export function useQueue(view: ThreadView): readonly QueuedMessage[] {
+  return useStore(threadQueueStore, (state) => state[view.id]) ?? view.queue;
 }
 
 /** 이름 바꾸기 — 답(바뀐 요약)으로 목록과 연 Thread의 이름을 고친다. */
@@ -233,25 +225,19 @@ export function useMarkRead() {
 /** 칩의 바꾸기 하나 — 모델 또는 생각 깊이. */
 export type ChipChange = { field: "model"; value: string } | { field: "effort"; value: string };
 
-/** 모델 · 생각 깊이 바꾸기(스토리 33) — 답(바뀐 참여자 줄)으로 연 Thread의 참여자를 갈아 끼운다. */
+/** 모델 · 생각 깊이 바꾸기(스토리 33) — 답(바뀐 채팅의 값)으로 연 Thread를 고친다. */
 export function useChangeChip() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ thread, who, change }: { thread: string; who: string; change: ChipChange }) =>
-      change.field === "model"
-        ? threadApi.setModel(thread, who, change.value)
-        : threadApi.setEffort(thread, who, change.value),
-    onSuccess: (participant: Participant, { thread }) => {
-      queryClient.setQueryData<ThreadView>(threadKey(thread), (view) =>
-        view
-          ? {
-              ...view,
-              participants: view.participants.map((one) => (one.handle === participant.handle ? participant : one)),
-            }
-          : view,
-      );
-    },
+    mutationFn: ({ thread, change }: { thread: string; change: ChipChange }) =>
+      change.field === "model" ? threadApi.setModel(thread, change.value) : threadApi.setEffort(thread, change.value),
+    onSuccess: (values, { thread }) => putChips(queryClient, thread, values),
   });
+}
+
+/** 바꾸기의 답을 연 Thread의 캐시에 앉힌다. */
+export function putChips(queryClient: QueryClient, thread: string, { model, effort }: ChipValues): void {
+  queryClient.setQueryData<ThreadView>(threadKey(thread), (view) => (view ? { ...view, model, effort } : view));
 }
 
 /**

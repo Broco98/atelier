@@ -102,7 +102,7 @@ describe("문서 칸", () => {
       { name: "review-notes.md", path: "review-notes.md", kind: "file", icon: null, group: null, children: [] },
     ],
   };
-  const host: DocWriting = { path: "design/api.md", who: "host", name: "Host", thread: "20261023-100000" };
+  const host: DocWriting = { path: "design/api.md", thread: "20261023-100000" };
 
   it("spec 트리의 파일을 트리 차례로 펴고, 쓰는 중인 문서에 그 Agent를 단다", () => {
     expect(docRows(tree, [host])).toEqual([
@@ -278,7 +278,7 @@ describe("「변경 사항」이 여는 것", () => {
 });
 
 describe("막 쓴 문서(소스의 문서 줄이 잠깐 빛난다)", () => {
-  const writing = (path: string): DocWriting => ({ path, who: "host", name: "Host", thread: "20261025-100000" });
+  const writing = (path: string): DocWriting => ({ path, thread: "20261025-100000" });
 
   it("쓰는 중이던 문서가 쓰기를 마치면 막 쓴 문서다 — 아직 쓰는 중인 문서 · 처음 본 목록은 빛나지 않는다", () => {
     expect(finishedDocs([writing("설계.md"), writing("plan.md")], [writing("plan.md")])).toEqual(new Set(["설계.md"]));

@@ -333,20 +333,9 @@ impl Sandbox {
         serde_json::from_str(&fs::read_to_string(&path).unwrap_or_else(|_| panic!("없다: {}", path.display()))).unwrap()
     }
 
-    /// `thread.json`의 그 참여자.
-    pub fn participant(&self, thread: &str, handle: &str) -> Value {
-        self.thread_json(thread)["participants"]
-            .as_array()
-            .expect("participants 배열")
-            .iter()
-            .find(|participant| participant["handle"] == handle)
-            .unwrap_or_else(|| panic!("thread.json에 @{handle} 참여자가 없다"))
-            .clone()
-    }
-
-    /// 그 Thread 참여자의 Session id(`thread.json`).
-    pub fn thread_session_id(&self, thread: &str, handle: &str) -> String {
-        self.participant(thread, handle)["sessionId"].as_str().expect("Session id").to_owned()
+    /// 그 Thread의 Session id(`thread.json`).
+    pub fn thread_session_id(&self, thread: &str) -> String {
+        self.thread_json(thread)["sessionId"].as_str().expect("Session id").to_owned()
     }
 
     /// 그 Thread의 기록 줄들(`events.jsonl`).
@@ -905,12 +894,12 @@ impl Events {
         })
     }
 
-    /// 그 Thread의 대기 줄 바뀜 이벤트들 — 이벤트마다 그 참여자와 그때의 대기 줄 전체.
-    pub fn thread_queues(&self, id: &str) -> Vec<(String, Vec<QueuedMessage>)> {
+    /// 그 Thread의 대기 줄 바뀜 이벤트들 — 이벤트마다 그때의 대기 줄 전체.
+    pub fn thread_queues(&self, id: &str) -> Vec<Vec<QueuedMessage>> {
         self.all()
             .into_iter()
             .filter_map(|event| match event {
-                HostEvent::ThreadQueue { thread, who, queue } if thread == id => Some((who, queue)),
+                HostEvent::ThreadQueue { thread, queue } if thread == id => Some(queue),
                 _ => None,
             })
             .collect()

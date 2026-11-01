@@ -1,7 +1,7 @@
 //! 대화 호스트 — Thread 엔진의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! three-axes가 지은 몸(엔진 확인 · 로그인 · 턴 차례 · 멈추기 · 대기 줄 · 권한 답 · 되살리기 · 끄기) 위에 v1이 Thread를 자리로
-//! 세웠다(v1 티켓 04, [`thread`]) — 열쇠가 (Thread, 참여자)인 Session들이 턴 차례 · 런타임 · 로그인 창구를 쓴다. three-axes의 work
+//! 세웠다(v1 티켓 04, [`thread`]) — 열쇠가 채팅 id 하나인 Session들이 턴 차례 · 런타임 · 로그인 창구를 쓴다. three-axes의 work
 //! 대화(열쇠가 (work, 대화)이고 기록이 `works/<slug>/agents/`에 서던 자리)는 Work 안 대화창과 함께 걷었다(v1 티켓 08).
 //!
 //! Session 하나 = Runtime 프로세스 하나 · Runtime 쪽 세션 하나다. 동시 개수 상한은 없다(three-axes 결정 19).
@@ -17,7 +17,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
-use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiter, Waiting};
+use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::policy::Card;
 use crate::quote::Quote;
@@ -50,12 +50,12 @@ pub enum HostEvent {
     Engine(EngineState),
     /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이다(v1 티켓 04). 화면은 Thread를 이것 하나로 그린다.
     ThreadRecord { thread: String, line: RecordLine },
-    /// Thread 참여자 하나의 Session의 대기 줄 바뀜 — 그 대기 줄 전체.
-    ThreadQueue { thread: String, who: String, queue: Vec<QueuedMessage> },
-    /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 참여자가 늘었다(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
+    /// Thread의 Session의 대기 줄 바뀜 — 그 대기 줄 전체.
+    ThreadQueue { thread: String, queue: Vec<QueuedMessage> },
+    /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 이름 · 읽은 자리(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
     ThreadList(atelier_core::ThreadSummary),
     /// Work 하나에서 지금 쓰는 중인 문서들이 바뀜 — 그 Work의 목록 전체(v1 티켓 34 · §12). spec 폴더 안 파일에 편집 도구가 도는
-    /// 동안이다. Work 카드의 문서 줄이 파란 점과 쓰는 Agent의 이름을 세운다.
+    /// 동안이다. Work 카드의 문서 줄이 파란 점을 세운다.
     WorkWriting { work: String, writing: Vec<DocWriting> },
 }
 
@@ -466,19 +466,19 @@ impl TurnHands for ConvHands<'_> {
 /// sink 안이라 호스트를 부를 수 없으므로 창구를 함께 쥔다 — 창구는 Session의 잠금을 쥔 채 불러도 된다.
 struct LoginWatch {
     agent: Agent,
-    /// 다시 띄울 자리 — Thread 참여자의 Session이다.
-    waiter: Waiter,
+    /// 다시 띄울 Session의 Thread.
+    thread: String,
     desk: Arc<LoginDesk>,
 }
 
 impl LoginWatch {
     fn required(&self) {
-        self.desk.login_required(self.agent, self.waiter.clone());
+        self.desk.login_required(self.agent, self.thread.clone());
     }
 
     /// 그 Session이 로그인을 기다리면 그 엔진 — 그동안은 대기 줄이 가지 않는다(S13의 걸림).
     fn waiting(&self) -> Option<Agent> {
-        self.desk.waiting_for(&self.waiter)
+        self.desk.waiting_for(&self.thread)
     }
 }
 
@@ -564,8 +564,6 @@ pub enum HostError {
     ThreadNotFound(String),
     /// 그 Agent의 정의 파일이 깨졌다(v1 구현 스펙 §6 「깨진 파일」) — 부를 수 없다. 까닭은 사람이 읽을 글이다.
     AgentBroken { handle: String, reason: String },
-    /// 그 Thread에 그 handle의 참여자가 없다.
-    ParticipantNotFound { thread: String, handle: String },
     /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
     BadTitle,
     /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
@@ -614,7 +612,6 @@ impl fmt::Display for HostError {
             HostError::Login(reason) => write!(f, "{reason}"),
             HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없어요: {thread}"),
             HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했어요: {reason}"),
-            HostError::ParticipantNotFound { thread, handle } => write!(f, "Thread {thread}에 @{handle} Agent가 없어요"),
             HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
             HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
@@ -731,8 +728,8 @@ impl ConversationHost {
     /// 그 엔진의 로그인을 기다리던 Session들을 다시 띄운다 — 같은 기록에 이어 적고, 되살리기의 길(resume → load → 새로)로 연다.
     /// 막히는 호출이다 — Session마다 세션이 열릴 때까지 기다린다.
     fn relaunch_waiting(&self, agent: Agent) {
-        for Waiting { waiter, .. } in self.logins.take_waiting(agent) {
-            if let Err(error) = self.relaunch_session(&waiter.thread, &waiter.handle) {
+        for Waiting { thread, .. } in self.logins.take_waiting(agent) {
+            if let Err(error) = self.relaunch_session(&thread) {
                 eprintln!("{error}");
             }
         }
@@ -809,8 +806,8 @@ impl ConversationHost {
         Ok(WorkAt { meta, places })
     }
 
-    fn login_watch(&self, agent: Agent, waiter: Waiter) -> LoginWatch {
-        LoginWatch { agent, waiter, desk: Arc::clone(&self.logins) }
+    fn login_watch(&self, agent: Agent, thread: String) -> LoginWatch {
+        LoginWatch { agent, thread, desk: Arc::clone(&self.logins) }
     }
 }
 
@@ -847,11 +844,11 @@ struct ClaudeChoice {
     mode: Option<String>,
     model: Option<String>,
     effort: Option<String>,
-    /// 지시문 파일 — Thread 참여자의 정의 스냅숏 본문(v1 구현 스펙 S4).
+    /// 지시문 파일 — Library `host.md`의 본문.
     instructions: Option<PathBuf>,
-    /// 정의 스냅숏의 `tools.builtin` — 추상 이름 그대로다. `None`이면 기본 도구 전부다(§3).
+    /// `host.md`의 `tools.builtin` — 추상 이름 그대로다. `None`이면 기본 도구 전부다(§3).
     tools: Option<Vec<atelier_core::BuiltinTool>>,
-    /// 정의 스냅숏의 `policy.forbid` — 추상 이름 · 명령 패턴 그대로다(S19).
+    /// `host.md`의 `policy.forbid` — 추상 이름 · 명령 패턴 그대로다(S19).
     forbid: Vec<String>,
 }
 

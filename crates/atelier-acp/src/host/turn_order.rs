@@ -1325,7 +1325,7 @@ mod tests {
         rig.hands.past = Some("지난 말 하나");
         rig.say("첫 말").unwrap();
         rig.say("대기").unwrap();
-        // 대기 줄에 든 사이 다른 참여자가 말했다(v1 구현 스펙 S10).
+        // 대기 줄에 든 사이 지난 말이 바뀌었다(v1 구현 스펙 S10).
         rig.hands.past = Some("지난 말 둘");
         rig.seat().turn_ended(ended("end_turn")).unwrap();
 

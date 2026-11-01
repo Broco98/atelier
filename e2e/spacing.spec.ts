@@ -54,7 +54,6 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
         title: FIXTURE_THREAD.title,
         createdAt: FIXTURE_THREAD.createdAt,
         work: pinnedWork.slug,
-        handles: ["host"],
         lastRead: 0,
         readOnly: null,
         broken: null,

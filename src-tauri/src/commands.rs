@@ -905,9 +905,8 @@ pub async fn thread_start(
     to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
 }
 
-/// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
-/// 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 멘션이 범위 밖 · 깨진 파일 · 없는 첨부면 아무것도 적지 않고 그 까닭이 오류
-/// 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30). 인용(`quote` — 넓힌 카드의 문서에서 고른 글, v1 티켓
+/// 있는 Thread에 말한다. 턴을 기다리지 않는다. 다시 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 없는 첨부면 아무것도 적지 않고
+/// 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30). 인용(`quote` — 넓힌 카드의 문서에서 고른 글, v1 티켓
 /// 35 · S41)은 이은 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 간다 — 올바르지 않으면 아무것도 적지 않는다.
 #[tauri::command]
 pub async fn thread_send(
@@ -1071,27 +1070,25 @@ pub async fn thread_answer_project_add(
     to_host(&engine, "Project 추가 카드에 답하지 못했습니다", move |host| host.answer_project_add(&thread, &request, choice)).await
 }
 
-/// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
+/// 모델 바꾸기 — 그 채팅의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 채팅의 값이다.
 #[tauri::command]
 pub async fn thread_set_model(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     model: String,
-) -> CmdResult<atelier_core::Participant> {
-    to_host(&engine, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &who, &model)).await
+) -> CmdResult<atelier_core::ThreadFile> {
+    to_host(&engine, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &model)).await
 }
 
 /// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — claude `--effort`의 값 하나. 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터
-/// 들고, 떠 있지 않으면 띄울 때 든다. 턴이 도는 동안은 거절된다. 답은 바뀐 참여자 줄이다.
+/// 들고, 떠 있지 않으면 띄울 때 든다. 턴이 도는 동안은 거절된다. 답은 바뀐 채팅의 값이다.
 #[tauri::command]
 pub async fn thread_set_effort(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     effort: String,
-) -> CmdResult<atelier_core::Participant> {
-    to_host(&engine, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &who, &effort)).await
+) -> CmdResult<atelier_core::ThreadFile> {
+    to_host(&engine, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &effort)).await
 }
 
 /// 물어보는 정도 바꾸기(v1 티켓 23 · S18) — 입력창 아래 칩 · `/plan` · `/policy`. Work에 이은 Thread면 그 Work의 정도다. 판정은 다음

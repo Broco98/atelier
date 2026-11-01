@@ -77,7 +77,7 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     let renamed = lists.iter().rev().find(|summary| summary.id == thread).expect("목록 요약이 나간다");
     assert_eq!(renamed.title, "환불 API 버그", "사이드바가 이름을 바꾼다(thread:list)");
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let args = common::receipt_args(&sandbox.claude_receipt(&session));
     let server = thread_server(&args);
     assert_eq!(server["type"], "stdio");
@@ -123,7 +123,7 @@ fn 빈_이름으로_부르면_도구가_거절_까닭을_돌려주고_아무것�
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread, "host"))[0]["call"];
+    let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread))[0]["call"];
     assert_eq!(answer["isError"], true, "{answer}");
     assert_eq!(answer["content"][0]["text"], "Thread 이름이 비었어요", "거절 까닭을 글로 돌려준다");
     assert_eq!(sandbox.thread_json(&thread)["title"], "환불이 두 번 빠져요");
@@ -145,7 +145,7 @@ fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린
     host.send_to_thread(&thread, "오늘의 말").expect("되살려 보낸다");
     sandbox.wait_thread_kind(&thread, "turn-end", 2);
     let revived = &sandbox.claude_launch_args()[1];
-    assert!(has_pair(revived, "--resume", &sandbox.thread_session_id(&thread, "host")), "{revived:?}");
+    assert!(has_pair(revived, "--resume", &sandbox.thread_session_id(&thread)), "{revived:?}");
     let today = socket_of(&thread_server(revived));
     assert_ne!(today, yesterday, "이어 열 때도 Session의 소켓을 새로 연다");
     assert!(today.exists(), "떠 있는 Session의 소켓이 있다");
@@ -164,7 +164,7 @@ fn agent_저장과_agent_부르기_도구는_도구_목록에도_머리말에도
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let mcp = sandbox.claude_mcp(&sandbox.thread_session_id(&thread, "host"));
+    let mcp = sandbox.claude_mcp(&sandbox.thread_session_id(&thread));
     let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
     assert!(listed.contains(&"rename_thread"), "앱 기능 도구 목록: {listed:?}");
     let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
@@ -190,7 +190,7 @@ fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() 
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     common::assert_record("thread-rename", &common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]));
 }
 
@@ -212,7 +212,7 @@ fn host의_stdout이_thread_도구_부르기보다_늦게_닿아도_기록의_�
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     common::assert_record("thread-rename", &common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]));
 }
 

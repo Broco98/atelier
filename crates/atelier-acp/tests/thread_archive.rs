@@ -35,7 +35,7 @@ fn archive(sandbox: &Sandbox, slug: &str) {
 
 /// 그 Session의 claude와 변환기 프로세스.
 fn session_pids(sandbox: &Sandbox, thread: &str) -> [u32; 2] {
-    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host"));
+    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread));
     [receipt["pid"].as_u64().unwrap() as u32, receipt["ppid"].as_u64().unwrap() as u32]
 }
 
@@ -121,7 +121,7 @@ fn 턴이_도는_동안_보관되면_그_턴은_이어_돌고_끝난_뒤에_sess
     host.check_vanished_works();
 
     assert!(pids.iter().all(|pid| common::is_running(*pid)), "도는 턴은 끊지 않는다 — 보관을 시킨 Agent가 그 턴 안에 있을 수 있다");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert!(
         !sandbox.claude_stdin(&session).iter().any(|line| line["request"]["subtype"] == "interrupt"),
         "멈추지도 않는다"
@@ -138,9 +138,9 @@ fn 턴이_도는_동안_보관되면_그_턴은_이어_돌고_끝난_뒤에_sess
         ["40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해"],
         "대기 줄의 말은 가지 않는다"
     );
-    let (who, queue) = events.thread_queues(&thread).last().cloned().expect("대기 줄 바뀜");
-    assert_eq!((who.as_str(), queue.len()), ("host", 0), "꺼진 Session의 대기 줄은 비었다고 알린다");
-    assert!(host.thread(&thread).unwrap().queues.is_empty());
+    let queue = events.thread_queues(&thread).last().cloned().expect("대기 줄 바뀜");
+    assert!(queue.is_empty(), "꺼진 Session의 대기 줄은 비었다고 알린다");
+    assert!(host.thread(&thread).unwrap().queue.is_empty());
 
     host.shut_down();
 }

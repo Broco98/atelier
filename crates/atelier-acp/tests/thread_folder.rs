@@ -14,7 +14,7 @@ const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  a
 
 /// 그 Session의 claude와 변환기 프로세스.
 fn session_pids(sandbox: &Sandbox, thread: &str) -> [u32; 2] {
-    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host"));
+    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread));
     [receipt["pid"].as_u64().unwrap() as u32, receipt["ppid"].as_u64().unwrap() as u32]
 }
 

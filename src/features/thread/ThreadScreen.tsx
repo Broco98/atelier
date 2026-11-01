@@ -87,15 +87,15 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
 //   §10). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
-//   자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
+//   자리는 그 Session의 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
 //   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 선다.
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
 //   Project · Space 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
-// - **말은 Runtime 이름으로 선다**(`runtimeNameOf`) — 채팅은 Runtime 세션 하나라 흐름과 카드에 얼굴도 이름 줄도 없다. 모델 칩은 **다음 말을
-//   받을 Session**의 값이다(§14).
+// - **말은 Runtime 이름으로 선다**(`runtimeNameOf`) — 채팅은 Runtime 세션 하나라 흐름과 카드에 얼굴도 이름 줄도 없다. 모델 칩은 채팅의
+//   값이다(§14).
 // - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
 //   첫 Session이 뜬다 — 최근 Work를 골랐으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
 //   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
@@ -512,7 +512,6 @@ function ThreadBody({
   // 다시 켠 뒤면 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model: ThreadModel = foldOf(lines, view.live ? null : view.lastSeq);
   const lists = useMemo(() => chipLists(lines), [lines]);
-  const host = view.participants.find((one) => one.handle === "host") ?? null;
   const change = useChangeChip();
   const setMode = useSetMode();
   const [chipProblem, setChipProblem] = useState<string | null>(null);
@@ -542,7 +541,7 @@ function ThreadBody({
   const changes = last ? changedFiles(last) : null;
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
-  const askingCwd = asking ? (host?.cwd ?? null) : null;
+  const askingCwd = asking ? view.cwd : null;
   // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
   // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
   const working = model.running && asking === null;
@@ -614,12 +613,8 @@ function ThreadBody({
   };
 
   const chip = (next: ChipChange) => {
-    if (!host) return;
     setChipProblem(null);
-    change.mutate(
-      { thread, who: host.handle, change: next },
-      { onError: (failure) => setChipProblem(String(failure)) },
-    );
+    change.mutate({ thread, change: next }, { onError: (failure) => setChipProblem(String(failure)) });
   };
 
   if (guide) {
@@ -645,7 +640,7 @@ function ThreadBody({
           className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-4 scroll-quiet"
         >
           <Beside open={beside}>
-            <LogPlace.Provider value={host?.cwd ?? null}>
+            <LogPlace.Provider value={view.cwd}>
               <PrPlace.Provider value={prActions}>
                 <ResultPlace.Provider value={resultActions}>
                   <ThreadFlow
@@ -666,9 +661,9 @@ function ThreadBody({
             <ThreadComposer
               draftKey={thread}
               // Session을 연 적 없는 채팅(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
-              models={host ? (lists.models ?? CLAUDE_MODELS) : null}
-              model={host ? currentModel(lists, host) : null}
-              effort={host ? host.effort : null}
+              models={lists.models ?? CLAUDE_MODELS}
+              model={currentModel(lists, view)}
+              effort={view.effort}
               onModel={(value) => chip({ field: "model", value })}
               onEffort={(value) => chip({ field: "effort", value })}
               commands={lists.commands}

@@ -101,7 +101,7 @@ fn 질문은_판정을_지나지_않고_질문_줄로_서고_답하면_claude가
                "answers": [{"question": FEE, "answer": "비율대로 돌려준다"}, {"question": SCREEN, "answer": "주문 상세, 환불 내역"}]}),
         "답 줄 — 화면의 「답함: …」 줄이 이것을 읽는다"
     );
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let mut input = refund_questions();
     input["answers"] = json!({FEE: "비율대로 돌려준다", SCREEN: "주문 상세, 환불 내역"});
     assert_eq!(decisions(&sandbox, &session, 1), [json!({"behavior": "allow", "updatedInput": input})], "claude는 답을 실은 allow를 받는다");
@@ -132,7 +132,7 @@ fn 질문에_답한_thread의_기록이_검사_자료와_같다() {
     let answers = vec![answer(FEE, "비율대로 돌려준다"), answer(SCREEN, "주문 상세, 환불 내역")];
     host.answer_thread_question(&thread, "0", &QuestionReply::Answer(answers)).expect("답한다");
     let record = sandbox.wait_thread_record(&thread, |record| !of_kind(record, "turn-end").is_empty());
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
 
     host.shut_down();
     // Thread 화면의 접기(L2)와 L3(v1 티켓 28)가 질문 카드 · 「답함: …」 줄을 이것으로 잰다.
@@ -172,7 +172,7 @@ fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_�
     assert_eq!(first["payload"]["card"], "plan");
     let revise = Reply { words: Some("파일 이름을 greeting.txt로".into()), ..Reply::pick("revise_plan") };
     host.reply_thread_permission(&thread, "0", &revise).expect("다시 쓰기");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let told = sandbox.wait_thread_record(&thread, |record| !of_kind(record, "turn-end").is_empty());
     let denial = decisions(&sandbox, &session, 1)[0].clone();
     assert_eq!(denial["behavior"], "deny");

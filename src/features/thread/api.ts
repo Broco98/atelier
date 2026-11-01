@@ -5,9 +5,9 @@ import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECO
 import type {
   AskLevel,
   Attachment,
+  ChipValues,
   EngineCheck,
   EngineState,
-  Participant,
   ProjectAddAnswer,
   ProjectAnswer,
   QuestionAnswer,
@@ -112,12 +112,10 @@ export const threadApi = {
    */
   answerProjectAdd: (thread: string, request: string, choice: ProjectAddAnswer) =>
     invoke<void>("thread_answer_project_add", { thread, request, choice }),
-  /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
-  setModel: (thread: string, who: string, model: string) =>
-    invoke<Participant>("thread_set_model", { thread, who, model }),
+  /** 모델 바꾸기 — 그 채팅의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 채팅의 값이다. */
+  setModel: (thread: string, model: string) => invoke<ChipValues>("thread_set_model", { thread, model }),
   /** 생각 깊이 바꾸기(스토리 33) — 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터 든다. 턴이 도는 동안은 거절된다. */
-  setEffort: (thread: string, who: string, effort: string) =>
-    invoke<Participant>("thread_set_effort", { thread, who, effort }),
+  setEffort: (thread: string, effort: string) => invoke<ChipValues>("thread_set_effort", { thread, effort }),
   /**
    * 물어보는 정도 바꾸기(v1 티켓 23 · S18) — Work에 이은 Thread면 그 Work의 정도다. 다음 권한 요청부터 들고, 「계획만」으로 들고 나면
    * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
@@ -149,12 +147,12 @@ export function onThreadRecord(listener: (event: ThreadRecordEvent) => void): Pr
   return listen<ThreadRecordEvent>(THREAD_RECORD_EVENT, (event) => listener(event.payload));
 }
 
-/** 대기 줄이 바뀔 때마다 온다 — 그 참여자 Session의 대기 줄 전체다. */
+/** 대기 줄이 바뀔 때마다 온다 — 그 Session의 대기 줄 전체다. */
 export function onThreadQueue(listener: (event: ThreadQueueEvent) => void): Promise<UnlistenFn> {
   return listen<ThreadQueueEvent>(THREAD_QUEUE_EVENT, (event) => listener(event.payload));
 }
 
-/** Thread 하나의 요약이 바뀔 때마다 온다(새 Thread · 이름 바꿈 · 참여자가 늘었다). */
+/** Thread 하나의 요약이 바뀔 때마다 온다(새 Thread · 이름 바꿈 · 읽은 자리). */
 export function onThreadList(listener: (summary: ThreadSummary) => void): Promise<UnlistenFn> {
   return listen<ThreadSummary>(THREAD_LIST_EVENT, (event) => listener(event.payload));
 }

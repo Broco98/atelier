@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 use super::project::Outside;
 use super::setting::ProjectAddCard;
 use super::space::SpaceCard;
-use super::{ConversationHost, SessionKey};
+use super::ConversationHost;
 use crate::host::WorkAt;
 use crate::thread_tools::{self, Proposal};
 use crate::HostError;
@@ -45,9 +45,9 @@ pub enum WorkChoice {
 #[derive(Default)]
 pub(super) struct Proposals(Mutex<HashMap<String, Asked>>);
 
-/// 서 있는 카드 하나 — 물은 Session과 카드의 값, 그리고 기다리는 도구 호출.
+/// 서 있는 카드 하나 — 물은 Thread와 카드의 값, 그리고 기다리는 도구 호출.
 pub(super) struct Asked {
-    pub(super) key: SessionKey,
+    pub(super) thread: String,
     pub(super) card: Card,
     settled: mpsc::Sender<Settled>,
 }
@@ -112,7 +112,7 @@ impl Proposals {
     /// 그 Thread의 그 종류 카드를 꺼낸다 — 꺼낸 뒤로는 다른 답이 닿지 않는다. 다른 Thread · 다른 종류의 카드면 꺼내지 않는다.
     pub(super) fn take(&self, thread: &str, request: &str, kind: &str) -> Option<Asked> {
         let mut asked = self.lock();
-        asked.get(request).filter(|one| one.key.thread == thread && one.card.kind() == kind)?;
+        asked.get(request).filter(|one| one.thread == thread && one.card.kind() == kind)?;
         asked.remove(request)
     }
 
@@ -122,8 +122,8 @@ impl Proposals {
     }
 
     /// 그 Session의 카드를 닫는다 — 기다리던 도구 호출은 받을 것 없이 풀린다(Session을 표에서 꺼냈다).
-    pub(super) fn close_for(&self, key: &SessionKey) {
-        self.lock().retain(|_, one| &one.key != key);
+    pub(super) fn close_for(&self, thread: &str) {
+        self.lock().retain(|_, one| one.thread != thread);
     }
 
     /// 카드를 모두 닫는다 — 호스트 끄기.
@@ -134,7 +134,7 @@ impl Proposals {
     /// 그 Thread의 카드를 모두 꺼낸다 — 사람이 Thread를 멈췄다.
     fn take_thread(&self, thread: &str) -> Vec<Asked> {
         let mut asked = self.lock();
-        let ids: Vec<String> = asked.iter().filter(|(_, one)| one.key.thread == thread).map(|(id, _)| id.clone()).collect();
+        let ids: Vec<String> = asked.iter().filter(|(_, one)| one.thread == thread).map(|(id, _)| id.clone()).collect();
         ids.iter().filter_map(|id| asked.remove(id)).collect()
     }
 }
@@ -170,7 +170,7 @@ impl ConversationHost {
 
     /// 「Work 만들기」 — Work를 worktree 없이 만들고 이 Thread를 잇는다. Agent에게 돌려줄 글을 돌려준다.
     fn create_work(&self, request: &str, asked: &Asked, projects: &[String], branch: Option<&str>) -> Result<String, HostError> {
-        let thread = &asked.key.thread;
+        let thread = &asked.thread;
         let not_created = |why: String| HostError::WorkNotCreated(why);
         let file = self.read_thread_file(thread)?;
         if let Some(work) = &file.work {
@@ -218,7 +218,7 @@ impl ConversationHost {
                 file.space = None;
             }
         })?;
-        self.threads.link_sessions(thread, &slug);
+        self.threads.link_session(thread, &slug);
         let work_at = self.open_work(&slug)?;
         let log = self.thread_log(thread)?;
         let answered = json!({
@@ -251,8 +251,8 @@ impl ConversationHost {
     }
 
     /// 「Work 읽기」 — 이 Thread가 이은 Work. 읽기만 한다.
-    pub(super) fn get_work_tool(&self, key: &SessionKey) -> Value {
-        let file = match self.read_thread_file(&key.thread) {
+    pub(super) fn get_work_tool(&self, thread: &str) -> Value {
+        let file = match self.read_thread_file(thread) {
             Ok(file) => file,
             Err(error) => return thread_tools::said(&error.to_string(), true),
         };
@@ -270,9 +270,9 @@ impl ConversationHost {
 
     /// 「Work 만들기 제안」(§11) — 카드를 세우고 사람이 고를 때까지 기다린다. **막히는 호출이다**(연결마다의 스레드에서 불린다).
     /// 이미 Work에 이은 Thread · 등록되지 않은 Project · 이미 쓰인 slug면 카드를 세우지 않고 그 까닭을 도구의 실패로 돌려준다.
-    pub(super) fn propose_work(&self, key: &SessionKey, proposal: Proposal) -> Value {
-        match self.work_card(key, &proposal) {
-            Ok(fields) => self.ask_card(key, Card::Work(proposal), fields),
+    pub(super) fn propose_work(&self, thread: &str, proposal: Proposal) -> Value {
+        match self.work_card(thread, &proposal) {
+            Ok(fields) => self.ask_card(thread, Card::Work(proposal), fields),
             Err(why) => thread_tools::said(&why, true),
         }
     }
@@ -280,28 +280,28 @@ impl ConversationHost {
     /// 카드를 세우고 사람이 고를 때까지 기다린다 — 카드의 값(`fields`)을 `question` 줄(`asked`)로 적고, 답 · 멈춤 · 닫힘 가운데 먼저
     /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Space 질문(03 티켓 08) ·
     /// Project 추가(03 티켓 12)가 이 길 하나를 쓴다.
-    pub(super) fn ask_card(&self, key: &SessionKey, card: Card, fields: Value) -> Value {
+    pub(super) fn ask_card(&self, thread: &str, card: Card, fields: Value) -> Value {
         let request = uuid::Uuid::new_v4().to_string();
         let (kind, label) = (card.kind(), card.label());
         let (settled, waiting) = mpsc::channel();
-        self.threads.proposals.lock().insert(request.clone(), Asked { key: key.clone(), card, settled });
+        self.threads.proposals.lock().insert(request.clone(), Asked { thread: thread.to_owned(), card, settled });
         let mut asked = json!({"state": "asked", "requestId": request, "card": kind});
         asked.as_object_mut().expect("객체").extend(fields.as_object().expect("객체").clone());
-        let written = self.thread_log(&key.thread).map_err(|error| error.to_string()).and_then(|log| {
+        let written = self.thread_log(thread).map_err(|error| error.to_string()).and_then(|log| {
             log.write(RecordKind::Question, asked).map(drop)
         });
         if let Err(why) = written {
-            self.threads.proposals.take(&key.thread, &request, kind);
+            self.threads.proposals.take(thread, &request, kind);
             return thread_tools::said(&format!("{label}를 세우지 못했다 — {why}"), true);
         }
         match waiting.recv() {
             Ok(Settled::Said { text, refused }) => thread_tools::said(&text, refused),
             Ok(Settled::Stopped) => {
-                self.withdraw_card(key, &request, kind, "stopped");
+                self.withdraw_card(thread, &request, kind, "stopped");
                 thread_tools::said(&format!("사람이 멈춤 — 사람이 이 Thread를 멈춰 {label}를 거뒀다"), true)
             }
             Err(_) => {
-                self.withdraw_card(key, &request, kind, "closed");
+                self.withdraw_card(thread, &request, kind, "closed");
                 thread_tools::said(&format!("{label}가 닫혔다 — 사람이 답하기 전에 이 Session이 끝났다"), true)
             }
         }
@@ -314,9 +314,9 @@ impl ConversationHost {
         }
     }
 
-    fn withdraw_card(&self, key: &SessionKey, request: &str, kind: &str, reason: &str) {
+    fn withdraw_card(&self, thread: &str, request: &str, kind: &str, reason: &str) {
         let line = json!({"state": "withdrawn", "requestId": request, "card": kind, "reason": reason});
-        let written = self.thread_log(&key.thread).map_err(|error| error.to_string()).and_then(|log| {
+        let written = self.thread_log(thread).map_err(|error| error.to_string()).and_then(|log| {
             log.write(RecordKind::Question, line).map(drop)
         });
         if let Err(error) = written {
@@ -326,8 +326,8 @@ impl ConversationHost {
 
     /// 카드의 값 — 제목 · slug · 까닭 · 브랜치와 등록된 Project 모두(Host 추천이 먼저, 그 까닭과 함께). 세울 수 없으면 그 까닭(Agent가
     /// 읽고 고쳐 부를 글)이다.
-    fn work_card(&self, key: &SessionKey, proposal: &Proposal) -> Result<Value, String> {
-        let file = self.read_thread_file(&key.thread).map_err(|error| error.to_string())?;
+    fn work_card(&self, thread: &str, proposal: &Proposal) -> Result<Value, String> {
+        let file = self.read_thread_file(thread).map_err(|error| error.to_string())?;
         if let Some(work) = &file.work {
             return Err(format!("이 Thread는 이미 Work `{work}`에 이어져 있다 — get_work로 그 Work를 읽는다."));
         }

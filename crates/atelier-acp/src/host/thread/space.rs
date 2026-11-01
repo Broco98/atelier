@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use super::gate;
 use super::work::{Card, Settled};
-use super::{ConversationHost, SessionKey};
+use super::ConversationHost;
 use crate::policy::AskLevel;
 use crate::thread_tools::{self, SpaceAsk};
 use crate::HostError;
@@ -97,7 +97,7 @@ impl ConversationHost {
     /// worktree는 그대로이고, 떠 있는 Session은 다음 말에서 「Space 없음」의 범위로 이어 연다. 없는 Space는 `SpaceNotFound`다.
     pub fn delete_space(&self, slug: &str) -> Result<DeletedSpace, HostError> {
         let deleted = {
-            // core가 `thread.json`의 칸을 비우는 동안 엔진의 다른 쓰기(참여자 줄 · 이름 …)와 겹치지 않게 쥔다.
+            // core가 `thread.json`의 칸을 비우는 동안 엔진의 다른 쓰기(세션 id · 이름 …)와 겹치지 않게 쥔다.
             let _files = self.threads.lock_files();
             atelier_core::delete_space(&self.data_root, slug).map_err(space_error)?
         };
@@ -182,8 +182,8 @@ impl ConversationHost {
 
     /// Thread 도구 「Space 목록」(§11) — Space마다 slug · 이름 · 담은 Project의 slug(적힌 차례) · 설명 첫 줄과, 이 Thread의 지금
     /// Space(Work에 이었으면 그 Work의 것 — 파일이 없으면 없다, §7 규칙 1). 읽기만 한다.
-    pub(super) fn list_spaces_tool(&self, key: &SessionKey) -> Value {
-        let file = match self.read_thread_file(&key.thread) {
+    pub(super) fn list_spaces_tool(&self, thread: &str) -> Value {
+        let file = match self.read_thread_file(thread) {
             Ok(file) => file,
             Err(error) => return thread_tools::said(&error.to_string(), true),
         };
@@ -206,8 +206,8 @@ impl ConversationHost {
     /// Thread 도구 「Space 붙이기」(§11 · S11 · S12) — 묻지 않고 붙이거나(「알아서」 · 지금 Space 없음 · 후보가 넘긴 것 하나), 질문 카드를
     /// 세우고 사람이 고를 때까지 기다린다. **막히는 호출일 수 있다**(연결마다의 스레드에서 불린다). 넘긴 것이 지금과 같으면 아무것도
     /// 하지 않는다. 없는 Space · 등록되지 않은 Project면 그 까닭을 도구의 실패로 돌려준다.
-    pub(super) fn set_space_tool(&self, key: &SessionKey, ask: SpaceAsk) -> Value {
-        let asking = match self.space_asking(key, &ask) {
+    pub(super) fn set_space_tool(&self, thread: &str, ask: SpaceAsk) -> Value {
+        let asking = match self.space_asking(thread, &ask) {
             Ok(asking) => asking,
             Err(why) => return thread_tools::said(&why, true),
         };
@@ -215,11 +215,11 @@ impl ConversationHost {
         if current == ask.space.as_deref() {
             return thread_tools::said(&format!("{} — 바꾸지 않았다.", now_text(&asking.scope)), false);
         }
-        let auto = gate::asking(&self.data_root, &key.thread, asking.work.as_deref()).0 == AskLevel::Auto;
+        let auto = gate::asking(&self.data_root, thread, asking.work.as_deref()).0 == AskLevel::Auto;
         if let (true, None, true, Some(slug)) = (auto, current, asking.alone, ask.space.as_deref()) {
-            return match self.put_thread_space(&key.thread, Some(slug), Change::Attached, false) {
+            return match self.put_thread_space(thread, Some(slug), Change::Attached, false) {
                 Ok(()) => {
-                    let scope = self.scope_now(&key.thread);
+                    let scope = self.scope_now(thread);
                     thread_tools::said(
                         &format!(
                             "{}에 넣었다 — 물어보는 정도가 「알아서」이고 맞는 Space가 이것 하나라 사람에게 묻지 않았다. 다음 말부터 읽는 \
@@ -236,13 +236,13 @@ impl ConversationHost {
         let fields = asking.card_fields(&ask);
         let mut options: Vec<String> = ask.space.iter().cloned().collect();
         options.extend(asking.candidates.iter().map(|space| space.slug.clone()).filter(|slug| Some(slug) != ask.space.as_ref()));
-        self.ask_card(key, Card::Space(SpaceCard { options }), fields)
+        self.ask_card(thread, Card::Space(SpaceCard { options }), fields)
     }
 
     /// 「Space 붙이기」를 셈한다 — 이 Thread(이은 Work)의 지금 범위와 후보. 넘긴 Space가 없거나 Project가 등록되지 않았으면 그 까닭(Agent가
     /// 읽고 고쳐 부를 글)이다.
-    fn space_asking(&self, key: &SessionKey, ask: &SpaceAsk) -> Result<Asking, String> {
-        let file = self.read_thread_file(&key.thread).map_err(|error| error.to_string())?;
+    fn space_asking(&self, thread: &str, ask: &SpaceAsk) -> Result<Asking, String> {
+        let file = self.read_thread_file(thread).map_err(|error| error.to_string())?;
         let work = match &file.work {
             Some(slug) => Some(self.open_work(slug).map_err(|error| error.to_string())?.meta),
             None => None,

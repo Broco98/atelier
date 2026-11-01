@@ -86,7 +86,7 @@ fn forbid에_걸린_요청은_사람에게_묻지_않고_policy의_글로_거절
     let payload = &decided["payload"];
     assert_eq!((payload["optionId"].clone(), payload["reason"].clone()), (json!("reject"), json!(refused)), "{text}");
     assert_eq!(payload["toolCall"]["kind"], "execute", "받은 요청을 함께 남긴다");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": refused})]);
 
     host.shut_down();
@@ -107,7 +107,7 @@ fn claude의_금지_규칙이_앞머리로_놓친_git_전역_옵션_뒤의_push�
     let thread = host.start_thread("배경 작업을 돌려 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
 
     let decided = wait_permission(&sandbox, &thread, "decided");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let args = args_of(&sandbox, &session);
     let first_line = args.iter().position(|arg| arg == "--disallowedTools").map(|at| args[at + 1].as_str());
     assert_eq!(first_line, Some("Bash(git push),Bash(git push *)"), "claude가 먼저 막는 줄은 앞머리 규칙이다");
@@ -199,7 +199,7 @@ fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어�
     assert_eq!(decided["payload"]["optionId"], "reject");
     assert!(reason.starts_with("Thread 기록이라 고칠 수 없어요: "), "{reason}");
     assert!(reason.contains(&format!("{thread}/.policy.json")), "{reason}");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
 
     host.shut_down();
@@ -229,7 +229,7 @@ fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_
     assert!(reason.starts_with("Work 밖의 파일이라 고칠 수 없어요: "), "{reason}");
     assert!(reason.contains("gate/ws/g1/outside/allowed.txt"), "{reason}");
     assert!(reason.ends_with("— `gate` Project를 고치려면 먼저 Thread 도구 `start_editing`(Project 고치기 시작)을 부르세요"), "{reason}");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
 
     host.shut_down();
@@ -253,7 +253,7 @@ fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_�
     );
     assert_eq!(asked["payload"]["toolCall"]["kind"], "execute");
 
-    // `ask_before` 없는 정의로 연 둘째 채팅 — 정의는 채팅을 열 때 스냅숏한다.
+    // `ask_before` 없는 정의로 연 둘째 채팅 — 정의는 Session을 열 때 읽는다.
     sandbox.library_agent("host", &host_md(""));
     let running = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("둘째 채팅");
     let decided = wait_permission(&sandbox, &running, "decided");
@@ -264,7 +264,7 @@ fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_�
         (json!("allow_once"), json!("알아서")),
         "자동으로 허용한 일은 까닭과 함께 남는다"
     );
-    let session = sandbox.thread_session_id(&running, "host");
+    let session = sandbox.thread_session_id(&running);
     assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow", "둘째 채팅의 claude는 허락을 받고 이어 간다");
 
     host.shut_down();
@@ -399,7 +399,7 @@ fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같�
 
     let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
     wait_turns(&sandbox, &plain, 1);
-    let session = sandbox.thread_session_id(&plain, "host");
+    let session = sandbox.thread_session_id(&plain);
     host.set_thread_mode(&plain, AskLevel::Plan).expect("계획만으로");
     assert_eq!(modes_sent(&sandbox, &session), ["plan"], "떠 있는 Session을 다시 띄우지 않고 모드만 바꾼다");
     host.set_thread_mode(&plain, AskLevel::Edits).expect("계획만에서 나감");
@@ -412,8 +412,8 @@ fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같�
     let two = host.start_thread("결제를 봐 줘", in_cart()).expect("같은 Work의 다른 Thread");
     wait_turns(&sandbox, &two, 1);
     host.set_thread_mode(&one, AskLevel::Plan).expect("Work를 계획만으로");
-    assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&one, "host")), ["plan"]);
-    assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&two, "host")), ["plan"], "다른 Thread의 Session도 계획 모드다");
+    assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&one)), ["plan"]);
+    assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&two)), ["plan"], "다른 Thread의 Session도 계획 모드다");
     assert_eq!(modes_sent(&sandbox, &session), ["plan", "default"], "다른 Work의 Session은 그대로다");
 
     host.shut_down();
@@ -443,7 +443,7 @@ fn 이은_work로_시작한_thread에서_고른_정도는_그_work의_정도가_
     assert_eq!(host.work_ask_level("cart"), Ok(AskLevel::Plan), "고른 정도가 그 Work의 정도가 된다(S18)");
     let changed: Vec<Value> = of_kind(&record, "mode").into_iter().map(|line| line["payload"].clone()).collect();
     assert_eq!(changed, [json!({"mode": "plan", "work": "cart"})], "바꾼 것이 흐름에 남는다");
-    let args = args_of(&sandbox, &sandbox.thread_session_id(&picked, "host"));
+    let args = args_of(&sandbox, &sandbox.thread_session_id(&picked));
     assert_eq!(permission_mode(&args), Some("plan"), "첫 Session부터 그 정도로 뜬다: {args:?}");
     host.shut_down();
 }
@@ -460,7 +460,7 @@ fn 새_thread는_첫_말과_함께_고른_정도로_서고_계획만이면_claud
     let record = wait_turns(&sandbox, &thread, 1);
     assert_eq!(sandbox.thread_json(&thread)["mode"], "plan", "Work 없는 Thread의 정도는 thread.json에 선다");
     assert_eq!(host.thread(&thread).expect("Thread").ask_level, AskLevel::Plan);
-    let args = args_of(&sandbox, &sandbox.thread_session_id(&thread, "host"));
+    let args = args_of(&sandbox, &sandbox.thread_session_id(&thread));
     assert_eq!(permission_mode(&args), Some("plan"), "첫 Session부터 계획 모드다: {args:?}");
     assert!(of_kind(&record, "mode").is_empty(), "고른 채로 섰다 — 바꾼 줄이 아니다");
 
@@ -488,7 +488,7 @@ fn 편집은_허용으로_세운_thread의_첫_편집은_묻지_않고_허용되
         (payload["state"].clone(), payload["optionId"].clone(), payload["reason"].clone()),
         (json!("decided"), json!("allow_once"), json!("편집은 허용"))
     );
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow");
 
     host.shut_down();
@@ -521,7 +521,7 @@ fn 편집은_허용으로_세운_thread를_매번_묻기로_바꾸면_다음_편
     );
     answer(&host, &thread, &asked, "reject");
     let record = wait_turns(&sandbox, &thread, 2);
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
 
     host.shut_down();
     // Thread 화면의 L3(v1 티켓 28)가 물어보는 정도 칩 · 방패 줄 · 「Policy를 … 바꿈」 줄을 이것으로 잰다 — 묻지 않고 허용한 첫 턴,
@@ -539,13 +539,13 @@ fn claude는_기본_모드로만_뜨고_계획만일_때만_계획_모드로_뜬
 
     let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
     wait_turns(&sandbox, &plain, 1);
-    let args = args_of(&sandbox, &sandbox.thread_session_id(&plain, "host"));
+    let args = args_of(&sandbox, &sandbox.thread_session_id(&plain));
     assert_eq!(permission_mode(&args), Some("default"), "사용자의 defaultMode를 물려받지 않는다: {args:?}");
 
     cart_mode(&sandbox, "plan");
     let planning = host.start_thread("계획만 세워 줘", in_cart()).expect("Work에 이은 Thread");
     wait_turns(&sandbox, &planning, 1);
-    let args = args_of(&sandbox, &sandbox.thread_session_id(&planning, "host"));
+    let args = args_of(&sandbox, &sandbox.thread_session_id(&planning));
     assert_eq!(permission_mode(&args), Some("plan"), "{args:?}");
 
     host.shut_down();

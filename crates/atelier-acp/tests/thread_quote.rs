@@ -49,7 +49,7 @@ fn 인용한_말은_spec_폴더의_실제_경로와_줄_범위의_인용_블록�
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
 
     let doc = sandbox.work_dir("plan").join("spec").join("design.md");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert_eq!(
         heard(&sandbox, &session)[1],
         json!([

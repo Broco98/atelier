@@ -61,7 +61,7 @@ fn 첨부한_말은_절대_경로_목록이_본문_바로_앞에_가고_sent_줄
     host.send_to_thread_with(&thread, "이 폴더도", &[text(&log), text(&shots)]).expect("첨부한 둘째 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let got = heard(&sandbox, &session);
     let first = got[0].as_array().expect("블록 배열");
     assert_eq!(first.len(), 3, "머리말 + 첨부 + 본문: {first:#?}");
@@ -145,7 +145,7 @@ fn 첨부한_첫_말의_기록이_검사_자료와_같다() {
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&common::commands_after_opened(&record), &sandbox.data_root(), &thread, &[&session]);
     let desk = text(log.parent().expect("책상 폴더"));
     let fixed: Vec<Value> = fixed

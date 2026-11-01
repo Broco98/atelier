@@ -86,7 +86,7 @@ fn 카드에서_고르기_전에_쓴_말은_그_요청을_거부하며_세션에
     let words = "파일 말고 이 Thread에 바로 적어 줘";
     reply(&host, &thread, &second, &Reply { words: Some(words.to_owned()), ..Reply::pick("reject") });
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let told = format!("사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n{words}");
     assert_eq!(decisions(&sandbox, &session, 2)[1], json!({"behavior": "deny", "message": told}), "말은 세션이 받는다");
 

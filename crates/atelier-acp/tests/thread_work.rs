@@ -85,7 +85,7 @@ fn request_of(asked: &Value) -> String {
 
 /// 그 Session의 claude가 부른 도구의 답 — 부른 차례대로.
 fn answers(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
-    sandbox.claude_mcp(&sandbox.thread_session_id(thread, "host")).into_iter().map(|call| call["call"].clone()).collect()
+    sandbox.claude_mcp(&sandbox.thread_session_id(thread)).into_iter().map(|call| call["call"].clone()).collect()
 }
 
 fn create(projects: &[&str], branch: &str) -> WorkChoice {
@@ -429,7 +429,7 @@ fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같�
     let decided: Vec<&Value> = of_kind(&record, "permission").into_iter().filter(|line| line["payload"]["state"] == "decided").collect();
     assert!(decided.is_empty(), "녹음의 물음은 모두 사람에게 온다 — 판정이 막은 것이 없다: {decided:?}");
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]);
     let root = sandbox.data_root().parent().unwrap().to_path_buf();
     let real_root = root.canonicalize().unwrap();

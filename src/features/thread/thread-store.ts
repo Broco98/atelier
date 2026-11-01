@@ -50,13 +50,13 @@ function merge(have: readonly RecordLine[], incoming: readonly RecordLine[]): re
 }
 
 /**
- * Thread마다 · 참여자마다의 대기 줄 — 대기 줄 바뀜 이벤트가 실어 온 그 Session의 대기 줄 전체. 이벤트가 한 번이라도 온 Thread는 여기
- * 값이 이기고, 아직 안 왔으면 Thread를 열 때 읽은 `queue`다.
+ * Thread마다의 대기 줄 — 대기 줄 바뀜 이벤트가 실어 온 그 Session의 대기 줄 전체. 이벤트가 한 번이라도 온 Thread는 여기 값이 이기고,
+ * 아직 안 왔으면 Thread를 열 때 읽은 `queue`다.
  */
-export const threadQueueStore = new Store<Readonly<Record<string, Readonly<Record<string, readonly QueuedMessage[]>>>>>({});
+export const threadQueueStore = new Store<Readonly<Record<string, readonly QueuedMessage[]>>>({});
 
-export function setQueue(thread: string, who: string, queue: readonly QueuedMessage[]): void {
-  threadQueueStore.setState((state) => ({ ...state, [thread]: { ...state[thread], [who]: queue } }));
+export function setQueue(thread: string, queue: readonly QueuedMessage[]): void {
+  threadQueueStore.setState((state) => ({ ...state, [thread]: queue }));
 }
 
 /**

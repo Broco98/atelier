@@ -1,7 +1,7 @@
 //! Agent 정의에서 오는 도구 · 금지와 ACP `mcpServers`를 claude의 플래그로 옮긴다(v1 구현 스펙 §3 · S19 · v1 티켓 12).
 //!
 //! Agent 파일은 Runtime 중립 이름(추상 도구 `read` · `edit` …, 금지 `push` …)을 쓰고, Runtime의 이름으로 옮기는 일은 이 변환기가
-//! 맡는다(agent-definition.md 「Runtime 추상화」). 엔진은 정의 스냅숏의 이름을 그대로 `_meta.atelier`에 싣는다.
+//! 맡는다(agent-definition.md 「Runtime 추상화」). 엔진은 정의의 이름을 그대로 `_meta.atelier`에 싣는다.
 //!
 //! 입출력은 하지 않는다 — 상태 기계([`super::machine`])가 세션을 열 때 부른다.
 

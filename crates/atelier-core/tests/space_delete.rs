@@ -41,7 +41,7 @@ impl Home {
 
     /// Thread 하나 — `work`가 있으면 그 Work에 이은 Thread다. 모르는 칸(`later`)을 하나 품는다.
     fn thread(&self, id: &str, work: Option<&str>, space: Option<&str>) -> &Self {
-        let mut file = json!({ "title": format!("{id} 이야기"), "createdAt": "2026-10-24T10:00:00.000+09:00", "work": work, "later": 7 });
+        let mut file = json!({ "title": format!("{id} 이야기"), "createdAt": "2026-10-24T10:00:00.000+09:00", "work": work, "runtime": "claude-code", "later": 7 });
         if let Some(space) = space {
             file["space"] = json!(space);
         }

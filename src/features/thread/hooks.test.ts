@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type { PrChecks, ProjectPr } from "@/features/works/types";
-import { followRecordLine, putSummary, threadQuery } from "./hooks";
+import { followRecordLine, putChips, putSummary, threadQuery } from "./hooks";
 import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 import { workPrsKey } from "./summary-card";
 
@@ -13,12 +13,17 @@ const view = (id: string, work: string | null): ThreadView => ({
   createdAt: "2026-10-23T15:00:00.000+09:00",
   work,
   mode: null,
-  participants: [],
+  runtime: "claude-code",
+  sessionId: null,
+  cwd: null,
+  additionalDirectories: [],
+  model: null,
+  effort: null,
   lastRead: 0,
   lastSeq: 0,
   askLevel: "plan",
   live: true,
-  queues: {},
+  queue: [],
   readOnly: null,
 });
 
@@ -62,7 +67,6 @@ describe("목록 요약이 연 Thread를 고친다", () => {
     title: id,
     createdAt: "2026-10-23T15:00:00.000+09:00",
     work: "refund-api",
-    handles: [],
     lastRead: 0,
     readOnly: null,
     broken: null,
@@ -78,6 +82,25 @@ describe("목록 요약이 연 Thread를 고친다", () => {
     expect(readOnly(client, "나")).toBeNull();
     putSummary(client, summary("나", { readOnly: "removed" }));
     expect(readOnly(client, "나")).toBe("removed");
+  });
+});
+
+describe("칩 바꾸기의 답", () => {
+  it("바뀐 채팅의 값이 연 Thread의 모델 · 생각 깊이를 고치고, 다른 칸과 다른 Thread는 그대로다", () => {
+    const client = seeded();
+    putChips(client, "가", { model: "opus", effort: "high" });
+    const chips = (id: string) => {
+      const view = client.getQueryData(threadQuery(id).queryKey);
+      return [view?.title, view?.model, view?.effort];
+    };
+    expect(chips("가")).toEqual(["가", "opus", "high"]);
+    expect(chips("나")).toEqual(["나", null, null]);
+  });
+
+  it("아직 읽지 않은 Thread는 캐시를 세우지 않는다", () => {
+    const client = new QueryClient();
+    putChips(client, "가", { model: "opus", effort: null });
+    expect(client.getQueryData(threadQuery("가").queryKey)).toBeUndefined();
   });
 });
 
