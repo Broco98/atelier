@@ -18,7 +18,7 @@ import {
   workView,
 } from "./thread-records";
 import type { ReadingScope } from "@/features/spaces/scope";
-import type { AgentRoster, RecordLine, ThreadView } from "@/features/thread/types";
+import type { RecordLine, ThreadView } from "@/features/thread/types";
 import type { WorkView } from "@/features/works/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **Host가 Work 만들기를 카드로 물어 사람이 만들면 Thread가 그 Work에 이어지고, 머리 줄 이름 앞에 그
@@ -40,29 +40,6 @@ const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 const 잠긴칩 = (page: Page) => page.locator('[data-slot="composer-tray"] [data-slot="work-chip"]');
 
 /**
- * Library의 Host — 기본 파일(`atelier-core` `agents/host.md`)의 먼저 묻는 일이다. 「결정은 내가 합니다」 카드가 이것으로 줄을 세운다(코드 리뷰
- * 1차 B7). 스키마 명령 패턴 여럿은 한 줄이다.
- */
-const LIBRARY: AgentRoster = {
-  agents: [
-    {
-      call: "host",
-      from: "library",
-      path: "/Users/tester/.atelier/library/agents/host.md",
-      definition: {
-        handle: "host",
-        name: "Host",
-        description: "다른 Agent를 부르지 않았을 때 답한다.",
-        avatar: null,
-        model: { prefer: null, effort: null },
-        policy: { askBefore: ["push", "Bash(*prisma migrate *)", "Bash(*alembic upgrade *)"], forbid: [] },
-      },
-    },
-  ],
-  broken: [],
-};
-
-/**
  * 두 기록의 세계가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — L1이 등록한 Project 둘(api-server · web-app)을, Space가 없어 모두
  * 읽는다. 요약 카드 「소스」의 「읽기만」이 이것이다 — worktree가 선 Project는 범위에서 빠지고 「고치는 중」으로 먼저 선다.
  */
@@ -79,7 +56,6 @@ const READS_BOTH = scopeOf("api-server", "web-app");
 async function openThread(page: Page, view: ThreadView, lines: readonly RecordLine[], works: WorkView[] = WORKS) {
   await installFixtureBackend(page, {
     list_works: works,
-    list_agents: LIBRARY,
     reading_scope: answerByArg("thread", { [view.id]: READS_BOTH }),
     thread_list: [summaryOf(view)],
     thread_get: answerByArg("thread", { [view.id]: view }),

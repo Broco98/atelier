@@ -2,9 +2,7 @@ import { useEffect, useMemo } from "react";
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { searchApi } from "@/features/search/api";
-import { settingsApi } from "@/features/settings/api";
 import { SCOPE_KEY, useSpaces } from "@/features/spaces/hooks";
-import { saveSettingsSection } from "@/features/settings/save-section";
 import { useWorks } from "@/features/works/hooks";
 import type { ProjectPr } from "@/features/works/types";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
@@ -13,7 +11,7 @@ import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-s
 import { isObject } from "./json";
 import { prLineOf } from "./pr";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
-import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
+import type { AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { workPrsKey } from "./summary-card";
 import { workMarks, type WorkMarks } from "./work-threads";
@@ -22,8 +20,6 @@ import { recentWorks, type RecentWork } from "./work-chip";
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
 const THREADS_KEY = ["threads"] as const;
-/** Agent 목록(`list_agents`)의 열쇠 머리 — 뒤에 범위(`work`)가 붙는다. */
-const AGENTS_KEY = ["agents"] as const;
 const threadKey = (thread: string) => ["thread", thread] as const;
 
 /** 모든 Thread의 요약 — 사이드바의 Thread 묶음. 엔진이 요약 이벤트로 고쳐 주므로 다시 읽지 않는다(`useThreadFeeds`). */
@@ -127,7 +123,7 @@ function readingOf(
  * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름 · 이은 Work도 따라
  * 바꾼다(Work 만들기 카드로 Thread가 Work에 이어졌다 — v1 티켓 30). 읽기만인 까닭도 따라 바꾼다(이은 Work가 보관됐다 — v1 티켓 38).
  * **참여자가 바뀌었으면 연 Thread를 다시 읽는다**(v1 티켓 14) — 멘션으로 들어온 Agent의 참여자 줄(`thread.json` — 온 곳 · 모델 · 생각
- * 깊이)은 요약에 없다. 그것이 있어야 머리 카드의 얼굴 · @ 메뉴의 「이 Thread에 있음」 · 그 Agent의 모델 칩이 선다.
+ * 깊이)은 요약에 없다. 그것이 있어야 그 Agent의 멘션 칠 · 모델 칩이 선다.
  */
 export function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
   queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
@@ -281,21 +277,6 @@ function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): 
 }
 
 /**
- * 부를 수 있는 Agent(v1 티켓 11 · 14) — 그 Thread의 범위(`work`가 없으면 Library만)다. 파일은 사람이 언제든 고치므로 30초가 지난 값은 다음에
- * 쓸 때 다시 읽는다. 못 읽으면(사라진 Work) `null`이다 — @ 메뉴는 앉은 참여자만, 얼굴은 handle에서 정한 것으로 선다.
- */
-export function useAgentRoster(work: string | null): AgentRoster | null {
-  const { data } = useQuery({
-    queryKey: [...AGENTS_KEY, work],
-    queryFn: () => threadApi.agents(work),
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-  return data ?? null;
-}
-
-/**
  * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
  * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Space 이름은 Work
  * 목록 · Space 목록에서 읽는다(아직 못 읽었으면 비어 선다).
@@ -325,35 +306,4 @@ export function useWorkMode(work: string | null): AskLevel | null {
     retry: false,
   });
   return work === null ? null : (data ?? null);
-}
-
-const DECISIONS_SEEN_KEY = ["settings", "seen", "decisions"] as const;
-
-/**
- * 「결정은 내가 합니다」 카드를 봤나(v1 티켓 30 · S31) — 앱 설정의 본 표(`seen.decisions`)다. 아직 읽지 못했으면 null이다. 못 읽으면(깨진
- * 설정 파일) 본 것으로 친다 — 고칠 자리는 설정 화면이 말하고, 이 카드가 그 파일을 덮어쓰지 않게.
- */
-export function useDecisionsSeen(): boolean | null {
-  const { data } = useQuery({
-    queryKey: DECISIONS_SEEN_KEY,
-    queryFn: async () => {
-      try {
-        return (await settingsApi.read()).seen?.decisions === true;
-      } catch {
-        return true;
-      }
-    },
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
-  return data ?? null;
-}
-
-/** 「결정은 내가 합니다」 카드를 봤다고 적는다 — 설정의 다른 구획 · 모르는 칸은 그대로다(`saveSettingsSection`). */
-export function useMarkDecisionsSeen() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => saveSettingsSection("seen", (latest) => ({ ...latest, decisions: true })),
-    onMutate: () => queryClient.setQueryData(DECISIONS_SEEN_KEY, true),
-  });
 }

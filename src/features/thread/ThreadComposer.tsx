@@ -1,15 +1,14 @@
 import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ArrowUp, AtSign, Plus } from "lucide-react";
+import { ArrowUp, Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import AgentMenu, { pickable } from "./AgentMenu";
 import { useArrival, useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
 import { AskChip, LockedWorkChip, ModelChip, ScopeLineText, SpaceChip, WorkChip, type ComposerTray } from "./ComposerChips";
-import { insertMention, matchAgents, mentionAt, type AgentChoice, type Recipient } from "./mentions";
+import type { Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
 import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
@@ -18,15 +17,12 @@ import type { AskLevel, Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · Screen-Live · v52 F4-KitComposer) — Codex
 // 입력창이다: 대화 열과 같은 737 폭에 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소
-// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6 — 받는 이 칩은 걷었고, `@` 단추는 숨겼다).
+// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6 — 받는 이 칩은 걷었다).
 // Work 칩 · Space 칩 · 범위 줄은 상자 **밖** 트레이에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
 //   꺼짐), 쓰면 ↑, 새 Thread의 첫 말을 보내는 중이면 옅은 파랑(`accent-solid-pending`)에 스피너, 턴이 도는 동안 비어 있으면 멈추기(■)다.
 //   도는 동안 쓰면 원은 ↑다 — 쓴 말도 보낸다(엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다). 그동안 멈추기는 Esc가 맡는다.
-// - **글로 친 `@`는 Agent 부르기 메뉴**를 연다(v1 티켓 14 · `AgentMenu`) — 커서가 멘션 이름 안에 서면 입력창 위에 서고, 고르면 그
-//   자리가 `@<call> `이 된다. 같은 메뉴를 여는 `@` 단추와 `/agent`는 Agent 여럿과 함께 채팅이 들어올 때까지 숨겼다(03 §6 · S5 —
-//   `AGENT_BUTTON` · `chips.ts`의 `held`). 코드는 지우지 않는다 — Agent를 이미 쓰는 사람의 길(글로 친 멘션)이 그대로다.
 // - **받는 이의 멘션은 칩으로 칠한다**(Composer 보드 「입력 중 · 멘션 칩」) — 입력칸 뒤에 같은 글을 투명하게 깐 층(`MentionPaint`)이
 //   받는 이로 고른 `@이름` 자리에만 옅은 파랑 면을 깐다. 글자는 입력칸의 것 그대로라 커서 · 고르기 · 붙여 넣기가 여느 입력칸과 같다.
 //   받는 이를 고르는 칩은 따로 없다 — 이 칠이 받는 이를 말한다.
@@ -49,9 +45,6 @@ import type { AskLevel, Attachment } from "./types";
 
 /** 입력칸이 자라는 끝 — 넘으면 칸 안에서 구른다. */
 const FIELD_MAX = 200;
-
-/** `@` 단추(Agent 부르기)를 세우나 — Agent 여럿과 함께 채팅을 보류하는 동안 숨긴다(03 §6 · S5). 다시 켤 때 이 값만 바꾼다. */
-const AGENT_BUTTON = false;
 
 /** 비어 있을 때의 말(보드) — 첫 말을 보내는 중(Screen-Live 단계 1 — 시안의 「채팅」은 이 앱의 Thread다) · 도는 동안 · 우리가 멈춘 뒤 · 그 밖. */
 const PLACEHOLDER = {
@@ -86,14 +79,10 @@ export interface ThreadComposerProps {
   onNewThread: () => void;
   /** 화면이 바깥에서 보이는 거절 글(이름 바꾸기 · 칩) — 입력창 아래에 함께 선다. */
   problem?: string | null;
-  /** @ 메뉴의 Agent — 앉은 참여자 → Library → Project(`agentChoices`). */
-  agents: readonly AgentChoice[];
   /** 지금 쓴 말의 받는 이(`recipientOf`) — `null`이면 Host다. 화면이 모델 칩도 이 참여자의 값으로 세우므로 바깥에서 읽어 준다. */
   recipient: Recipient | null;
   /** 받는 이의 턴이 도는가 — 모델 칩의 생각 깊이를 잠근다(엔진이 그 Session의 턴 동안 거절한다). 없으면 `running`이다. */
   recipientRunning?: boolean;
-  /** @ 메뉴 끝의 「새 Agent 만들기」(v1 티켓 19 — `useCreateAgent`). 없으면 그 줄은 자리만 선다. */
-  onCreateAgent?: () => void;
   /** 지금 물어보는 정도(v1 티켓 23) — 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
   level: AskLevel;
   onLevel: (level: AskLevel) => void;
@@ -123,17 +112,15 @@ function ThreadComposer({
   onStop,
   onNewThread,
   problem: outside = null,
-  agents,
   recipient,
   recipientRunning = running,
-  onCreateAgent,
   level,
   onLevel,
   tray,
   placeholder,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
-  // 바깥이 이 입력창을 채웠다(「새 Agent 만들기」 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
+  // 바깥이 이 입력창을 채웠다(주소의 입력 글 씨앗 · PR 카드 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
   const filled = useStore(threadUiStore, (state) => state.filled === draftKey);
   const attachments = useStore(attachmentStore, (state) => attachmentsOf(state, draftKey));
   const quote = useStore(threadUiStore, (state) => state.quotes[draftKey] ?? null);
@@ -151,53 +138,6 @@ function ThreadComposer({
   const active = pointer.query === query ? Math.min(pointer.at, Math.max(items.length - 1, 0)) : 0;
   const setActive = (at: number) => setPointer({ query, at });
   const menuOpen = items.length > 0 && dismissed !== draft;
-
-  // @ 메뉴 — 커서가 선 멘션의 찾는 말로 거른다. 「/」 메뉴와 함께 서지 않는다(「/」 뒤의 `@`는 이름 글자 뒤라 멘션이 아니다).
-  const [caret, setCaret] = useState(0);
-  const agentMenuId = useId();
-  const mention = menuOpen ? null : mentionAt(draft, Math.min(caret, draft.length));
-  const typed = mention?.query ?? null;
-  const people = useMemo(() => (typed === null ? [] : matchAgents(agents, typed)), [agents, typed]);
-  const canCreate = onCreateAgent !== undefined;
-  const firstPick = () => {
-    for (let at = 0; at <= people.length; at += 1) if (pickable(people, at, canCreate)) return at;
-    return -1;
-  };
-  const [agentPointer, setAgentPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
-  const agentActive = typed !== null && agentPointer.query === typed ? agentPointer.at : firstPick();
-  const agentMenuOpen = mention !== null && dismissed !== draft;
-  const stepAgent = (step: 1 | -1) => {
-    const count = people.length + 1;
-    for (let tries = 1, at = agentActive; tries <= count; tries += 1) {
-      at = (at + step + count) % count;
-      if (pickable(people, at, canCreate)) {
-        setAgentPointer({ query: typed, at });
-        return;
-      }
-    }
-  };
-  // 글을 갈아 끼운 뒤의 커서 — 새 글이 입력칸에 선 바로 그 자리(레이아웃 효과)에서 놓는다. 다음 프레임으로 미루면 그사이 친 글자가
-  // 옛 커서 자리에 들어가고, 놓인 커서가 그 글자들 앞으로 돌아간다.
-  const pendingCaret = useRef<number | null>(null);
-  const placeCaret = (text: string, at: number) => {
-    setCaret(at);
-    if (text === draft) {
-      field.current?.focus();
-      field.current?.setSelectionRange(at, at);
-      return;
-    }
-    pendingCaret.current = at;
-    setDraft(draftKey, text);
-  };
-  const pickAgent = (agent: AgentChoice) => {
-    if (mention === null) return;
-    const next = insertMention(draft, mention, agent.call);
-    placeCaret(next.text, next.caret);
-  };
-  const createAgent = () => {
-    if (mention !== null) setDraft(draftKey, `${draft.slice(0, mention.start)}${draft.slice(mention.end)}`);
-    onCreateAgent?.();
-  };
 
   // 물어보는 정도 · Work · 모델 메뉴의 열림 — 칩을 누르거나 `/policy` · `/work` · `/model`이 연다.
   const [asking, setAsking] = useState(false);
@@ -230,10 +170,6 @@ function ThreadComposer({
       // 칩이 보이기만 할 때(고를 목록이 없다)는 열 메뉴가 없다 — 입력칸으로 돌아간다.
       if (models && models.length > 0) setChoosingModel(true);
       else field.current?.focus();
-      return;
-    }
-    if (command.thread && command.name === "agent") {
-      placeCaret("@", 1);
       return;
     }
     setDraft(draftKey, `${commandText(command)} `);
@@ -272,11 +208,6 @@ function ThreadComposer({
       void el.offsetHeight;
     }
     el.style.height = `${next}px`;
-    const at = pendingCaret.current;
-    if (at === null) return;
-    pendingCaret.current = null;
-    el.focus();
-    el.setSelectionRange(at, at);
   }, [draft, carded, dragging]);
   useLayoutEffect(() => {
     if (!filled) return;
@@ -285,7 +216,6 @@ function ThreadComposer({
     if (!el) return;
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
-    setCaret(el.value.length);
   }, [filled]);
 
   const send = () => {
@@ -312,13 +242,6 @@ function ThreadComposer({
   const stop = () => {
     setProblem(null);
     onStop?.().catch((error: unknown) => setProblem(String(error)));
-  };
-  const callAgent = () => {
-    const el = field.current;
-    const at = el?.selectionStart ?? draft.length;
-    const end = el?.selectionEnd ?? at;
-    const lead = at > 0 && !/\s$/.test(draft.slice(0, at)) ? " @" : "@";
-    placeCaret(`${draft.slice(0, at)}${lead}${draft.slice(end)}`, at + lead.length);
   };
   const paint = useRef<HTMLDivElement>(null);
 
@@ -359,17 +282,6 @@ function ThreadComposer({
           {menuOpen && <SlashMenu id={menuId} items={items} active={active} onPick={pickCommand} onPoint={setActive} />}
           {quote && <DraftQuoteChip quote={quote} onDrop={() => setQuote(draftKey, null)} />}
           {attachments.length > 0 && <ComposerAttachmentChips draftKey={draftKey} attachments={attachments} />}
-          {agentMenuOpen && (
-            <AgentMenu
-              id={agentMenuId}
-              items={people}
-              active={agentActive}
-              canCreate={canCreate}
-              onPick={pickAgent}
-              onCreate={createAgent}
-              onPoint={(at) => setAgentPointer({ query: typed, at })}
-            />
-          )}
           <div className="relative flex">
             {recipient?.agent && <MentionPaint ref={paint} text={draft} at={recipient.at} />}
             <textarea
@@ -387,44 +299,15 @@ function ThreadComposer({
                       ? PLACEHOLDER.stopped
                       : (placeholder ?? PLACEHOLDER.idle)
               }
-              onChange={(event) => {
-                setDraft(draftKey, event.target.value);
-                setCaret(event.target.selectionStart);
-              }}
-              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+              onChange={(event) => setDraft(draftKey, event.target.value)}
               onScroll={(event) => {
                 if (paint.current) paint.current.scrollTop = event.currentTarget.scrollTop;
               }}
-              aria-controls={menuOpen ? menuId : agentMenuOpen ? agentMenuId : undefined}
-              aria-autocomplete={menuOpen || agentMenuOpen ? "list" : undefined}
-              aria-activedescendant={
-                menuOpen
-                  ? optionId(menuId, active)
-                  : agentMenuOpen && agentActive >= 0
-                    ? optionId(agentMenuId, agentActive)
-                    : undefined
-              }
+              aria-controls={menuOpen ? menuId : undefined}
+              aria-autocomplete={menuOpen ? "list" : undefined}
+              aria-activedescendant={menuOpen ? optionId(menuId, active) : undefined}
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing) return;
-                if (agentMenuOpen) {
-                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    event.preventDefault();
-                    stepAgent(event.key === "ArrowDown" ? 1 : -1);
-                    return;
-                  }
-                  if (((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") && agentActive >= 0) {
-                    event.preventDefault();
-                    if (agentActive < people.length) pickAgent(people[agentActive]);
-                    else createAgent();
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setDismissed(draft);
-                    return;
-                  }
-                }
                 if (menuOpen) {
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
@@ -461,11 +344,6 @@ function ThreadComposer({
             <button type="button" aria-label="파일 첨부" onClick={pick} disabled={busy} className={ROUND_BUTTON}>
               <Plus className="size-3.5" aria-hidden />
             </button>
-            {AGENT_BUTTON && (
-              <button type="button" aria-label="Agent 부르기" onClick={callAgent} className={ROUND_BUTTON}>
-                <AtSign className="size-3.5" aria-hidden />
-              </button>
-            )}
             {/* 첫 말을 보내는 중(Screen-Live 단계 1)에는 칩이 옅게 쉰다 — 고른 것은 이미 첫 말과 함께 떠났다. */}
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", busy && "pointer-events-none opacity-50")}>
               <AskChip level={level} onLevel={onLevel} open={asking} onOpenChange={setAsking} />
@@ -514,7 +392,7 @@ function Tray({ at, children }: { at: ComposerTray["at"]; children: ReactNode })
   );
 }
 
-/** 입력창 아래 줄의 `+` · `@` — 28 원, 본문색 글리프 14(Diff-Chat 「+ · @ 버튼 28」). */
+/** 입력창 아래 줄의 `+` — 28 원, 본문색 글리프 14(Diff-Chat 「+ · @ 버튼 28」). */
 const ROUND_BUTTON =
   "flex size-7 shrink-0 items-center justify-center rounded-full text-fg transition-colors quiet-hover focus-ring";
 

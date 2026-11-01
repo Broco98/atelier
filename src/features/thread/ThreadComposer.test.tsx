@@ -7,7 +7,7 @@ import { lockedWork } from "./work-chip";
 
 // 입력창(02 티켓 10 · 03 구현 스펙 §5 · §6 · 캔버스 v52 F4-KitComposer · v35 Diff-Chat · Screen-Live) — 정적 마크업으로 사람이 보는 것을 잰다:
 // 트레이가 어디에 서는지(첫 화면은 상자 아래, Thread 화면은 상자 위)와 그 Work 칩(첫 말 전은 고르는 칩, 뒤는 잠긴 칩), 입력창 안의 것(`+` ·
-// 물어보는 정도 · 모델 칩 — `@` 단추는 숨겼다), 보내기 원 하나가 네 상태(빈 · 글 · 보내는 중 · 도는 중)에서 무엇을 할 수 있다고 말하는지
+// 물어보는 정도 · 모델 칩), 보내기 원 하나가 네 상태(빈 · 글 · 보내는 중 · 도는 중)에서 무엇을 할 수 있다고 말하는지
 // (접근성 이름 · 꺼짐).
 
 const none = () => {};
@@ -31,7 +31,6 @@ const composer = (over: Partial<ThreadComposerProps> = {}, draft = "") => {
         running={false}
         onSend={quiet}
         onNewThread={none}
-        agents={[]}
         recipient={null}
         level="always"
         onLevel={none}
@@ -104,7 +103,7 @@ describe("잠긴 Work 칩(03 §5 · S3)", () => {
 });
 
 describe("입력창 안(03 §6)", () => {
-  it("`+` · 물어보는 정도 · 모델 칩만 선다 — `@` 단추(Agent 부르기)는 숨겼다", () => {
+  it("`+` · 물어보는 정도 · 모델 칩만 선다 — `@` 단추(Agent 부르기)가 없다", () => {
     const names = buttonsOf(composer({ models: [{ value: "default", name: "Default", description: null }], model: "default" })).map(
       (one) => one.name,
     );
@@ -113,9 +112,18 @@ describe("입력창 안(03 §6)", () => {
     expect(names.some((name) => name.startsWith("모델과 생각 깊이"))).toBe(true);
     expect(names).not.toContain("Agent 부르기");
   });
+
+  // 입력창의 메뉴는 「/」 명령 메뉴 하나뿐이고 쓴 글만 보고 선다 — 그래서 정적 마크업으로 사람이 친 글을 그대로 잰다. 첫 칸은 이 그물이
+  // 메뉴를 실제로 보는지다.
+  it("`@`를 쳐도 메뉴가 서지 않는다 — 말의 처음 · 가운데 · 이름을 이어 친 뒤 모두", () => {
+    expect(composer({}, "/")).toContain('role="listbox"');
+    for (const draft of ["@", "이거 @", "@rev", "@reviewer 봐 줘"]) {
+      expect(composer({}, draft), draft).not.toContain('role="listbox"');
+    }
+  });
 });
 
-/** 입력창의 둥근 단추들 — 접근성 이름과 꺼졌는지. 보내기 원은 `+` · `@` · 칩 뒤 맨 끝이다. */
+/** 입력창의 둥근 단추들 — 접근성 이름과 꺼졌는지. 보내기 원은 `+` · 칩 뒤 맨 끝이다. */
 const buttonsOf = (markup: string) =>
   [...markup.matchAll(/<button\b([^>]*)>/g)].flatMap(({ 1: attrs }) => {
     const name = /aria-label="([^"]+)"/.exec(attrs)?.[1];

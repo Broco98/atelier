@@ -11,7 +11,6 @@ import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
 import type {
-  AgentRoster,
   Attachment,
   EngineCheck,
   Participant,
@@ -1239,8 +1238,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     { ...WORK_TITLE_RESULTS, [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
     { otherwise: SEARCH_RESULTS },
   ),
-  // ── Thread(v1 티켓 05) ── 앱은 새 Thread(`/`)로 열린다. 새 Thread 화면은 설 때 엔진을 한 번 확인하고(`thread_check_engine`) Host 정의의
-  // 모델 · 생각 깊이를 읽으며(`list_agents`), 사이드바는 Thread 목록을 읽는다(`thread_list`). **기본은 Thread가 없고 엔진은 「찾음 ·
+  // ── Thread(v1 티켓 05) ── 앱은 새 Thread(`/`)로 열린다. 새 Thread 화면은 설 때 엔진을 한 번 확인하고(`thread_check_engine`), 사이드바는
+  // Thread 목록을 읽는다(`thread_list`). **기본은 Thread가 없고 엔진은 「찾음 ·
   // 로그인 됨」이다** — 안내 카드가 서지 않는 길이라 `/`로 여는 다른 spec들이 그대로 돈다. Thread를 여는 검사는 `thread_get` ·
   // `thread_read_record`를 그 시나리오의 Thread와 기록으로 덮어쓴다(기록 줄은 `thread:record` 이벤트로 흘린다).
   thread_list: [] satisfies ThreadSummary[],
@@ -1315,9 +1314,6 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     readOnly: null,
     broken: null,
   } satisfies ThreadSummary,
-  // 부를 수 있는 Agent(v1 티켓 03 · 11 · 14) — 새 Thread의 칩이 Host 정의의 모델 · 생각 깊이를, @ 메뉴 · 받는 이 칩 · 사이드바 얼굴이
-  // 목록과 얼굴을 읽는다. 기본은 비었다(칩은 「기본 모델」, @ 메뉴는 앉은 참여자만).
-  list_agents: { agents: [], broken: [] } satisfies AgentRoster,
   // 입력창의 첨부 칩(v1 티켓 06) — 고르거나 끌어다 놓은 경로를 잰 답. 기본은 빈 목록이다(첨부를 재는 검사가 그 경로의 답으로 덮어쓴다).
   describe_attachments: [] satisfies Attachment[],
 };

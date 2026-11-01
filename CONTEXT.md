@@ -373,7 +373,7 @@ Host가 대화 중에 「이 일을 Work로 묶을까요?」를 묻는 카드 �
 Project(Host 추천이 먼저 골라져 있다), 브랜치 이름을 보이고 사람이 넣고 빼고 고친다. 「Work 만들기」는 worktree 없이 Work를 만들고 그
 Thread를 잇는다(흐름에 「Work … 을 만들고 이 Thread에 연결함」). 그 Thread가 Space에 이어져 있으면 카드에 「◇ 결제 서비스 · Space」 한 줄이
 서고, 만들면 그 Space가 새 Work로 옮겨 간다 — 카드에서 바꾸지 않는다(받아들인 뒤 Space 메뉴로 바꾼다). 「Work 없이 계속」은 아무것도 만들지
-않는다. 처음 Work를 만들면 한 번 「결정은 내가 합니다」 카드가 Host가 먼저 묻는 일을 알린다.
+않는다.
 _피할 말_: Work 생성 모달, Work 마법사
 
 **Work 밖 Project 카드**:

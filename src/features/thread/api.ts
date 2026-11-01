@@ -3,7 +3,6 @@ import type { Quote } from "@/features/works/QuotePick";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT, WORK_WRITING_EVENT } from "./events";
 import type {
-  AgentRoster,
   AskLevel,
   Attachment,
   EngineCheck,
@@ -146,11 +145,6 @@ export const threadApi = {
    * 바뀌었으면 요약 이벤트도 온다.
    */
   markRead: (thread: string, seq: number) => invoke<ThreadSummary>("thread_mark_read", { thread, seq }),
-  /**
-   * 부를 수 있는 Agent와 깨진 파일 — `work`가 없으면 Library만, 있으면 그 Work의 Project 안까지다(v1 티켓 11). @ 메뉴 · 얼굴이
-   * 읽고(14), 빈 Thread의 칩이 받는 Agent 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33).
-   */
-  agents: (work: string | null) => invoke<AgentRoster>("list_agents", { work }),
 };
 
 /** 엔진에 가는 첨부 — 절대 경로만. 크기는 엔진이 보낼 때 다시 잰다. */

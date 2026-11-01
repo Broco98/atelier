@@ -1096,8 +1096,7 @@ mod tests {
         assert_eq!(Act::of(&json!({})), Act::Other);
     }
 
-    /// 명령 패턴 규칙과 사람이 읽는 꼴 — 화면의 「결정은 내가 합니다」 카드(`work-proposal.ts` `decisionOf`)도 이 표로 견준다(L2
-    /// `work-proposal.test.ts`가 이 글을 읽는다, 코드 리뷰 2차 B6).
+    /// 명령 패턴 규칙과 사람이 읽는 꼴.
     const SHOWN: [(&str, &str); 4] = [
         ("Bash(git push *)", "git push"),
         ("Bash(pnpm test:*)", "pnpm test"),

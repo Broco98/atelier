@@ -3,7 +3,7 @@ import { expect, test, type Page } from "./evidence";
 import { answerByArg, FIXTURE_HOST, FIXTURE_THREAD } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
 import { fireSummary, linesAfter, linesThrough, record, sentPayloads, seqOf, streamLines, summaryOf } from "./thread-records";
-import type { AgentRoster, Participant, ThreadView } from "@/features/thread/types";
+import type { Participant, ThreadView } from "@/features/thread/types";
 
 // v1 티켓 21(PR ② e2e) 흐름 하나 — **입력창의 @ 메뉴로 Agent를 부르면 그 Agent가 Thread에 들어와 답하고, 이름 줄로 누가 말하는지
 // 보인다**(v1 티켓 13 · 14 · 19 · 구현 스펙 §5 · §14 · 경계 ② 「@ 메뉴」 · 「Thread」). Host의 답에는 머리가 없고, 다른 Agent의 턴만
@@ -33,50 +33,6 @@ const answered: ThreadView = { ...FIXTURE_THREAD, live: true, lastSeq: HOST_END 
 /** 리뷰어가 들어온 Thread. */
 const joined: ThreadView = { ...answered, participants: [FIXTURE_HOST, REVIEWER] };
 
-/**
- * 부를 수 있는 Agent — Library의 Host · 리뷰어와 깨진 테스터(모르는 도구). 리뷰어의 얼굴은 기본 `reviewer.md`의 것이다(초록 동그라미).
- * `path`는 화면이 경로 복사에만 쓴다.
- */
-const ROSTER: AgentRoster = {
-  agents: [
-    {
-      call: "host",
-      from: "library",
-      path: "/Users/tester/.atelier/library/agents/host.md",
-      definition: {
-        handle: "host",
-        name: "Host",
-        description: "다른 Agent를 부르지 않았을 때 답한다.",
-        avatar: null,
-        model: { prefer: null, effort: null },
-        policy: { askBefore: [], forbid: [] },
-      },
-    },
-    {
-      call: "reviewer",
-      from: "library",
-      path: "/Users/tester/.atelier/library/agents/reviewer.md",
-      definition: {
-        handle: "reviewer",
-        name: "리뷰어",
-        description: "바뀐 코드를 읽고 리뷰한다.",
-        avatar: { shape: "circle", color: "green" },
-        model: { prefer: null, effort: null },
-        policy: { askBefore: [], forbid: [] },
-      },
-    },
-  ],
-  broken: [
-    {
-      call: "tester",
-      handle: "tester",
-      from: "library",
-      path: "/Users/tester/.atelier/library/agents/tester.md",
-      problem: { kind: "unknownTool", tool: "deploy" },
-    },
-  ],
-};
-
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
 const 흐름 = (page: Page) => page.getByRole("main");
 const 메뉴 = (page: Page) => page.getByRole("listbox", { name: "Agent 부르기", exact: true });
@@ -90,7 +46,6 @@ test("@ 메뉴가 이 Thread의 Agent를 먼저 · 깨진 Agent는 흐리게 까
     thread_get: answerByArg("thread", { [answered.id]: answered }),
     thread_read_record: answerByArg("thread", { [answered.id]: linesThrough(mention, HOST_END) }),
     thread_mark_read: answerByArg("thread", { [answered.id]: { ...summaryOf(answered), lastRead: HOST_END } }),
-    list_agents: answerByArg("work", {}, { otherwise: ROSTER }),
   });
   await page.goto(`/threads/${answered.id}`);
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.

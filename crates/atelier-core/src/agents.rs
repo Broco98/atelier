@@ -5,9 +5,9 @@
 //! 이 모듈이 하는 일은 셋이다 — 파일 하나 읽기([`read_agent`])와 Library의 기본 파일 만들기([`ensure_default_agents`])
 //! (v1 티켓 03), 범위 찾기 · 고르기([`find_agents`] · [`AgentRoster::resolve`], v1 티켓 11 — `scope.rs`).
 //!
-//! **깨진 파일은 오류가 아니라 까닭이다**([`AgentProblem`]). @ 메뉴가 그 Agent를 흐리게, 까닭과 함께 보이고 부르지
-//! 못하게 한다(§6 「깨진 파일」) — 그래서 읽기는 까닭 셋 가운데 하나로 답하고 터지지 않는다. 화면에는 camelCase JSON으로
-//! 나간다(Tauri `list_agents`) — 파일의 낱말(`ask_before` · `agents: any` · `read`)은 그대로 읽고, 내보낼 때만 이름 꼴을 바꾼다.
+//! **깨진 파일은 오류가 아니라 까닭이다**([`AgentProblem`]). 엔진이 그 Agent를 부르지 못하게 한다(§6 「깨진 파일」) — 그래서 읽기는 까닭
+//! 셋 가운데 하나로 답하고 터지지 않는다. 파일의 낱말(`ask_before` · `agents: any` · `read`)은 그대로 읽고, 내보낼 때만 camelCase로 이름
+//! 꼴을 바꾼다.
 
 use std::io::{ErrorKind, Write};
 use std::path::Path;
@@ -31,7 +31,7 @@ pub struct AgentDefinition {
     pub handle: String,
     /// 화면에 보이는 이름. 적지 않으면 handle이다.
     pub name: String,
-    /// 언제 이 Agent를 부르나 — @ 메뉴의 설명 한 줄.
+    /// 언제 이 Agent를 부르나 — 한 줄 설명.
     pub description: String,
     /// 얼굴(S36). 없으면 화면이 handle에서 정한다 — 모양 · 색의 이름을 푸는 일은 화면의 몫이라 여기서는 글자 그대로 둔다.
     pub avatar: Option<Avatar>,
@@ -428,7 +428,7 @@ runtimes:
         assert_eq!(host.handle, "host");
         assert_eq!(host.tools.agents, AgentCalls::AnyInScope, "Host는 범위 안 아무 Agent나 부른다(S15)");
         assert_eq!(host.tools.builtin, None, "Host는 기본 도구 전부를 쓴다");
-        // 「결정은 내가 합니다」(S31) — Host는 push와 스키마 바꾸기를 하기 전에 묻는다. 스키마(마이그레이션 명령)는 고정 목록이 없어
+        // Host는 push와 스키마 바꾸기를 하기 전에 묻는다. 스키마(마이그레이션 명령)는 고정 목록이 없어
         // 이 파일에 명령 패턴으로 적는다(S19).
         assert!(host.policy.ask_before.contains(&"push".to_owned()), "{:?}", host.policy.ask_before);
         assert!(host.policy.ask_before.contains(&"Bash(*prisma migrate *)".to_owned()), "{:?}", host.policy.ask_before);

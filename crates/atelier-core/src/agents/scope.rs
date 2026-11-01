@@ -23,7 +23,7 @@ use crate::store::read_project;
 use crate::threads::DefinitionSource;
 use crate::{expand_home, read_work, work_places};
 
-/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것. @ 메뉴가 이것을 그린다(Tauri `list_agents`).
+/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것. 엔진의 참여가 이것으로 고른다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentRoster {
@@ -185,7 +185,7 @@ fn is_project(from: &DefinitionSource) -> bool {
 /// Work의 Project마다 Agent 자리 — `work.json`의 Project 순이다.
 ///
 /// worktree가 「있다」는 그 폴더가 서 있느냐다(`WorktreeView.exists`와 같은 판정). Project 폴더는 등록부에서 git을 캐묻지 않고
-/// 읽는다 — @ 메뉴가 열릴 때마다 오는 길이다.
+/// 읽는다 — 멘션으로 Agent를 찾을 때마다 오는 길이다.
 fn project_places(root: &Path, slug: &str) -> crate::Result<Vec<(DefinitionSource, PathBuf)>> {
     let works = works_in(root);
     let work = read_work(&works, slug)?;
@@ -207,7 +207,7 @@ fn project_places(root: &Path, slug: &str) -> crate::Result<Vec<(DefinitionSourc
 
 /// 한 자리의 Agent 파일들(`*.md`) — 이름 순이다. 폴더가 없으면 비었다(대개의 레포에는 없다).
 ///
-/// 점으로 시작하는 파일은 Agent가 아니다 — 편집기의 잠금 · 임시 파일(`.#reviewer.md`)이 @ 메뉴에 서면 안 된다(Project
+/// 점으로 시작하는 파일은 Agent가 아니다 — 편집기의 잠금 · 임시 파일(`.#reviewer.md`)을 부르면 안 된다(Project
 /// 목록 `read_projects`와 같은 규칙).
 fn agent_files(dir: &Path) -> crate::Result<Vec<PathBuf>> {
     let entries = match std::fs::read_dir(dir) {

@@ -166,7 +166,7 @@ describe("말의 사전", () => {
   // v1 티켓 05 · 08 · 구현 스펙 S2. 앱을 열면 새 Thread가 뜨고 Host가 답한다 — 화면의 도메인 낱말은 영어다(Thread · Agent · Host ·
   // Session · Runtime · Library). 사전이 그 말들을 모르면 다음 사람이 Thread를 「채팅」·「채널」로, Agent를 「봇」·「어시스턴트」로,
   // Runtime을 「엔진」으로 부른다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes의 대화 탭 이름도 Thread의 거부어다
-  // (S2 「피할 말은 채팅 · 채널 · 대화 탭」). 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 Agent 부르기 단추).
+  // (S2 「피할 말은 채팅 · 채널 · 대화 탭」). 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 파일 첨부 단추).
   it("「Thread」·「Agent」·「Host」·「Session」·「Runtime」·「Library」가 등재돼 있고, Thread가 「채팅」·「채널」·「대화 탭」을, Agent가 「봇」·「어시스턴트」를 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["Thread", "Agent", "Host", "Session", "Runtime", "Library"]));
     expect(bodyOf("Thread")).toContain("_피할 말_: 채팅, 채널, 스레드, 대화 탭");
@@ -175,7 +175,7 @@ describe("말의 사전", () => {
     expect(bodyOf("Agent")).toContain("_피할 말_: 봇, 어시스턴트");
     expect(refused).toEqual(expect.arrayContaining(["채팅", "채널", "스레드", "대화 탭", "봇", "어시스턴트"]));
     expect(bodyOf("Runtime")).toContain("_피할 말_: 하네스, 엔진");
-    expect(ariaLabels).toContain("Agent 부르기");
+    expect(ariaLabels).toContain("파일 첨부");
   });
 
   // v1 티켓 08 · 구현 스펙 S2. three-axes 대화창의 말 「대화창」 · 「대화」 · 「에이전트」(엔진이라는 뜻)를 걷었다 — 대화는 Thread가,

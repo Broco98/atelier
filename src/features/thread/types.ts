@@ -4,8 +4,6 @@
 // 글자로 못박는다(`engine_check.rs`의 「화면이 읽는 꼴」 · `thread.rs`의 이벤트 꼴). three-axes 대화의 값(`chat/types.ts`)은 v1
 // 티켓 08이 걷으며 Thread가 쓰는 것만 여기로 옮겼다.
 
-import type { Avatar } from "./faces";
-
 /** 대기 줄의 말 하나 — 턴이 도는 동안 보낸 말이다(`atelier_acp::QueuedMessage`). 입력창 위 「대기 중」에 선다. */
 export interface QueuedMessage {
   /** 대기 id — 고치기 · 지우기 · 지금 보내기가 이것으로 고른다. */
@@ -252,47 +250,6 @@ export interface ThreadQueueEvent {
 
 /** 정의가 온 곳(`atelier_core::DefinitionSource`) — Library 또는 Work에 붙은 Project. */
 export type DefinitionSource = "library" | { project: string };
-
-/** Library와 Project에서 찾은 Agent 하나(`atelier_core::FoundAgent`) — 화면이 읽는 칸만 적는다. */
-export interface FoundAgent {
-  /** 부르는 이름 — `reviewer`, Project 둘이 같은 handle이면 `api/reviewer`. @ 메뉴가 `@<call> `으로 넣는다. */
-  call: string;
-  from: DefinitionSource;
-  /** 읽은 파일의 절대 경로. */
-  path: string;
-  definition: {
-    handle: string;
-    name: string;
-    description: string;
-    /** 얼굴(S36) — 적은 글자 그대로다. 푸는 일은 `faces.ts`가 한다. */
-    avatar: Avatar | null;
-    model: { prefer: string | null; effort: string | null };
-    /** 묻는 일 · 막는 일(S19 규칙 이름) — 「결정은 내가 합니다」 카드가 Host의 `askBefore`를 읽는다. */
-    policy: { askBefore: string[]; forbid: string[] };
-  };
-}
-
-/** 깨진 Agent 파일의 까닭(`atelier_core::AgentProblem`, v1 티켓 03 · 11). */
-export type AgentProblem =
-  | { kind: "unreadable"; message: string }
-  | { kind: "unknownTool"; tool: string }
-  | { kind: "runtimeNotAccepted" }
-  | { kind: "hostOutsideLibrary" };
-
-/** 깨진 Agent 파일 하나(`atelier_core::BrokenAgent`) — @ 메뉴에 흐리게, 까닭과 함께 선다. */
-export interface BrokenAgent {
-  call: string;
-  handle: string;
-  from: DefinitionSource;
-  path: string;
-  problem: AgentProblem;
-}
-
-/** 부를 수 있는 Agent 목록(`atelier_core::AgentRoster`) — 둘 다 부르는 이름 순이다. */
-export interface AgentRoster {
-  agents: FoundAgent[];
-  broken: BrokenAgent[];
-}
 
 /**
  * 문서 하나를 쓰는 중(`atelier_acp::DocWriting`, v1 티켓 34) — Work의 spec 폴더 안 파일에 편집 도구가 도는 동안이다. 요약 카드 소스의 문서 줄이

@@ -503,7 +503,6 @@ pub fn run() {
             commands::read_work_diff,
             commands::search,
             commands::touch_recent_work,
-            commands::list_agents,
             commands::describe_attachments,
             commands::pty_spawn,
             commands::pty_write,

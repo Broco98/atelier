@@ -405,11 +405,6 @@ describe("눈금의 사분 단", () => {
       className: "gap-y-px",
       why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
     },
-    {
-      file: "src/features/thread/AgentMenu.tsx",
-      className: "gap-px",
-      why: "@ 메뉴 — 묶음 안 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`)",
-    },
     // 사이드바의 줄 사이 1 · 소제목 사이 — Codex 사이드바를 잰 값(v1 티켓 46 · 시안-비교/46 `참고/codex-사이드바.png`). 줄 30이 31마다
     // 서고, 소제목(30) 가운데 → 첫 줄 가운데가 34, 마지막 줄 가운데 → 다음 소제목 가운데가 54다. nav 줄 · Work 줄 · Thread 줄이 한 벌이라
     // 한 파일(`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C).

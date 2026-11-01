@@ -23,7 +23,6 @@ import { createdDocs } from "./expanded";
 import { changedFiles } from "./log";
 import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
-import { decisionsDue } from "./work-proposal";
 
 // Thread 접기(v1 티켓 05) — 기록 줄 → 턴 · 말한 이 · 도구 줄 · 시스템 줄. seam은 순수 함수 `foldThread` 하나다: 처음 읽은 기록도
 // 흐르는 기록 줄 이벤트도 같은 줄이라, 여기서 기록을 넣고 나온 화면 모델만 본다.
@@ -1138,8 +1137,6 @@ describe("Work 밖 Project 카드(v1 티켓 32)", () => {
       ["docs", "에 worktree를 만듦", null],
     ]);
     expect(model.system.map((line) => line.turn)).toEqual([model.turns[0].key, model.turns[0].key]);
-    // 「결정은 내가 합니다」는 Work를 만든 Thread에서만 선다 — worktree가 생긴 것으로는 서지 않는다.
-    expect(decisionsDue(model, false)).toBe(false);
   });
 });
 

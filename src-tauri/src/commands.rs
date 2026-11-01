@@ -398,18 +398,6 @@ pub async fn touch_recent_work(slug: String) -> CmdResult<()> {
     atelier_core::touch_recent_work(&data_root(), &slug).map_err(err)
 }
 
-// Agent 정의(v1 구현 스펙 §6 · §18) — @ 메뉴가 읽는다. 범위 · 고르기 규칙은 전부 코어에 있고 여기는 넘기기만 한다
-// (L4 다리도 같은 입구를 부른다). `work`가 없으면 Library만, 있으면 그 Work의 Project들까지가 범위다.
-
-/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것(까닭과 함께). Library와 Project마다 폴더를 읽고 파일을 하나씩 읽으므로 work
-/// 목록처럼 blocking 풀에서 돈다.
-#[tauri::command]
-pub async fn list_agents(work: Option<String>) -> CmdResult<atelier_core::AgentRoster> {
-    tauri::async_runtime::spawn_blocking(move || atelier_core::find_agents(&data_root(), work.as_deref()).map_err(err))
-        .await
-        .map_err(|e| format!("Agent 목록을 읽지 못했습니다: {e}"))?
-}
-
 /// 입력창의 첨부 칩(v1 티켓 06 · 구현 스펙 S30) — `+`로 고르거나 끌어다 놓은 경로를 첨부로 잰다(크기 · 폴더인가). 내용은 읽지
 /// 않는다. 보낼 때 엔진이 같은 입구로 다시 재서 `sent` 줄에 남긴다. 디스크를 보므로 blocking 풀에서 돈다.
 #[tauri::command]
@@ -1328,8 +1316,6 @@ mod tests {
     ///   돈다(`pty::end_by_hand`).
     /// - `read_worktree_file`(git-integration 판 01): 디스크에서 파일 하나를 읽고 실제 경로를 두 번 푼다 — 파일 탭이 보일 때만 오지만
     ///   큰 파일이면 그 읽기가 ms 단위다.
-    /// - `list_agents`(v1 티켓 11): Library와 Work의 Project마다 Agent 폴더를 읽고 파일을 하나씩 읽는다 — @ 메뉴가
-    ///   열릴 때마다 온다.
     /// - `list_work_changes`(v1 티켓 33): Project마다 git을 세 번 기다린다(갈라진 커밋 · 증감 · 아직 모르는 파일). Work 카드가
     ///   worktree가 바뀔 때마다 부른다.
     /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
@@ -1355,7 +1341,6 @@ mod tests {
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
             ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
-            ("list_agents", "atelier_core::find_agents(", "find_agents("),
             ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
             ("list_work_changes", "atelier_core::list_work_changes(", "list_work_changes("),
             ("read_work_diff", "atelier_core::read_work_diff(", "read_work_diff("),

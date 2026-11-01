@@ -1,12 +1,11 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_COMMANDS, FIXTURE_THREAD, WORKS, worktreeFile, worktreeFolder } from "./fixtures";
+import { answerByArg, FIXTURE_THREAD, WORKS, worktreeFile, worktreeFolder } from "./fixtures";
 import { callCount, fireEvent, fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
 import { atHome, lineOf, record, sentPayloads, specWrites, summaryOf, titleThrough, workView } from "./thread-records";
 import { WORK_WRITING_EVENT } from "@/features/thread/events";
 import type { ThreadView, WorkWritingEvent } from "@/features/thread/types";
 import type { FileDiff, ProjectChanges } from "@/features/works/types";
-import type { Settings } from "@/features/settings/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **요약 카드의 줄이나 대화 속 문서 카드를 누르면 카드가 넓어져 문서 · diff · 트리를 보고, 대화는 왼쪽
 // 480에 남는다**(v1 티켓 34 · 35 · 43 · 구현 스펙 §15 배치 1 · S41 · 스토리 102 · 115–118). 문서는 쓰는 중 · 바뀐 줄 칠함 · 인용으로
@@ -116,8 +115,6 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   page,
 }) => {
   await installFixtureBackend(page, {
-    // 「결정은 내가 합니다」는 이은 뒤 처음 한 번이다(흐름 「Work 만들기」가 잰다) — 이미 봤다.
-    read_settings: { ...(FIXTURE_COMMANDS.read_settings as Settings), seen: { decisions: true } } satisfies Settings,
     list_works: [...WORKS, workView(MADE, { docs: Object.keys(WRITTEN), trees: [PROJECT] })],
     thread_list: [summaryOf(view)],
     thread_get: answerByArg("thread", { [view.id]: view }),

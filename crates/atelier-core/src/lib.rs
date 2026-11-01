@@ -86,7 +86,7 @@ pub use paths::{
     projects_dir, projects_in, spaces_dir, spaces_in, threads_dir, works_dir, works_in,
 };
 // Agent 정의(v1 구현 스펙 §6) — 앱이 뜰 때 Library의 기본 파일을 세우고, Thread 엔진(`atelier-acp`)이 Host를 읽는다.
-// 범위 찾기 · 고르기(v1 티켓 11)는 @ 메뉴(Tauri 명령)와 엔진의 참여가 같이 쓴다.
+// 범위 찾기 · 고르기(v1 티켓 11)는 엔진의 참여가 쓴다.
 pub use agents::{
     ensure_default_agents, find_agents, read_agent, AgentCalls, AgentDefinition, AgentProblem, AgentRoster, Avatar, BrokenAgent,
     BuiltinTool, FoundAgent, ModelPreference, Policy, Tools, Unresolved,

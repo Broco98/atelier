@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_COMMANDS, FIXTURE_THREAD, PROJECTS, SPACES, WORKS } from "./fixtures";
+import { answerByArg, FIXTURE_THREAD, PROJECTS, SPACES, WORKS } from "./fixtures";
 import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
 import {
   atHome,
@@ -18,7 +18,6 @@ import {
 } from "./thread-records";
 import { THREAD_QUEUE_EVENT } from "@/features/thread/events";
 import type { PrLine } from "@/features/thread/pr";
-import type { Settings } from "@/features/settings/types";
 import type { ReadingScope } from "@/features/spaces/scope";
 import type { Space } from "@/features/spaces/types";
 import type { RecordLine, ThreadQueueEvent, ThreadView } from "@/features/thread/types";
@@ -77,13 +76,10 @@ const MADE = lineOf(made, "work", "created").payload as { slug: string; title: s
 const MADE_LAST = made[made.length - 1].seq;
 const MADE_DOCS = Object.keys(specWrites(made, MADE.slug));
 const linkedView: ThreadView = { ...FIXTURE_THREAD, title: titleThrough(made, MADE_LAST), work: MADE.slug, lastSeq: MADE_LAST };
-/** 「결정은 내가 합니다」는 이은 뒤 처음 한 번이다(흐름 「Work 만들기」 — `thread-work`가 잰다) — 이미 봤다. */
-const SEEN: Settings = { ...(FIXTURE_COMMANDS.read_settings as Settings), seen: { decisions: true } };
 
 /** 그 Thread를 연다 — 목록 · 읽기 · 읽은 자리를 그 Thread로 답한다. 덮어쓸 답이 더 있으면 함께 준다. */
 async function openThread(page: Page, view: ThreadView, lines: readonly RecordLine[], more: Record<string, unknown> = {}) {
   await installFixtureBackend(page, {
-    read_settings: SEEN,
     thread_list: [summaryOf(view)],
     thread_get: answerByArg("thread", { [view.id]: view }),
     thread_read_record: answerByArg("thread", { [view.id]: lines }),

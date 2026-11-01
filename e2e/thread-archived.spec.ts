@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, ARCHIVE, ARCHIVED_DOCS, FIXTURE_COMMANDS, FIXTURE_THREAD, SEARCH_RESULTS, WORKS } from "./fixtures";
+import { answerByArg, ARCHIVE, ARCHIVED_DOCS, FIXTURE_THREAD, SEARCH_RESULTS, WORKS } from "./fixtures";
 import {
   archiveByMcp,
   installFixtureBackend,
@@ -14,7 +14,6 @@ import {
 import { atHome, fireSummary, lineOf, record, sentPayloads, specWrites, summaryOf, titleThrough, workView } from "./thread-records";
 import type { ArchiveEntry } from "@/features/archive/types";
 import type { SearchResults } from "@/features/search/types";
-import type { Settings } from "@/features/settings/types";
 import type { ThreadView } from "@/features/thread/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **Work를 보관하면 그 Work에 이은 Thread는 읽기만이 된다**(v1 티켓 38 · 구현 스펙 §4 · §5 · §11 「보관」 ·
@@ -51,8 +50,6 @@ test("요약 카드 「…」에서 보관하면 그 Thread는 읽기만이 되�
   page,
 }) => {
   await installFixtureBackend(page, {
-    // 「결정은 내가 합니다」는 이은 뒤 처음 한 번이다(흐름 「Work 만들기」가 잰다) — 이미 봤다.
-    read_settings: { ...(FIXTURE_COMMANDS.read_settings as Settings), seen: { decisions: true } } satisfies Settings,
     list_works: [...WORKS, made],
     list_archived_docs: answerByArg("slug", {
       ...ARCHIVED_DOCS,

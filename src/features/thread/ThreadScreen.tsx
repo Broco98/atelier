@@ -25,17 +25,12 @@ import { askTurn, nextOf } from "./asks";
 import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
 import { chipLists, CLAUDE_MODELS, currentModel } from "./chips";
-import { useCreateAgent } from "./create-agent";
-import DecisionsCard from "./DecisionsCard";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
 import GuideCard from "./GuideCard";
 import {
-  useAgentRoster,
   useChangeChip,
-  useDecisionsSeen,
-  useMarkDecisionsSeen,
   useMarkRead,
   useQueue,
   useRenameThread,
@@ -47,7 +42,7 @@ import {
 } from "./hooks";
 import { changedFiles } from "./log";
 import { reducedMotion } from "./motion";
-import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
+import { recipientOf } from "./mentions";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
@@ -66,7 +61,6 @@ import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard 
 import { HeadWork, SpaceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { headSpace, heldSpace, holdOf, holdPick, shownSpace, startSpace } from "./space-chip";
 import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
-import { decisionItems, decisionsDue } from "./work-proposal";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -77,7 +71,7 @@ import { decisionItems, decisionsDue } from "./work-proposal";
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · Work 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
 //   Thread에 Space가 있으면 「흐린 Space /」가 서고 누르면 그 Space 상세다(03 §10 — Space가 없으면 이름만). 오른쪽
 //   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
-//   다 없다, S23). 옛 Work 알약(브랜치)과 참여자 얼굴은 걷었다(S14 — 참여자는 본문의 이름 줄과 @ 메뉴가 말한다). 시안의 머리 줄 Work
+//   다 없다, S23). 옛 Work 알약(브랜치)과 참여자 얼굴은 걷었다(S14 — 참여자는 본문의 이름 줄이 말한다). 시안의 머리 줄 Work
 //   탭은 짓지 않는다 — Work 화면 몫이다.
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
 //   아래 28에 입력창과 트레이뿐이다. Host 얼굴은 걷었다(02 S26 — 시안과 Codex 첫 화면에 없다). 시안의 Space 제안 줄은 짓지 않는다(03
@@ -97,15 +91,12 @@ import { decisionItems, decisionsDue } from "./work-proposal";
 //   자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
 //   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
-//   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
-//   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
+//   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 선다.
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
 //   Project · Space 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
-// - **여럿이 한 Thread에**(v1 티켓 14) — 누가 있는지는 본문의 이름 줄과 @ 메뉴가 말한다(머리 줄 얼굴은 걷었다 — 02 S14).
-//   입력창의 @ 메뉴는 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의 Session
-//   값이다(§14) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
-//   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
+// - **여럿이 한 Thread에**(v1 티켓 14) — 누가 있는지는 본문의 이름 줄이 말한다(머리 줄 얼굴은 걷었다 — 02 S14). 모델 칩은 **다음 말을
+//   받을 참여자**의 Session 값이다(§14).
 // - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
 //   첫 Session이 뜬다 — 최근 Work를 골랐으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
 //   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
@@ -179,14 +170,6 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
     onPick: (next) => setHold((now) => holdPick(place.link, now, next)),
     scope,
   };
-  // @ 메뉴의 범위는 고른 Work를 따른다 — 그 Work의 Project 안 Agent도 부른다(v1 티켓 11).
-  const roster = useAgentRoster(work);
-  const agents = useMemo(() => agentChoices(roster, []), [roster]);
-  const createAgent = useCreateAgent();
-  const draft = useStore(threadUiStore, (state) => state.drafts[NEW_THREAD] ?? "");
-  const recipient = recipientOf(draft, agents);
-  // 첫 말을 받을 이 — 멘션한 Agent, 없으면 Host. 칩은 그 정의 파일의 모델 · 생각 깊이에서 시작한다(스토리 33).
-  const first = recipient?.agent ?? agents.find((one) => one.call === "host") ?? null;
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「매번 묻기」, 최근 Work면
   // 그 Work의 지금 정도이고, 모델 · 생각 깊이는 받는 Agent 정의의 값이다.
@@ -221,8 +204,8 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
     <ThreadComposer
       draftKey={NEW_THREAD}
       models={CLAUDE_MODELS}
-      model={picks.model ?? first?.model?.prefer ?? "default"}
-      effort={picks.effort ?? first?.model?.effort ?? null}
+      model={picks.model ?? "default"}
+      effort={picks.effort}
       onModel={(model) => setPicks((now) => ({ ...now, model }))}
       onEffort={(effort) => setPicks((now) => ({ ...now, effort }))}
       commands={[]}
@@ -230,9 +213,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
       busy={starting !== null}
       onSend={start}
       onNewThread={() => {}}
-      agents={agents}
-      recipient={recipient}
-      onCreateAgent={createAgent}
+      recipient={null}
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
       // 트레이는 첫 말 전에 상자 아래에서 Work · Space를 고르고, 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 상자 위에서
@@ -515,16 +496,6 @@ function useFoldSidebar(expanded: boolean) {
   }, [expanded]);
 }
 
-/** 참여자의 이름 · 얼굴은 기록의 들어옴 줄(`fold.ts`의 `cast`), 누가 앉았는지는 `thread.json`의 참여자 줄이 정본이다. */
-function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
-  return view.participants.map((one) => ({
-    handle: one.handle,
-    from: one.from,
-    name: model.cast[one.handle]?.name ?? one.handle,
-    avatar: model.cast[one.handle]?.avatar ?? null,
-  }));
-}
-
 /**
  * Thread 본문 — 흐름과 입력창. `onShowChanges`는 PR 카드의 「변경 사항 보기」다(v1 티켓 36) — 넓힌 카드(v1 티켓 35)의 변경으로 간다.
  */
@@ -545,18 +516,12 @@ function ThreadBody({
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread));
   // 다시 켠 뒤면 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model: ThreadModel = foldOf(lines, view.live ? null : view.lastSeq);
-  const roster = useAgentRoster(view.work);
-  const agents = useMemo(() => agentChoices(roster, seatedOf(view, model)), [roster, view, model]);
-  const createAgent = useCreateAgent();
   const draft = useStore(threadUiStore, (state) => state.drafts[thread] ?? "");
-  const recipient = recipientOf(draft, agents);
-  // 다음 말을 받을 참여자 — 멘션이 없거나 모르는 이름이면 Host, 앉은 Agent를 멘션하면 그다. 아직 앉지 않은 Agent면 참여자가 없다.
-  const target = recipient?.agent ?? null;
-  const who = target ? (target.seated ? target.handle : null) : "host";
+  const recipient = recipientOf(draft, view.participants);
+  // 다음 말을 받을 참여자 — 멘션이 없거나 앉지 않은 이름이면 Host, 앉은 Agent를 멘션하면 그다.
+  const who = recipient?.agent?.handle ?? "host";
   const participant = view.participants.find((one) => one.handle === who) ?? null;
   const lists = useMemo(() => chipLists(lines, participant?.handle ?? "host"), [lines, participant?.handle]);
-  // 앉지 않은 받는 이(새로 부를 Agent · 아직 들어오지 않은 Host)는 정의 파일의 값을 보이기만 한다.
-  const preference = (target ?? agents.find((one) => one.call === "host"))?.model ?? null;
   const host = view.participants.find((one) => one.handle === "host") ?? null;
   const change = useChangeChip();
   const setMode = useSetMode();
@@ -590,15 +555,9 @@ function ThreadBody({
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
   const askingCwd = asking ? (view.participants.find((one) => one.handle === asking.who)?.cwd ?? null) : null;
-  const seen = useDecisionsSeen();
-  const markSeen = useMarkDecisionsSeen();
-  // 「결정은 내가 합니다」(S31) — 걸린 물음이 먼저다. 이 카드는 기다리는 이가 없는 안내다. 줄은 Library Host 정의에서 선다 — Host는
-  // Library에만 있고, Library 목록은 사이드바가 이미 읽어 둔다.
-  const decisions = asking === null && decisionsDue(model, seen);
   // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
   // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
   const working = model.running && asking === null;
-  const library = useAgentRoster(null);
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -768,8 +727,8 @@ function ThreadBody({
               draftKey={thread}
               // Session을 연 적 없는 참여자(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
               models={participant ? (lists.models ?? CLAUDE_MODELS) : null}
-              model={participant ? currentModel(lists, participant) : (preference?.prefer ?? null)}
-              effort={participant ? participant.effort : (preference?.effort ?? null)}
+              model={participant ? currentModel(lists, participant) : null}
+              effort={participant ? participant.effort : null}
               onModel={(value) => chip({ field: "model", value })}
               onEffort={(value) => chip({ field: "effort", value })}
               commands={lists.commands}
@@ -782,10 +741,8 @@ function ThreadBody({
               onStop={() => threadApi.stop(thread)}
               onNewThread={() => void navigate({ to: "/" })}
               problem={problem ?? chipProblem}
-              agents={agents}
               recipient={recipient}
               recipientRunning={participant !== null && model.answering.includes(participant.handle)}
-              onCreateAgent={createAgent}
               level={view.askLevel}
               onLevel={pickLevel}
               tray={tray}
@@ -817,10 +774,6 @@ function ThreadBody({
                     running={model.running}
                     onStop={() => void threadApi.stop(thread).catch((error: unknown) => setChipProblem(String(error)))}
                   />
-                ) : decisions ? (
-                  <Arriving motion="card-rise">
-                    <DecisionsCard items={decisionItems(library)} onDone={() => markSeen.mutate()} />
-                  </Arriving>
                 ) : null
               }
               above={
