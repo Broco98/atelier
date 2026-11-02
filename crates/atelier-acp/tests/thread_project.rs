@@ -366,7 +366,7 @@ fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로
     host.shut_down();
 
     let (args, cwd) = last_launch(&sandbox, &thread);
-    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "작업 폴더는 그대로 Thread 폴더다(S11)");
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread).join("work")), "작업 폴더는 그대로 Thread 폴더의 `work/`다");
     assert_eq!(
         added_dirs(&args),
         [api.display().to_string(), web.display().to_string()],
@@ -377,7 +377,7 @@ fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로
     let decided = of_kind(&record, "permission").into_iter().find(|line| line["payload"]["state"] == "decided").unwrap().clone();
     let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
     assert_eq!(decided["payload"]["optionId"], "reject", "함께 연 폴더여도 고칠 수 있는 자리가 아니다: {decided}");
-    assert!(reason.starts_with(&format!("채팅 폴더 밖의 파일이라 고칠 수 없어요: {}", api.display())), "{reason}");
+    assert!(reason.starts_with(&format!("`work/` 밖의 파일이라 고칠 수 없어요: {}", api.display())), "{reason}");
     assert!(
         reason.ends_with(
             "— `api-server` Project를 고치려면 먼저 채팅 도구 `propose_work`로 그 Project를 넣은 작업공간을 만든 뒤 `start_editing`을 부르세요"
@@ -418,7 +418,7 @@ fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다�
     sandbox.wait_thread_kind(&thread, "turn-end", 2);
     let (args, cwd) = last_launch(&sandbox, &thread);
     assert!(has_pair(&args, "--resume", &session), "같은 Session을 이어 연다 — 앞 맥락을 기억한다: {args:?}");
-    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "작업 폴더는 그대로다");
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread).join("work")), "작업 폴더는 그대로다");
     assert_eq!(added_dirs(&args), [api.display().to_string(), web.display().to_string()], "새로 등록한 Project도 함께 연다");
 
     let removal = atelier_core::remove_project(&sandbox.data_root(), "api-server").expect("등록 해제");
@@ -471,7 +471,7 @@ fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴
     host.answer_work(&thread, &request, atelier_acp::WorkChoice::Create { projects: Vec::new(), branch: None }).expect("Work 만들기");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
     let (args, cwd) = last_launch(&sandbox, &thread);
-    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "이은 턴의 작업 폴더는 Thread 폴더 그대로다(v1 티켓 30)");
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread).join("work")), "이은 턴의 작업 폴더는 Thread 폴더의 `work/` 그대로다(v1 티켓 30)");
     assert_eq!(added_dirs(&args), [api.display().to_string()], "Work 전에는 등록된 Project를 읽기로 함께 열었다(끝 점검 39(a))");
 
     let session = sandbox.thread_session_id(&thread);
