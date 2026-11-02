@@ -1558,7 +1558,25 @@ export async function 사람메뉴로간다(page: Page, label: 지금화면): Pr
   await expect(page.getByRole("menu")).toHaveCount(0);
 }
 
-/** `Processes` 화면의 제목 — 머리 줄의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** 사이드바 위 칸(restart 02a-3 · `nav` 「가는 곳」)의 지금 화면 다섯 — 시안 Main의 차례다(`nav-items.ts`). */
+export type 가는곳 = "Services" | "Projects" | "Terminal" | "Processes" | "Archive";
+
+/**
+ * 위 칸의 그 화면 줄. 이름은 라벨로 시작한다 — `Processes` 끝에는 nav 메타(아틀리에 CPU · 메모리 합계, 손볼 것의 `●`)가, `Terminal` 끝에는
+ * 셸 수가 붙는다. 사람 메뉴(`사람줄`)를 걷은 뒤(02a-3) 지금 화면들로 가는 길이 이 줄이다.
+ */
+export const 가는곳줄 = (page: Page, label: 가는곳) =>
+  page.getByRole("navigation", { name: "가는 곳", exact: true }).getByRole("button", { name: new RegExp(`^${label}`) });
+
+/**
+ * 위 칸의 그 줄을 누른다 — 옛 `사람메뉴로간다`의 자리다. 고른 화면이 섰는지는 부르는 쪽이 제 앵커로 잰다. 메뉴를 거치지 않아 **시계를
+ * 세운 검사에서도 된다**(메뉴는 열 때 타이머 · 프레임을 기다렸다).
+ */
+export async function 가는곳으로간다(page: Page, label: 가는곳): Promise<void> {
+  await 가는곳줄(page, label).click();
+}
+
+/** `Processes` 화면의 제목 — 몸의 머리(h1, restart 03-11)다. 틀의 머리 줄의 이름은 제목 역할이 없다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
@@ -1625,11 +1643,12 @@ export const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "spec 
 
 /**
  * **앱 안의 길로** spec 레이아웃 편집기에 들어가 저장하지 않은 초안을 하나 만든다 — `decisions.md`의 설명 한 칸이다
- * (`spec-layout-leave.spec.ts`의 `draftOne`과 같은 초안). 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 비므로, 사이드바 바닥의
- * `Settings`(사람 메뉴 — v1 티켓 07)로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
+ * (`spec-layout-leave.spec.ts`의 `draftOne`과 같은 초안). 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 비므로, 사이드바 맨 아래
+ * 「설정」 줄로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
  */
 export async function 편집기에초안(page: Page): Promise<void> {
-  await 사람메뉴로간다(page, "Settings");
+  // 사이드바 맨 아래 「설정」 줄(restart 02a-3) — 한때 사람 메뉴의 `Settings`였다.
+  await page.locator("aside").getByRole("button", { name: "설정", exact: true }).click();
   await 설정항목(page, "spec 레이아웃").click();
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
   await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
@@ -1763,11 +1782,20 @@ export async function awaitSpawned(page: Page, count: number): Promise<void> {
  *
  * _한때 누르기 전에도 기다렸다_ — 첫 칸이 글꼴을 기다린 뒤 붙어 있을 때만 떠서, 그 전에 새 칸이
  * 켜지면 첫 칸의 spawn이 둘째 칸보다 늦게(또는 영영 안) 나갔다. 그 기다림은 앱의 결함을 덮고 있었다.
+ *
+ * **작업공간 화면의 `+`는 「새 탭」 메뉴다**(restart 02a-8) — 맨 윗줄이 「새 채팅」이고 그 밑이 셸 줄이라, 셸 줄(프로젝트 하나 이하면
+ * 「새 셸」, 둘 이상이면 「모든 프로젝트」 — ⌘T의 자리)을 고른다. `/terminal`의 `+`(「셸 열기」)는 누르면 곧바로 연다.
  */
 export async function openShell(page: Page): Promise<void> {
   const tabs = page.locator('[data-tab="shell"]');
   const before = await tabs.count();
-  await page.locator('[data-tab="new"]').click();
+  const plus = page.locator('[data-tab="new"]');
+  const newTabMenu = (await plus.getAttribute("aria-label")) === "새 탭";
+  await plus.click();
+  if (newTabMenu) {
+    await page.getByRole("menu").getByRole("menuitem", { name: /^(새 셸|모든 프로젝트)$/ }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  }
   await expect(tabs).toHaveCount(before + 1);
   await awaitSpawned(page, before + 1);
 }
@@ -1893,7 +1921,7 @@ export async function 셸셋을띄운다(page: Page): Promise<void> {
   await typeIntoShell(page);
   await openShell(page);
 
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);

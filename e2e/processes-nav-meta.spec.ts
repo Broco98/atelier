@@ -11,13 +11,13 @@ import {
   setWindowFocused,
   stubWindowFocus,
   unknownIpcCalls,
-  사람메뉴로간다,
+  가는곳으로간다,
+  가는곳줄,
   주소로간다,
-  사람줄,
   시계를세운다,
   칸들,
 } from "./harness";
-import { formatMemory } from "@/features/processes/metrics";
+import { formatNavMeta } from "@/features/processes/metrics";
 import { NEEDS_LOOK_LABEL, SEEN_CAP, SUMMARY_LAG_MS } from "@/features/processes/needs-look";
 import { identityOf as 신원, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 
@@ -25,9 +25,9 @@ import { identityOf as 신원, processRow, snapshotFixture } from "@/features/pr
 //
 // `●` 판정(본 집합 + 지금 집합)은 L2가 표로 잰다(`needs-look.test.ts`), 무엇이 `●`를 켜는 기록인지는 Rust L1이 잰다
 // (`cleanup_log::look_head`). 여기서 보는 것은 요약 픽스처가 **진짜 요약 폴러(10초) · 진짜 사이드바 · 진짜 화면 열기와 창 포커스**를
-// 지나 `●`가 서고 꺼지는가다. 그 메타(합계 · `●`)는 한때 nav `Processes` 옆에, 그 뒤(v1 티켓 07 · S27) 사람 줄 오른쪽에 늘 섰고, 02
-// 티켓 04가 사람 메뉴의 `Processes` 줄 끝으로 옮겼다(02 스펙 S12 · 스토리 32) — 그래서 여기서는 메뉴를 열어 그 줄을 읽는다(`메타를본다`).
-// 폴러는 메뉴가 닫혀도 사람 줄의 몸에서 돈다(02 결정 「04 · 메모리 합계 폴러」) — `박자`는 메뉴가 닫힌 채 요약이 다시 불리는 것을 센다.
+// 지나 `●`가 서고 꺼지는가다. 그 메타(아틀리에 CPU · 메모리 합계 · `●`)는 사이드바 위 칸 `Processes` 줄 끝에 늘 선다(restart 02a-3 · 03-11) —
+// 한때(02 티켓 04 – 02a-2) 사람 메뉴의 `Processes` 줄 끝이라 메뉴를 열어 읽었다. 폴러는 그 줄의 몸에서 돈다(`ProcessesItem`) — `박자`는 요약이
+// 다시 불리는 것을 센다.
 // 합계가 그 줄에 서는 것(표기 함수의 글자)은 틀과 사이드바 spec(`frame-sidebar.spec.ts`)이 잰다.
 //
 // **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts`의 1.6초 검사 머리말): `install()`은 페이지를 열기 **전에**
@@ -35,28 +35,26 @@ import { identityOf as 신원, processRow, snapshotFixture } from "@/features/pr
 // 속도에 안 흐려진다. 요약을 바꾸는 것은 01의 답 바꾸기다(`replaceAnswer`) — 바꾼 뒤 다음 박자가 그 답을 가져온다.
 
 /**
- * 사람 메뉴를 열어 `Processes` 줄을 `본다`에 넘기고 닫는다 — 메타(합계 · `●`)는 그 줄 끝에 선다(`PersonMenu`). 줄이 서고 합계를 품었다는
- * 것이 앵커다(「●가 없다」가 메뉴가 안 떠서 초록이 아니게). **시계를 세운 동안은 메뉴가 안 뜬다**(`사람메뉴로간다` 머리말) — 그래서 여는
- * 동안만 시계를 흘리고(`흘린다`) 닫은 뒤 다시 세운다. 흘린 동안 요약 박자가 하나 더 와도 `박자`는 앞뒤의 부른 수로 재므로 셈이 안
- * 어긋나고, 같은 답을 한 번 더 가져올 뿐이다.
+ * 위 칸 `Processes` 줄을 `본다`에 넘긴다 — 메타(합계 · `●`)는 그 줄 끝에 선다(`ProcessesNavMeta`). 줄이 서고 합계를 품었다는 것이 앵커다(「●가
+ * 없다」가 줄이 안 서서 초록이 아니게). 메뉴를 열지 않으니 시계를 세운 채 읽는다.
  */
-async function 메타를본다(page: Page, 본다: (줄: Locator) => Promise<void>, { 흘린다 = true } = {}): Promise<void> {
-  if (흘린다) await page.clock.resume();
-  await 사람줄(page).click();
-  const 줄 = page.getByRole("menu").getByRole("menuitem", { name: /^Processes/ });
+async function 메타를본다(page: Page, 본다: (줄: Locator) => Promise<void>): Promise<void> {
+  const 줄 = 가는곳줄(page, "Processes");
   await expect(줄).toBeVisible();
-  await expect(줄).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  // 글은 아틀리에 CPU(정수) · 메모리 합계다(restart 03-11 · 시안 Main 「13% · 3.3GB」).
+  await expect(줄).toContainText(formatNavMeta(PROCESS_SUMMARY.cpu, PROCESS_SUMMARY.total)!);
   await 본다(줄);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  if (흘린다) await 시계를세운다(page);
 }
 
 const 점 = (줄: Locator) => 줄.getByRole("img", { name: NEEDS_LOOK_LABEL, exact: true });
-/** 메뉴의 `Processes` 줄에 `●`가 선다. */
+/** 위 칸 `Processes` 줄에 `●`가 선다. */
 const 점이선다 = (page: Page, message?: string) => 메타를본다(page, (줄) => expect(점(줄), message).toBeVisible());
-/** 메뉴의 `Processes` 줄에 `●`가 없다 — 줄과 합계가 선 것을 앵커로 본 뒤다. */
+/** 위 칸 `Processes` 줄에 `●`가 없다 — 줄과 합계가 선 것을 앵커로 본 뒤다. */
 const 점이없다 = (page: Page, message?: string) => 메타를본다(page, (줄) => expect(점(줄), message).toHaveCount(0));
+
+/** 화면 「손볼 것」 구획의 출처 불명 갈래 줄(restart 03-11) — 스냅샷의 출처 불명이 화면에 섰다는 앵커다. */
+const 출처불명 = (page: Page) =>
+  page.getByRole("region", { name: "손볼 것", exact: true }).getByRole("treeitem", { name: /^출처 불명, 프로세스 \d+개/ });
 
 /** 스냅샷 박자 하나를 넘긴다 — 멈춘 시계를 조금씩 흘려 화면이 스냅샷을 **실제로 다시 물을 때까지**(`processes-shells.spec.ts`의 `다음박자`). */
 async function 스냅샷박자(page: Page): Promise<void> {
@@ -78,7 +76,7 @@ test("손볼 것이 새로 생기면 ●가 서고, 화면을 열면 꺼지며, 
   await page.clock.install();
   await installFixtureBackend(page);
   await page.goto("/projects");
-  await 메타를본다(page, (줄) => expect(점(줄)).toHaveCount(0), { 흘린다: false });
+  await 메타를본다(page, (줄) => expect(점(줄)).toHaveCount(0));
   await 시계를세운다(page);
 
   // 출처 불명 하나가 새로 선다 — 요약의 신원 목록에 하나를 더한다.
@@ -87,7 +85,7 @@ test("손볼 것이 새로 생기면 ●가 서고, 화면을 열면 꺼지며, 
   await 점이선다(page);
 
   // 화면을 연다(창 포커스 있음) — 그 순간 꺼진다.
-  // 시계를 세운 동안은 사람 메뉴가 안 뜬다 — 메뉴가 하는 push를 주소로 한다(`사람메뉴로간다` 머리말).
+  // 시계를 세운 동안은 앱 안의 이동을 주소로 한다(위 칸 줄이 하는 push와 같다) — 누르기의 대기가 세운 시계의 프레임에 걸리지 않게.
   await 주소로간다(page, "/processes");
   await expect(processesTitle(page)).toBeVisible();
   await 점이없다(page);
@@ -114,7 +112,7 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
   await installFixtureBackend(page);
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await 메타를본다(page, async () => {}, { 흘린다: false });
+  await 메타를본다(page, async () => {});
   await 시계를세운다(page);
 
   await setWindowFocused(page, false);
@@ -139,7 +137,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
   await installFixtureBackend(page);
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await 메타를본다(page, async () => {}, { 흘린다: false });
+  await 메타를본다(page, async () => {});
   await 시계를세운다(page);
 
   // 스냅샷에만 선다 — 요약은 아직 옛 장(손볼 것 없음)이다.
@@ -149,7 +147,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
     snapshotFixture({ verdict: { orphans: { confirmed: {}, unknown: { "OLD-1": [불명] } } }, recordHead: 5 }),
   );
   await 스냅샷박자(page);
-  await expect(page.getByRole("region", { name: "출처 불명", exact: true })).toBeVisible();
+  await expect(출처불명(page)).toBeVisible();
   await 점이없다(page);
 
   // 떠난 뒤에야 요약이 그 둘을 싣는다.
@@ -187,7 +185,7 @@ test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 �
   await installFixtureBackend(page);
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await 메타를본다(page, async () => {}, { 흘린다: false });
+  await 메타를본다(page, async () => {});
   await 시계를세운다(page);
 
   await replaceAnswer(
@@ -200,7 +198,7 @@ test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 �
     }),
   );
   await 스냅샷박자(page);
-  await expect(page.getByRole("region", { name: "출처 불명", exact: true })).toBeVisible();
+  await expect(출처불명(page)).toBeVisible();
   await page.clock.runFor(SUMMARY_LAG_MS);
   await replaceAnswer(page, "processes_summary", 요약({ unknown: 요약이본것 }));
   await 박자(page);
@@ -231,9 +229,9 @@ test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", a
   // 먼저 화면을 본다 — 그때 있던 자동 기록(머리 3)은 본 것이 된다.
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await 메타를본다(page, (줄) => expect(점(줄)).toHaveCount(0), { 흘린다: false });
+  await 메타를본다(page, (줄) => expect(점(줄)).toHaveCount(0));
 
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await awaitSpawned(page, 1);
   await 시계를세운다(page);

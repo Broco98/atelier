@@ -613,7 +613,8 @@ const HEAD_SCREENS: {
     url: "/processes",
     icon: "activity",
     words: ["Processes"],
-    controls: ["조용한 셸 모두 닫기"],
+    // 머리 줄에는 이름만 선다 — [조용한 셸 모두 닫기]는 몸의 머리(h1 「Processes」 옆)로 옮겼다(restart 03-11 · 시안 Processes `.pr-head`).
+    controls: [],
     absent: ["새로 고침", "고아 정리"],
   },
   {

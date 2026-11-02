@@ -8,7 +8,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  사람메뉴로간다,
+  가는곳으로간다,
   openShell,
   ownerlessText,
   processesTitle,
@@ -18,11 +18,10 @@ import {
   toastsNow,
   typeIntoShell,
   unknownIpcCalls,
-  화면머리,
   셸셋을띄운다,
   시계를세운다,
 } from "./harness";
-import { eventLabel } from "@/features/processes/cleanup-log";
+import { eventLabel, eventOutcome, eventWhat, loggedAt, reasonLabel } from "@/features/processes/cleanup-log";
 import { poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot } from "@/features/processes/types";
 
@@ -41,6 +40,11 @@ const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, ex
 const 셸트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
 const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
 const 버튼 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
+/**
+ * 몸의 머리 — 화면 이름(h1) · 잰 시각 · [조용한 셸 모두 닫기](restart 03-11 · 시안 Processes `.pr-head`). 한때 [조용한 셸 모두 닫기]는 틀의 머리
+ * 줄(`화면머리`)의 할 일이었다 — 지금 틀의 머리 줄에는 이름만 선다.
+ */
+const 몸머리 = (page: Page) => page.getByRole("main", { name: "Processes", exact: true }).locator("header");
 
 /** 한 묶음의 줄들 — 깊이와 접근성 이름. 화면에 선 차례 그대로다. */
 async function 줄들(scope: Locator): Promise<Array<{ level: string | null; name: string | null }>> {
@@ -94,13 +98,13 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
   // 주인이 있는 셸 하나(`Terminal`, pty 3) — 셸 트리의 앵커다.
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(ownerless).toBeVisible();
@@ -176,7 +180,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
   const 토스트 = (n: number) => toastOf(page, ownerlessText(n));
   await expect(토스트(3)).toBeVisible();
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(셸줄(ownerless, 1)).toBeVisible();
@@ -305,14 +309,14 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await archiveByMcp(page, WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
   // `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(셸줄(셸트리(page), 3)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
@@ -333,7 +337,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(셸줄(offscreen, 99)).toBeVisible();
 
   // ── [조용한 셸 모두 닫기] ── 살아 있는 셸 1 · 3 중 조용한 3만 닫는다.
-  await 버튼(화면머리(page), "조용한 셸 모두 닫기").click();
+  await 버튼(몸머리(page), "조용한 셸 모두 닫기").click();
   const quiet = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(quiet).toBeVisible();
   await 버튼(quiet, "모두 닫기").click();
@@ -413,12 +417,14 @@ const 기록: CleanupEvent[] = [
   },
 ];
 
-test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, 펼치면 대상의 이름 · 결과 · 명령줄이 선다", async ({ page }) => {
+// 사건 줄은 표의 한 줄이다(restart 03-11 · 시안 Processes `.pr-logrow`) — 때 · 까닭 · 무엇(첫 대상 「외 N개」) · 결과(가장 손볼 결과 — 못 끝냄은 경고
+// 잉크)의 칸이고, 줄의 이름은 까닭 · 대상 수 · 때의 한 문장이다. 구획 머리의 수는 「N건」이다.
+test("정리 기록이 최근 것부터 때 · 까닭 · 무엇 · 결과로 서고, 펼치면 대상의 이름 · 결과 · 명령줄이 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_cleanup_log: 기록 });
   await page.goto("/processes");
   const log = 묶음(page, "정리 기록");
   await expect(log).toBeVisible();
-  await expect(log.getByText("기록 3건", { exact: true })).toBeVisible();
+  await expect(log.getByText("3건", { exact: true })).toBeVisible();
   // 구획은 접혀 연다 — 참고용이다(ui-refresh 결정 28). 머리와 수는 서고 사건 줄은 안 그려진다. 머리를 눌러 편다.
   const 머리 = 버튼(log, "정리 기록");
   await expect(머리).toHaveAttribute("aria-expanded", "false");
@@ -427,8 +433,15 @@ test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, �
   await expect(머리).toHaveAttribute("aria-expanded", "true");
 
   const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
-  // 차례가 기록의 차례다 — 새것부터. 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다. 사건마다 목록의 한 항목이다.
-  await expect(사건들).toHaveText([/^셸 스스로 끝남/, /^시작 정리/, /^셸 닫기/]);
+  // 차례가 기록의 차례다 — 새것부터. 줄에 보이는 칸은 때 · 까닭 · 무엇 · 결과이고, 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다. 사건마다
+  // 목록의 한 항목이다.
+  await expect(사건들).toHaveText(
+    기록.map((event) => `${loggedAt(event.at)}${reasonLabel(event.reason)}${eventWhat(event)}${eventOutcome(event).text}`),
+  );
+  await expect(사건들.nth(1)).toContainText("python3 외 1개");
+  // 결과 칸은 가장 손볼 결과다 — 못 끝냄이 섞인 사건은 「못 끝냄」이고 경고 잉크다. 앵커: 다른 사건의 결과 칸은 그 잉크가 아니다.
+  await expect(사건들.nth(1).locator('[data-outcome="bad"]')).toHaveText("못 끝냄");
+  await expect(log.locator('[data-outcome="bad"]')).toHaveCount(1);
   await expect(log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("listitem")).toHaveCount(3);
   expect(await 사건들.evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")))).toEqual(
     기록.map(eventLabel),
@@ -505,9 +518,9 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   });
   await 셸셋을띄운다(page);
   await openShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
-  const quietAll = 버튼(화면머리(page), "조용한 셸 모두 닫기");
+  const quietAll = 버튼(몸머리(page), "조용한 셸 모두 닫기");
 
   // ── 취소 ──
   await quietAll.click();
@@ -545,10 +558,10 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
 
-  await 버튼(화면머리(page), "조용한 셸 모두 닫기").click();
+  await 버튼(몸머리(page), "조용한 셸 모두 닫기").click();
   const toast = toastOf(page, "닫을 조용한 셸이 없어요");
   await expect(toast).toBeVisible();
   // 앵커: 물었다 — 안 물어서 없다고 한 것이 아니다.

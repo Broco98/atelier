@@ -7,7 +7,7 @@ import {
   installFixtureBackend,
   kills,
   markRunning,
-  사람메뉴로간다,
+  가는곳으로간다,
   openShell,
   typeIntoShell,
   unknownIpcCalls,
@@ -20,7 +20,7 @@ import {
   토큰값,
   토큰색,
 } from "./harness";
-import { formatPort } from "@/features/processes/metrics";
+import { formatMemory, formatPort } from "@/features/processes/metrics";
 import { metricsOf, poolShell, processRow as 행, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
@@ -77,7 +77,7 @@ test("work 행이 맨 윗단이고 그 아래 셸 행 · 자손 행 · 셸 도�
   await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3]) });
   await 셸셋을띄운다(page);
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(셸행(page, 1)).toBeVisible();
   expect(await 줄들(page)).toEqual([
@@ -113,7 +113,7 @@ test("자손 행의 이름에 스냅샷의 명령줄이 툴팁으로 서고, 줄
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
 
   const node = 트리(page).getByRole("treeitem", { name: "node", exact: true });
   await expect(node.getByText("node", { exact: true })).toHaveAttribute("title", "node vite --port 5173");
@@ -146,7 +146,7 @@ test("프로세스 줄의 [끝내기] · ⋯은 줄에 포인터나 포커스가
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
 
   const node = 트리(page).getByRole("treeitem", { name: "node", exact: true });
   const 동작 = [
@@ -204,7 +204,7 @@ test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 
   );
   await markRunning(page, "claude", 4);
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(셸행(page, 1)).toHaveAttribute("aria-label", /^zsh, 나를 기다림 \d+s$/);
   await expect(셸행(page, 1)).toContainText("나를 기다림");
   await expect(셸행(page, 2)).toHaveAttribute("aria-label", "zsh, 도는 중 · 서브에이전트 2");
@@ -224,13 +224,13 @@ test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입�
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
   // 다른 화면 — 그 work의 첫 셸(켜진 칸은 둘째다)로 간다.
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await 셸행(page, 1).getByRole("button", { name: "이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}\\?.*tab=terminal`));
   await expect.poll(() => 켜진셸(page), { message: "[이동]한 셸이 켜지지 않았다" }).toBe(shellKeyOf(1));
@@ -238,7 +238,7 @@ test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입�
   await expect(셸입력(page), "[이동]한 셸에 포커스가 없다").toBeFocused();
 
   // 최상위 터미널의 셸로 — 화면이 `/terminal`로 옮긴다.
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await 셸행(page, 3).getByRole("button", { name: "이동", exact: true }).click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => 켜진셸(page)).toBe(shellKeyOf(3));
@@ -260,7 +260,7 @@ test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫�
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
 
   await 셸행(page, 1).getByRole("button", { name: "닫기", exact: true }).click();
   // 앵커: 닫기 전 물음이 나갔고 그 답으로 닫았다 — 묻기 전에 닫은 것이 아니다.
@@ -292,7 +292,7 @@ test("셸 묶음이 트리 역할이고, 셸 행의 접근성 이름이 이름�
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
 
   await expect(트리(page)).toBeVisible();
   await expect(트리(page).getByRole("treeitem", { name: "zsh, 띄운 프로세스 2개", exact: true })).toHaveAttribute(
@@ -329,7 +329,7 @@ test("작업 · 셸 · 자식 있는 프로세스 줄이 셰브론으로 접히�
     pty_close_check: answerByArg("id", { 1: { command: false, descendants: 2 } }),
   });
   await 셸셋을띄운다(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(셸행(page, 1)).toBeVisible();
 
   const 작업 = `${plainWork.title}, 셸 2개`;
@@ -354,12 +354,12 @@ test("작업 · 셸 · 자식 있는 프로세스 줄이 셰브론으로 접히�
   await expect(node).toHaveAttribute("aria-expanded", "false");
   await expect(셰브론(node, "node", false)).toBeVisible();
   expect(await 펼침들(page)).toEqual([처음[0], 처음[1], 처음[2], ["node", "false"], 처음[5], 처음[6], 처음[7]]);
-  // 접은 줄의 [끝내기]는 그 트리 전부를 넘긴다 — 숨은 esbuild까지다(확인 창의 수가 펼쳤을 때와 같다).
+  // 접은 줄의 [끝내기]는 그 트리 전부를 넘긴다 — 숨은 esbuild까지다(줄 밑 묻는 줄의 수가 펼쳤을 때와 같다 — restart 03-11).
   await node.getByRole("button", { name: "끝내기", exact: true }).click();
-  const 끝내기창 = page.getByRole("alertdialog", { name: "'node' 끝내기" });
-  await expect(끝내기창).toContainText("이 프로세스와 그 밑에서 뜬 프로세스 1개를 끝내요.");
-  await 끝내기창.getByRole("button", { name: "취소", exact: true }).click();
-  await expect(끝내기창).toHaveCount(0);
+  const 묻는줄 = page.getByRole("alertdialog", { name: "node 프로세스를 끝낼까요?", exact: true });
+  await expect(묻는줄).toContainText("그 밑에서 뜬 프로세스 1개도 함께 끝내요.");
+  await 묻는줄.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(묻는줄).toHaveCount(0);
 
   // ── 셸 줄 ── 접으면 셸 도우미와 자손이 다 빠진다. [닫기]는 그대로 서고, 확인 창의 수가 그 셸의 트리 전부다.
   await 셰브론(셸행(page, 1), "zsh", true).click();
@@ -386,28 +386,29 @@ test("작업 · 셸 · 자식 있는 프로세스 줄이 셰브론으로 접히�
   expect(await 펼침들(page)).toEqual([처음[0], 처음[1], 처음[2], ["node", "false"], 처음[5], ["Terminal, 셸 1개", "false"]]);
 
   // 다른 화면에 갔다 오면 다 펼친 처음이다 — 기억은 화면에 있는 동안만이다.
-  await 사람메뉴로간다(page, "Projects");
+  await 가는곳으로간다(page, "Projects");
   await expect(트리(page)).toHaveCount(0);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(셸행(page, 1)).toBeVisible();
   expect(await 펼침들(page)).toEqual(처음);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 22 — **트리의 줄이 DS `ProcessTree`의 줄이다**(스토리 59 · DS `.at-pr-row` · `.at-th` · `.at-sechead` · `.at-port`). 줄은
-// 갈래마다 높이와 글자가 깊이를 거든다: 작업 40 · 14/20 500, 셸 32 · 13/18, 프로세스 30 · 13/18 `fg-secondary`, 셸 도우미 28 · 12/18
-// `fg-tertiary` — 높이 넷은 DS `.at-pr-row`가 갈래마다 적은 수라 그 수로 센다. 줄은 옅은 면 묶음 없이 흰 카드 위에 서고, 안쪽 좌우 12에
-// 아래 0.5px `border` 선이 줄을 가르며, 포인터가 오르면 `fill-soft`다. 열 머리는 같은 격자 위의 32 · 12/18 `fg-tertiary` 줄이고 아래에
-// 1px `rule` 선이 선다 — 요약 타일에서 22 아래다. 구획 머리는 36 · 13/18 600에 수는 400 `fg-tertiary`다. 포트는 `fill-soft` 칩(20 ·
-// 안쪽 6 · `radius-sm` · mono 12 `fg-secondary`)이다.
-test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 · 도우미 28과 글자 단계, 줄 아래 0.5px 선, 열 머리 32 · 구획 머리 36, 포트 칩", async ({
+// restart 03-11 — **트리의 줄이 시안 Processes의 표 줄이다**(스토리 137 · 시안 `.pr-row` · `.pr-th` · `.pr-sec` · `.pr-port`). 줄은 깊이와 갈래에
+// 상관없이 모두 32 · 13/18이고 묶는 줄(작업 · 셸)의 이름이 500이다 — 한때(codex-ds 티켓 22) DS `ProcessTree`처럼 작업 40 · 셸 32 · 프로세스 30 ·
+// 도우미 28이 깊이를 거들었다. 셸 도우미는 12/18 `fg-tertiary`의 옅은 줄이다(P1). 줄은 옅은 면 묶음 없이 카드 위에 서고, 안쪽 좌우 12에 아래
+// 0.5px `border` 선이 줄을 가르며, 포인터가 오르면 `fill-soft`다. 열은 이름 · CPU · 메모리 · 포트 · 동작 차례다(한때 메모리가 CPU 앞). 열 머리는
+// 같은 격자 위의 32 · 12/18 `fg-tertiary` 줄이고 아래에 1px `rule` 선이 선다. 구획 머리는 표의 한 줄이다 — 34 · 위 6 · 13/18 500, 수 400
+// `fg-tertiary`, 그 구획의 CPU · 메모리 합이 줄의 숫자 열에 선다. 포트는 칩이 아니라 고정폭 12 `fg-tertiary` 글자다.
+test("트리의 줄이 시안 표 줄이다 — 모두 32 · 13, 묶는 줄 이름 500 · 도우미 12, 줄 아래 0.5px 선, 열 차례 이름 · CPU · 메모리 · 포트, 열 머리 32 · 구획 머리 34, 포트 글자", async ({
   page,
 }) => {
   const lastOutputMs = Date.now() - 2 * 3_600_000;
+  const MiB = 1024 ** 2;
   await installFixtureBackend(page, {
     processes_snapshot: snapshotFixture({
       verdict: {
-        descendants: { [shellKeyOf(1)]: [gitstatusd, { ...vite, metrics: metricsOf(300 * 1024 ** 2, 12, [5173]) }, esbuild] },
+        descendants: { [shellKeyOf(1)]: [gitstatusd, { ...vite, metrics: metricsOf(300 * MiB, 12, [5173]) }, esbuild] },
         helpers: [gitstatusd.id],
       },
       pool: [poolShell(1, shellKeyOf(1), lastOutputMs)],
@@ -416,32 +417,25 @@ test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 �
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(셸행(page, 1)).toBeVisible();
 
   const 작업줄 = 트리(page).locator('[role="treeitem"][aria-level="1"]');
   const 프로세스줄 = 트리(page).locator('[role="treeitem"][aria-level="3"]:not([data-helper])');
   const 도우미줄 = 트리(page).locator("[data-helper]");
-  const [진한글자, 흐린글자, 옅은글자] = [
-    await 토큰색(page, "--fg"),
-    await 토큰색(page, "--fg-secondary"),
-    await 토큰색(page, "--fg-tertiary"),
-  ];
+  const [진한글자, 옅은글자] = [await 토큰색(page, "--fg"), await 토큰색(page, "--fg-tertiary")];
 
-  // 줄 — 갈래마다 높이 · 글자 단계 · 색, 안쪽 좌우 12.
+  // 줄 — 모두 32 · 13/18 · 안쪽 좌우 12. 셸 도우미만 12/18 `fg-tertiary`다.
   const 줄표: Array<[string, Locator, string[]]> = [
-    ["작업공간", 작업줄, ["40px", "14px", "20px", "500", 진한글자, "12px", "12px"]],
-    ["셸", 셸행(page, 1), ["32px", "13px", "18px", "400", 진한글자, "12px", "12px"]],
-    ["프로세스", 프로세스줄, ["30px", "13px", "18px", "400", 흐린글자, "12px", "12px"]],
-    ["셸 도우미", 도우미줄, ["28px", "12px", "18px", "400", 옅은글자, "12px", "12px"]],
+    ["작업공간", 작업줄, ["32px", "13px", "18px", 진한글자, "12px", "12px"]],
+    ["셸", 셸행(page, 1), ["32px", "13px", "18px", 진한글자, "12px", "12px"]],
+    ["프로세스", 프로세스줄, ["32px", "13px", "18px", 진한글자, "12px", "12px"]],
+    ["셸 도우미", 도우미줄, ["32px", "12px", "18px", 옅은글자, "12px", "12px"]],
   ];
   const 선 = await 토큰색(page, "--border");
   for (const [이름, 줄, 값] of 줄표) {
     await expect(줄, 이름).toHaveCount(1);
-    expect(
-      await 칠한값(줄, "height", "font-size", "line-height", "font-weight", "color", "padding-left", "padding-right"),
-      `${이름} 줄`,
-    ).toEqual(값);
+    expect(await 칠한값(줄, "height", "font-size", "line-height", "color", "padding-left", "padding-right"), `${이름} 줄`).toEqual(값);
     // 줄 아래 0.5px `border` 선 — 테두리가 아니라 줄 안쪽 바닥에 칠한 면이다.
     const 아랫선 = await 줄.evaluate((el) => {
       const line = getComputedStyle(el, "::after");
@@ -449,17 +443,19 @@ test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 �
     });
     expect(아랫선, `${이름} 줄 아랫선`).toEqual(["absolute", "0px", "0.5px", 선]);
   }
-  expect(await 칠한값(도우미줄, "letter-spacing"), "셸 도우미 글자 자간").toEqual(["0.3px"]);
+  // 묶는 줄(작업 · 셸)의 이름은 500, 프로세스 줄의 이름은 400이다(시안 `.pr-row.node .t`).
+  expect(await 칠한값(작업줄.getByText("Terminal", { exact: true }), "font-weight"), "작업 줄 이름").toEqual(["500"]);
+  expect(await 칠한값(셸행(page, 1).getByText("zsh", { exact: true }), "font-weight"), "셸 줄 이름").toEqual(["500"]);
+  expect(await 칠한값(프로세스줄.getByText("node", { exact: true }), "font-weight"), "프로세스 줄 이름").toEqual(["400"]);
 
   // 줄은 옅은 면 묶음 없이 카드 위에 선다 — 포인터가 오르면 `fill-soft`다.
   expect(await 칠한값(프로세스줄, "background-color"), "줄의 바탕").toEqual(["rgba(0, 0, 0, 0)"]);
   await 프로세스줄.hover();
   await expect.poll(() => 칠한값(프로세스줄, "background-color"), { message: "줄에 오른 면" }).toEqual([await 토큰색(page, "--fill-soft")]);
 
-  // 열 머리 — 같은 격자 위의 32 · 12/18 `fg-tertiary` 줄, 안쪽 12, 아래 1px `rule` 선. 「이름」은 줄의 안쪽 끝에, 「메모리」의 오른끝은
-  // 작업 줄 메모리 칸의 오른끝에 선다. 요약 타일에서 22 아래다.
-  const 메모리머리 = page.getByText("메모리", { exact: true });
-  const 열머리 = 메모리머리.locator("..");
+  // 열 머리 — 표의 첫 줄. 같은 격자 위의 32 · 12/18 `fg-tertiary` 줄, 안쪽 12, 아래 1px `rule` 선.
+  const 열머리 = page.locator("[data-process-table] > div").first();
+  await expect(열머리).toHaveText("이름CPU · 맥 전체 기준메모리포트");
   expect(
     await 칠한값(열머리, "height", "font-size", "line-height", "color", "padding-left", "padding-right"),
     "열 머리",
@@ -469,47 +465,52 @@ test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 �
     return [line.position, line.bottom, line.height, line.backgroundColor];
   });
   expect(머리선, "열 머리 아랫선").toEqual(["absolute", "0px", "1px", await 토큰색(page, "--rule")]);
-  const [이름칸, 메모리칸, 작업상자, 작업메모리, 요약상자, 열머리상자] = await Promise.all([
-    열머리.getByText("이름", { exact: true }).boundingBox(),
-    메모리머리.boundingBox(),
-    작업줄.boundingBox(),
-    작업줄.locator('[data-cell="memory"]').boundingBox(),
-    page.getByRole("region", { name: "요약", exact: true }).boundingBox(),
-    열머리.boundingBox(),
-  ]);
-  expect(Math.round(이름칸!.x - 작업상자!.x), "「이름」은 줄 안쪽 12에").toBe(12);
-  expect(Math.round(메모리칸!.x + 메모리칸!.width), "「메모리」의 오른끝").toBe(Math.round(작업메모리!.x + 작업메모리!.width));
-  expect(Math.round(열머리상자!.y - (요약상자!.y + 요약상자!.height)), "요약 타일과 열 머리 사이").toBe(22);
 
-  // 구획 머리 — 36 · 안쪽 12, 제목 13/18 600, 수 13 · 400 `fg-tertiary`.
-  const 구획머리 = page.getByRole("region", { name: "작업공간", exact: true }).locator(":scope > div").first();
-  expect(await 칠한값(구획머리, "height", "padding-left", "padding-right"), "구획 머리").toEqual(["36px", "12px", "12px"]);
-  expect(await 칠한값(구획머리.getByText("작업공간", { exact: true }), "font-size", "line-height", "font-weight"), "구획 제목").toEqual([
+  // 열 차례 — 이름 · CPU · 메모리 · 포트. 머리의 「이름」은 줄의 안쪽 끝에, 숫자 열의 머리는 오른쪽 끝이 그 칸의 오른쪽 끝에 맞는다.
+  const 상자 = async (target: Locator) => (await target.boundingBox())!;
+  const 끝 = (box: { x: number; width: number }) => Math.round(box.x + box.width);
+  const [이름머리, CPU머리, 메모리머리, 포트머리] = await Promise.all(
+    ["이름", "CPU · 맥 전체 기준", "메모리", "포트"].map((word) => 상자(열머리.getByText(word, { exact: true }))),
+  );
+  const [줄상자, CPU칸, 메모리칸, 포트칸] = await Promise.all([
+    상자(프로세스줄),
+    상자(프로세스줄.locator('[data-cell="cpu"]')),
+    상자(프로세스줄.locator('[data-cell="memory"]')),
+    상자(프로세스줄.locator('[data-cell="ports"]')),
+  ]);
+  expect(Math.round(이름머리.x - 줄상자.x), "「이름」은 줄 안쪽 12에").toBe(12);
+  expect(CPU칸.x, "CPU가 메모리 앞").toBeLessThan(메모리칸.x);
+  expect(메모리칸.x, "메모리가 포트 앞").toBeLessThan(포트칸.x);
+  expect(끝(CPU머리), "「CPU」의 오른끝").toBe(끝(CPU칸));
+  expect(끝(메모리머리), "「메모리」의 오른끝").toBe(끝(메모리칸));
+  expect(Math.round(포트머리.x), "「포트」는 포트 칸 왼쪽 끝").toBe(Math.round(포트칸.x));
+
+  // 구획 머리 — 표의 한 줄: 34 · 위 6 · 안쪽 12, 제목 13/18 500, 수 13 · 400 `fg-tertiary`, 그 구획의 메모리 합이 메모리 열에 선다.
+  const 구획 = page.getByRole("region", { name: "작업공간 셸", exact: true });
+  const 구획머리 = 구획.locator("[data-section-head]");
+  expect(await 칠한값(구획머리, "height", "margin-top", "padding-left", "padding-right"), "구획 머리").toEqual(["34px", "6px", "12px", "12px"]);
+  expect(await 칠한값(구획머리.getByText("작업공간 셸", { exact: true }), "font-size", "line-height", "font-weight"), "구획 제목").toEqual([
     "13px",
     "18px",
-    "600",
+    "500",
   ]);
-  expect(await 칠한값(구획머리.getByText("셸 1개", { exact: true }), "font-size", "font-weight", "color"), "구획의 수").toEqual([
+  expect(await 칠한값(구획머리.getByText("1개", { exact: true }), "font-size", "font-weight", "color"), "구획의 수").toEqual([
     "13px",
     "400",
     옅은글자,
   ]);
+  await expect(구획머리.locator('[data-cell="memory"]')).toHaveText(formatMemory(300 * MiB));
+  expect(끝(await 상자(구획머리.locator('[data-cell="memory"]'))), "구획 합은 메모리 열에").toBe(끝(메모리칸));
 
-  // 포트 칩 — 20 · 안쪽 6 · `radius-sm` · `fill-soft` · mono 12/18 `fg-secondary`.
-  const 칩 = 프로세스줄.getByText(formatPort(5173), { exact: true });
-  const 칩반경 = await 토큰값(page, "border-top-left-radius", "--radius-sm");
-  expect(칩반경, "radius-sm").toBe("6px");
-  const 칩모양 = ["height", "padding-left", "padding-right", "border-top-left-radius", "background-color"];
-  expect(await 칠한값(칩, ...칩모양, "font-family", "font-size", "line-height", "color"), "포트 칩").toEqual([
-    "20px",
-    "6px",
-    "6px",
-    칩반경,
-    await 토큰색(page, "--fill-soft"),
+  // 포트 — 칩이 아니라 고정폭 12/18 `fg-tertiary` 글자다(면 없음).
+  const 포트 = 프로세스줄.locator('[data-cell="ports"]');
+  await expect(포트).toHaveText(formatPort(5173));
+  expect(await 칠한값(포트, "font-family", "font-size", "line-height", "color", "background-color"), "포트 글자").toEqual([
     await 토큰값(page, "font-family", "--font-mono"),
     "12px",
     "18px",
-    흐린글자,
+    옅은글자,
+    "rgba(0, 0, 0, 0)",
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

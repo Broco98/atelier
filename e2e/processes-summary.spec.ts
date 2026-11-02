@@ -1,17 +1,12 @@
 import { expect, test, type Page } from "./evidence";
-import { BUSY_SHELL, shellKeyOf, summaryWith as 요약, WORKS } from "./fixtures";
+import { summaryWith as 요약 } from "./fixtures";
 import {
-  archiveByMcp,
-  awaitSpawned,
   callCount,
-  fireAttention,
+  가는곳줄,
   installFixtureBackend,
-  사람메뉴로간다,
   주소로간다,
-  openShell,
   processesTitle,
   replaceAnswer,
-  typeIntoShell,
   unknownIpcCalls,
   시계를세운다,
   칠한값,
@@ -19,17 +14,28 @@ import {
   토큰값,
   토큰색,
 } from "./harness";
-import { formatCpu, formatMemory } from "@/features/processes/metrics";
-import { identityOf, poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
-import type { ProcessRow, TrendPoint } from "@/features/processes/types";
+import { formatCpu, formatHeadCpu, formatMemory, formatNavMeta } from "@/features/processes/metrics";
+import {
+  breakdownOf,
+  identityOf,
+  macOf,
+  metricsOf,
+  otherAppOf,
+  processRow,
+  snapshotFixture,
+} from "@/features/processes/process-fixture";
+import type { ProcessRow, ProcessSnapshot, TrendPoint } from "@/features/processes/types";
 
-// 프로세스 티켓 30 — **요약 카드가 합계와 한 시간 추이와 앱 본체를 보인다**(프로세스 결정 10 · 프로세스 스펙 S37 · S39, 스토리 83).
+// 프로세스 티켓 30 · restart 03-5 · 03-6 · 03-11 — **맨 위 카드가 CPU · 메모리 · 손볼 것을 한 스냅샷에서 보이고, CPU 카드가 지난 1시간 추이를 두
+// 선으로 그린다**(프로세스 결정 10 · 구현 스펙 「03 — Processes」의 「한 표본」 · 「추이」, 스토리 83 · 122 · 123 · 137).
 //
-// 어느 수를 무엇으로 세는지(셸 상태 · 주인 잃은 셸 · 두 고아 묶음)와 스파크라인의 모양은 L2가 잰다(`summary-card.test.ts`), 요약과 추이의
-// 모양 · 1시간 고리는 Rust L1이 잰다(`processes::summary`). 여기서 보는 것은 그 값이 **진짜 요약 폴러의 캐시 · 진짜 스냅샷 폴러 · 진짜
-// 스토어(진짜로 띄운 셸 · 진짜 셸 상태 · 진짜 MCP 아카이브 감지)**를 지나 화면 맨 위 카드에 서는가, 그리고 카드가 새 박자를 안 거는가다.
+// 어느 수를 무엇으로 세는지(머리 · 나눔 · 쌓인 막대 · 손볼 것)와 추이 선의 모양은 L2가 잰다(`summary-card.test.ts`), 스냅샷 · 요약 · 추이의
+// 모양과 1시간 고리는 Rust L1이 잰다(`processes::summary` · `processes::screen`). 여기서 보는 것은 그 값이 **진짜 스냅샷 폴러 · 진짜 요약
+// 폴러의 캐시**를 지나 카드에 서는가, 카드의 수가 10초 요약이 아니라 화면의 2초 스냅샷인가(「한 표본」), 그리고 카드가 새 박자를 안 거는가다.
+// 한때(티켓 30) 카드는 타일 넷(메모리 합계 · CPU · 셸 · 고아)이었고 합계 · CPU를 요약에서, 셸 수를 스토어에서 읽었다.
 
-const [, plainWork] = WORKS;
+const MiB = 1024 ** 2;
+const GiB = 1024 ** 3;
 
 const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact: true });
 const 칸 = (page: Page, figure: string) => 카드(page).locator(`[data-figure="${figure}"]`);
@@ -38,12 +44,22 @@ const 추이 = (page: Page) => 카드(page).locator('svg[data-figure="trend"]');
 const 행 = (pid: number): ProcessRow =>
   processRow(pid, 1, identityOf(pid).startedUs, "node", { argv0: "node", command: "node server.js" });
 
-/** 풀에 셸 셋(둘은 스토어의 셸, 하나는 스토어가 모르는 셸)이 앉고, 확정 고아 셋(키 둘)과 출처 불명 하나가 선 스냅샷. */
-const 스냅샷 = snapshotFixture({
+/**
+ * 맥 전체 33.4%를 잰 장(코어 10개) — 아틀리에 12.6% · 다른 앱 9.1% · 시스템 · 못 읽음 11.7%, 아틀리에 메모리 합계 1.1GB, 웹뷰와 WebKit 도우미
+ * 둘을 센 앱 본체. 확정 고아 셋(키 둘)과 출처 불명 하나가 섰다. 값은 꾸민 것이다(시안 Processes의 장면을 따랐다).
+ */
+const 장: ProcessSnapshot = snapshotFixture({
   verdict: {
     orphans: { confirmed: { "F-1": [행(4_001), 행(4_002)], "F-2": [행(4_003)] }, unknown: { "OLD-1": [행(5_001)] } },
   },
-  pool: [1, 2, 99].map((pty) => poolShell(pty, shellKeyOf(pty), Date.now())),
+  mac: macOf(33.4, 14 * GiB),
+  atelier: { total: 1_234_567_890, cpu: 12.6, app: 734_003_200, webviewExcluded: false },
+  body: { rust: metricsOf(180 * MiB, 0.7), webview: metricsOf(640 * MiB, 1.3), webkit: ["GPU", "Networking"] },
+  breakdown: breakdownOf({
+    apps: [otherAppOf("Sketchpad", 4, 900 * MiB, 9.1)],
+    system: { cpu: 11.7, memory: 2 * GiB },
+    total: { cpu: 33.4, memory: 14 * GiB },
+  }),
 });
 
 /** 지난 1시간 안에 고르게 선 CPU `count`점(맥 전체 · 아틀리에 — restart 03-5) — 마지막 점이 지금이다. */
@@ -64,89 +80,90 @@ async function 박자직후(page: Page): Promise<void> {
   expect(await callCount(page, "processes_summary"), "12초 넘게 요약 박자가 안 왔다").toBeGreaterThan(before);
 }
 
-/** 그린 스파크라인의 점 수 — 선(`polyline`)의 좌표 쌍을 센다. 선이 없으면 0이다. */
-async function 그린점(page: Page): Promise<number> {
-  const line = 추이(page).locator("polyline");
-  if ((await line.count()) === 0) return 0;
-  return ((await line.getAttribute("points")) ?? "").trim().split(/\s+/).filter(Boolean).length;
+/**
+ * 그린 추이 선의 점 수 — 선(`polyline`)마다 좌표 쌍을 센다. 맥 전체 · 아틀리에 두 선이고(restart 03-11), 선이 없으면 0이다. 두 선은 같은 점에서
+ * 그리므로 수가 같다 — 갈리면 그대로 드러나게 둘을 함께 돌려준다.
+ */
+async function 그린점(page: Page): Promise<{ mac: number; atelier: number }> {
+  const count = async (name: string) => {
+    const line = 추이(page).locator(`polyline[data-line="${name}"]`);
+    if ((await line.count()) === 0) return 0;
+    return ((await line.getAttribute("points")) ?? "").trim().split(/\s+/).filter(Boolean).length;
+  };
+  return { mac: await count("mac"), atelier: await count("atelier") };
 }
 
-test("요약 카드에 합계 · 추이 · CPU · 셸 수 · 도는 중 · 주인 잃은 셸 · 확정 고아 · 출처 불명 · 앱 본체가 선다", async ({ page }) => {
-  const summary = 요약({ total: 1_234_567_890, cpu: 37.4, app: 734_003_200, webviewExcluded: false });
-  await installFixtureBackend(page, {
-    processes_summary: summary,
-    processes_snapshot: 스냅샷,
-    processes_trend: 점들(5),
-    // 두 셸 모두 조용하지 않다 — MCP 아카이브가 닫지 않고 주인 잃은 셸로 남긴다.
-    pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL },
-  });
-  // 그냥 일에 셸 둘을 띄우고(사람이 친 셸 · `+`로 연 셸) 둘 다 claude가 돌게 한다 — 셸 상태 「도는 중」.
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-  await openShell(page);
-  await fireAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now() }, 1);
-  await fireAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now() }, 2);
-  // MCP가 그 work을 아카이브했다 — 목록에서 빠지고 감시자의 이벤트가 온다. 두 셸은 주인 잃은 셸로 남는다.
-  await archiveByMcp(page, WORKS, plainWork.slug);
-  await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
-
-  await 사람메뉴로간다(page, "Processes");
+// **한 표본**(구현 스펙 「03 — Processes」) — 화면을 보는 동안 머리와 줄과 메모리 카드가 같은 2초 스냅샷에서 나온다. 요약(10초 — nav 메타)은
+// 일부러 다른 값을 실어, 카드가 그 값이 아님을 함께 본다(앵커: nav 메타는 요약의 값이다).
+test("카드의 CPU · 메모리 · 손볼 것이 화면의 스냅샷 한 장에서 서고, nav 메타의 10초 요약과 섞이지 않는다", async ({ page }) => {
+  const summary = 요약({ total: 3 * GiB, cpu: 5 });
+  await installFixtureBackend(page, { processes_summary: summary, processes_snapshot: 장, processes_trend: 점들(5) });
+  await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  // 합계 · CPU · 앱 본체는 요약(nav 메타와 같은 장)이다 — 표기 함수의 결과가 선다. 합계는 nav 옆 숫자와 같다. 타일의 큰 수는 단위를
-  // 작게 그려도 글자가 이어 붙어 표기 함수의 결과 그대로다(ui-refresh 판 06 — 타일 넷).
-  await expect(칸(page, "total")).toHaveText(formatMemory(summary.total));
-  await expect(칸(page, "cpu")).toHaveText(formatCpu(summary.cpu));
-  await expect(칸(page, "app")).toHaveText(`앱 본체 ${formatMemory(summary.app)}`);
-  // 셸 수는 풀의 셸이다(스토어가 모르는 셸도 든다) — 「셸」 타일의 큰 수다(타일 이름 「셸」은 따로 선다). 확정 고아 · 출처 불명은
-  // 스냅샷의 두 묶음을 갈라 센다.
-  await expect(칸(page, "shells")).toHaveText("3개");
-  await expect(칸(page, "confirmed")).toHaveText("확정 고아 3");
-  await expect(칸(page, "unknown")).toHaveText("출처 불명 1");
-  // 도는 중 · 주인 잃은 셸은 스토어다 — 셸 상태로 세고, 두 셸 모두 주인을 잃었다.
-  await expect(칸(page, "working")).toHaveText("도는 중 2");
-  await expect(칸(page, "ownerless-shells")).toHaveText("주인 잃은 셸 2");
-  // 지난 1시간 — 스파크라인이 선다.
-  await expect(카드(page)).toContainText("지난 1시간");
-  await expect.poll(() => 그린점(page)).toBe(5);
-  // 웹뷰를 셌다 — 「웹뷰 제외」가 없다(아래 검사의 앵커). 툴팁은 GPU · Networking을 안 센다고 말한다.
-  await expect(칸(page, "app")).not.toContainText("웹뷰 제외");
-  await expect(칸(page, "app")).toHaveAttribute("title", /GPU · Networking/);
+
+  // CPU — 머리는 합계 CPU의 정수, 아래 줄은 그 눈금(코어 몇 개만큼), 범례가 그것을 아틀리에 · 다른 앱 · 시스템 · 못 읽음 · 여유로 나눈다.
+  await expect(칸(page, "cpu")).toHaveText(formatHeadCpu(33.4));
+  await expect(칸(page, "cpu-note")).toHaveText("맥 전체 · 코어 10개 중 3.3개만큼");
+  for (const part of ["아틀리에 13%", "다른 앱 9%", "시스템 · 못 읽음 11%", "여유 67%"]) {
+    await expect(칸(page, "legend")).toContainText(part);
+  }
+  await expect(칸(page, "stack")).toHaveAttribute("aria-label", /^맥 전체 33% 사용 — 아틀리에 13%, 다른 앱 9%/);
+  // 머리 숫자는 표 끝 합계 줄의 CPU를 정수로 반올림한 값이다(restart 03-6 「합이 맞는다」).
+  await expect(page.locator('[data-ledger="total"] [data-cell="cpu"]')).toHaveText(formatCpu(33.4));
+
+  // 메모리 — 아틀리에 전체. 웹뷰와 WebKit 도우미를 셌다 — 「웹뷰 제외」가 없고, 툴팁이 함께 센 갈래를 말한다(restart 03-8).
+  await expect(칸(page, "total")).toHaveText(formatMemory(장.atelier.total));
+  await expect(칸(page, "app")).toHaveText("아틀리에 전체 · 활성 상태 보기와 같은 값");
+  await expect(칸(page, "app")).toHaveAttribute("title", "Rust 본체와 웹뷰(WebContent · GPU · Networking)를 세요.");
+
+  // 손볼 것 — 확정 고아 + 출처 불명. 아래 「손볼 것」 구획에서 끝낸다.
+  await expect(칸(page, "strays")).toHaveText("4개");
+  await expect(칸(page, "strays-note")).toHaveText("주인 없이 남은 프로세스 · 아래에서 끝낼 수 있어요");
+
+  // 지난 1시간 — 두 선이 같은 점 수로 선다.
+  await expect.poll(() => 그린점(page)).toEqual({ mac: 5, atelier: 5 });
+
+  // 앵커: nav 메타는 10초 요약의 값이다 — 카드가 요약을 안 읽은 것이 「요약이 없어서」가 아니다.
+  await expect(가는곳줄(page, "Processes")).toContainText(formatNavMeta(summary.cpu, summary.total)!);
+  await expect(칸(page, "total")).not.toHaveText(formatMemory(summary.total));
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 웹뷰(WebContent)의 pid를 못 물었거나 못 읽었으면 앱 본체는 Rust 본체뿐이다(S39) — 카드가 그렇다고 말한다.
-test("웹뷰를 못 센 요약이면 앱 본체에 「웹뷰 제외」가 붙고, 툴팁이 그 까닭을 말한다", async ({ page }) => {
-  const summary = 요약({ app: 400 * 1024 * 1024, webviewExcluded: true });
-  await installFixtureBackend(page, { processes_summary: summary });
+// 웹뷰(WebContent)의 pid를 못 물었거나 못 읽었으면 앱 본체는 Rust 본체뿐이다(S39) — 카드가 그렇다고 말한다. WebKit 도우미도 못 찾았으면
+// 툴팁이 GPU · Networking을 안 셌다고 말한다(restart 03-8).
+test("웹뷰를 못 센 스냅샷이면 메모리 카드 아래 줄에 「웹뷰 제외」가 붙고, 툴팁이 그 까닭을 말한다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    processes_snapshot: snapshotFixture({ atelier: { total: 400 * MiB, cpu: null, app: 400 * MiB, webviewExcluded: true } }),
+  });
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await expect(칸(page, "app")).toHaveText(`앱 본체 ${formatMemory(summary.app)}(웹뷰 제외)`);
+  await expect(칸(page, "total")).toHaveText(formatMemory(400 * MiB));
+  await expect(칸(page, "app")).toHaveText("아틀리에 전체 · 활성 상태 보기와 같은 값 · 웹뷰 제외");
   await expect(칸(page, "app")).toHaveAttribute("title", /못 셌어요/);
   await expect(칸(page, "app")).toHaveAttribute("title", /GPU · Networking/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("추이의 점 수만큼 스파크라인이 선다", async ({ page }) => {
+test("추이의 점 수만큼 두 선이 서고, 이름이 두 선의 처음과 끝을 말한다", async ({ page }) => {
   await page.clock.install();
   const seven = 점들(7);
   await installFixtureBackend(page, { processes_trend: seven });
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await expect.poll(() => 그린점(page)).toBe(7);
-  // 접근성 이름은 처음과 끝의 맥 전체 CPU다 — 선의 모양은 눈의 것이다.
+  await expect.poll(() => 그린점(page)).toEqual({ mac: 7, atelier: 7 });
+  // 접근성 이름은 처음과 끝의 맥 전체 · 아틀리에 CPU다 — 선의 모양은 눈의 것이다.
   await expect(추이(page)).toHaveAttribute(
     "aria-label",
-    `지난 1시간 맥 전체 CPU 추이, ${formatCpu(seven[0].mac)}에서 ${formatCpu(seven[6].mac)}`,
+    `지난 1시간 CPU 추이, 맥 전체 ${formatCpu(seven[0].mac)}에서 ${formatCpu(seven[6].mac)}, 아틀리에 ${formatCpu(seven[0].atelier)}에서 ${formatCpu(seven[6].atelier)}`,
   );
   await 시계를세운다(page);
 
   // 앵커: 추이가 바뀌면 다음 요약 박자에 선도 바뀐다 — 픽스처의 기본(빈 고리)이나 첫 답에 굳은 그림이 아니다.
   await replaceAnswer(page, "processes_trend", 점들(3));
   await page.clock.runFor(10_000);
-  await expect.poll(() => 그린점(page)).toBe(3);
+  await expect.poll(() => 그린점(page)).toEqual({ mac: 3, atelier: 3 });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -164,12 +181,12 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   await 시계를세운다(page);
   await page.clock.runFor(4_000);
 
-  // 시계를 세운 동안은 사람 메뉴가 안 뜬다 — 메뉴가 하는 push를 주소로 한다(`사람메뉴로간다` 머리말).
+  // 시계를 세운 동안은 앱 안의 이동을 주소로 한다(위 칸 줄이 하는 push와 같다) — 누르기의 대기가 세운 시계의 프레임에 걸리지 않게.
   await 주소로간다(page, "/processes");
   await expect(processesTitle(page)).toBeVisible();
   // 셈은 nav 메타의 박자 **바로 뒤**에서 시작한다 — 그래야 아래 10초에 박자가 정확히 하나, 5초에는 없다.
   await 박자직후(page);
-  await expect.poll(() => 그린점(page)).toBe(4);
+  await expect.poll(() => 그린점(page)).toEqual({ mac: 4, atelier: 4 });
   const summaries = await callCount(page, "processes_summary");
   const trends = await callCount(page, "processes_trend");
   await page.clock.runFor(10_000);
@@ -191,76 +208,78 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 22 — **요약 타일이 DS `ProcessTree`의 타일이다**(스토리 59 · DS `.at-tiles` · `.at-tile`). 넷이 한 줄에 10씩 떨어져
-// 서고, 메모리 합계는 두 칸 몫(두 칸 + 그 사이 틈)이다. 타일은 `surface-under` · `radius-xl`(12) · 0.5px `border` 안쪽 링 · 안쪽 14 · 16 ·
-// 줄 사이 4이고, 이름은 12/18 `fg-tertiary`(앞 아이콘 14), 큰 수는 `heading-lg`(24/28 · 600), 단위는 14/20 · 500 `fg-secondary`, 아래
-// 줄은 12/18 `fg-tertiary`다. 추이는 선이 `accent-solid`이고 그 밑이 `accent-soft`다. 칠해진 값을 토큰을 칠한 값과 맞대고, DS가 못박은
-// 수는 따로 센다 — 토큰 값이 바뀌는 날 견줌이 함께 흘러가 초록으로 남지 않게(`prose.spec.ts`와 같은 길).
-test("요약 타일이 DS 타일이다 — 넷이 10씩 한 줄, 면 · 반경 · 링 · 안쪽, 이름 12 · 큰 수 heading-lg · 단위 14 · 아래 줄 12, 추이의 선과 면", async ({
+// restart 03-11 — **카드가 시안 Processes의 `.pr-cards`다**(스토리 137). CPU 카드 하나와 그 옆에 위아래로 메모리 · 손볼 것 카드가 1.7 : 1로 서고
+// 사이는 8이다. 카드마다 옅은 면(`surface-under`) · `radius-card` · 0.5px `border` 안쪽 링 · 안쪽 14 · 16이다. 이름 줄은 12/18 `fg-tertiary`(앞
+// 아이콘 14), CPU의 큰 수는 `heading-xl`, 옆 카드의 큰 수는 `heading-md`(시안 22 — 앱 글자 단계에 없어 20), 아래 줄은 12/18 `fg-tertiary`다.
+// 추이의 두 선은 맥 전체 `fg-tertiary` · 아틀리에 `accent-solid`다. 칠해진 값을 토큰을 칠한 값과 맞대고, 시안이 못박은 수는 따로 센다 — 토큰
+// 값이 바뀌는 날 견줌이 함께 흘러가 초록으로 남지 않게(`prose.spec.ts`와 같은 길). 한때(codex-ds 티켓 22) DS `.at-tiles`의 타일 넷이었다.
+test("카드가 시안 카드다 — CPU 1.7 : 옆 1 · 사이 8, 옆 카드 둘이 위아래로, 면 · 반경 · 링 · 안쪽, 이름 12 · 큰 수 heading-xl · 옆 heading-md · 아래 줄 12, 두 선의 색", async ({
   page,
 }) => {
-  const summary = 요약({ total: 3.4 * 1024 ** 3, cpu: 27, app: 610 * 1024 ** 2, webviewExcluded: false });
-  await installFixtureBackend(page, { processes_summary: summary, processes_trend: 점들(5) });
+  await installFixtureBackend(page, { processes_snapshot: 장, processes_trend: 점들(5) });
   await page.goto("/processes");
-  await expect(칸(page, "total")).toHaveText(formatMemory(summary.total));
-  await expect.poll(() => 그린점(page)).toBe(5);
+  await expect(칸(page, "total")).toHaveText(formatMemory(장.atelier.total));
+  await expect.poll(() => 그린점(page)).toEqual({ mac: 5, atelier: 5 });
 
-  // 줄 — 넷이 한 줄이고 사이는 10이다. 좁은 셋은 같은 폭이고, 메모리 합계는 그 두 칸에 사이 틈까지다.
-  const 타일들 = 카드(page).locator(":scope > div");
-  await expect(타일들).toHaveCount(4);
-  expect(await 칠한값(카드(page), "column-gap"), "타일 사이").toEqual(["10px"]);
-  const 상자들 = await 타일들.evaluateAll((tiles) =>
-    tiles.map((tile) => {
-      const box = tile.getBoundingClientRect();
-      return { top: Math.round(box.top), width: box.width };
-    }),
-  );
-  expect(new Set(상자들.map((box) => box.top)).size, "네 타일이 한 줄이 아니다").toBe(1);
-  const [넓은, ...좁은] = 상자들.map((box) => box.width);
-  for (const width of 좁은) expect(Math.round(width), "좁은 타일의 폭").toBe(Math.round(좁은[0]));
-  expect(Math.round(넓은), "메모리 합계 = 두 칸 + 틈").toBe(Math.round(좁은[0] * 2 + 10));
+  // 배치 — CPU 카드와 옆 열이 한 줄에 1.7 : 1로, 사이 8. 옆 열은 메모리 · 손볼 것 카드가 같은 폭으로 위아래 8을 두고 선다.
+  const [CPU카드, 옆열] = [카드(page).locator(":scope > div").nth(0), 카드(page).locator(":scope > div").nth(1)];
+  await expect(카드(page).locator(":scope > div")).toHaveCount(2);
+  expect(await 칠한값(카드(page), "column-gap"), "카드 사이").toEqual(["8px"]);
+  const [cpu, side] = [(await CPU카드.boundingBox())!, (await 옆열.boundingBox())!];
+  expect(Math.round(cpu.y), "한 줄").toBe(Math.round(side.y));
+  expect(Math.round(side.x - (cpu.x + cpu.width)), "CPU → 옆 열").toBe(8);
+  expect(cpu.width / side.width, "CPU : 옆 = 1.7 : 1").toBeCloseTo(1.7, 2);
+  const 옆카드 = 옆열.locator(":scope > div");
+  await expect(옆카드).toHaveCount(2);
+  const [위, 아래] = [(await 옆카드.nth(0).boundingBox())!, (await 옆카드.nth(1).boundingBox())!];
+  expect([위.x, 위.width], "옆 카드 둘 — 같은 폭").toEqual([아래.x, 아래.width]);
+  expect(Math.round(아래.y - (위.y + 위.height)), "옆 카드 사이").toBe(8);
 
-  // 타일 하나하나 — 면 · 반경 · 안쪽 · 줄 사이 · 링.
-  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-xl");
-  expect(반경, "radius-xl").toBe("12px");
+  // 카드 하나하나 — 면 · 반경 · 안쪽 · 링.
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-card");
+  expect(반경, "radius-card").toBe("8px");
   const 면 = await 토큰색(page, "--surface-under");
   const 선 = `${await 토큰색(page, "--border")} 0px 0px 0px 0.5px inset`;
-  for (const 타일 of await 타일들.all()) {
+  for (const one of [CPU카드, 옆카드.nth(0), 옆카드.nth(1)]) {
     const 모양 = ["background-color", "border-top-left-radius", "padding-top", "padding-bottom", "padding-left", "padding-right"];
-    expect(await 칠한값(타일, ...모양, "row-gap"), "타일").toEqual([면, 반경, "14px", "14px", "16px", "16px", "4px"]);
-    expect(await 칠한링(타일), "타일의 링").toEqual([선]);
+    expect(await 칠한값(one, ...모양), "카드").toEqual([면, 반경, "14px", "14px", "16px", "16px"]);
+    expect(await 칠한링(one), "카드의 링").toEqual([선]);
   }
 
-  // 이름 — 12/18 · +0.025em · `fg-tertiary`, 앞 아이콘 14.
+  // 이름 — 12/18 · `fg-tertiary`, 앞 아이콘 14.
   const 옅은글자 = await 토큰색(page, "--fg-tertiary");
-  const 이름 = 카드(page).getByText("CPU", { exact: true });
-  expect(await 칠한값(이름, "font-size", "line-height", "letter-spacing", "color"), "이름").toEqual(["12px", "18px", "0.3px", 옅은글자]);
-  const 아이콘 = (await 이름.locator("svg").boundingBox())!;
-  expect([아이콘.width, 아이콘.height], "이름 앞 아이콘").toEqual([14, 14]);
-
-  // 큰 수 — `heading-lg`. 단위는 14/20 · 500 `fg-secondary`다.
-  const 제목단계 = [
-    await 토큰값(page, "font-size", "--text-heading-lg"),
-    await 토큰값(page, "line-height", "--text-heading-lg--line-height"),
-    await 토큰값(page, "font-weight", "--text-heading-lg--font-weight"),
-  ];
-  expect(제목단계, "heading-lg").toEqual(["24px", "28px", "600"]);
-  for (const figure of ["total", "cpu", "shells"]) {
-    expect(await 칠한값(칸(page, figure), "font-size", "line-height", "font-weight"), `큰 수 ${figure}`).toEqual(제목단계);
+  for (const name of ["CPU", "메모리", "손볼 것"]) {
+    const 이름 = 카드(page).getByText(name, { exact: true });
+    expect(await 칠한값(이름, "font-size", "line-height", "color"), `이름 ${name}`).toEqual(["12px", "18px", 옅은글자]);
+    const 아이콘 = (await 이름.locator("svg").boundingBox())!;
+    expect([아이콘.width, 아이콘.height], `${name} 앞 아이콘`).toEqual([14, 14]);
   }
-  expect(await 칠한값(칸(page, "cpu").locator("span"), "font-size", "line-height", "font-weight", "color"), "단위").toEqual([
-    "14px",
-    "20px",
-    "500",
-    await 토큰색(page, "--fg-secondary"),
-  ]);
+
+  // 큰 수 — CPU는 `heading-xl`, 옆 카드는 `heading-md`.
+  const 단계 = async (name: string) => [
+    await 토큰값(page, "font-size", `--text-${name}`),
+    await 토큰값(page, "line-height", `--text-${name}--line-height`),
+    await 토큰값(page, "font-weight", `--text-${name}--font-weight`),
+  ];
+  const [큰단계, 옆단계] = [await 단계("heading-xl"), await 단계("heading-md")];
+  expect(큰단계, "heading-xl").toEqual(["32px", "38px", "600"]);
+  expect(옆단계, "heading-md").toEqual(["20px", "26px", "600"]);
+  expect(await 칠한값(칸(page, "cpu"), "font-size", "line-height", "font-weight"), "CPU 큰 수").toEqual(큰단계);
+  for (const figure of ["total", "strays"]) {
+    expect(await 칠한값(칸(page, figure), "font-size", "line-height", "font-weight"), `옆 큰 수 ${figure}`).toEqual(옆단계);
+  }
 
   // 아래 줄 — 12/18 `fg-tertiary`.
-  expect(await 칠한값(칸(page, "app"), "font-size", "line-height", "color"), "아래 줄").toEqual(["12px", "18px", 옅은글자]);
+  for (const figure of ["cpu-note", "app", "strays-note"]) {
+    expect(await 칠한값(칸(page, figure), "font-size", "line-height", "color"), `아래 줄 ${figure}`).toEqual(["12px", "18px", 옅은글자]);
+  }
 
-  // 추이 — 선은 `accent-solid`, 그 밑은 `accent-soft`다.
-  expect(await 칠한값(추이(page).locator("polyline"), "stroke"), "추이 선").toEqual([await 토큰색(page, "--accent-solid")]);
-  expect(await 칠한값(추이(page).locator("polygon"), "fill"), "추이 면").toEqual([await 토큰색(page, "--accent-soft")]);
+  // 추이 — 맥 전체는 `fg-tertiary`, 아틀리에는 `accent-solid`. 면은 없다(두 선을 견주는 그림이다).
+  expect(await 칠한값(추이(page).locator('polyline[data-line="mac"]'), "stroke"), "맥 전체 선").toEqual([옅은글자]);
+  expect(await 칠한값(추이(page).locator('polyline[data-line="atelier"]'), "stroke"), "아틀리에 선").toEqual([
+    await 토큰색(page, "--accent-solid"),
+  ]);
+  await expect(추이(page).locator("polygon")).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

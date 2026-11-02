@@ -298,33 +298,46 @@ test("spec 레이아웃 편집기: 트리 카드의 도구가 카드 끝에서 8
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Processes: 몸이 카드의 거터 20 · 위 24에서 시작하고 아래 40에서 끝난다", async ({ page }) => {
+// restart 03-11 — **몸은 시안 Processes의 `.pr-col`이다**: 카드 가운데에 서고, 안쪽은 위 20 · 옆 28 · 아래 40이며, 폭 상한은 앱의 넓은 폭이다
+// (`--measure-wide` 1120 — 시안 1080). 몸의 첫 줄은 머리(h1 · 잰 시각 · [조용한 셸 모두 닫기])다. 한때(03-9까지) 몸은 카드 끝에서 20 · 위 24에서
+// 섰고 첫 줄이 요약 타일이었다.
+test("Processes: 몸이 카드 가운데에 넓은 폭 상한으로 서고, 머리가 위 20 · 옆 28에서 시작하며 아래 40에서 끝난다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/processes");
   const card = page.getByRole("main", { name: "Processes", exact: true });
   const 제목 = card.getByRole("heading", { name: "Processes", exact: true });
-  await expect(제목).toBeAttached();
-  const [거터, 위] = [await 간격(page, 5), await 간격(page, 6)];
+  await expect(제목).toBeVisible();
+  const 머리 = 제목.locator("..");
+  const 몸 = 머리.locator("..");
+  // 옆 28 · 아래 40은 간격 토큰에 없는 값이라 수로 적는다(시안 `.pr-col`의 `padding: 20px 28px 40px`).
+  const [위, 옆] = [await 간격(page, 5), 28];
+  const 넓은폭 = parseFloat(await 토큰값(page, "width", "--measure-wide"));
+  expect(넓은폭, "--measure-wide").toBe(1120);
 
-  // 몸의 첫 줄은 요약 타일이다 — 그 줄의 왼쪽 위가 카드 + 20 · 24다(DS `ProcessTree` 미리보기의 몸 — 안쪽 24 20 40 · 스펙 §4 「card-pad
-  // 24 옆 여백은 20」).
+  // 카드가 폭 상한보다 좁은 창 — 몸이 카드를 다 채우고, 머리가 카드 + 28 · 20이다. 오른쪽도 28이다.
   const cardBox = await 상자(card);
-  const summary = card.getByRole("region", { name: "요약", exact: true });
-  const tiles = await 상자(summary);
-  expect(tiles.x - cardBox.x, "몸 — 카드 + 20").toBe(거터);
-  expect(tiles.y - cardBox.y, "몸 — 위 24").toBe(위);
-  expect(cardBox.right - tiles.right, "몸 — 오른쪽도 20").toBe(거터);
+  expect(cardBox.width, "앵커: 카드가 폭 상한보다 좁다").toBeLessThan(넓은폭);
+  const head = await 상자(머리);
+  expect(head.x - cardBox.x, "머리 — 카드 + 28").toBe(옆);
+  expect(head.y - cardBox.y, "머리 — 위 20").toBe(위);
+  expect(cardBox.right - head.right, "머리 — 오른쪽도 28").toBe(옆);
 
-  // 아래는 40이다(같은 미리보기 · DS `.at-thread`의 아래 40 — 간격 토큰에 없는 값이라 수로 적는다). 몸이 넘칠 만큼 창을 낮추고
-  // 끝까지 굴려, 내용 끝에서 카드 끝까지를 잰다. 픽스처의 몸은 요약 타일과 열 머리뿐(셸이 없다)이라 창이 240까지 낮아야 넘친다.
+  // 넓은 창 — 몸이 폭 상한에서 멈추고 카드 가운데에 선다.
+  await page.setViewportSize({ width: 2000, height: 900 });
+  await expect.poll(async () => (await 상자(card)).width, { message: "앵커: 카드가 폭 상한보다 넓다" }).toBeGreaterThan(넓은폭);
+  const [wideCard, wideBody] = [await 상자(card), await 상자(몸)];
+  expect(wideBody.width, "몸 — 폭 상한").toBe(넓은폭);
+  expect(Math.abs(wideBody.x - wideCard.x - (wideCard.right - wideBody.right)), "몸 — 가운데").toBeLessThanOrEqual(1);
+
+  // 아래는 40이다. 몸이 넘칠 만큼 창을 낮추고 끝까지 굴려, 몸의 마지막 줄(표) 끝에서 카드 끝까지를 잰다. 픽스처의 몸은 머리 · 카드 · 보기 도구 ·
+  // 표의 머리와 끝 줄뿐(셸이 없다)이라 창이 240까지 낮아야 넘친다.
   await page.setViewportSize({ width: 1280, height: 240 });
-  const 끝 = await summary.evaluate((section) => {
-    const body = section.parentElement!;
+  const 끝 = await 몸.evaluate((body) => {
     const scroller = body.closest<HTMLElement>(".overflow-y-auto")!;
     scroller.scrollTop = scroller.scrollHeight;
     return {
       넘침: scroller.scrollHeight > scroller.clientHeight,
-      아래: scroller.getBoundingClientRect().bottom - body.getBoundingClientRect().bottom,
+      아래: scroller.getBoundingClientRect().bottom - body.lastElementChild!.getBoundingClientRect().bottom,
     };
   });
   // 앵커: 몸이 카드보다 길다 — 짧으면 내용 끝이 카드 끝에 닿지 않아 아래 셈이 여백을 재지 않는다.

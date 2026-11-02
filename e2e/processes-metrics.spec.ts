@@ -3,7 +3,7 @@ import { shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
-  사람메뉴로간다,
+  가는곳으로간다,
   openShell,
   replaceAnswer,
   typeIntoShell,
@@ -70,7 +70,7 @@ async function 셸둘을띄우고연다(page: Page): Promise<void> {
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(셸행(page, 1)).toBeVisible();
 }
