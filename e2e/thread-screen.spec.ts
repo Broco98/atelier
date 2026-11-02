@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD, PROJECTS, SERVICES, WORKS } from "./fixtures";
-import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
+import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, 그림자, 토큰값 } from "./harness";
 import {
   atHome,
   lineOf,
@@ -116,12 +116,13 @@ test("머리 줄 — 작업공간 밖 Thread는 이름이 서서 그 자리에�
   await expect(카드(page)).toHaveCount(0);
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
 
-  // 단추가 카드를 연다 — 켜지면 면이 #ebebec(`fill-toggle-on`)다. 다시 누르면 닫히고 면이 빠진다(손을 치운 뒤, 색 전이가 끝나면).
+  // 단추가 카드를 연다 — 켜지면 면이 시안 `.ra-tbtn[aria-pressed]`의 고른 면 #eff0f0(`fill-selected`, restart 02b-8b)이다. 다시 누르면 닫히고
+  // 면이 빠진다(손을 치운 뒤, 색 전이가 끝나면).
   await 요약토글(page).click();
   await expect(카드(page)).toBeVisible();
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
   // 면은 색 전이로 바뀐다 — 다 바뀔 때까지 읽는다.
-  await expect.poll(async () => (await 모양(요약토글(page), ["background-color"]))["background-color"]).toBe("rgb(235, 235, 236)");
+  await expect.poll(async () => (await 모양(요약토글(page), ["background-color"]))["background-color"]).toBe("rgb(239, 240, 240)");
   await 요약토글(page).click();
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
   await expect(카드(page)).toHaveCount(0);
@@ -213,7 +214,7 @@ const PR_SCOPE: ReadingScope = {
   registered: 2,
 };
 
-test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차례로 「＋」 없이 서고, 소스가 셋을 넘으면 「모두 보기」가 펴며, 「변경 사항」이 넓힌 카드를 열고, 열이 카드를 비켜난다", async ({
+test("요약 카드 — 머리 · 변경 사항 · PR · 소스 차례로 「＋」 없이 서고, 소스가 셋을 넘으면 「모두 보기」가 펴며, 「변경 사항」이 넓힌 카드를 열고, 열이 카드를 비켜난다", async ({
   page,
 }) => {
   await openThread(page, prView, linesThrough(prLines, PR_END), {
@@ -227,19 +228,21 @@ test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차
   const card = 카드(page);
   await expect(card).toBeVisible();
 
-  // 칸 차례(02 §7) — 머리(Work 이름 · 「…」) → 「변경 사항」(Work 합계) → PR 줄 → 결과물(자리표시) → 소스. 칸 머리에 더하기가 없다(S19).
+  // 칸 차례(02 §7) — 머리(Work 이름 · 「…」) → 「변경 사항」(Work 합계) → PR 줄 → 소스. 결과물 자리표시는 걷었다(restart 02b-8 · 구현 스펙
+  // 「02b — 오른쪽 자리와 요약 카드」). 칸 머리에 더하기가 없다(S19). 카드의 몸은 목록 열 하나다(넓히면 그 오른쪽에 보기가 선다).
   await expect(card.locator("[data-changes]")).toHaveText(/^변경 사항\s*\+6\s*−3$/);
   await expect(card.getByRole("button", { name: new RegExp(`^PR #${OPENED.number}`) })).toBeVisible();
-  await expect(card.locator(":scope > *").first()).toHaveText(PR_WORK.title);
-  await expect(card.locator(":scope > *").first().getByRole("button", { name: "작업공간 메뉴", exact: true })).toBeVisible();
+  const 머리 = card.locator(":scope > div > *").first();
+  await expect(머리).toHaveText(PR_WORK.title);
+  await expect(머리.getByRole("button", { name: "작업공간 메뉴", exact: true })).toBeVisible();
   expect(
     await card.evaluate((el) =>
       [...el.querySelectorAll("[data-changes], [data-pr-icon], section[aria-label]")].map((one) =>
         one.matches("[data-changes]") ? "변경 사항" : one.matches("[data-pr-icon]") ? "PR" : one.getAttribute("aria-label"),
       ),
     ),
-  ).toEqual(["변경 사항", "PR", "결과물", "소스"]);
-  await expect(card.getByRole("region", { name: "결과물", exact: true })).toHaveText("결과물파일 또는 문서 만들기");
+  ).toEqual(["변경 사항", "PR", "소스"]);
+  await expect(card.getByRole("region", { name: "결과물", exact: true })).toHaveCount(0);
   await expect(card.getByRole("button", { name: /추가|붙이기/ })).toHaveCount(0);
 
   // 소스 — spec 문서(트리 차례 — 파일이 폴더 앞)가 먼저, Project가 뒤다. Project는 worktree가 선 것(고치는 중)이 먼저, 그 뒤가 읽는 범위의
@@ -282,15 +285,16 @@ test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차
   await expect(page.locator("section[data-expanded]")).toHaveCount(0);
   await expect(card).toBeVisible();
 
-  // 좁은 창(1000) — 판이 열(737)보다 좁으면 열은 판 안쪽(좌우 16)을 다 쓰고, 카드를 비켜나지 않고 카드가 열의 끝을 덮는다 — 카드 때문에
-  // 열이 줄지 않는다. 넓힌 카드가 접어 둔 사이드바가 막 다시 열리는 중이라 판의 자리도 함께 되풀이해 읽는다.
+  // 좁은 창(1000) — 판이 열(737)과 비킬 몫(308)보다 좁으면 열이 줄어 카드가 글을 덮지 않는다(restart 02b-8 — 한때 열은 판 안쪽을 다 쓰고
+  // 카드가 열의 끝을 덮었다). 열은 판 왼쪽 안쪽 16에서 카드 왼쪽 16 앞까지다. 넓힌 카드가 접어 둔 사이드바가 막 다시 열리는 중이라 판의 자리도
+  // 함께 되풀이해 읽는다.
   await page.setViewportSize({ width: 1000, height: 900 });
   const 열의안쪽 = async () => {
-    const [column, board] = [await 상자(입력창(page)), await 상자(흐름(page))];
-    return [Math.round(column.x - board.x), Math.round(board.right - column.right)];
+    const [column, board, aside] = [await 상자(입력창(page)), await 상자(흐름(page)), await 상자(card)];
+    return [Math.round(column.x - board.x), Math.round(aside.x - column.right)];
   };
   await expect.poll(열의안쪽).toEqual([16, 16]);
-  expect((await 상자(card)).x).toBeLessThan((await 상자(입력창(page))).right);
+  expect((await 상자(입력창(page))).width).toBeLessThan(737);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -314,7 +318,7 @@ const EMPTY_SCOPE: ReadingScope = {
 
 // 열림은 이제 오른쪽 자리의 값이다(restart 02a-9) — 채팅마다 하나이고(`chatSeat`), 처음엔 비어 있으며, 앱이 도는 동안 메모리에만 산다. 한때 Thread마다
 // 이 컴퓨터에 적었고(02 S22) 처음엔 열려 있었다.
-test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과물 · 소스(읽는 범위의 Project, 「읽기만」)만 서며, 열림은 채팅마다이고 다시 켜면 닫혀 있다", async ({
+test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 소스(읽는 범위의 Project, 「읽기만」)만 서며, 열림은 채팅마다이고 다시 켜면 닫혀 있다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -336,8 +340,8 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(요약토글(page)).toHaveCount(0);
   await expect(Thread메뉴(page)).toHaveCount(0);
 
-  // Work 없는 Thread — 처음엔 닫혀 있다. 열면 머리 · 변경 사항 없이 결과물 · 소스만이다. 소스는 읽는 범위의 Project(Service가 없으면 등록된 전부
-  // — 03 §7)이고 보이기만 한다(S20).
+  // Work 없는 Thread — 처음엔 닫혀 있다. 열면 머리 · 변경 사항 없이 소스만이다(결과물 자리표시는 걷었다 — restart 02b-8). 소스는 읽는 범위의
+  // Project(Service가 없으면 등록된 전부 — 03 §7)이고 보이기만 한다(S20).
   await 사이드바Thread(page, looseA.title).click();
   await expect(page).toHaveURL(`/threads/${looseA.id}`);
   const card = 카드(page);
@@ -349,7 +353,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(card.locator("[data-changes]")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "작업공간 메뉴", exact: true })).toHaveCount(0);
   expect(await card.evaluate((el) => [...el.querySelectorAll("section[aria-label]")].map((one) => one.getAttribute("aria-label")))).toEqual(
-    ["결과물", "소스"],
+    ["소스"],
   );
   await expect(card.locator("[data-project]")).toHaveText([/^billing\s*읽기만$/, /^ledger\s*읽기만$/]);
   await expect(card.getByRole("button")).toHaveCount(0);
@@ -361,8 +365,9 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(card).toHaveCount(0);
   await 요약토글(page).click();
   await expect(card).toBeVisible();
-  // 둘째는 빈 Service로 읽어 읽는 Project가 없다 — 소스 칸 없이 결과물만 선다.
-  await expect(card.getByRole("region", { name: "소스", exact: true })).toHaveCount(0);
+  // 둘째는 빈 Service로 읽어 읽는 Project가 없다 — 소스 칸이 서고 「읽는 Project가 없어요」 한 줄이다(restart 02b-8).
+  await expect(card.getByRole("region", { name: "소스", exact: true })).toHaveText(/^소스\s*읽는 Project가 없어요$/);
+  await expect(card.locator("[data-project]")).toHaveCount(0);
   await 사이드바Thread(page, looseA.title).click();
   await expect(page).toHaveURL(`/threads/${looseA.id}`);
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
@@ -386,14 +391,20 @@ test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작�
   const 열폭 = (await 상자(입력창(page))).width;
 
   await streamLines(page, view.id, [ASKED]);
-  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true });
+  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 편집하도록 허용할까요?", exact: true });
   await expect(card).toBeVisible();
-  // 늘 허용을 둘 자리는 이은 Work다(S18) — 단추 글이 그 자리를 말한다. 고르면 그 허락을 Atelier가 적어 두고(`remember`) 이번 요청에는
-  // 「이번만」으로 답한다(`cardChoices` — Claude의 Session 허락으로 넘기지 않는다).
-  await expect(card.getByRole("button")).toHaveText([/^아니요, 다르게/, "이 작업공간의 모든 편집 허용", /^이번만 허용/]);
-  // 입력창 자리 카드의 한 겉(02 §10 · 스토리 68) — 1px 테두리 · 그림자 없음 · 폭이 입력창(열 737)과 같다.
+  // 늘 허용을 둘 자리는 이은 Work다(S18) — 왼쪽 허락 문구가 그 자리를 말한다. 고르면 그 허락을 Atelier가 적어 두고(`remember`) 이번 요청에는
+  // 「한 번만」으로 답한다(`cardChoices` — Claude의 Session 허락으로 넘기지 않는다). 차례는 허락 문구 · 「거부」 · 「한 번만 허용」이다(restart 02b-5).
+  await expect(card.getByRole("button")).toHaveText(["이 작업공간의 모든 편집 허용", /^거부/, /^한 번만 허용/]);
+  // 입력창 자리 카드의 한 겉(Cards 보드 `.ra-ask` · restart 02b-5) — 테두리 없이 입력창과 같은 그림자(`shadow-composer`) · 둥근 22 · 면
+  // `surface-composer`, 폭이 입력창(열 737)과 같다. 한때 1px 테두리 · 그림자 없음이었다.
   expect((await 상자(card)).width).toBe(열폭);
-  expect(await 모양(card, ["border-top-width", "box-shadow"])).toEqual({ "border-top-width": "1px", "box-shadow": "none" });
+  expect(await 모양(card, ["border-top-width", "border-top-left-radius", "background-color"])).toEqual({
+    "border-top-width": "0px",
+    "border-top-left-radius": "22px",
+    "background-color": "rgb(255, 255, 255)",
+  });
+  expect(그림자((await 모양(card, ["box-shadow"]))["box-shadow"])).toBe(그림자(await 토큰값(page, "box-shadow", "--shadow-composer")));
 
   await page.waitForTimeout(ARMING_MS);
   await card.getByRole("button", { name: "이 작업공간의 모든 편집 허용", exact: true }).click();
@@ -422,18 +433,34 @@ const runningView: ThreadView = {
   )!.seq,
 };
 
-test("작업 중에는 입력창 위 가운데에 작업 중 점이 서고, 그사이 보낸 말은 대기 줄로 쌓여 「지금 보내기」가 그 말을 하던 일에 끼워 넣는다", async ({
+/** 첫 턴의 답이 길어 흐름이 창을 넘는 두 턴 — 위로 굴릴 자리가 있다. */
+const longTwoTurns: RecordLine[] = twoTurns.map((line) => {
+  const update = (line.payload as { update?: { sessionUpdate?: string; content?: { text?: string } } }).update;
+  if (line.seq > seqOf(twoTurns, "turn-end", 1) || update?.sessionUpdate !== "agent_message_chunk") return line;
+  const text = Array.from({ length: 30 }, (_, at) => `긴 답 문단 ${at + 1} — 흐름이 창을 넘게 한다.`).join("\n\n");
+  return { ...line, payload: { ...(line.payload as object), update: { ...update, content: { ...update.content, text } } } };
+});
+
+test("작업 중에는 바닥에 점이 없고, 위로 굴려 선 「맨 아래로」 원 안에 작업 중 점이 서며, 그사이 보낸 말은 대기 줄로 쌓여 「지금 보내기」가 그 말을 하던 일에 끼워 넣는다", async ({
   page,
 }) => {
-  await openThread(page, runningView, linesThrough(twoTurns, runningView.lastSeq));
+  await openThread(page, runningView, linesThrough(longTwoTurns, runningView.lastSeq));
 
-  // 작업 중 점(02 §10 · 스토리 71) — 「맨 아래로」 자리의 32 원 안에 점 셋이 서고, 그 원은 입력창 위 가운데다.
-  const dots = 흐름(page).getByRole("img", { name: "작업 중", exact: true });
+  // 작업 중 점(02 §10 · restart 02b-1 · 02b-7) — 바닥에 붙어 있으면 원이 없고 점도 없다(일하는 것은 흐름의 머리가 말한다). 위로 굴려 바닥에서
+  // 24 넘게 멀어지면 「맨 아래로」 32 원이 입력창 자리 위 6 · 입력창 가운데에 뜨고, 일하는 동안은 그 원 안에 점 셋이 선다(↓는 옅게 숨는다).
+  const 맨아래로 = 흐름(page).getByRole("button", { name: "맨 아래로", exact: true });
+  const dots = 흐름(page).locator(".typing-dots");
+  await expect(흐름(page).getByText("긴 답 문단 30 — 흐름이 창을 넘게 한다.", { exact: true })).toBeVisible();
+  await expect(맨아래로).toHaveCount(0);
+  await expect(dots).toHaveCount(0);
+  await 흐름(page).getByText("긴 답 문단 1 — 흐름이 창을 넘게 한다.", { exact: true }).scrollIntoViewIfNeeded();
+  await expect(맨아래로).toBeVisible();
   await expect(dots).toBeVisible();
-  const [dotsBox, composerBox] = [await 상자(dots), await 상자(입력창(page))];
-  expect([dotsBox.width, dotsBox.height]).toEqual([32, 32]);
-  expect(dotsBox.x + dotsBox.width / 2).toBeCloseTo(composerBox.x + composerBox.width / 2, 0);
-  expect(dotsBox.bottom).toBeLessThan(composerBox.y);
+  // 원은 아래에서 떠오른다(`jump-in`) — 다 선 자리를 읽는다.
+  await expect.poll(async () => Math.round((await 상자(page.locator("[data-dock]"))).y - (await 상자(맨아래로)).bottom)).toBe(6);
+  const [jumpBox, composerBox] = [await 상자(맨아래로), await 상자(입력창(page))];
+  expect([jumpBox.width, jumpBox.height]).toEqual([32, 32]);
+  expect(jumpBox.x + jumpBox.width / 2).toBeCloseTo(composerBox.x + composerBox.width / 2, 0);
 
   // 도는 동안 보낸 말 — 엔진이 그 Session의 대기 줄에 쌓고 대기 줄 이벤트를 낸다. 입력창 위에 「대기」 줄이 서고 끝에 「지금 보내기」다.
   const later = "다 되면 표로 정리해 줘";

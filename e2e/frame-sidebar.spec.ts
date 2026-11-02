@@ -312,12 +312,14 @@ test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal · 씨앗�
   await expect(셸입력(page), "앵커: 셸에 포커스가 있다").toBeFocused();
   await 새Thread로간다("셸에 포커스가 선 Terminal");
 
-  // 씨앗을 단 새 Thread 둘 — 칩이 씨앗을 말하는 것이 앵커다(이미 첫 화면이다). 고른 줄은 행 버튼을 품은 상자의 `selected-row`다(`SidebarItem`).
+  // 씨앗을 단 새 Thread 둘 — 씨앗을 말하는 것이 앵커다(이미 첫 화면이다). `?new=work`는 트레이의 「새 작업공간」 칩, `?work=`는 그 작업공간의 새 채팅
+  // 탭이라(restart 02a-8) 그 이름을 부르는 빈 칸의 말이다(restart 02b-2 — 한때 트레이의 잠긴 Work 칩). 고른 줄은 행 버튼을 품은 상자의
+  // `selected-row`다(`SidebarItem`).
   const 트레이 = page.locator('[data-slot="composer-tray"]');
   const 새Thread줄 = 위줄(page, "새 채팅").locator("..");
   for (const [from, chip] of [
     ["/?new=work", 트레이.locator('[data-slot="new-work-chip"]')],
-    [`/?work=${plainWork.slug}`, 트레이.locator('[data-slot="work-chip"]')],
+    [`/?work=${plainWork.slug}`, page.getByPlaceholder(`${plainWork.title}에서 무엇을 할까요?`, { exact: true })],
   ] as const) {
     for (const how of ["⌘N", "「새 채팅」"] as const) {
       await page.goto(from);

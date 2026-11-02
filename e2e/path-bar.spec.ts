@@ -64,11 +64,11 @@ async function 경로줄을잰다(page: Page, card: Locator, 조각: string[], {
   expect(first.y - barBox.bottom, "경로 줄 아래 → 첫 블록").toBeCloseTo(await 간격(page, 6), 1);
 }
 
-// 작업공간의 문서는 넓힌 카드에서 연다(restart 02a-12 · 02a-13 — 문서 탭과 분할을 걷었다). 넓힌 카드의 보기 머리가 경로 줄이고, 캡슐은
-// 「문서 › 경로」, 끝에는 보기 묶음 · 경로 복사 뒤로 「카드로 접기」 ×가 선다(스토리 117). 한때 spec 탭의 문서(탭 줄 바로 아래 · × 없음)와
-// 분할의 spec 열(열 머리 · 「spec 열 닫기」 ×, 좁게 끌면 캡슐이 32 원으로 접힘)에서 쟀다 — 좁은 열이 없어져 접히는 캡슐은 L2
-// (`PathBar.test.tsx`)에 남는다.
-test("Works: 넓힌 카드의 문서 위에 경로 줄이 서고, 캡슐 글자와 문서 글이 한 세로줄이며 끝 칸만 진하고 끝에 「카드로 접기」가 선다", async ({
+// 작업공간의 문서는 넓힌 카드에서 연다(restart 02a-12 · 02a-13 — 문서 탭과 분할을 걷었다). 넓힌 카드 보기의 머리는 경로 줄이 아니라 보드의 보기
+// 머리다(SummarySheet `.ra-vwhead` · restart 02b-8) — 38 · 안쪽 왼쪽 14 · 아래 0.5 `border-heavy` 선 · 13 글자에 경로가 「/」로 이은 조각이고, 앞 조각은
+// `fg-tertiary`, 끝 조각(지금 보는 것)만 `fg` 400이다. 끝에는 렌더 | 원문 · 경로 복사 · 「카드로 접기」 ×가 선다(스토리 117). 머리 글자는 머리 왼쪽
+// 14, 문서 글은 글 거터 20이라 한 세로줄이 아니다(한때 48 경로 줄의 캡슐 글자와 문서 글이 한 세로줄이었다). Archive 문서는 경로 줄 그대로다(아래).
+test("Works: 넓힌 카드의 문서 위에 보기 머리가 서고, 경로는 「/」로 이은 조각이며 끝 조각만 fg이고, 끝에 렌더 | 원문 · 경로 복사 · 「카드로 접기」가 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -76,11 +76,27 @@ test("Works: 넓힌 카드의 문서 위에 경로 줄이 서고, 캡슐 글자�
   await expect(page.getByRole("heading", { name: "개요" })).toBeVisible();
 
   const card = page.locator('section[data-expanded] [data-viewer="doc"]');
-  await 경로줄을잰다(page, card, ["문서", "overview.md"], { 카드거터: false });
+  await expect(경로줄(card)).toHaveCount(0);
+  const capsule = card.getByRole("navigation", { name: "위치", exact: true });
+  const head = capsule.locator("..");
+  await expect(capsule.locator("span")).toHaveText(["문서", "/", "overview.md"]);
+  const [fg, tertiary] = [await 토큰색(page, "--fg"), await 토큰색(page, "--fg-tertiary")];
+  expect(await 칠한값(capsule.locator("span").first(), "color", "font-size")).toEqual([tertiary, "13px"]);
+  expect(await 칠한값(capsule.locator("span").last(), "color", "font-weight")).toEqual([fg, "400"]);
 
-  // 보기의 맨 위다.
-  expect((await 상자(경로줄(card))).y, "보기 맨 위").toBe((await 상자(card)).y);
-  expect(await 버튼들(경로줄(card))).toEqual(["문서로 보기", "원문 보기", "경로 복사", "카드로 접기"]);
+  // 보기의 맨 위 38 · 아래 0.5 선 · 경로 칸은 머리 안쪽 왼쪽 14, 문서 글은 보기 왼쪽 20(글 거터)이다.
+  const [headBox, cardBox] = [await 상자(head), await 상자(card)];
+  expect([headBox.y, headBox.height], "보기 맨 위 · 높이").toEqual([cardBox.y, 38]);
+  expect(await 칠한값(head, "border-bottom-width", "border-bottom-color")).toEqual(["0.5px", await 토큰색(page, "--border-heavy")]);
+  // 카드가 넓어지는 동안(500ms)은 보기가 옮겨 간다 — 다 선 자리를 읽는다.
+  await expect.poll(async () => (await 상자(capsule)).x - (await 상자(card)).x, { message: "경로 칸 = 보기 + 14" }).toBe(14);
+  const 거터 = await 간격(page, 5);
+  await expect
+    .poll(async () => Math.round(((await 첫글자(card.locator("article"))).x - (await 상자(card)).x) * 10) / 10, { message: "문서 글 = 보기 + 20" })
+    .toBe(거터);
+
+  const names = await head.getByRole("button").evaluateAll((all) => all.map((one) => one.getAttribute("aria-label") ?? one.textContent));
+  expect(names).toEqual(["렌더", "원문", "경로 복사", "카드로 접기"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

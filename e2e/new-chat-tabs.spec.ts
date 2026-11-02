@@ -33,8 +33,11 @@ const [pinnedWork, plainWork, multiWork] = WORKS;
 
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
 const 칩들 = (page: Page) => page.getByRole("list", { name: "첨부", exact: true });
-/** 트레이의 잠긴 작업공간 칩 — 숨은 새 채팅 탭의 몸도 DOM에 남아 있어(내리지 않는다) 보이는 것만 집는다. */
-const 잠긴칩 = (page: Page) => page.locator('[data-slot="composer-tray"] [data-slot="work-chip"]').filter({ visible: true });
+/**
+ * 보이는 새 채팅 탭이 그 작업공간의 것이다 — 빈 칸의 말이 그 이름을 부른다(restart 02b-2 — 한때 트레이의 잠긴 작업공간 칩이었다). 숨은 새 채팅
+ * 탭의 몸도 DOM에 남지만(내리지 않는다) 역할로 집는 입력칸은 보이는 것 하나다.
+ */
+const 작업공간말 = (page: Page, work: { title: string }) => expect(입력칸(page)).toHaveAttribute("placeholder", `${work.title}에서 무엇을 할까요?`);
 const 고르는칩 = (page: Page, name: string) => page.getByRole("button", { name: `Runtime: ${name}`, exact: true });
 /** 탭 줄의 칸 — 왼쪽부터 종류(`data-tab`), 채팅 칸이면 그 채팅 id. 끝의 `+`(「새 탭」)는 뺀다. */
 const 칸차례 = (page: Page) =>
@@ -111,7 +114,7 @@ test("`?work=`는 그 작업공간의 새 채팅 탭으로 가고, `say`가 그 
   await expect(page).toHaveURL(주소(plainWork.slug, "tab=chat"), { timeout: 20_000 });
   await expect.poll(() => 칸차례(page)).toEqual(["new-chat"]);
   await expect(입력칸(page)).toHaveValue(say);
-  await expect(잠긴칩(page)).toHaveText(plainWork.title);
+  await 작업공간말(page, plainWork);
   expect(await callCount(page, "thread_start")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -137,7 +140,7 @@ test("새 채팅 탭의 글 · 고른 Runtime은 그 탭의 것이다 — 셸 ·
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await expect(page).toHaveURL(주소(pinnedWork.slug, "tab=chat"), { timeout: 20_000 });
-  await expect(잠긴칩(page)).toHaveText(pinnedWork.title);
+  await 작업공간말(page, pinnedWork);
 
   // 첫 탭 — 글을 쓰고 Codex를 고른다.
   const typed = "첫 탭의 말";
@@ -148,7 +151,7 @@ test("새 채팅 탭의 글 · 고른 Runtime은 그 탭의 것이다 — 셸 ·
   const 첫탭이남았다 = async () => {
     await expect(입력칸(page)).toHaveValue(typed);
     await expect(고르는칩(page, "Codex")).toBeVisible();
-    await expect(잠긴칩(page)).toHaveText(pinnedWork.title);
+    await 작업공간말(page, pinnedWork);
   };
 
   // 둘째 새 채팅 탭(⌘T) — 빈 입력창 · Claude Code다. 여기서 쓴 글은 첫 탭에 가지 않는다.
@@ -180,7 +183,7 @@ test("새 채팅 탭의 글 · 고른 Runtime은 그 탭의 것이다 — 셸 ·
   // 다른 작업공간의 새 채팅 탭에는 서지 않는다 — 빈 입력창이고 그 작업공간의 칩이다.
   await 작업화면으로(page, multiWork);
   await expect(page).toHaveURL(주소(multiWork.slug, "tab=chat"));
-  await expect(잠긴칩(page)).toHaveText(multiWork.title);
+  await 작업공간말(page, multiWork);
   await expect(입력칸(page)).toHaveValue("");
 
   // 홈에도 서지 않는다.
@@ -204,7 +207,7 @@ test("새 채팅 탭에 끌어다 놓은 첨부는 그 탭의 것이다 — 다�
 
   // 다른 작업공간의 새 채팅 탭과 홈에는 서지 않는다. 돌아오면 그 탭에 그대로다.
   await 작업화면으로(page, multiWork);
-  await expect(잠긴칩(page)).toHaveText(multiWork.title);
+  await 작업공간말(page, multiWork);
   await expect(칩들(page)).toHaveCount(0);
   await page.locator("aside[data-sidebar]").getByRole("button", { name: /^새 채팅/ }).click();
   await expect(page).toHaveURL("/");

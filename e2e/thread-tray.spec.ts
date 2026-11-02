@@ -1,24 +1,22 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD } from "./fixtures";
-import { heldCalls, holdCommand, installFixtureBackend, ipcArgs, ipcCallArgs, releaseCommand, replaceAnswer, unknownIpcCalls, 칠한링 } from "./harness";
+import { heldCalls, holdCommand, installFixtureBackend, ipcArgs, ipcCallArgs, releaseCommand, replaceAnswer, unknownIpcCalls, 토큰색 } from "./harness";
 import { linesThrough, record, sentPayloads, seqOf, summaryOf } from "./thread-records";
 import { PAYMENTS, REFUND, SCOPE_BY_SERVICE, SCOPES, SETTLEMENT, TOOLS, WORLD } from "./thread-service-world";
-import { HOST_MAKE } from "@/features/services/service-view";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
-// 03 티켓 13 흐름 「트레이」(캔버스 v52 F4-KitComposer · 구현 스펙 「01a — 범위와 새 채팅」) — **입력창에 붙은 회색 띠에 Work 칩 · 범위 칩 · 범위 줄이 서고,
-// 첫 화면에서는 상자 아래 · 첫 말 뒤에는 상자 위에 선다. 범위 칩은 이 채팅이 읽을 곳(없음 · Service · Project)을 고르고(관문이 아니다), 범위 줄이 지금
-// 읽는 Project를 한 줄로 말하며, 둘 다 첫 말 뒤에는 서지 않는다. 입력창 안은 + · 물어보는 정도 · 모델 칩뿐이다**(03 구현 스펙 §5 · §6 · 티켓 02 · 06 ·
-// S2–S5 · 스토리 14–42 · 티켓 01a-13). 상황 모음판의 칸이 곧 경우다 — 같은 것을 두 번 재지 않는다.
+// 03 티켓 13 흐름 「트레이」(캔버스 v52 F4-KitComposer · 구현 스펙 「01a — 범위와 새 채팅」 · restart 02b-2 Composer 보드) — **첫 말 전의 새 채팅에만 입력창
+// 상자 아래에 회색 띠가 서서 「새 작업공간」 칩 · 범위 칩 · 범위 줄을 싣는다. 범위 칩은 이 채팅이 읽을 곳(없음 · Service · Project)을 고르고(관문이 아니다),
+// 범위 줄이 지금 읽는 Project를 한 줄로 말한다. 첫 말 뒤에는 트레이가 없다 — 범위는 대화로 바꾼다. 입력창 안은 + · 물어보는 정도 · 모델 칩뿐이다**
+// (03 구현 스펙 §5 · §6 · 티켓 02 · 06 · S2–S5 · 스토리 14–42 · 티켓 01a-13). 상황 모음판의 칸이 곧 경우다 — 같은 것을 두 번 재지 않는다.
 //
-//   여기서 잰다     두 자리(상자 아래 · 위의 기하 · 칩 차례 · 칩 모양) · 첫 말 뒤(잠긴 칩 셋 — 이은 Work · Work 없이 대화 · 흐린 새 Work, 이은 Work 칩이
-//                   그 Work로 · 범위 칩과 범위 줄이 서지 않음) · 범위 메뉴(범위 없음 · Service · Project · Service 관리 · 없을 때 대화로 만들기) · × ·
-//                   ▾(그 Work의 Service) · 빈 Service · 범위 없음 · 범위 줄 · 고른 범위가 첫 말과 함께 감 · 씨앗(`?new=` · `?work=` · `?service=` ·
-//                   `?project=` · `?say=`) · `@` 없음 · `/agent` 없음 · 입력이 있으면 짙은 보내기
-//   다른 spec이 잰다 씨앗이 세우는 Work 칩 · × · `/work` 없음 · 정도 칩(`thread-work-chip`) · Work 만들기 카드를 받아들인 뒤의 잠긴 칩
-//                   (`thread-work`) · 대화로 바꾸는 범위 — 흐름의 Service 줄과 머리 줄의 Service(흐름 「대화 속 Service와
-//                   설정」 — `thread-service-setting`)
+//   여기서 잰다     트레이의 자리(상자 밑으로 14 겹침 · 칩 차례 · 칩 모양) · 첫 말 뒤 트레이 없음 · 범위 메뉴(범위 없음 · Service · Project — 상자에 붙는
+//                   자리 · 끝 줄 없음) · ▾(빼기는 메뉴의 「범위 없음」) · 그 Work의 Service · 빈 Service · 범위 없음 · 범위 줄 · 고른 범위가 첫 말과 함께
+//                   감 · 씨앗(`?new=` · `?work=` · `?service=` · `?project=` · `?say=`) · `@`는 파일 메뉴 · `/agent` 없음 · 입력이 있으면 짙은 보내기 ·
+//                   세션 여는 중 모델 칩 스켈레톤
+//   다른 spec이 잰다 정도 칩(`thread-work-chip`) · Work 만들기 카드를 받아들인 뒤(`thread-work`) · 대화로 바꾸는 범위 — 흐름의 Service 줄과 머리 줄의
+//                   Service(흐름 「대화 속 Service와 설정」 — `thread-service-setting`) · `@` 메뉴의 손맛(`thread-mention`)
 //
 // 세계는 시안의 Project 셋 · Service 셋 · Work 넷이다(`thread-service-world`). 읽는 범위는 core가 짓는 모양을 그 세계로 적어 둔 답이고, 이 층은
 // 그 답을 화면이 그대로 말하는지와 고른 것이 그 인자로 나가는지를 잰다(범위를 세는 규칙은 L1 `reading_scope` · `thread_service.rs`의 몫).
@@ -33,14 +31,10 @@ const 첫화면 = (page: Page) => page.getByRole("heading", { name: "무엇을 �
 const 트레이 = (page: Page) => page.locator('[data-slot="composer-tray"]');
 /** 「새 작업공간」 칩 — `?new=work`로 연 새 채팅의 첫 말 전에만 선다. */
 const 새작업공간칩 = (page: Page) => 트레이(page).locator('[data-slot="new-work-chip"]');
-/** 잠긴 Work 칩 — 이은 Work만 단추다. */
-const 잠긴칩 = (page: Page) => 트레이(page).locator('[data-slot="work-chip"]');
-/** 비어 있는 범위 칩 — 흐린 「범위 없음」. */
+/** 비어 있는 범위 칩 — 「범위 없음 ▾」. */
 const 빈칩 = (page: Page) => 트레이(page).getByRole("button", { name: "범위 없음", exact: true });
-/** 고른 범위 칩 — 흰 면 안에 이름 단추와(Work 없는 쪽이면) × 단추가 선다. */
-const 고른칩 = (page: Page) => 트레이(page).locator('[data-slot="scope-chip"]');
+/** 고른 범위 칩 — 그 이름 ▾다. 빼기는 메뉴의 「범위 없음」이다(restart 02b-2 — 한때 흰 칩 + ×였다). */
 const 이름칩 = (page: Page, name: string) => 트레이(page).getByRole("button", { name: `범위: ${name}`, exact: true });
-const 빼기 = (page: Page) => 트레이(page).getByRole("button", { name: "범위 빼기", exact: true });
 const 범위줄 = (page: Page) => 트레이(page).locator('[data-slot="scope-line"]');
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 갈래 = (page: Page, name: string) => 메뉴(page).getByRole("menuitemradio", { name, exact: true });
@@ -57,7 +51,7 @@ const 모양 = (target: Locator, props: readonly string[]) =>
     return Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)]));
   }, props);
 
-/** 트레이 띠의 칠 · 안쪽 · 둥글기(시안 `.tray` · `.tray.up`). */
+/** 트레이 띠의 칠 · 안쪽 · 둥글기(Composer `.ra-tray`). */
 const BAND = [
   "background-color",
   "padding-top",
@@ -125,25 +119,26 @@ async function sendFirst(page: Page, text: string, to: ThreadView) {
   await expect(page.getByRole("main", { name: to.title, exact: true })).toBeVisible();
 }
 
-test("두 자리 — 첫 화면의 트레이는 입력창 상자 아래에, 첫 말을 보내면 상자 위에 서서 잠기고, 칩은 새 작업공간 · 범위 · 범위 줄 차례이며 범위는 첫 말 뒤에 서지 않는다", async ({
+test("트레이 — 첫 화면의 트레이는 입력창 상자 밑으로 14 겹쳐 들어간 띠이고 칩은 새 작업공간 · 범위 · 범위 줄 차례이며, 첫 말을 보내면 걷힌다", async ({
   page,
 }) => {
-  // 첫 말을 받은 Thread — 「새 작업공간」으로 시작해 아직 Work가 서지 않았다(`newWork`). 시작을 붙잡아 보내는 동안의 트레이를 본다.
+  // 첫 말을 받은 Thread — 「새 작업공간」으로 시작해 아직 Work가 서지 않았다(`newWork`). 시작을 붙잡아 보내는 동안의 입력창을 본다.
   const started: ThreadView = { ...FIXTURE_THREAD, title: first.text, live: true, lastSeq: FIRST_SENT, newWork: true };
   await withThreads(page, [started], linesThrough(twoTurns, FIRST_SENT));
   await holdCommand(page, "thread_start");
   await openHome(page, at({ new: "work" }));
 
-  // 상자 아래(시안 `.tray` — margin -2 14 0 · padding 10 8 6 · #f4f4f4 · 아래 둥글기 15). 칩은 트레이 안에 「새 작업공간」 → 범위 칩 → 범위 줄
-  // 차례로 서고, 칩 사이 4 · 범위 줄은 4를 더 띄운다(`.scope{margin-left:4px}`). 칩은 26 높이다.
+  // 상자 아래(Composer `.ra-tray` — margin -14 14 0 · padding 20 8 6 · `surface-tray` · 아래 둥글기 15, restart 02b-2). 띠는 상자 밑으로 14 겹쳐
+  // 들어가 상자가 덮고 보이는 안쪽은 위 6이다(한때 겹침 2 · 안쪽 위 10). 칩은 트레이 안에 「새 작업공간」 → 범위 칩 → 범위 줄 차례로 서고, 칩 사이
+  // 2 · 범위 줄은 4를 더 띄운다(칩 곁 6). 칩은 28 높이다.
   const tray = 트레이(page);
   await expect(범위줄(page)).toHaveText("등록된 Project 3개를 읽어요");
   const [below, composer] = [await 상자(tray), await 상자(입력창(page))];
-  expect(composer.bottom - below.y).toBeCloseTo(2, 0);
+  expect(composer.bottom - below.y).toBeCloseTo(14, 0);
   expect([below.x - composer.x, composer.right - below.right]).toEqual([14, 14]);
   expect(await 모양(tray, BAND)).toEqual({
-    "background-color": "rgb(244, 244, 244)",
-    "padding-top": "10px",
+    "background-color": await 토큰색(page, "--surface-tray"),
+    "padding-top": "20px",
     "padding-right": "8px",
     "padding-bottom": "6px",
     "padding-left": "8px",
@@ -156,80 +151,75 @@ test("두 자리 — 첫 화면의 트레이는 입력창 상자 아래에, 첫 
     await tray.evaluate((el) => [...el.children].map((one) => one.getAttribute("aria-label") ?? one.getAttribute("data-slot"))),
   ).toEqual(["new-work-chip", "범위 없음", "scope-line"]);
   const [workChip, scopeChip, scope] = [await 상자(새작업공간칩(page)), await 상자(빈칩(page)), await 상자(범위줄(page))];
-  expect([workChip.height, scopeChip.height]).toEqual([26, 26]);
-  expect(scopeChip.x - workChip.right).toBeCloseTo(4, 0);
-  expect(scope.x - scopeChip.right).toBeCloseTo(8, 0);
-  // 칩의 글자 — 「새 작업공간」은 본문색, 흐린 「범위 없음」은 45%(`.tc.ghost`), 범위 줄은 12 · 옅은 글자(시안 12.5 · 49.5% — 글자 단계에 없다).
-  expect(await 모양(새작업공간칩(page).getByText("새 작업공간", { exact: true }), ["font-size", "color"])).toEqual({
-    "font-size": "13px",
-    color: "rgb(26, 28, 31)",
-  });
-  expect(await 모양(빈칩(page), ["color"])).toEqual({ color: "rgba(26, 28, 31, 0.45)" });
-  expect(await 모양(범위줄(page), ["font-size", "color"])).toEqual({ "font-size": "12px", color: "rgba(26, 28, 31, 0.5)" });
+  expect([workChip.height, scopeChip.height]).toEqual([28, 28]);
+  expect(scopeChip.x - workChip.right).toBeCloseTo(2, 0);
+  expect(scope.x - scopeChip.right).toBeCloseTo(6, 0);
+  // 칩의 글자 — 「새 작업공간」도 「범위 없음」도 13 `fg-secondary`다(한때 본문색 · 흐린 45%). 범위 줄은 12 · `fg-tertiary`다.
+  const 버금 = await 토큰색(page, "--fg-secondary");
+  expect(await 모양(새작업공간칩(page).getByText("새 작업공간", { exact: true }), ["font-size", "color"])).toEqual({ "font-size": "13px", color: 버금 });
+  expect(await 모양(빈칩(page), ["color"])).toEqual({ color: 버금 });
+  expect(await 모양(범위줄(page), ["font-size", "color"])).toEqual({ "font-size": "12px", color: await 토큰색(page, "--fg-tertiary") });
 
-  /** 범위는 첫 말 뒤에 대화로 바꾼다 — 칩도 범위 줄도 서지 않는다(구현 스펙 「01a — 범위와 새 채팅」). */
-  const 범위가없다 = async () => {
-    await expect(빈칩(page)).toHaveCount(0);
-    await expect(고른칩(page)).toHaveCount(0);
-    await expect(범위줄(page)).toHaveCount(0);
-  };
-
-  // 보내는 동안 — 입력창이 바닥으로 내려가고 트레이는 상자 위로 옮겨 잠긴다. Work 칩은 흐린 「새 작업공간」(아직 Work가 서지 않았다 — S3)이다.
+  // 보내는 동안 — 입력창이 바닥으로 내려가고 트레이는 걷힌다(범위는 대화로 바꾼다 — 구현 스펙 「01a — 범위와 새 채팅」 · Thread 보드). 한때 트레이가
+  // 상자 위로 옮겨 잠긴 Work 칩을 실었다. 칩은 옅어지지 않고(한때 50%), 모델 칩 자리는 Runtime이 목록을 줄 때까지 스켈레톤(92 × 12 · 1.4s)이다.
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   await expect.poll(() => heldCalls(page, "thread_start")).toBe(1);
-  await expect(잠긴칩(page)).toHaveText("새 작업공간");
-  await expect(새작업공간칩(page)).toHaveCount(0);
-  await 범위가없다();
-
-  /** 상자 위(시안 `.tray.up` — margin 0 14 -2 · padding 6 8 10 · 위 둥글기 15). */
-  const sitsAbove = async () => {
-    const [above, box] = [await 상자(tray), await 상자(입력창(page))];
-    expect(above.bottom - box.y).toBeCloseTo(2, 0);
-    expect([above.x - box.x, box.right - above.right]).toEqual([14, 14]);
-    expect(await 모양(tray, BAND)).toEqual({
-      "background-color": "rgb(244, 244, 244)",
-      "padding-top": "6px",
-      "padding-right": "8px",
-      "padding-bottom": "10px",
-      "padding-left": "8px",
-      "border-top-left-radius": "15px",
-      "border-top-right-radius": "15px",
-      "border-bottom-left-radius": "0px",
-      "border-bottom-right-radius": "0px",
-    });
-  };
   await expect.poll(async () => Math.round((await 상자(입력창(page))).bottom)).toBeGreaterThan(800);
-  await sitsAbove();
+  await expect(tray).toHaveCount(0);
+  await expect(page.locator('[data-slot="work-chip"]')).toHaveCount(0);
+  const 정도칩 = 입력창(page).getByRole("button", { name: /^물어보는 정도 / });
+  expect(await 정도칩.evaluate((el) => Number(getComputedStyle(el.parentElement!).opacity) * Number(getComputedStyle(el).opacity))).toBe(1);
+  const 스켈레톤 = 입력창(page).getByRole("status", { name: "모델을 읽는 중", exact: true });
+  await expect(스켈레톤).toBeVisible();
+  const bone = await 상자(스켈레톤);
+  expect([bone.width, bone.height]).toEqual([92, 12]);
+  expect(await 스켈레톤.evaluate((el) => el.getAnimations().map((one) => Number(one.effect?.getTiming().duration)))).toEqual([1400]);
 
-  // Session이 열려 Thread 화면이 서도 트레이는 상자 위 그 자리다. 흐린 「새 작업공간」(45% — `.tc.ghost`)는 그대로이고 누를 것이 없다.
+  // Session이 열려 Thread 화면이 서도 트레이는 없다 — 첫 말 뒤의 입력창에는 칩만 선다.
   await releaseCommand(page, "thread_start");
   await expect(page).toHaveURL(`/threads/${started.id}`);
   await expect(page.getByRole("main", { name: started.title, exact: true })).toBeVisible();
-  await sitsAbove();
-  await expect(잠긴칩(page)).toHaveText("새 작업공간");
-  expect(await 모양(잠긴칩(page), ["color"])).toEqual({ color: "rgba(26, 28, 31, 0.45)" });
-  await expect(잠긴칩(page).getByRole("button")).toHaveCount(0);
-  await 범위가없다();
+  await expect(입력칸(page)).toBeVisible();
+  await expect(tray).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("범위 칩 — 메뉴에서 고른 Service는 흰 칩 + ×가 되어 범위 줄이 그 Project를 말하고, ×가 빼며, 빈 Service는 경고 한 줄이고, 고른 것은 「새 작업공간」 칩을 빼도 남아 첫 말과 함께 간다", async ({
+test("동작 줄이기면 세션 여는 중의 모델 칩 스켈레톤이 흐르지 않는다", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const started: ThreadView = { ...FIXTURE_THREAD, title: first.text, live: true, lastSeq: FIRST_SENT };
+  await withThreads(page, [started], linesThrough(twoTurns, FIRST_SENT));
+  await holdCommand(page, "thread_start");
+  await openHome(page);
+  await 입력칸(page).fill(first.text);
+  await 입력칸(page).press("Enter");
+  await expect.poll(() => heldCalls(page, "thread_start")).toBe(1);
+  const 스켈레톤 = 입력창(page).getByRole("status", { name: "모델을 읽는 중", exact: true });
+  await expect(스켈레톤).toBeVisible();
+  expect(await 스켈레톤.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await releaseCommand(page, "thread_start");
+  await expect(page).toHaveURL(`/threads/${started.id}`);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("범위 칩 — 메뉴에서 고른 Service가 칩 이름(▾)이 되어 범위 줄이 그 Project를 말하고, 메뉴의 「범위 없음」이 빼며, 빈 Service는 경고 한 줄이고, 고른 것은 「새 작업공간」 칩을 빼도 남아 첫 말과 함께 간다", async ({
   page,
 }) => {
   await withThreads(page, [{ ...FIXTURE_THREAD, live: true, lastSeq: FIRST_SENT }], linesThrough(twoTurns, FIRST_SENT));
   await openHome(page, at({ new: "work" }));
 
-  // 작업공간 만들기로 연 첫 화면 — 「새 작업공간」 · 흐린 「범위 없음」 · 등록된 Project 전부를 읽는다.
+  // 작업공간 만들기로 연 첫 화면 — 「새 작업공간」 · 「범위 없음」 · 등록된 Project 전부를 읽는다.
   await expect(새작업공간칩(page)).toBeVisible();
   await expect(빈칩(page)).toBeVisible();
   await expect(범위줄(page)).toHaveText("등록된 Project 3개를 읽어요");
 
-  // 범위 메뉴(Composer 「범위 메뉴」) — 칩 아래로 트레이 밖 6에 연다. 맨 위는 늘 「범위 없음 — 등록된 Project 전부」(지금이 없음이면 ✓), 「이 채팅이 읽을 곳」
-  // 아래에 Service와 Project가 그 차례로 서고, 구분선 뒤 끝에 「Service 관리 · 메뉴 › Service」다.
+  // 범위 메뉴(Composer 「범위 메뉴」) — 트리거가 아니라 입력창 상자에 붙어 상자 위 8 · 상자 왼쪽에서 8 들어선 320 폭으로 연다(restart 02b-2). 맨 위는
+  // 늘 「범위 없음 — 등록된 Project 전부」(지금이 없음이면 ✓), 「이 채팅이 읽을 곳」 아래에 Service와 Project가 그 차례로 선다. 끝 줄(「Service
+  // 관리」 · 「대화로 Service 만들기」)은 걷혔다 — Service 화면이 그 길이다.
   await 빈칩(page).click();
   await expect(메뉴(page)).toBeVisible();
-  expect((await 상자(메뉴(page))).y - (await 상자(트레이(page))).bottom).toBeCloseTo(6, 0);
+  const [menuBox, box] = [await 상자(메뉴(page)), await 상자(입력창(page))];
+  expect([Math.round(box.y - menuBox.bottom), Math.round(menuBox.x - box.x), menuBox.width]).toEqual([8, 8, 320]);
   await expect(메뉴(page).getByRole("menuitemradio")).toHaveText([
     "범위 없음등록된 Project 전부",
     "결제 서비스Service · Project 2개",
@@ -243,32 +233,34 @@ test("범위 칩 — 메뉴에서 고른 Service는 흰 칩 + ×가 되어 범�
   await expect(갈래(page, "범위 없음")).toHaveAccessibleDescription("등록된 Project 전부");
   await expect(메뉴(page).getByRole("group", { name: "이 채팅이 읽을 곳", exact: true })).toBeVisible();
   await expect(갈래(page, PAYMENTS.name)).toHaveAccessibleDescription("Service · Project 2개");
-  await expect(메뉴(page).getByRole("menuitem")).toHaveText(["Service 관리메뉴 › Service"]);
-  await expect(메뉴(page).getByRole("menuitem", { name: "Service 관리", exact: true })).toHaveAccessibleDescription("메뉴 › Service");
+  await expect(메뉴(page).getByRole("menuitem")).toHaveCount(0);
 
-  // Service를 고름 — 흰 면 + 0.5 고리(14%)의 칩에 이름과 ×가 서고, 범위 줄이 그 Service의 Project를 말한다. 범위는 쥔 Service로 센다 — 아직 Thread가 없다.
+  // Service를 고름 — 칩이 그 이름 ▾(층 글리프)이 되고 범위 줄이 그 Service의 Project를 말한다. 칩은 범위가 없을 때와 같은 글자색이고 면이 없다
+  // (한때 흰 면 + 0.5 고리 + ×). 범위는 쥔 Service로 센다 — 아직 Thread가 없다.
   await 갈래(page, PAYMENTS.name).click();
   await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
-  await expect(빼기(page)).toBeVisible();
   await expect(빈칩(page)).toHaveCount(0);
+  await expect(트레이(page).getByRole("button", { name: "범위 빼기", exact: true })).toHaveCount(0);
   await expect(범위줄(page)).toHaveText("web-app · api-server를 읽어요");
-  expect(await 모양(고른칩(page), ["background-color"])).toEqual({ "background-color": "rgb(255, 255, 255)" });
-  expect(await 칠한링(고른칩(page))).toEqual(["rgba(26, 28, 31, 0.14) 0px 0px 0px 0.5px"]);
-  expect((await 상자(고른칩(page))).height).toBe(26);
+  // 면은 손이 떠난 뒤 색 전이가 끝나야 빈다 — 메뉴가 닫히며 칩으로 돌아온 포커스는 누르는 손의 것이라 링 · 면이 없다.
+  await page.mouse.move(720, 120);
+  await expect.poll(async () => (await 모양(이름칩(page, PAYMENTS.name), ["background-color"]))["background-color"]).toBe("rgba(0, 0, 0, 0)");
+  expect(await 모양(이름칩(page, PAYMENTS.name), ["color"])).toEqual({ color: await 토큰색(page, "--fg-secondary") });
+  await expect(이름칩(page, PAYMENTS.name).locator("svg")).toHaveCount(2);
+  expect((await 상자(이름칩(page, PAYMENTS.name))).height).toBe(28);
   expect(await scopeAsks(page)).toContainEqual({ thread: null, work: null, service: PAYMENTS.slug, project: null });
   await 이름칩(page, PAYMENTS.name).click();
   await expect(갈래(page, PAYMENTS.name)).toHaveAttribute("aria-checked", "true");
   await expect(갈래(page, "범위 없음")).toHaveAttribute("aria-checked", "false");
-  await page.keyboard.press("Escape");
-  await expect(메뉴(page)).toHaveCount(0);
 
-  // × — 빼면 다시 흐린 「범위 없음」이고 등록된 전부를 읽는다.
-  await 빼기(page).click();
+  // 「범위 없음」 — 빼면 다시 「범위 없음」 칩이고 등록된 전부를 읽는다.
+  await 갈래(page, "범위 없음").click();
+  await expect(메뉴(page)).toHaveCount(0);
   await expect(빈칩(page)).toBeVisible();
-  await expect(고른칩(page)).toHaveCount(0);
+  await expect(이름칩(page, PAYMENTS.name)).toHaveCount(0);
   await expect(범위줄(page)).toHaveText("등록된 Project 3개를 읽어요");
 
-  // 빈 Service(「빈 Service를 고름」) — 막지 않고 범위 줄이 경고 색(#9a5b00) 한 줄로 알린다.
+  // 빈 Service(「빈 Service를 고름」) — 막지 않고 범위 줄이 경고 색 한 줄로 알린다.
   await 빈칩(page).click();
   await 갈래(page, SETTLEMENT.name).click();
   await expect(이름칩(page, SETTLEMENT.name)).toBeVisible();
@@ -321,18 +313,20 @@ test("범위 메뉴 — Project를 고르면 앞의 Service가 빠지고 칩 · 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("`?work=`로 열면 범위 칩은 그 Work의 Service(× 없이 ▾)이고, 메뉴에 Project 줄이 없으며, 메뉴에서 바꾼 것 · 뺀 것이 첫 말 때 그 Work에 가도록 함께 간다", async ({
+test("`?work=`로 열면 그 작업공간의 새 채팅 탭이고 범위 칩은 그 Work의 Service(▾)이며, 메뉴에 Project 줄이 없고, 메뉴에서 바꾼 것 · 뺀 것이 첫 말 때 그 Work에 가도록 함께 간다", async ({
   page,
 }) => {
   const linked: ThreadView = { ...FIXTURE_THREAD, work: REFUND.slug, live: true, lastSeq: FIRST_SENT };
   await withThreads(page, [linked], linesThrough(twoTurns, FIRST_SENT));
   await openHome(page, at({ work: REFUND.slug }));
 
-  // 칩은 그 Work의 Service이고 끝이 ×가 아니라 ▾다(빼기도 메뉴에서만). 범위는 그 Work와 그 Service로 센다.
-  await expect(잠긴칩(page)).toHaveText(REFUND.title);
+  // 그 작업공간의 새 채팅 탭이다(restart 02a-8) — Work 칩 없이 빈 칸의 말이 그 작업공간을 부른다(restart 02b-2 — 한때 잠긴 Work 칩이 섰다). 범위
+  // 칩은 그 Work의 Service ▾이고 빼기는 메뉴에서만이다. 범위는 그 Work와 그 Service로 센다.
+  await expect(page).toHaveURL(`/works/${REFUND.slug}?tab=chat`);
+  await expect(입력칸(page)).toHaveAttribute("placeholder", `${REFUND.title}에서 무엇을 할까요?`);
+  await expect(page.locator('[data-slot="work-chip"]')).toHaveCount(0);
   await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
   await expect(이름칩(page, PAYMENTS.name).locator("svg")).toHaveCount(2);
-  await expect(빼기(page)).toHaveCount(0);
   await expect(범위줄(page)).toHaveText("web-app · api-server를 읽어요");
   await expect.poll(() => scopeAsks(page)).toContainEqual({ thread: null, work: REFUND.slug, service: PAYMENTS.slug, project: null });
 
@@ -366,7 +360,7 @@ test("`?work=`로 열면 범위 칩은 그 Work의 Service(× 없이 ▾)이고,
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 Work로 가는 단추), 범위 칩과 범위 줄은 서지 않는다", async ({ page }) => {
+test("첫 말 뒤 — 트레이가 없다: 작업공간에 이은 채팅 · 작업공간 없는 채팅 · Service가 있는 채팅 모두 범위 칩도 범위 줄도 서지 않는다", async ({ page }) => {
   const opened = { live: true, lastSeq: FIRST_SENT };
   const inWork: ThreadView = { ...FIXTURE_THREAD, ...opened, id: "20261020-090000", title: "환불 금액 확인", work: REFUND.slug };
   const loose: ThreadView = { ...FIXTURE_THREAD, ...opened, id: "20261021-090000", title: "결제 수단 정리" };
@@ -384,44 +378,27 @@ test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 
     }
     await expect(page.getByRole("main", { name: view.title, exact: true })).toBeVisible({ timeout: 20_000 });
   };
-  /** 범위는 대화로 바꾼다 — 그 Thread에 Service가 있어도 칩도 범위 줄도 서지 않는다. */
-  const 범위가없다 = async () => {
+  /**
+   * 범위는 대화로 바꾼다 — 그 Thread에 Service가 있어도 트레이가 없다(Thread 보드 — restart 02b-2). 한때 상자 위에 잠긴 Work 칩(「작업공간으로 가기:
+   * …」 · 「작업공간 없이 대화」)이 섰다. Service는 머리 줄이 말한다(`thread-service-setting`).
+   */
+  const 트레이가없다 = async () => {
     await expect(입력칸(page)).toBeVisible();
-    await expect(빈칩(page)).toHaveCount(0);
-    await expect(고른칩(page)).toHaveCount(0);
-    await expect(범위줄(page)).toHaveCount(0);
+    await expect(트레이(page)).toHaveCount(0);
+    await expect(page.locator('[data-slot="work-chip"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^범위/ })).toHaveCount(0);
   };
 
-  // Work로 시작한 대화(「첫 말 뒤」 첫 칸) — 잠긴 칩은 그 Work 이름(60% — `.tc.lock`)이고 누르면 그 Work 화면이다.
   await 열린다(inWork);
-  const toWork = 잠긴칩(page);
-  await expect(toWork).toHaveAccessibleName(`작업공간으로 가기: ${REFUND.title}`);
-  await expect(toWork).toHaveText(REFUND.title);
-  expect(await 모양(toWork, ["color"])).toEqual({ color: "rgba(26, 28, 31, 0.6)" });
-  await 범위가없다();
-
-  // Work 없이(「작업공간 없이 · Service 없음」) — 잠긴 칩 「작업공간 없이 대화」는 글일 뿐이다.
+  await 트레이가없다();
   await 열린다(loose);
-  await expect(잠긴칩(page)).toHaveText("작업공간 없이 대화");
-  await expect(잠긴칩(page).getByRole("button")).toHaveCount(0);
-  await expect(트레이(page).getByRole("button", { name: /^작업공간으로 가기/ })).toHaveCount(0);
-  expect(await 모양(잠긴칩(page), ["color"])).toEqual({ color: "rgba(26, 28, 31, 0.6)" });
-  await 범위가없다();
-
-  // Work 없이 한 대화에 Service가 있어도(「작업공간 없이 한 대화」) 트레이에는 잠긴 칩뿐이다 — Service는 머리 줄이 말한다(`thread-service-setting`).
+  await 트레이가없다();
   await 열린다(serviced);
-  await expect(잠긴칩(page)).toHaveText("작업공간 없이 대화");
-  await 범위가없다();
-
-  // 이은 Work의 잠긴 칩을 누르면 그 Work 화면이다(S3). 그 채팅은 이미 그 작업공간 화면의 채팅 탭에 서 있어(restart 02a-4) 주소는 그 작업공간에
-  // 머문다 — 다른 화면으로 새지 않는 것만 남는다.
-  await 열린다(inWork);
-  await 잠긴칩(page).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${REFUND.slug}`));
+  await 트레이가없다();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("등록된 Project가 없으면 범위 줄이 경고 색 「등록된 Project가 없어요 · Project 추가」로 추가 창을 열고, Service가 없으면 범위 메뉴가 「대화로 Service 만들기」로 이끈다", async ({
+test("등록된 Project가 없으면 범위 줄이 경고 색 「등록된 Project가 없어요 · Project 추가」로 추가 창을 열고, Service가 없으면 범위 메뉴에는 「범위 없음」 한 줄뿐이다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -445,62 +422,52 @@ test("등록된 Project가 없으면 범위 줄이 경고 색 「등록된 Proje
   await expect(dialog).toHaveCount(0);
   await expect(입력칸(page)).toBeEnabled();
 
-  // 범위 메뉴 — Service가 없을 때: 맨 위 「범위 없음」의 곁말은 등록된 Project가 없다고 말하고, 끝 자리에 「아직 Service가 없어요」 · 「대화로 Service
-  // 만들기」가 선다. 고르면 첫 화면이 작업공간 없는 채팅과 맡기는 말을 든 채 다시 선다 — 보내는 것은 사람이다(S16).
+  // 범위 메뉴 — Service가 없을 때: 「범위 없음」의 곁말이 등록된 Project가 없다고 말하고, 그 한 줄뿐이다. 끝의 「아직 Service가 없어요」 · 「대화로
+  // Service 만들기」는 보드 칸에 없어 걷었다(restart 02b-2) — Service 화면이 그 길이다.
   await 빈칩(page).click();
   await expect(갈래(page, "범위 없음")).toHaveAccessibleDescription("등록된 Project가 없어요");
-  await expect(메뉴(page).getByText("아직 Service가 없어요", { exact: true })).toBeVisible();
   await expect(메뉴(page).getByRole("menuitemradio")).toHaveCount(1);
-  const make = 메뉴(page).getByRole("menuitem", { name: "대화로 Service 만들기", exact: true });
-  await expect(make).toHaveAccessibleDescription("Project를 읽고 초안을 내요");
-  await make.click();
-  await expect.poll(() => new URL(page.url()).searchParams.get("say")).toBe(HOST_MAKE.say);
-  expect(new URL(page.url()).searchParams.get("new")).toBe("thread");
-  await expect(입력칸(page)).toHaveValue(HOST_MAKE.say!);
-  await expect(새작업공간칩(page)).toHaveCount(0);
-  await expect(잠긴칩(page)).toHaveCount(0);
+  await expect(메뉴(page).getByRole("menuitem")).toHaveCount(0);
+  await expect(메뉴(page).getByText("아직 Service가 없어요", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   expect(await ipcCallArgs(page, "thread_start", "text")).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("씨앗 — 주소의 `?new=` · `?work=` · `?service=` · `?say=`가 처음 고를 Work 칩 · 범위 칩 · 입력 글이 되고, 보내지는 않는다", async ({
+test("씨앗 — 주소의 `?new=` · `?work=` · `?service=` · `?say=`가 처음 고를 「새 작업공간」 칩 · 범위 칩 · 입력 글 · 작업공간의 새 채팅 탭이 되고, 보내지는 않는다", async ({
   page,
 }) => {
   const linked: ThreadView = { ...FIXTURE_THREAD, work: REFUND.slug, live: true, lastSeq: FIRST_SENT };
   await withThreads(page, [linked], linesThrough(twoTurns, FIRST_SENT));
 
-  // Service 상세의 「작업공간 만들기」(`?new=work&service=`) — 「새 작업공간」과 그 Service(×)를 고른 채 선다(F4-KitComposer 「Service를 고름」 칸의 곁말).
+  // Service 상세의 「작업공간 만들기」(`?new=work&service=`) — 「새 작업공간」과 그 Service(▾)를 고른 채 선다(F4-KitComposer 「Service를 고름」 칸의 곁말).
   await openHome(page, at({ new: "work", service: PAYMENTS.slug }));
   await expect(새작업공간칩(page)).toBeVisible();
   await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
-  await expect(빼기(page)).toBeVisible();
   await expect(범위줄(page)).toHaveText("web-app · api-server를 읽어요");
 
-  // Service 상세의 「대화로 고치기」(`?new=thread&service=&say=`) — Work 칩 없이 그 Service · 맡기는 말이 입력칸에 들고, 보내지 않는다.
+  // Service 상세의 「대화로 고치기」(`?new=thread&service=&say=`) — 「새 작업공간」 칩 없이 그 Service · 맡기는 말이 입력칸에 들고, 보내지 않는다.
   const say = `${PAYMENTS.name} Service를 고치고 싶어요. `;
   await openHome(page, at({ new: "thread", service: PAYMENTS.slug, say }));
   await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
   await expect(새작업공간칩(page)).toHaveCount(0);
-  await expect(잠긴칩(page)).toHaveCount(0);
   await expect(입력칸(page)).toHaveValue(say);
   await expect(입력칸(page)).toBeFocused();
 
-  // 씨앗 Service 하나(`?service=`) — Work 칩 없이 그 Service를 쥔다. 빈 Service면 경고 한 줄이다.
+  // 씨앗 Service 하나(`?service=`) — 「새 작업공간」 칩 없이 그 Service를 쥔다. 빈 Service면 경고 한 줄이다.
   await openHome(page, at({ service: SETTLEMENT.slug }));
   await expect(이름칩(page, SETTLEMENT.name)).toBeVisible();
   await expect(새작업공간칩(page)).toHaveCount(0);
-  await expect(잠긴칩(page)).toHaveCount(0);
   await expect(범위줄(page)).toHaveText("읽는 Project가 없어요 — Service에 Project를 넣어 주세요");
 
   // Work와 Service를 함께(`?work=&service=`) — 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8). **범위 씨앗은 따라가지 않는다** — 작업공간의 범위는 그
   // 작업공간의 것이라 칩은 그 Work의 지금 Service(▾)다(`routes/index.tsx`의 `WorkSeed`). 한때 그 Work의 Service를 씨앗으로 바꾼 것으로 쥐고 첫 말과
-  // 함께 보냈다. 보내면 고르지 않은 범위(`null`)로 그 Work에 간다.
+  // 함께 보냈다. 보내면 고르지 않은 범위(`null`)로 그 Work에 간다. Work 칩은 없고 빈 칸의 말이 그 작업공간을 부른다(restart 02b-2).
   await openHome(page, at({ work: REFUND.slug, service: TOOLS.slug }));
   await expect(page).toHaveURL(`/works/${REFUND.slug}?tab=chat`);
-  await expect(잠긴칩(page)).toHaveText(REFUND.title);
+  await expect(입력칸(page)).toHaveAttribute("placeholder", `${REFUND.title}에서 무엇을 할까요?`);
   await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
   await expect(이름칩(page, TOOLS.name)).toHaveCount(0);
-  await expect(빼기(page)).toHaveCount(0);
   expect(await ipcCallArgs(page, "thread_start", "text")).toEqual([]);
   await 입력칸(page).fill("배포 전에 볼 것 정리해 줘");
   await 입력칸(page).press("Enter");
@@ -517,9 +484,10 @@ test("씨앗 — `?project=`가 범위 칩에 그 Project를 고르고, `?new=wo
     reading_scope: answerByArg("project", { [API_SERVER]: SCOPES.apiServer }, { otherwise: SCOPES.all }),
   });
 
+  // Project 범위 칩은 폴더 글리프 · 이름 ▾다.
   await openHome(page, at({ project: API_SERVER }));
   await expect(이름칩(page, API_SERVER)).toBeVisible();
-  await expect(빼기(page)).toBeVisible();
+  await expect(이름칩(page, API_SERVER).locator("svg")).toHaveCount(2);
   await expect(새작업공간칩(page)).toHaveCount(0);
   await expect(범위줄(page)).toHaveText("api-server를 읽어요");
 
@@ -533,7 +501,7 @@ test("씨앗 — `?project=`가 범위 칩에 그 Project를 고르고, `?new=wo
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("입력창 안은 + · 물어보는 정도 · Runtime 칩 · 모델 칩 · 보내기뿐이다 — `@`를 쳐도 메뉴가 서지 않고, `/agent` · `/work` 명령도 없으며, 입력이 있으면 보내기가 짙어진다", async ({
+test("입력창 안은 + · 물어보는 정도 · Runtime 칩 · 모델 칩 · 보내기뿐이다 — `@`는 Agent가 아니라 파일 메뉴를 열고, `/agent` · `/work` 명령도 없으며, 입력이 있으면 보내기가 짙어진다", async ({
   page,
 }) => {
   await installFixtureBackend(page, TRAY_WORLD);
@@ -552,10 +520,13 @@ test("입력창 안은 + · 물어보는 정도 · Runtime 칩 · 모델 칩 · 
   ]);
   await expect(page.getByRole("button", { name: "Agent 부르기", exact: true })).toHaveCount(0);
 
-  // `@`를 쳐도 메뉴가 서지 않는다 — L2 `ThreadComposer.test.tsx`의 짝으로 실제 키 입력을 잰다.
+  // `@`는 파일을 언급한다(restart 02b-3) — 머리 「파일」의 목록이 서고 Agent를 부르는 줄은 없다. 손맛은 `thread-mention`이 잰다.
   await 입력칸(page).pressSequentially("@");
   await expect(입력칸(page)).toHaveValue("@");
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  const files = page.getByRole("listbox", { name: "파일", exact: true });
+  await expect(files).toBeVisible();
+  await expect(files.getByRole("option").first()).toBeVisible();
+  await expect(page.getByText(/Agent/)).toHaveCount(0);
 
   // 「/」 명령 메뉴에 `/agent`도 `/work`도 없다 — Agent를 부르는 길도 Work 칩의 스위치도 사라졌다.
   await 입력칸(page).fill("/");

@@ -1,7 +1,17 @@
 import { expect, test, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD } from "./fixtures";
-import { callCount, heldCalls, holdCommand, installFixtureBackend, ipcCallArgs, releaseCommand, unknownIpcCalls } from "./harness";
+import {
+  callCount,
+  clipboardWrites,
+  heldCalls,
+  holdCommand,
+  installFixtureBackend,
+  ipcCallArgs,
+  recordClipboard,
+  releaseCommand,
+  unknownIpcCalls,
+} from "./harness";
 import { linesThrough, record, sentPayloads, seqOf, summaryOf } from "./thread-records";
 import type { EngineCheck, ThreadView } from "@/features/thread/types";
 
@@ -160,6 +170,7 @@ test("고른 Runtime을 확인하는 동안 보내기가 잠기고, 쓸 수 없�
   await installFixtureBackend(page, {
     thread_check_engine: answerByArg("runtime", { "claude-code": FOUND, codex: CODEX_MISSING }),
   });
+  await recordClipboard(page);
   await openHome(page);
   // 첫 화면은 Claude Code를 한 번 확인한다 — 그 답이 온 뒤에 Codex의 확인을 붙잡는다.
   await expect.poll(() => callCount(page, "thread_check_engine")).toBe(1);
@@ -179,13 +190,16 @@ test("고른 Runtime을 확인하는 동안 보내기가 잠기고, 쓸 수 없�
   await expect(입력칸(page)).toHaveValue(typed);
   expect(await callCount(page, "thread_start")).toBe(0);
 
-  // 답이 「못 찾음」 — 입력창 자리에 Codex의 카드가 선다. 입력창은 카드에 자리를 내준다.
+  // 답이 「못 찾음」 — 입력창 자리에 Codex의 카드가 선다. 입력창은 카드에 자리를 내준다. 설치 명령은 카드에 적지 않고 「설치 안내」가 복사한다
+  // (restart 02b-5 · Cards 보드 — 한때 카드 안 고정폭 상자에 명령 줄이 섰다).
   await releaseCommand(page, "thread_check_engine");
   const card = page.getByRole("region", { name: "codex-acp를 찾지 못했어요", exact: true });
   await expect(card).toBeVisible();
-  await expect(card.getByText(CODEX_ACP_INSTALL, { exact: true })).toBeVisible();
+  await expect(card.getByText("설치", { exact: true })).toBeVisible();
+  await expect(card).not.toContainText(CODEX_ACP_INSTALL);
   await expect(card.getByRole("button", { name: "다시 찾기", exact: true })).toBeVisible();
-  await expect(card.getByRole("button", { name: "설치 안내", exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "설치 안내", exact: true }).click();
+  await expect.poll(() => clipboardWrites(page)).toEqual([CODEX_ACP_INSTALL]);
   await expect(입력칸(page)).toHaveCount(0);
 
   // 「Claude Code로 바꾸기」 — 카드가 걷히고 입력창이 쓴 말 그대로 돌아온다. 이미 확인한 Claude Code는 다시 묻지 않는다.

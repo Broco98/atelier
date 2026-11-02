@@ -13,7 +13,7 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 // 상황 모음판의 칸이 곧 경우다 — 같은 것을 두 번 재지 않는다.
 //
 //   여기서 잰다     Service 질문 카드(머리 · 물음 · 선택지 · 「나중에」 · 키) · 답한 뒤 접힌 줄 · Service 줄 다섯(넣음 · 바꿈 · 뺌 · 지워짐 · 되돌림)과
-//                   줄이 오면 따라오는 머리 줄 · 결과 카드 넷과 「열기」 · 「관계 보기」(목록에 없으면 꺼짐) · Project 추가 질문 카드와 답한 뒤 ·
+//                   줄이 오면 따라오는 머리 줄 · 결과 카드 넷과 「열기」(목록에 없으면 꺼짐) · Project 추가 질문 카드와 답한 뒤 ·
 //                   머리 줄 셋(Work 없음 · Service 없음 / Work 없음 · Service 있음 / Work 화면 · Service 메뉴) · Work 만들기 카드의 Service 줄
 //   다른 spec이 잰다 트레이의 범위 칩 · 범위 줄(흐름 「트레이」 — `thread-tray`) · Work 만들기 카드의 나머지와 받아들인 뒤(`thread-work`) ·
 //                   지우기 확인 창 · 토스트(흐름 「Service」 — 13c) · 「지우기를 부탁받음」(Host의 말 — 진짜 앱 손 점검, 13d)
@@ -136,7 +136,7 @@ test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Claude 
   }
 
   // 답한 뒤(「답한 뒤」) — 카드는 물음 · 고른 답 · ✓ 한 줄로 접히고 되돌리기 단추가 없다. 카드로 고른 Service는 Service 줄을 따로 남기지 않는다 —
-  // 접힌 줄이 그 결정이다. 그 줄이 `set_service` 도구 줄의 자리를 대신해 턴에 펼칠 것이 없다(「N초 동안 작업」이 서지 않는다).
+  // 접힌 줄이 그 결정이다. 그 줄이 `set_service` 도구 줄의 자리를 대신해 턴에 펼칠 것이 없다(「N초 동안 작업함」이 서지 않는다).
   await streamLines(page, view.id, linesAfter(asking, SERVICE_ASKED.seq));
   await expect(card).toHaveCount(0);
   const folded = 흐름(page).locator('[data-answered="service"]');
@@ -145,7 +145,7 @@ test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Claude 
   await expect(folded.getByRole("button")).toHaveCount(0);
   await expect(Service줄(page)).toHaveCount(0);
   await expect(흐름(page).getByText("hello from turn", { exact: true })).toBeVisible();
-  await expect(흐름(page).getByRole("button", { name: /초 동안 작업$/ })).toHaveCount(0);
+  await expect(흐름(page).getByRole("button", { name: /초 동안 작업함$/ })).toHaveCount(0);
   await expect(folded).toBeVisible();
   await expect(입력칸(page)).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -226,7 +226,7 @@ const setting = record("thread-setting");
 /** 대화로 추가한 Project — 등록부가 그것을 싣기 전과 뒤를 가른다. */
 const LANDING = { ...WORLD_PROJECTS[0], slug: "landing-page", name: "landing-page", path: "~/MyProjects/landing-page" };
 
-test("결과 카드 넷 — 대화로 한 설정마다 그 턴 안 도구 줄 뒤에 한 장씩 서고(접힌 턴에도), 「열기」 · 「관계 보기」가 그 화면으로 가며, 목록에 없는 것은 꺼진다", async ({
+test("결과 카드 넷 — 대화로 한 설정마다 그 턴 안 도구 줄 뒤에 한 장씩 서고(접힌 턴에도), 「열기」가 그 화면으로 가며, 목록에 없는 것은 꺼진다", async ({
   page,
 }) => {
   const view = threadOf("20261025-130000", setting, { lastSeq: setting[setting.length - 1].seq });
@@ -235,7 +235,8 @@ test("결과 카드 넷 — 대화로 한 설정마다 그 턴 안 도구 줄 �
   await openThread(page, view);
 
   // 카드 넷(F4-KitChat 「대화로 한 설정 — 결과 카드」) — Project 추가 · Project 고침 · Service 고침 · Service 만듦이 한 차례로, 첫 줄 · 둘째 줄은
-  // 엔진이 지어 실은 글 그대로다. 「6초 동안 작업」 아래 · 턴 끝 답 앞이다(F4-ThreadNoWork).
+  // 엔진이 지어 실은 글 그대로다. 단추는 모두 「열기」다(restart 02b-6 — Service 고침의 「관계 보기」를 걷었다, 갈 곳은 그대로 Service 상세).
+  // 「6초 동안 작업함」 아래 · 턴 끝 답 앞이다(F4-ThreadNoWork).
   const cards = 흐름(page).locator("[data-result]");
   await expect(cards).toHaveCount(4);
   expect(await cards.evaluateAll((all) => all.map((one) => one.getAttribute("data-result")))).toEqual([
@@ -247,18 +248,18 @@ test("결과 카드 넷 — 대화로 한 설정마다 그 턴 안 도구 줄 �
   await expect(cards).toHaveText([
     "Project를 추가했어요 — landing-page~/MyProjects/landing-page · git 레포 · 기준 브랜치 main열기",
     "web-app의 기준 브랜치를 main으로 바꿨어요새 작업공간부터 main에서 갈라져요열기",
-    "결제 서비스에 backoffice를 넣었어요Project 3 · 함께 쓰는 Service 1관계 보기",
+    "결제 서비스에 backoffice를 넣었어요Project 3 · 함께 쓰는 Service 1열기",
     "Service를 만들었어요 — 정산api-server · ~/.atelier/services/정산.md열기",
   ]);
   await expect(흐름(page).getByRole("region", { name: "Project를 추가했어요 — landing-page", exact: true })).toBeVisible();
-  const headline = 흐름(page).getByRole("button", { name: /초 동안 작업$/ });
+  const headline = 흐름(page).getByRole("button", { name: /초 동안 작업함$/ });
   const answer = 흐름(page).getByText("hello from turn", { exact: true });
   expect((await 상자(headline)).bottom).toBeLessThanOrEqual((await 상자(cards.first())).y);
   expect((await 상자(cards.last())).bottom).toBeLessThanOrEqual((await 상자(answer)).y);
 
   // 목록에 없는 것은 꺼진다(「그사이 사라졌어요」) — 등록부를 다시 읽으면(감시의 `projects:changed`) 켜지고, 「열기」가 그 Project 상세로 간다.
   const open = (title: string) =>
-    흐름(page).getByRole("region", { name: title, exact: true }).getByRole("button", { name: /^(열기|관계 보기)$/ });
+    흐름(page).getByRole("region", { name: title, exact: true }).getByRole("button", { name: "열기", exact: true });
   await expect(open("Project를 추가했어요 — landing-page")).toBeDisabled();
   await expect(open("Project를 추가했어요 — landing-page")).toHaveAttribute("title", "그사이 사라졌어요");
   for (const title of ["web-app의 기준 브랜치를 main으로 바꿨어요", "결제 서비스에 backoffice를 넣었어요", "Service를 만들었어요 — 정산"]) {
@@ -268,7 +269,7 @@ test("결과 카드 넷 — 대화로 한 설정마다 그 턴 안 도구 줄 �
   await fireEventToAll(page, "projects:changed", null);
   await expect(open("Project를 추가했어요 — landing-page")).toBeEnabled();
 
-  // 「열기」는 Project 상세로, 「관계 보기」는 Service 상세(그래프)로, Service 만듦의 「열기」도 그 Service 상세로 간다. 뒤로 가면 이 Thread다.
+  // Project 쪽 「열기」는 Project 상세로, Service 쪽 「열기」(고침 · 만듦)는 그 Service 상세로 간다. 뒤로 가면 이 Thread다.
   const goes = async (title: string, path: string) => {
     await open(title).click();
     await expect.poll(() => 경로(page)).toBe(path);
@@ -327,7 +328,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
       .toEqual([{ thread: view.id, request: ADD_REQUEST, choice }]);
   }
 
-  // 답한 뒤 — 카드가 걷히고 그 자리에 물음과 고른 답 한 줄, 그 뒤에 결과 카드, 그 뒤에 답이다. 펼칠 것이 없어 「N초 동안 작업」은 없다.
+  // 답한 뒤 — 카드가 걷히고 그 자리에 물음과 고른 답 한 줄, 그 뒤에 결과 카드, 그 뒤에 답이다. 펼칠 것이 없어 「N초 동안 작업함」은 없다.
   await streamLines(page, view.id, linesAfter(adding, ADD_ASKED.seq));
   await expect(card).toHaveCount(0);
   const folded = 흐름(page).locator('[data-answered="project-add"]');
@@ -338,7 +339,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
   const answer = 흐름(page).getByText("hello from turn", { exact: true });
   expect((await 상자(folded)).bottom).toBeLessThanOrEqual((await 상자(result)).y);
   expect((await 상자(result)).bottom).toBeLessThanOrEqual((await 상자(answer)).y);
-  await expect(흐름(page).getByRole("button", { name: /초 동안 작업$/ })).toHaveCount(0);
+  await expect(흐름(page).getByRole("button", { name: /초 동안 작업함$/ })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

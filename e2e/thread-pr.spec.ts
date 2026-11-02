@@ -70,6 +70,10 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   await streamLines(page, view.id, [prs[0]]);
   await expect(PR카드(page)).toHaveCount(1);
   const opened = PR카드(page).first();
+  // 화면이 선 뒤 새로 선 PR 카드는 아래 12에서 320으로 올라온다(restart 02b-6 · Motion 「문서 · PR 카드가 선다」).
+  expect(await opened.evaluate((el) => el.getAnimations().map((one) => [(one as CSSAnimation).animationName, one.effect?.getTiming().duration]))).toEqual([
+    ["card-rise", 320],
+  ]);
   await expect(opened).toHaveAttribute("data-pr-state", "open");
   const meta = [
     `${OPENED.headBranch} → ${OPENED.baseBranch}`,

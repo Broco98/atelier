@@ -313,15 +313,17 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
     "검색칸",
   ).toEqual(["32px", 버튼반경, await 토큰색(page, "--fill-soft")]);
 
-  // 머리 줄의 아이콘 버튼 — 작업 ⋯와 요약 카드도 아이콘 버튼 기본(`size-control` 28 · `radius-lg` — `ShellHead`의 `headButton`)이다. 머리
-  // 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다. 한때 머리 카드의 DS `.at-ib.xs`(24 · `radius-md`)였고,
-  // 작업 ⋯ 곁에 「분할」이 섰다(restart 02a-13이 걷었다 — 그 자리에 「요약 카드」가 선다, 02a-9 · 02a-10).
+  // 머리 줄의 아이콘 버튼 — 작업 ⋯와 요약 카드도 `size-control` 28 정사각이다. 머리 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가
+  // 다르면 하나만 튀어 보인다. 둥글기는 시안 `.ra-tbtn`의 4(`radius-ctl`)다(restart 02b-6b — 셸 컨트롤 넷과 같다, 한때 `radius-lg` 10). 한때 머리
+  // 카드의 DS `.at-ib.xs`(24 · `radius-md`)였고, 작업 ⋯ 곁에 「분할」이 섰다(restart 02a-13이 걷었다 — 그 자리에 「요약 카드」가 선다, 02a-9 · 02a-10).
+  const 컨트롤반경 = await 토큰값(page, "border-top-left-radius", "--radius-ctl");
+  expect(컨트롤반경, "radius-ctl").toBe("4px");
   await page.goto(`/works/${plainWork.slug}`);
   for (const name of ["작업공간 메뉴", "요약 카드"]) {
     expect(
       await 칠한값(화면머리(page).getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
       name,
-    ).toEqual([컨트롤, 컨트롤, 버튼반경]);
+    ).toEqual([컨트롤, 컨트롤, 컨트롤반경]);
   }
 
   expect(await unknownIpcCalls(page)).toEqual([]);
