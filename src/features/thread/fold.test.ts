@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,6 +9,7 @@ import {
   foldThread,
   headline,
   keptFolded,
+  usageText,
   workLine,
   type PendingProject,
   type PendingProjectAdd,
@@ -16,10 +17,11 @@ import {
   type PendingWork,
   type ResultEntry,
   type ThreadModel,
+  type ToolEntry,
 } from "./fold";
 import { createdDocs } from "./expanded";
 import { changedFiles } from "./log";
-import { describeTool, phraseText } from "./tool-view";
+import { describeTool, phraseText, toolFields } from "./tool-view";
 import type { RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05) — 기록 줄 → 턴 · 도구 줄 · 시스템 줄. seam은 순수 함수 `foldThread` 하나다: 처음 읽은 기록도
@@ -1069,5 +1071,237 @@ describe("대화로 하는 설정 — 결과 카드와 Project 추가 카드", (
     ]);
     expect(cards(withdrawn)).toEqual([]);
     expect(withdrawn.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool"]);
+  });
+});
+
+// 서브에이전트의 안쪽 도구(01b-7 · 스토리 63) — 변환기는 안쪽 줄을 그 `Agent` 도구 줄의 update `_meta.claudeCode.event`에 원문으로 싣는다. 바탕은
+// 엔진이 `edit-subagent` 녹음으로 쓴 기록이다(`thread-subagent.jsonl`).
+describe("서브에이전트의 안쪽 도구", () => {
+  const subagent = record("thread-subagent");
+  const AGENT = "toolu_01V4oWzxBXP9BvCAGBTg4ocB";
+  const agentOf = (model: ThreadModel) => {
+    for (const turn of model.turns) {
+      for (const entry of turn.entries) if (entry.kind === "tool" && entry.toolCallId === AGENT) return entry;
+    }
+    throw new Error("Agent 도구 줄이 없다");
+  };
+  const said = (tool: ToolEntry) => tool.inner.map((one) => phraseText(describeTool(one).phrase));
+
+  it("기록된 안쪽 도구를 바깥 줄처럼 말한다 — 대화의 도구 줄로는 서지 않는다", () => {
+    const model = foldThread(subagent);
+    expect(said(agentOf(model))).toEqual(["note.md 읽음"]);
+    expect(model.turns[1].entries.filter((entry) => entry.kind === "tool")).toHaveLength(1);
+  });
+
+  /** 변환기가 `Agent` 도구 줄에 싣는 안쪽 줄 하나 — 원문(`event`)이 그 줄의 update `_meta`에 든다. */
+  const relay = (seq: number, event: Record<string, unknown>) =>
+    update(seq, seq, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: AGENT,
+      _meta: { claudeCode: { toolName: "Agent", event: { parent_tool_use_id: AGENT, ...event } } },
+    });
+  const called = (seq: number, id: string, name: string, input: unknown) =>
+    relay(seq, { type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } });
+  const returned = (seq: number, id: string, content: unknown, failed = false) =>
+    relay(seq, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content, ...(failed && { is_error: true }) }] } });
+  const agentLines = (first: number): RecordLine[] => [
+    { seq: first, at: at(first), kind: "sent", payload: { text: "맡겨" } },
+    update(first + 1, first + 1, { sessionUpdate: "tool_call", toolCallId: AGENT, title: "조사", kind: "think", status: "in_progress" }),
+  ];
+
+  it("안쪽 줄은 같은 도구의 바깥 줄과 똑같이 그려진다 — 엔진이 쓴 기록의 도구 줄마다 원문으로 되돌려 재면 변환기와 어긋나지 않는다", () => {
+    const records = readdirSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/", import.meta.url)))
+      .filter((name) => name.startsWith("thread-"))
+      .map((name) => record(name.replace(/\.jsonl$/, "")));
+    const finished = records.flatMap((lines) =>
+      foldThread(lines).turns.flatMap((turn) =>
+        turn.entries.filter((entry): entry is ToolEntry => entry.kind === "tool" && entry.call.status === "completed" && !entry.denied),
+      ),
+    );
+    const names = new Set(finished.map((tool) => toolFields(tool.call).toolName));
+    expect([...names]).toEqual(expect.arrayContaining(["Write", "Edit", "Read", "Bash", "Agent"]));
+    for (const outer of finished) {
+      const { toolName, rawInput } = toolFields(outer.call);
+      const pieces = Array.isArray(outer.call.content) ? outer.call.content : [];
+      const said = pieces.flatMap((piece: { type: string; content: unknown }) => (piece.type === "content" ? [piece.content] : []));
+      const inner = agentOf(
+        foldThread([
+          ...agentLines(1),
+          called(3, "안쪽", toolName ?? "", rawInput),
+          // 편집 도구도 결과 글을 준다 — 변환기는 그 글을 버려 diff를 지킨다.
+          returned(4, "안쪽", said.length > 0 ? said : "The file has been updated."),
+        ]),
+      ).inner[0];
+      const { startedAt, endedAt } = outer;
+      expect(describeTool({ ...inner, startedAt, endedAt }), `${toolName} ${JSON.stringify(rawInput)}`).toEqual(describeTool(outer));
+    }
+  });
+
+  it("녹음에 없는 도구도 변환기의 표대로 말한다", () => {
+    const worded = (name: string, input: Record<string, unknown>) => {
+      const agent = agentOf(foldThread([...agentLines(1), called(3, "a", name, input), returned(4, "a", "결과")]));
+      return said(agent)[0];
+    };
+    expect(worded("Grep", { pattern: "retry" })).toBe("retry 찾음");
+    expect(worded("Glob", { pattern: "**/*.rs" })).toBe("**/*.rs 찾음");
+    expect(worded("WebFetch", { url: "https://example.com" })).toBe("https://example.com 가져옴");
+    expect(worded("WebSearch", { query: "retry" })).toBe("웹에서 retry 찾아봄");
+    expect(worded("NotebookEdit", { notebook_path: "/w/a.ipynb" })).toBe("a.ipynb 수정함");
+    expect(worded("Skill", { skill: "tdd" })).toBe("tdd 스킬 읽음");
+    expect(worded("TodoWrite", { todos: [] })).toBe("TodoWrite 씀");
+    expect(worded("Agent", { subagent_type: "explorer", description: "조사" })).toBe("explorer에게 맡김");
+
+    const edits = { file_path: "/w/a.rs", edits: [{ old_string: "a", new_string: "b" }, { old_string: "c", new_string: "d" }] };
+    const [multi] = agentOf(foldThread([...agentLines(1), called(3, "a", "MultiEdit", edits), returned(4, "a", "고쳤어요")])).inner;
+    expect(describeTool(multi).diffs.map((piece) => [piece.added, piece.deleted])).toEqual([[1, 1], [1, 1]]);
+    expect(phraseText(describeTool(multi).phrase)).toBe("a.rs 수정함");
+  });
+
+  it("마지막 하나가 아니라 모두, 온 차례로 쥔다 — 끝난 줄 · 실패한 줄 · 도는 줄이 제 때를 말한다", () => {
+    const agent = agentOf(
+      foldThread([
+        ...agentLines(1),
+        called(3, "a", "Read", { file_path: "/w/watcher.rs" }),
+        returned(4, "a", [{ type: "text", text: "본문" }]),
+        called(5, "b", "Grep", { pattern: "retry" }),
+        returned(6, "b", "파일을 찾을 수 없어요", true),
+        relay(7, { type: "assistant", message: { content: [{ type: "text", text: "둘러봤어요" }] } }),
+        called(8, "c", "Bash", { command: "cargo test" }),
+      ]),
+    );
+    expect(said(agent)).toEqual(["watcher.rs 읽음", "retry 찾지 못함", "cargo test 실행 중"]);
+    expect(agent.inner.map((tool) => [tool.startedAt, tool.endedAt])).toEqual([
+      [at(3), at(4)],
+      [at(5), at(6)],
+      [at(8), null],
+    ]);
+  });
+
+  it("같은 호출이 다시 와도 안쪽 줄은 하나다", () => {
+    const again = called(3, "a", "Read", { file_path: "/w/watcher.rs" });
+    expect(said(agentOf(foldThread([...agentLines(1), again, { ...again, seq: 4 }])))).toEqual(["watcher.rs 읽는 중"]);
+  });
+
+  it("안쪽 줄이 기록되지 않았으면 비어 있다 — 도구 줄 하나로 내려간다", () => {
+    expect(agentOf(foldThread(agentLines(1))).inner).toEqual([]);
+    // 백그라운드 명령의 `task_*`도 같은 `_meta` 길로 오지만 안쪽 줄이 아니다.
+    const tools = foldThread(record("thread-self-turn")).turns.flatMap((turn) => turn.entries.filter((entry) => entry.kind === "tool"));
+    expect(tools.length).toBeGreaterThan(0);
+    expect(tools.flatMap((tool) => tool.inner)).toEqual([]);
+  });
+
+  it("끝을 받지 못한 안쪽 줄은 바깥 줄을 따라 끊기고 멈춘다 — 끝난 턴에 반짝이는 줄이 남지 않는다", () => {
+    const running = [...agentLines(1), called(3, "a", "Bash", { command: "cargo test" })];
+    const stateOf = (lines: RecordLine[]) => describeTool(agentOf(foldThread(lines)).inner[0]).state;
+    expect(stateOf(running)).toBe("running");
+    // 세션이 죽었다 — 바깥 줄도 안쪽 줄도 더 올 update가 없다.
+    expect(stateOf([...running, { seq: 4, at: at(4), kind: "session", payload: { state: "died" } }])).toBe("cut");
+    // 바깥 줄은 끝났는데 안쪽 줄의 결과가 오지 않은 채 턴이 끝났다.
+    const closed = update(4, 4, { sessionUpdate: "tool_call_update", toolCallId: AGENT, status: "completed" });
+    expect(stateOf([...running, closed])).toBe("running");
+    const ended: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 4000 } };
+    expect(stateOf([...running, closed, ended])).toBe("cut");
+    // 우리가 멈췄다 — 바깥 줄이 멈춤으로 닫히면 안쪽 줄도 「중단함」이다.
+    const failed = update(4, 4, { sessionUpdate: "tool_call_update", toolCallId: AGENT, status: "failed" });
+    const stopped: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "cancelled", cancelledByUs: true, durationMs: 4000 } };
+    expect(said(agentOf(foldThread([...running, failed, stopped])))).toEqual(["cargo test 중단함"]);
+  });
+});
+
+// 사용량(01b-7 · 스토리 66) — `usage_update`가 그 턴의 사용량이다. 일이 아니라 턴의 표라 줄이 서지 않고 턴의 상태도 건드리지 않는다.
+describe("사용량", () => {
+  const usage = (seq: number, used: unknown, size: unknown) => update(seq, seq, { sessionUpdate: "usage_update", used, size });
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "말" } };
+  const ended = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } });
+
+  it("턴마다 그 턴의 사용량을 든다 — 축복한 기록의 두 턴", () => {
+    expect(foldThread(blessed).turns.map((turn) => turn.usage)).toEqual([
+      { used: 30512, size: 1000000 },
+      { used: 38508, size: 1000000 },
+    ]);
+  });
+
+  it("한 턴에 여러 번 오면 마지막 값이다", () => {
+    const [turn] = foldThread([sent, usage(2, 1000, 200000), usage(3, 2000, 200000), ended(4)]).turns;
+    expect(turn.usage).toEqual({ used: 2000, size: 200000 });
+  });
+
+  it("턴 끝 뒤에 와도 마지막 턴의 것이다 — 기록에 턴이 없으면 어디에도 서지 않는다", () => {
+    expect(foldThread([sent, ended(2), usage(3, 1000, 200000)]).turns[0].usage).toEqual({ used: 1000, size: 200000 });
+    expect(foldThread([usage(1, 1000, 200000)]).turns).toEqual([]);
+  });
+
+  it("줄이 서지 않고 답한 것으로 치지 않는다 — 말을 보낸 뒤 사용량만 왔으면 아직 답을 기다린다", () => {
+    const model = foldThread([sent, usage(2, 1000, 200000)]);
+    expect(model.turns[0].entries).toEqual([]);
+    expect(model.turns[0].answeredAt).toBeNull();
+    expect(answeringLine(model)).toBe(true);
+  });
+
+  it("모델을 부르지 않은 턴이나 값이 어긋난 줄은 사용량이 없다", () => {
+    expect(foldThread([sent, ended(2)]).turns[0].usage).toBeNull();
+    expect(foldThread([sent, usage(2, "많이", 200000), usage(3, 1000, 0), ended(4)]).turns[0].usage).toBeNull();
+  });
+
+  it("답 아래 줄의 글 — 토큰은 어림수, 컨텍스트는 창에서 차지한 몫이다", () => {
+    expect(usageText({ used: 18400, size: 48400 })).toBe("토큰 18.4k · 컨텍스트 38%");
+    expect(usageText({ used: 30512, size: 1000000 })).toBe("토큰 30.5k · 컨텍스트 3%");
+    expect(usageText({ used: 950, size: 200000 })).toBe("토큰 950 · 컨텍스트 0%");
+    expect(usageText({ used: 999960, size: 1000000 })).toBe("토큰 1.0M · 컨텍스트 100%");
+    expect(usageText({ used: 1250000, size: 1000000 })).toBe("토큰 1.3M · 컨텍스트 125%");
+  });
+});
+
+// 계획 체크리스트(01b-7 · 스토리 64) — ACP `plan` 하나가 입구다. 앱이 할 일 도구를 켜지 않으므로 Claude의 할 일 도구 줄은 도구 줄 그대로이고,
+// 계획 카드(`plan_update` · `ExitPlanMode`)는 체크리스트가 아니다.
+describe("계획 체크리스트", () => {
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "말" } };
+  const plan = (seq: number, entries: unknown[]) => update(seq, seq, { sessionUpdate: "plan", entries });
+  const ended = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } });
+  const checklists = (model: ThreadModel) =>
+    model.turns.flatMap((turn) => turn.entries.flatMap((entry) => (entry.kind === "checklist" ? [entry.items] : [])));
+
+  it("ACP `plan`이 오면 그 항목들로 서고, 다음 `plan`이 같은 체크리스트를 바꾼다", () => {
+    const first = [
+      { content: "워처 오류 올리기", status: "in_progress", priority: "high" },
+      { content: "시험 돌리기", status: "pending", priority: "medium" },
+    ];
+    const next = [
+      { content: "워처 오류 올리기", status: "completed", priority: "high" },
+      { content: "시험 돌리기", status: "in_progress", priority: "medium" },
+    ];
+    expect(checklists(foldThread([sent, plan(2, first)]))).toEqual([
+      [
+        { content: "워처 오류 올리기", status: "in_progress" },
+        { content: "시험 돌리기", status: "pending" },
+      ],
+    ]);
+    expect(checklists(foldThread([sent, plan(2, first), plan(3, next), ended(4)]))).toEqual([
+      [
+        { content: "워처 오류 올리기", status: "completed" },
+        { content: "시험 돌리기", status: "in_progress" },
+      ],
+    ]);
+  });
+
+  it("빈 `plan`이 오면 걷힌다", () => {
+    expect(checklists(foldThread([sent, plan(2, [{ content: "일", status: "pending" }]), plan(3, [])]))).toEqual([]);
+  });
+
+  it("`plan` 없이는 서지 않는다 — 할 일 도구 줄도, 계획 카드도, 평범한 턴도 체크리스트가 아니다", () => {
+    const todo = update(2, 2, {
+      sessionUpdate: "tool_call",
+      toolCallId: "todo",
+      title: "TodoWrite",
+      kind: "other",
+      status: "completed",
+      rawInput: { todos: [{ content: "일", status: "pending" }] },
+      _meta: { claudeCode: { toolName: "TodoWrite" } },
+    });
+    const card = update(3, 3, { sessionUpdate: "plan_update", plan: { type: "markdown", content: "# 계획" } });
+    const model = foldThread([sent, todo, card, ended(4)]);
+    expect(checklists(model)).toEqual([]);
+    expect(model.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool", "plan"]);
+    expect(checklists(foldThread(blessed))).toEqual([]);
   });
 });

@@ -48,6 +48,7 @@ const write = (id: string, content: unknown[], status = "completed"): ToolEntry 
   toolCallId: id,
   call: { toolCallId: id, title: `Write ${id}`, kind: "edit", status, content },
   output: "",
+  inner: [],
   stop: null,
   cut: false,
   denied: false,

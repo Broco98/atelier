@@ -209,6 +209,26 @@ fn 백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴
     common::assert_record("thread-self-turn", &settled(&sandbox, &record, &thread, &session));
 }
 
+/// 서브에이전트의 안쪽 줄은 대화의 줄이 아니라 그 `Agent` 도구 줄의 update로 적힌다 — 화면의 접기(`fold.ts`)가 이 기록에서 안쪽 도구를 모두
+/// 쥔다(스토리 63). 흐르는 시험(L2)이 엔진이 실제로 쓴 줄을 재도록 축복해 둔다.
+#[test]
+fn 서브에이전트의_안쪽_줄이_그_도구_줄의_update로_기록되고_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.309/edit-subagent", &[], "note.md를 고쳐");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "서브에이전트로 셋째 줄을 읽어 와").expect("둘째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+
+    let relayed: Vec<&Value> = record
+        .iter()
+        .filter(|line| !line["payload"]["update"]["_meta"]["claudeCode"]["event"]["parent_tool_use_id"].is_null())
+        .collect();
+    assert_eq!(relayed.len(), 3, "서브에이전트의 안쪽 줄(말 · 도구 호출 · 도구 결과)이 모두 적힌다:\n{}", common::lines_text(&record));
+
+    host.shut_down();
+    common::assert_record("thread-subagent", &settled(&sandbox, &record, &thread, &session));
+}
+
 #[test]
 fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기다렸다가_간다() {
     let sandbox = Sandbox::new();

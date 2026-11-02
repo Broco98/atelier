@@ -3,6 +3,7 @@ import { isObject, nonEmpty, text, type Json } from "./json";
 import { readingText, registeredText } from "@/features/services/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import { prLineOf, type PrLine } from "./pr";
+import { innerCalls } from "./subagent";
 import {
   cardOfChoice,
   cardOfToolName,
@@ -210,6 +211,8 @@ export interface ToolEntry {
   call: Json;
   /** 명령이 낸 출력 조각(`_meta.terminal_output_delta.data`)을 이어 붙인 것. */
   output: string;
+  /** 서브에이전트가 안에서 부른 도구 줄들(스토리 63) — 온 차례다. 기록된 안쪽 줄이 없으면 비어 있고 이 줄은 도구 줄 하나다(`subagent.ts`). */
+  inner: ToolEntry[];
   stop: ToolStop | null;
   /** 끝을 알리기 전에 그 Session이 사라졌나 — 더 올 update가 없다. 도는 것으로 보이지 않는다. */
   cut: boolean;
@@ -228,6 +231,12 @@ export interface ToolEntry {
   endedAt: string | null;
 }
 
+/** 그 턴의 사용량(ACP `usage_update`) — 지금 컨텍스트에 든 토큰과 컨텍스트 창의 크기다. */
+export interface Usage {
+  used: number;
+  size: number;
+}
+
 export interface Turn {
   /** 턴의 정체 — 접고 펴기를 기억하는 열쇠다. 보낸 말의 seq에서 나온다. */
   key: string;
@@ -244,6 +253,8 @@ export interface Turn {
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
   end: TurnEnd | null;
+  /** 마지막으로 받은 사용량 — 답 아래 줄에 선다. 모델을 부르지 않은 턴(내장 명령)은 null이다. */
+  usage: Usage | null;
 }
 
 /**
@@ -539,6 +550,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       answeredAt: null,
       entries: [],
       end: null,
+      usage: null,
     };
     turns.push(turn);
     open = turn;
@@ -621,6 +633,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           }
           if (!tool) break;
           tool.output += outputOf(update);
+          holdInner(tool, update, line.at);
           if (tool.endedAt === null && toolDone(tool)) tool.endedAt = line.at;
           if (deniedTools.has(tool.toolCallId)) tool.denied = true;
           tool.allowed = allowedTools.get(tool.toolCallId) ?? tool.allowed;
@@ -631,6 +644,13 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         }
         if (kind === "session_info_update" && outOfTurnStarted(update)) {
           if (!open) start(`o${line.seq}`, null, line.at);
+          break;
+        }
+        // 일이 아니라 턴의 표다 — 줄이 서지 않고 답한 것으로 치지 않는다. 턴이 끝난 뒤에 오면 마지막 턴의 것이다.
+        if (kind === "usage_update") {
+          const usage = usageOf(update);
+          const turn = open ?? turns[turns.length - 1];
+          if (usage && turn) turn.usage = usage;
           break;
         }
         if (!TURN_UPDATES.has(kind)) break;
@@ -941,6 +961,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     }
   }
   if (!gone) vanish(lastAt, GONE_WITH_APP);
+  for (const turn of turns) {
+    for (const entry of turn.entries) if (entry.kind === "tool") settleInner(entry, turn);
+  }
   for (const [at, card] of prs.entries()) {
     const same = (one: PrCardEntry) => one.pr.project === card.pr.project && one.pr.number === card.pr.number;
     card.latest = !prs.slice(at + 1).some(same);
@@ -1052,6 +1075,7 @@ function newTool(key: string, toolCallId: string, call: Json, at: string): ToolE
     toolCallId,
     call,
     output: outputOf(call),
+    inner: [],
     stop: null,
     cut: false,
     denied: false,
@@ -1060,6 +1084,37 @@ function newTool(key: string, toolCallId: string, call: Json, at: string): ToolE
     startedAt: at,
     endedAt: null,
   };
+}
+
+function usageOf({ used, size }: Json): Usage | null {
+  return typeof used === "number" && typeof size === "number" && size > 0 ? { used, size } : null;
+}
+
+/** 서브에이전트의 안쪽 줄을 그 도구 줄에 쥔다 — 도구 호출은 안쪽 줄을 세우고, 결과는 그 줄에 덮어 합친다. */
+function holdInner(tool: ToolEntry, update: Json, at: string): void {
+  for (const body of innerCalls(update, tool.inner)) {
+    const id = text(body.toolCallId);
+    if (id === null) continue;
+    let inner = tool.inner.find((one) => one.toolCallId === id);
+    if (inner) inner.call = mergeCall(inner.call, body);
+    else {
+      inner = newTool(`i${id}`, id, body, at);
+      tool.inner.push(inner);
+    }
+    if (inner.endedAt === null && toolDone(inner)) inner.endedAt = at;
+  }
+}
+
+/**
+ * 끝을 받지 못한 안쪽 줄의 때 — 바깥 줄을 따른다. 바깥 줄이 끊겼거나 끝난 채 턴도 끝났으면 더 올 결과가 없다(끝난 턴에 반짝이는 줄이 남지 않게).
+ * 바깥 줄만 끝난 동안은 턴이 돌고 결과가 더 올 수 있어 도는 줄로 둔다(백그라운드 서브에이전트가 그럴 수 있다 — 녹음에는 없어 재지 못했다).
+ */
+function settleInner(tool: ToolEntry, turn: Turn): void {
+  for (const inner of tool.inner) {
+    if (toolDone(inner)) continue;
+    inner.stop = tool.stop;
+    inner.cut = tool.cut || (toolDone(tool) && turn.end !== null);
+  }
 }
 
 /** 스스로 이어 간 턴의 시작 표지(`session_info_update`의 `_meta.atelier.outOfTurn.state: "started"`). */
@@ -1276,6 +1331,18 @@ export function workLine(turn: Turn): { text: string; unfolds: boolean } | null 
   const unfolds = turn.entries.slice(0, finalFrom(turn)).some((entry) => shownEntry(entry) && !keptFolded(entry));
   if (!unfolds && turn.end.stopReason === "end_turn") return null;
   return { text: headline(turn.end), unfolds };
+}
+
+/** 답 아래 줄의 글(Cards 보드 「답 아래 줄」) — 「토큰 18.4k · 컨텍스트 38%」. */
+export function usageText({ used, size }: Usage): string {
+  return `토큰 ${roughCount(used)} · 컨텍스트 ${Math.round((used / size) * 100)}%`;
+}
+
+/** 토큰 수의 어림 — 「950」 · 「18.4k」 · 「1.3M」. */
+function roughCount(count: number): string {
+  if (count < 1000) return `${count}`;
+  const thousands = Math.round(count / 100) / 10;
+  return thousands < 1000 ? `${thousands.toFixed(1)}k` : `${(count / 1_000_000).toFixed(1)}M`;
 }
 
 /** 도는 턴의 머리줄 — 보낸 때부터 지금까지. */

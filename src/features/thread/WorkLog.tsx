@@ -33,6 +33,8 @@ import { elapsed, phraseText, shownPath, type DiffPiece, type ToolGlyph, type To
 //   검색), 펼치면 왼쪽 선 안에 그 줄들이 선다(`.nest`).
 // - **펼침 · 접힘**은 높이와 투명도가 함께 .3s로 움직이고 셰브런이 90° 돈다(02 구현 스펙 §12 — `Unfold` · `Chevron`). 작업 구분선 · 도구
 //   줄의 안 · 묶음 줄이 같다. 동작 줄이기에서는 곧바로다.
+// - **서브에이전트 줄**(01b-7 · 스토리 63 · Tools 보드 「서브에이전트」) — 기록된 안쪽 도구가 있으면 펼친 안에 묶음 줄처럼 왼쪽 선 안으로 그 도구
+//   줄들이 서고(`InnerTools`), 돌려준 글이 그 뒤에 선다. 안쪽 도구가 없으면 도구 줄 하나로 내려간다. 모양은 02b-4가 맞춘다.
 // - **펼친 안**은 처음에 접혀 있다(「펼쳐야 보이고」 — 보드 머리말). 명령 출력은 20 반경의 회색 블록 하나에 `$ 명령` · 출력 · 끝 줄
 //   (「코드 종료 0 · 4.2초」), 변경은 경로 · `+N −N` 머리와 바뀐 줄 둘레, MCP는 플러그 · 이름 머리 아래 「보낸 값」 · 「받은 값」 두
 //   줄이다(받은 값은 글이면 본문 글꼴, JSON이면 고정폭 — v1 티켓 17).
@@ -201,7 +203,7 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
   const swapped = useChanged(view.state);
   const label = phraseText(view.phrase);
   const received = view.mcp && (view.mcp.received !== "" || view.mcp.sent !== "");
-  const expandable = view.shell !== null || view.diffs.length > 0 || Boolean(received) || view.text !== null;
+  const expandable = view.shell !== null || view.diffs.length > 0 || Boolean(received) || view.text !== null || tool.inner.length > 0;
   const added = view.diffs.reduce((sum, piece) => sum + piece.added, 0);
   const deleted = view.diffs.reduce((sum, piece) => sum + piece.deleted, 0);
   const took = elapsed(tool);
@@ -250,10 +252,20 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
       {expandable && (
         <Unfold open={open}>
           <div className="flex flex-col gap-2 pt-1 pb-2">
+            {tool.inner.length > 0 && <InnerTools tools={tool.inner} />}
             <Inside tool={tool} view={view} took={took} />
           </div>
         </Unfold>
       )}
+    </div>
+  );
+}
+
+/** 서브에이전트의 안쪽 도구 줄들 — 왼쪽 선 안에 작업 로그와 같은 줄로 선다(보드 「서브에이전트」). */
+export function InnerTools({ tools }: { tools: readonly ToolEntry[] }) {
+  return (
+    <div data-inner-tools className="ml-2 flex flex-col border-l border-border-heavy pl-3.5">
+      <ToolRows tools={tools} />
     </div>
   );
 }
