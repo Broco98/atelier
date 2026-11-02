@@ -96,9 +96,8 @@ const CREATE_SERVICE: &str = "create_service";
 const EDIT_SERVICE: &str = "edit_service";
 
 /// 대화로 하는 설정 넷이 함께 지키는 것(§12 · S13) — 묻지 않고 하는 일, 결과 카드, 지우는 도구가 없어 화면을 안내한다는 것.
-const SETTING_NOTE: &str = "사람이 대화로 부탁한 설정이다 — 승인 카드 없이 곧바로 하고, 흐름에 결과 카드가 서서 사람이 그 카드의 단추(Project \
-추가 · 고치기와 Service 만들기는 「열기」, Service 고치기는 「관계 보기」)로 그 화면에서 다시 고친다. 화면에서 하는 것과 같은 파일을 같은 꼴로 \
-쓴다.\n\n\
+const SETTING_NOTE: &str = "사람이 대화로 부탁한 설정이다 — 승인 카드 없이 곧바로 하고, 흐름에 결과 카드가 서서 사람이 그 카드의 「열기」로 그 \
+화면에서 다시 고친다. 화면에서 하는 것과 같은 파일을 같은 꼴로 쓴다.\n\n\
 Project 제거 · Service 삭제는 도구가 없다. 부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › \
 Projects에서 api-server의 ⋯ › 제거를 눌러 주세요.」 Service 삭제는 메뉴 › Service에서 그 Service의 ⋯ › 삭제다.";
 

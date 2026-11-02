@@ -173,6 +173,45 @@ describe("파일 변경 줄", () => {
   });
 });
 
+// Thread 보드(States 08 「명령 출력」 · 「턴 끝」 · MainCards) — 이은 작업공간의 spec 폴더에 **새로 쓴** 문서는 작업 로그에 문서 줄로 선다: 문서 글리프 ·
+// 「생성됨 재시도-규칙.md」 · 새 파일 점이고 `+N −N` 셈이 없으며 펼칠 것이 없다(보드 `ic-file-text` · `isNew` · `diff` 없음). 쓰는 동안은
+// 「재시도-규칙.md 쓰는 중」이다. 그 문서는 답 아래 문서 카드가 연다(restart 02b-6). 한때 코드 파일처럼 연필 · 「생성됨 … +24 −0」 · 펼치면 diff였다.
+describe("spec 문서 줄", () => {
+  const SPEC = "/h/.atelier/works/watcher/spec";
+  const DOC = `${SPEC}/01-실패-신호/재시도-규칙.md`;
+  const write = (path: string, oldText: string | null = null) =>
+    claude("Write", {
+      kind: "edit",
+      title: `Write ${path}`,
+      locations: [{ path }],
+      content: [{ type: "diff", path, oldText, newText: "# 재시도 규칙\n\n1초 · 2초 · 4초\n" }],
+    });
+  const seen = (call: Json, specRoot: string | null, status = "completed") =>
+    describeTool(tool({ ...call, status }, { endedAt: status === "completed" ? "2026-11-03T10:00:01.100Z" : null }), specRoot);
+
+  it("spec 폴더에 새로 쓴 문서는 문서 글리프 · 「생성됨 재시도-규칙.md」 · 새 파일 점이고, 셈 · 펼침 없는 문서 줄이다", () => {
+    const view = seen(write(DOC), SPEC);
+    expect(view.glyph).toBe("doc");
+    expect(phraseText(view.phrase)).toBe("생성됨 재시도-규칙.md");
+    expect(view.dot).toBe("created");
+    expect(view.doc).toBe(true);
+  });
+
+  it("쓰는 동안은 「재시도-규칙.md 쓰는 중」이다", () => {
+    const view = seen(write(DOC), SPEC, "in_progress");
+    expect(view.glyph).toBe("doc");
+    expect(phraseText(view.phrase)).toBe("재시도-규칙.md 쓰는 중");
+  });
+
+  it("spec 폴더 밖의 파일 · spec 폴더를 모르는 채팅 · 있던 문서를 고친 줄은 파일 변경 줄 그대로다", () => {
+    for (const view of [seen(write("/w/src/WatcherBanner.tsx"), SPEC), seen(write(DOC), null), seen(write(DOC, "# 옛 글\n"), SPEC)]) {
+      expect(view.glyph).toBe("edit");
+      expect(view.doc).toBe(false);
+    }
+    expect(phraseText(seen(write(DOC, "# 옛 글\n"), SPEC).phrase)).toBe("편집함 재시도-규칙.md");
+  });
+});
+
 // Tools 보드 「명령 출력」 — 끝 줄은 성공 · 코드 종료 N · 중지됨이다. 한때 「코드 종료 0 · 4.2초」 · 「끝남」 · 「끊김」이었다.
 describe("명령 출력의 끝 줄", () => {
   const execute = KINDS[3].call;

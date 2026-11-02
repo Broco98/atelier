@@ -1682,7 +1682,7 @@ describe("Codex 기록", () => {
   const codex = record("thread-codex");
   const edited = record("thread-codex-edit");
   const toolsOf = (lines: readonly RecordLine[], turn: number) =>
-    foldThread(lines).turns[turn].entries.filter((entry): entry is ToolEntry => entry.kind === "tool").map(describeTool);
+    foldThread(lines).turns[turn].entries.filter((entry): entry is ToolEntry => entry.kind === "tool").map((tool) => describeTool(tool));
   /** 도구 줄에서 Runtime마다 다른 글(명령 · 출력 · 파일 이름 · 걸린 시간)을 뺀 모양. */
   const form = (view: ReturnType<typeof describeTool>) => ({
     glyph: view.glyph,

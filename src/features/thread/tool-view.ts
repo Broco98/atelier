@@ -20,6 +20,8 @@ import { toolFields } from "./tool-fields";
 //   「중단함 · 12초」 · 「실행하지 않음 · 내가 거절함」이었다.
 // - **승인을 기다리는 줄은 「승인을 기다립니다 watcher.rs」다**(Thread 보드 「승인 대기」) — 반짝이지 않고 글리프가 옅지 않다.
 // - **파일 변경**(Tools 보드 「파일 변경」) — 고친 파일 「편집함」, 옛 글 없이 쓴 파일 「생성됨」과 새 파일 점, 지운 파일 「삭제됨」과 지운 파일 점(`dot`).
+// - **spec 문서 줄**(Thread 보드 · States 08 · restart 02b-6) — 이은 작업공간의 spec 폴더(`specRoot`)에 옛 글 없이 쓴 문서는 문서 글리프 · 「생성됨
+//   재시도-규칙.md」 · 새 파일 점이고, 쓰는 동안은 「재시도-규칙.md 쓰는 중」이다(`doc`). 셈과 펼침이 없다 — 그 문서는 답 아래 문서 카드가 연다.
 // - **명령 출력의 끝 줄은 「성공」 · 「코드 종료 N」 · 「중지됨」이다**(Tools 보드 「명령 출력」). Claude Code는 종료 코드를 주지 않아 실패는 「실패」다.
 //   한때 「코드 종료 0 · 4.2초」였다 — 걸린 시간은 줄에 마우스를 올리면 선다.
 // - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「작업공간 읽음」 · 「작업공간 만들기를 묻는 중」.
@@ -30,8 +32,8 @@ import { toolFields } from "./tool-fields";
 //   이 줄 뒤의 결과 카드가 말하고, 이 줄은 작업 로그에 남는다. Project 추가 카드가 서면 그동안 「notes 추가하는 중」이고, 고르면 접힌 줄이 이 줄의 자리를
 //   대신한다.
 
-/** 도구 줄 앞의 종류 글리프 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · 명령 · 검색 · 웹(검색 · 가져오기) · MCP · 스킬 · 서브에이전트 · 그 밖. */
-export type ToolGlyph = "read" | "edit" | "execute" | "search" | "web" | "mcp" | "skill" | "agent" | "other";
+/** 도구 줄 앞의 종류 글리프 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · spec 문서 · 명령 · 검색 · 웹(검색 · 가져오기) · MCP · 스킬 · 서브에이전트 · 그 밖. */
+export type ToolGlyph = "read" | "edit" | "doc" | "execute" | "search" | "web" | "mcp" | "skill" | "agent" | "other";
 
 /** 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김(끝을 받기 전에 그 Session이 사라졌다). */
 export type ToolState = "running" | "done" | "failed" | "cut";
@@ -82,6 +84,11 @@ export interface ToolView {
   phrase: ToolPhrase;
   /** 파일 변경 줄 끝의 점 — 새 파일 · 지운 파일. 아니면 null(Tools 보드 「파일 변경」). */
   dot: "created" | "deleted" | null;
+  /**
+   * spec 문서 줄인가(Thread 보드 「생성됨 재시도-규칙.md」) — 이은 작업공간의 spec 폴더에 새로 쓴 문서다. 줄에 `+N −N`이 서지 않고 펼칠 것이 없다(`diffs`는
+   * 그대로 — 바뀐 파일 셈 · 문서 카드가 쓴다).
+   */
+  doc: boolean;
   /** 명령 출력 상자 — 명령이 아니면 null. `status`는 끝 줄(「성공」 · 「코드 종료 101」 · 「중지됨」)이고 도는 동안은 null이다. */
   shell: { command: string | null; output: string; status: string | null; bad: boolean } | null;
   /** 편집 도구의 diff들. */
@@ -109,6 +116,7 @@ const EXECUTE: Verbs = { running: "실행 중", done: "실행 완료", failed: "
 const READ: Verbs = { running: "읽는 중", done: "읽음", failed: "읽지 못함", refused: "읽지 않음" };
 const EDIT: Verbs = { running: "편집 중", done: "편집함", failed: "편집하지 못함", refused: "편집하지 않음" };
 const CREATE: Verbs = { running: "만드는 중", done: "생성됨", failed: "만들지 못함", refused: "만들지 않음" };
+const WRITE_DOC: Verbs = { running: "쓰는 중", done: "생성됨", failed: "쓰지 못함", refused: "쓰지 않음" };
 const DELETE: Verbs = { running: "지우는 중", done: "삭제됨", failed: "지우지 못함", refused: "지우지 않음" };
 const MOVE: Verbs = { running: "옮기는 중", done: "옮김", failed: "옮기지 못함", refused: "옮기지 않음" };
 const SEARCH: Verbs = { running: "검색 중", done: "검색함", failed: "검색하지 못함", refused: "검색하지 않음" };
@@ -157,7 +165,11 @@ const ASK: Verbs = { running: "묻는 중", done: "물음", failed: "묻지 못�
 const sentence = (subject: string | null, verb: string): string =>
   subject === null ? verb : verb === "" ? subject : `${subject}${verb.startsWith("에게") ? "" : " "}${verb}`;
 
-export function describeTool(tool: ToolEntry): ToolView {
+/**
+ * 도구 줄의 화면 값. `specRoot`는 이은 작업공간의 spec 폴더(절대 경로)다 — 알면 그 안에 새로 쓴 문서가 문서 줄이다(`doc`). 작업 로그만 건네고, 바뀐 파일 셈 ·
+ * 문서 카드 · 상태 줄처럼 diff · 문구만 보는 쪽은 건네지 않는다.
+ */
+export function describeTool(tool: ToolEntry, specRoot: string | null = null): ToolView {
   const call = tool.call;
   const state: ToolState =
     call.status === "completed" ? "done" : call.status === "failed" ? "failed" : tool.cut ? "cut" : "running";
@@ -192,7 +204,18 @@ export function describeTool(tool: ToolEntry): ToolView {
     if (state === "done") return settled(verbs.done);
     return settled(failedVerb, true);
   };
-  const base = { state, waiting: tool.asking && !stopped, stopped, group: null, dot: null, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null };
+  const base = {
+    state,
+    waiting: tool.asking && !stopped,
+    stopped,
+    group: null,
+    dot: null,
+    doc: false,
+    diffs: [] as DiffPiece[],
+    shell: null,
+    mcp: null,
+    text: null,
+  };
 
   if (mcp) {
     const { input } = mcp;
@@ -269,10 +292,12 @@ export function describeTool(tool: ToolEntry): ToolView {
       // 지운 파일 · 옛 글 없이 쓴 파일(Claude Write · Codex add)은 점을 단다(Tools 보드 「파일 변경」). Codex는 지우기도 diff의 `_meta.kind`로 알린다.
       const removed = kind === "delete" || (diffs.length > 0 && content.every((item) => item.type !== "diff" || diffKind(item) === "delete"));
       const written = !removed && diffs.length > 0 && diffs.every((piece) => piece.written);
-      const verbs = removed ? DELETE : written ? CREATE : EDIT;
+      const doc = written && specRoot !== null && diffs.every((piece) => inside(piece.path, specRoot));
+      const verbs = removed ? DELETE : doc ? WRITE_DOC : written ? CREATE : EDIT;
       return {
         ...base,
-        glyph: "edit",
+        glyph: doc ? "doc" : "edit",
+        doc,
         phrase: fileSay(verbs),
         dot: removed ? "deleted" : written ? "created" : null,
         diffs,
@@ -299,6 +324,12 @@ export function describeTool(tool: ToolEntry): ToolView {
     default:
       return { ...base, glyph: "other", phrase: say(OTHER, title ?? toolName ?? "도구", { mono: true }), text: fallbackText };
   }
+}
+
+/** 그 경로가 폴더 안의 파일인가 — 폴더 자리 그 자체는 아니다. */
+export function inside(path: string, folder: string): boolean {
+  const root = `${folder.replace(/\/+$/, "")}/`;
+  return path.startsWith(root) && path.length > root.length;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { createContext, Fragment, memo, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { Check, CircleAlert, Folder, GitBranch, Info, Layers, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -34,18 +34,19 @@ import {
   type Usage,
   type WarningEntry,
 } from "./fold";
-import { SentAttachments } from "./ComposerAttachments";
+import { CopyButton } from "./CopyButton";
 import { DocCard } from "./DocCard";
+import { DocPlace } from "./doc-place";
 import { createdDocs } from "./expanded";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
 import { answeredCards } from "./question";
-import { SentQuoteChip } from "./QuoteChip";
 import { ResultCard } from "./ResultCard";
 import ThreadMarkdown from "./ThreadMarkdown";
 import { isCardDecision, isToolCardAsk, toolCardRow } from "./tool-cards";
 import { ToolChoiceRow } from "./ToolCards";
 import type { Quote } from "@/features/works/QuotePick";
+import { UserMessage } from "./UserMessage";
 import type { Attachment } from "./types";
 import { threadFlowStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
@@ -54,10 +55,11 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 // (`chat/ChatThread.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 //
 // - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 옅은 파랑(`bubble-user`)에 짙은 남색 글자, 폭은 줄의 70%까지다(02 구현 스펙 §8 —
-//   `UserMessage`). 답은 머리 없이 본문 그대로 선다(Codex 결). 채팅은 Runtime 세션 하나라 말한 이를 가를 일이 없어 얼굴도 이름 줄도 없고,
-//   이름이 필요한 말은 Runtime 이름으로 선다(`runtime`).
-// - **턴 사이는 시안의 간격이다**(States · Thread 보드 · `TURN_GAP`) — 말풍선 → 답 상자 46, 답 끝 → 다음 말풍선 48(`--gap-turn`). 턴
-//   사이에 서는 시스템 줄 · 상태 줄 · PR 카드도 같은 줄 사이를 따른다. 턴 안의 줄 사이는 8이다.
+//   `UserMessage`). 그 아래 말 머리(보낸 시각 · 복사)가 호버로 서고, 8줄 넘는 말은 접혀 「더 보기」로 펼친다(restart 02b-6). 답은 머리 없이 본문
+//   그대로 선다(Codex 결). 채팅은 Runtime 세션 하나라 말한 이를 가를 일이 없어 얼굴도 이름 줄도 없고, 이름이 필요한 말은 Runtime 이름으로 선다(`runtime`).
+// - **턴은 상자 하나다**(States · Thread · MainCards 보드 `.ra-turn` · `TURN_BOX` · restart 02b-6) — 내 말 · 턴의 줄 · 그 턴 뒤의 PR 카드가 칸 사이
+//   16으로 서고(말풍선 → 턴 머리 46), 턴 사이는 48(`TURN_GAP` — `--gap-turn`)이다. 턴 사이에 서는 시스템 줄 · 상태 줄도 같은 사이를 따른다. 턴 안의
+//   줄 사이는 8이다.
 // - **보낸 뒤**(States 보드 02 · 03 · 04) — 기록에 보낸 말이 서기 전에도 말풍선이 선다(`pending` — Session이 내려가 있던 채팅은 Session이 열린
 //   뒤에야 보낸 말이 기록에 선다). Session이 열리는 동안은 그 아래 「채팅을 시작하는 중」이 반짝인다(`StartingLine`). 보낸 말이 서고 첫 출력이
 //   오기 전까지는 말풍선 아래 「생각 중」이다(`thinkingLine`). 머리줄도 이름 줄도 없다.
@@ -82,15 +84,15 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   쓰기」 · 「이어서 하기」는 입력창을 채울 뿐이고 보내는 것은 사람이다. 읽기만인 채팅에는 어느 단추도 없다.
 // - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
 //   사이의 옅은 줄이다.
-// - 마지막으로 끝난 답 아래에만 응답 액션(복사)과 그 턴의 사용량이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」). 「…」는 무엇을 둘지
-//   정해지면(02 P1) 단다.
+// - 마지막으로 끝난 답 아래 12에만 답 아래 줄(복사 · 그 턴의 사용량)이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」 · restart 02b-6).
+//   「…」는 무엇을 둘지 정해지면(02 P1) 단다. 내 말 · 답 · 코드 블록의 복사는 한 단추다(`CopyButton` — 스토리 72).
 // - **Runtime 경고**(01b-8 · Cards 보드 「Runtime 경고」 · `WarningLine`) — 이어진 `stderr` 줄의 안내다. 실패 · 끊김 안내와 같은 상자(`.ra-notice`)에 글은
 //   첫 줄이고 「자세히」가 묶인 줄을 안내 안에서 모두 펼친다(restart 02b-5). 대화를 막지 않는다 — 턴 안의 안내가 서도 머리줄 · 「생각 중」은 일의 줄로
 //   정한다(`lastWork`). 접힌 턴에도 남는다.
-// - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
-//   선다(턴의 일이 아니라 Work의 일이다).
+// - **PR 카드**(v1 티켓 36 · ChatCards 보드 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 턴의 일이 아니라
+//   Work의 일이라 턴의 줄이 아니고, 그 앞 턴의 상자 끝 — 답 아래 16에 선다(MainCards).
 //
-// - **대화 속 문서 카드**(v1 티켓 35 · ChatCards 보드) — 끝난 턴에서 이은 Work의 spec 폴더에 새로 쓴 문서는 답 아래에 카드로 놓이고(`createdDocs`), 누르면 요약 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
+// - **대화 속 문서 카드**(v1 티켓 35 · ChatCards 보드) — 끝난 턴에서 이은 Work의 spec 폴더에 새로 쓴 문서는 답 아래 16에 카드로 놓이고(`createdDocs`), 누르면 요약 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글을 붙인 말은 말풍선 위에 인용 칩이 선다(`SentQuoteChip`).
 //
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 움직인다(`arrival.tsx`). 결정 줄은 칩으로 나타나고(칩 나타남 — 보드
@@ -100,20 +102,21 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
 
-/**
- * 대화 속 문서 카드의 자리(v1 티켓 35) — 이은 Work의 spec 폴더(절대 경로)와 그 문서를 넓힌 카드에서 여는 길. Work 없는 Thread · Session을
- * 띄운 화면 밖에서는 `null`이고 카드가 서지 않는다. 흐름의 모든 턴이 같은 값을 쓰므로 Context로 건넨다(`LogPlace`와 같다).
- */
-export const DocPlace = createContext<{ specRoot: string; open: (path: string) => void } | null>(null);
+// 대화 속 문서 카드의 자리(`DocPlace` — `doc-place.ts`). 작업 로그의 spec 문서 줄도 같은 자리를 읽어 여기서 옮겨 두었다.
+export { DocPlace };
 
 /**
- * 흐름의 줄 사이(States · Thread 보드) — 상자 사이다.
- * - 말풍선 → 답 상자는 46이다 — 시안의 말 머리(26 · 사이 4 — 호버에만 보이는 시각 · 복사, 02b-6)와 턴 칸 사이 16이다.
- * - 답 끝 → 다음 말풍선은 48이다(`.ra-turn + .ra-turn` · `--gap-turn`) — 말풍선 앞에 2를 더 띄운다(`TurnView`의 말풍선 칸).
- * 한때 Codex의 잉크 사이 51.5 · 52(`--space-reply` · `--space-turn`)에서 셈한 값이고 상자 사이는 같다. 새 채팅의 말풍선 → 「채팅을 시작하는
- * 중」도 이 줄 사이다.
+ * 턴 사이(States · Thread 보드 `.ra-turn + .ra-turn` · restart 02b-6) — 턴 상자 사이 48, `--gap-turn`의 값이다(간격은 변수를 읽지 않고 눈금으로
+ * 적는다 — `spacing-guard.test.ts`. 값이 같은지는 `ThreadFlow.test.tsx`가 잰다). 턴 사이에 서는 상태 줄 · 시스템 줄도 같은 사이다. 한때 흐름 한
+ * 줄에 말풍선 · 턴 상자가 나란히 서고 줄 사이 46 · 말풍선 앞 2였다(02b-1).
  */
-export const TURN_GAP = "gap-11.5";
+export const TURN_GAP = "gap-12";
+
+/**
+ * 턴 상자(`.ra-turn`) — 칸 사이 16이다. 칸은 내 말(말풍선 · 말 머리 26 — `UserMessage`), 턴의 줄(작업 머리 · 로그 · 답 · 카드), 턴 뒤의 PR
+ * 카드다. 말풍선 → 턴 머리가 4 + 26 + 16 = 46이다. 새 채팅의 말풍선 → 「채팅을 시작하는 중」도 이 상자다.
+ */
+export const TURN_BOX = "flex flex-col gap-4";
 
 /** 흐름의 Thread — Runtime 경고의 펼침을 Thread마다 기억하는 열쇠이고, 흐르는 글을 찾는 열쇠다. */
 const FlowThread = createContext("");
@@ -167,44 +170,56 @@ function ThreadFlow({ thread, model, runtime, actions = null, pending = null }: 
     ...model.system
       .filter((line) => line.turn === undefined && line.turnsBefore === count)
       .map((line) => <SystemRow key={line.key} line={line} />),
-    ...model.prs.filter((card) => card.turnsBefore === count).map((card) => <PrCard key={card.key} card={card} now={now} />),
   ];
+  // PR 카드는 그 앞 턴의 상자 끝에 선다(MainCards — 답 아래 16, 다음 말풍선 위 48). 턴의 일이 아니라 Work의 일이라 턴의 줄이 아니고, 첫 턴
+  // 앞의 카드는 흐름 맨 위다.
+  const prs = (count: number) => model.prs.filter((card) => card.turnsBefore === count).map((card) => <PrCard key={card.key} card={card} now={now} />);
   const last = model.turns[model.turns.length - 1];
   const thinking = thinkingLine(model);
   return (
     <FlowThread.Provider value={thread}>
       <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
         {between(0)}
+        {prs(0)}
         {model.turns.map((turn, at) => (
           <Fragment key={turn.key}>
-            <TurnView
-              turn={turn}
-              runtime={runtime}
-              open={expanded[turnKey(thread, turn.key)]}
-              waiting={turn.end === null ? waitingFor(model) : null}
-              compacting={turn.end === null && model.compacting}
-              thinking={turn === last && thinking}
-              // 보낸 말이 기록에 서기를 기다리면 끝난 턴은 더 이상 마지막 답이 아니다 — 답 아래 줄이 걷힌다(States 보드 02 · 03).
-              last={turn === last && (pending === null || turn.end === null)}
-              actions={turn === last ? actions : null}
-              // 다시 잇기는 지금의 턴에서만 읽는다 — 지난 턴의 그림은 이 값에 움직이지 않는다.
-              severed={turn === last ? model.severed : null}
-              connecting={turn === last && model.connecting}
-              lead={leadOf(model, turn)}
-            />
+            <div data-turn-box className={TURN_BOX}>
+              <TurnView
+                turn={turn}
+                runtime={runtime}
+                open={expanded[turnKey(thread, turn.key)]}
+                waiting={turn.end === null ? waitingFor(model) : null}
+                compacting={turn.end === null && model.compacting}
+                thinking={turn === last && thinking}
+                // 보낸 말이 기록에 서기를 기다리면 끝난 턴은 더 이상 마지막 답이 아니다 — 답 아래 줄이 걷힌다(States 보드 02 · 03).
+                last={turn === last && (pending === null || turn.end === null)}
+                actions={turn === last ? actions : null}
+                // 다시 잇기는 지금의 턴에서만 읽는다 — 지난 턴의 그림은 이 값에 움직이지 않는다.
+                severed={turn === last ? model.severed : null}
+                connecting={turn === last && model.connecting}
+                lead={leadOf(model, turn)}
+              />
+              {prs(at + 1)}
+            </div>
             {between(at + 1)}
           </Fragment>
         ))}
-        {pending && (
-          <>
-            <div data-pending className="flex flex-col not-first:mt-0.5">
-              <UserMessage text={pending.text} attachments={pending.attachments} quote={pending.quote} />
-            </div>
-            {model.connecting && <StartingLine />}
-          </>
-        )}
+        {pending && <PendingTurn sent={pending} starting={model.connecting} />}
       </div>
     </FlowThread.Provider>
+  );
+}
+
+/**
+ * 기록에 서기 전의 보낸 말(States 보드 02 · 03) — 턴 상자 하나에 말풍선과, Session이 열리는 동안 그 아래 16에 「채팅을 시작하는 중」이 선다. 흐름
+ * 끝의 대기 말풍선(`pending`)과 새 채팅의 첫 말(`ThreadScreen`의 `NewChat`)이 같다. 시각은 기록이 말한다 — 말 머리에는 복사만 선다.
+ */
+export function PendingTurn({ sent, starting }: { sent: SentWords; starting: boolean }) {
+  return (
+    <div data-pending className={TURN_BOX}>
+      <UserMessage text={sent.text} attachments={sent.attachments} quote={sent.quote} />
+      {starting && <StartingLine />}
+    </div>
   );
 }
 
@@ -364,11 +379,16 @@ const TurnView = memo(function TurnView({
   return (
     <>
       {turn.sent !== null && (
-        // 말풍선 앞은 흐름의 줄 사이(`TURN_GAP`)보다 2를 더 띄운다 — 답 끝 → 다음 말풍선 48(`TURN_GAP` 머리말).
-        <div data-turn={turn.key} className="flex scroll-mt-16 flex-col not-first:mt-0.5">
-          <UserMessage text={turn.sent} attachments={turn.attachments} quote={turn.quote} />
-          {/* 대기 줄의 「지금 보내기」로 하던 턴을 끊고 들어간 말 — 말풍선 아래 4에 옅은 한 줄이 선다(Cards 「대기 중에 끼어든 말」). */}
-          {turn.interjected && <span className="mt-1 self-end text-xs text-fg-tertiary">하던 일을 멈추고 보냄</span>}
+        // 말풍선 · 말 머리(시각 · 복사)가 턴 상자의 첫 칸이다. 대기 줄의 「지금 보내기」로 하던 턴을 끊고 들어간 말은 말풍선 아래 4에 옅은 한 줄이
+        // 선다(Cards 「대기 중에 끼어든 말」).
+        <div data-turn={turn.key} className="scroll-mt-16">
+          <UserMessage
+            text={turn.sent}
+            attachments={turn.attachments}
+            quote={turn.quote}
+            at={turn.startedAt}
+            interjected={turn.interjected === true}
+          />
         </div>
       )}
       {lead.map((line) => (
@@ -448,7 +468,7 @@ function ThinkingLine({ children }: { children: ReactNode }) {
  * 「채팅을 시작하는 중」(States 보드 02 `.ra-shimmer` — 14 / 22, 띠가 지나간다) — 보낸 말이 Session이 열리기를 기다리는 동안 말풍선 아래에 선다. 새
  * 채팅의 첫 말(`ThreadScreen`의 `NewChat`)과 Session이 내려가 있던 채팅의 다음 말(`pending`)이 같은 줄이다.
  */
-export function StartingLine() {
+function StartingLine() {
   return <p className="chat-shimmer text-sm leading-5.5">채팅을 시작하는 중</p>;
 }
 
@@ -659,36 +679,6 @@ function UnansweredRow({ entry }: { entry: UnansweredEntry }) {
   );
 }
 
-/**
- * 사람이 보낸 말(Thread · Cards 보드 「내 말」 `.ra-bubble` · restart 02b-1) — 오른쪽 정렬, 줄 폭의 70%까지, 안쪽 10 / 16, 14 / 22.75, 옅은 파랑
- * 바탕(`bubble-user`)에 짙은 남색 글자(`bubble-user-fg`), 둥근 22(`bubble`)다. 한때 Codex 실측의 superellipse 22 · WebKit 16(`speech`)과
- * `fg-bubble`(#0c274a)이었다. 머리말(시각 · 복사)은 02b-6이 세운다. 붙인 첨부는 위에 칩으로 선다.
- */
-export function UserMessage({
-  text,
-  attachments = [],
-  quote = null,
-}: {
-  text: string;
-  attachments?: readonly Attachment[];
-  quote?: Quote | null;
-}) {
-  const bubble = (
-    <p className="max-w-[70%] self-end rounded-bubble bg-bubble-user px-4 py-2.5 text-bubble-user-fg whitespace-pre-wrap wrap-anywhere">
-      {text}
-    </p>
-  );
-  if (attachments.length === 0 && quote === null) return bubble;
-  // 붙인 것은 말풍선 바로 위에 칩으로 선다(Messages 보드 「첨부」 — 칩과 말풍선 사이 8). 인용은 그 위다(v1 티켓 35).
-  return (
-    <div className="flex flex-col gap-2">
-      {quote && <SentQuoteChip quote={quote} />}
-      {attachments.length > 0 && <SentAttachments attachments={attachments} />}
-      {bubble}
-    </div>
-  );
-}
-
 /** 안내 줄의 단추 — 끊긴 턴은 「다시 잇기」이고, 길이 제한과 턴 한도는 입력창을 채우는 「이어서」다. */
 function noticeAction(
   turn: Turn,
@@ -739,16 +729,17 @@ function ReconnectingLine() {
 }
 
 /**
- * 응답 액션(02 구현 스펙 §8 · Diff-Chat 「응답 액션」) — 마지막으로 끝난 답에만 선다(`TurnView`). 글리프 15 `fg-subtle`이고, 버튼(24)은
- * 글리프가 열 왼쪽 끝에 서도록 그 안쪽만큼 왼쪽으로 낸다. 위로 2를 당겨 답 글자 잉크 → 글리프가 Codex의 15.5다(턴 안 줄 사이 8 + 버튼
- * 안쪽이 그보다 2 길다). 「…」는 무엇을 둘지 정해지기 전이라(P1) 그리지 않고 복사 하나다. 그 옆에 사용량이 호버 없이 선다(Cards 보드 「답 아래
- * 줄」 — 모양은 02b-6이 맞춘다). 모델을 부르지 않은 턴은 사용량이 없어 복사 하나다.
+ * 답 아래 줄(Cards 보드 「답 아래 줄」 `.ra-actions` · 02 구현 스펙 §8 · restart 02b-6) — 마지막으로 끝난 답에만 호버 없이 선다(`TurnView`). 답(문서 카드가
+ * 있으면 그 카드) 아래 12다 — 턴 칸 사이 16에서 4를 당긴 보드 값이고, 앱은 턴 안 줄 사이 8 + 4다. 복사(`CopyButton` — 26 · 글리프 14 · `fg-tertiary`)가
+ * 열 왼쪽 끝에 서고, 곁 2 + 8에 그 턴의 사용량(12 / 18 · 숫자 고른 폭)이 선다. 모델을 부르지 않은 턴은 사용량이 없어 복사 하나다. 턴이 끝나 새로
+ * 서면 아래 4에서 떠오른다(`row-in` — 보드 `.ra-in`). 「…」는 무엇을 둘지 정해지기 전이라(P1) 그리지 않는다. 한때 24 단추 · 글리프 15 ·
+ * `fg-subtle`이 왼쪽으로 4 나가 답 아래 6에 섰다(Codex 잉크 사이 15.5).
  */
 function AnswerActions({ text, usage }: { text: string; usage: Usage | null }) {
-  const [copied, setCopied] = useState(false);
   // 턴이 끝나 새로 서는 줄은 한 프레임 뒤에 선다. 이 줄을 더하는 배치가 답의 길이만큼 들어(9만 6천 자에 27ms) 턴 끝의 기록 줄들이 몰린 프레임에 얹으면 50ms를 넘는다
   // (01b-9).
-  const late = useArrival("row-in") !== undefined;
+  const arrival = useArrival("row-in");
+  const late = arrival !== undefined;
   const [shown, setShown] = useState(!late);
   const follow = useContext(FollowTail);
   useEffect(() => {
@@ -761,19 +752,10 @@ function AnswerActions({ text, usage }: { text: string; usage: Usage | null }) {
   }, [follow, shown, late]);
   if (!shown) return null;
   return (
-    <div className="-mt-0.5 -ml-1 flex items-center">
-      <button
-        type="button"
-        aria-label="답 복사"
-        onClick={() => {
-          void navigator.clipboard?.writeText(text).then(() => setCopied(true));
-        }}
-        className="icon-button-quiet icon-button-xs text-fg-subtle focus-ring"
-      >
-        {copied ? <Check className="size-3.75" aria-hidden /> : <Copy className="size-3.75" aria-hidden />}
-      </button>
+    <div data-answer-actions className={cn("mt-1 flex items-center gap-0.5 text-fg-tertiary", arrival)}>
+      <CopyButton text={text} label="답 복사" />
       {usage && (
-        <span data-usage className="pl-2 text-xs text-fg-tertiary tabular-nums">
+        <span data-usage className="pl-2 text-xs tabular-nums">
           {usageText(usage)}
         </span>
       )}
@@ -783,13 +765,16 @@ function AnswerActions({ text, usage }: { text: string; usage: Usage | null }) {
 
 export default ThreadFlow;
 
-/** 끝난 턴이 이은 Work의 spec 폴더에 새로 쓴 문서들의 카드(v1 티켓 35 · `DocCard`) — 자리를 모르면(Work 없음) 서지 않는다. */
+/**
+ * 끝난 턴이 이은 Work의 spec 폴더에 새로 쓴 문서들의 카드(v1 티켓 35 · `DocCard`) — 자리를 모르면(Work 없음) 서지 않는다. 답 아래 16(턴 안 줄 사이 8 +
+ * 8 — ChatCards · MainCards 보드의 턴 칸 사이)이고 여럿이면 사이 8로 쌓인다(「긴 경로 · 여러 문서」).
+ */
 function CreatedDocs({ turn, name }: { turn: Turn; name: string }) {
   const place = useContext(DocPlace);
   const docs = createdDocs(turn, place?.specRoot ?? null);
   if (!place || docs.length === 0) return null;
   return (
-    <div className="flex w-full flex-col gap-2">
+    <div data-created-docs className="mt-2 flex w-full flex-col gap-2">
       {docs.map((doc) => (
         <DocCard key={doc.path} doc={doc} name={name} onOpen={() => place.open(doc.path)} />
       ))}

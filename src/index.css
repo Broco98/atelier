@@ -841,11 +841,14 @@
        뒤의 `bg-accent`를 0건으로 고정한다.
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
          `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, codex-ds 결정 29)이 패널
-                             트리의 고른 행과 같은 면이다 · 탭 줄의 켜진 탭(`tab-on` — restart 02a-5, 시안 `.ra-tabx.on`)
+                             트리의 고른 행과 같은 면이다 · 탭 줄의 켜진 탭(`tab-on` — restart 02a-5, 시안 `.ra-tabx.on`) · 머리 줄의
+                             켜진 요약 단추(`headButton` — restart 02b-8b, 시안 `.ra-tbtn[aria-pressed]`) · 넓힌 카드의 렌더 | 원문(시안 `.ra-mini.on`)
          `fill-nav-selected` 한때 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). restart
                              02a-3이 사이드바 줄을 면 알파로 옮기고 사람 메뉴를 걷어 앱이 읽지 않는다 — 02 스펙 값을 재는
                              `tokens.test.ts`와 옛 판을 재는 L3가 읽어 남겼다
-         `fill-toggle-on`    Thread 머리 줄 요약 단추의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
+         `fill-toggle-on`    한때 Thread 머리 줄 요약 단추의 켜진 면(02 스펙 §6 — Codex #ebebec, 다크 값 없음). restart 02b-8b가 그 단추를
+                             시안의 눌림 면(`.ra-tbtn[aria-pressed]` — `fill-selected`)으로 옮겨 앱이 읽지 않는다 — 02 스펙 값을 재는
+                             `tokens.test.ts`가 읽어 남겼다
        이 목록은 **열거**다(`state-scale.test.ts`가 `:root`의 `--fill-*` 이름을 맞댄다): 여기 없는 새 상태 배경은 유예된 것이 아니라
        면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널 토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
     --fill-soft: rgba(26, 28, 31, 0.05);
@@ -945,7 +948,7 @@
          separator-soft        답한 질문 카드의 테두리(11) · 한때 요약 카드의 칸 구분선(07 — restart 02b-8 뒤로 `border-heavy`) · 한때 작업 구분선
                                아래 선(09 — restart 02b-1이 턴 머리 아래 0.5 `border-heavy`로 옮겼다)
          fill-nav-selected     한때 사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말). restart 02a-3 뒤로 앱이 읽지 않는다
-         fill-toggle-on        Thread 머리 줄 요약 단추의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
+         fill-toggle-on        한때 Thread 머리 줄 요약 단추의 켜진 면(06) — restart 02b-8b 뒤로 그 단추는 `fill-selected`라 앱이 읽지 않는다
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
          face-person           한때 바닥 사람 줄의 얼굴 면(04 — 시안 F1-Home · Diff-Frame · Components의 `.ava`, 스펙 §4는 값을 적지 않았다 · restart 02a-3이 걷었다). 글자는
                                `fg-on-solid`. Agent 얼굴(`fill-active` 면)과 갈려 「나」가 한눈에 갈린다
@@ -2086,6 +2089,13 @@ body[data-palette-open] [data-scrollbar] {
 @utility stream-tail {
     -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--size-stream-fade)), rgb(0 0 0 / 0.18));
     mask-image: linear-gradient(90deg, #000 calc(100% - var(--size-stream-fade)), rgb(0 0 0 / 0.18));
+}
+
+/* **접힌 내 말**(restart 02b-6 · Cards 보드 「긴 말」 — 「8줄 넘으면 접고 더 보기」). 잘린 말풍선의 아래 40%가 옅어져 사라진다 — 말이 이어진다는
+   표시다. 움직임이 아니라 동작 줄이기에도 그대로다. 펼치면 걷는다(`UserMessage`의 `MessageBubble`). */
+@utility fold-fade {
+    -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
+    mask-image: linear-gradient(180deg, #000 60%, transparent);
 }
 
 /* **작업 중 점**(02 구현 스펙 §12 · Motion 보드 「작업 중 점」 · Screen-Live `.dot` — Codex `_typing-dot-wave`). 4 점 셋이 4 사이로 서서

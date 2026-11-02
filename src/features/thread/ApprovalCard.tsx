@@ -5,6 +5,7 @@ import {
   Bot,
   ChevronRight,
   Command,
+  FileText,
   Globe,
   Info,
   Map as MapIcon,
@@ -90,6 +91,7 @@ export const SLOT_CARD = "rounded-prompt border border-border-slot bg-surface ou
 const BADGE_ICONS: Record<CardBadge["glyph"], LucideIcon> = {
   read: BookOpen,
   edit: Pencil,
+  doc: FileText,
   execute: SquareTerminal,
   search: Search,
   web: Globe,

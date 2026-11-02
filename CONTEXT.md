@@ -474,8 +474,8 @@ _피할 말_: PR 위젯, PR 알림
 **결과 카드**:
 Runtime이 대화로 한 설정(Project 추가 · Project 고침 · Service 만듦 · Service 고침) 하나가 그 설정을 한 턴 안, 그 도구 줄 뒤에 남기는 카드 한 장
 — 턴을 접어도 남고, PR 카드처럼 턴 사이에 서지 않는다. 사람이 대화로 부탁한 일이라 승인 없이 하고, 한 것을 이 카드로 보인다. 아이콘 · 첫 줄 · 옅은 둘째 줄과 오른쪽 「열기」다
-(「Project를 추가했어요 — landing-page」 · 「~/MyProjects/landing-page · git 레포 · 기준 브랜치 main」). Service를 고쳤으면
-「결제 서비스에 backoffice를 넣었어요」 · 「Project 3 · 함께 쓰는 Service 1」에 「관계 보기」다. 단추는 그 Project 상세 · Service 상세로 가서 사람이 거기서 다시 고치고, 대상이 그사이
+(「Project를 추가했어요 — landing-page」 · 「~/MyProjects/landing-page · git 레포 · 기준 브랜치 main」). Service를 고쳤어도
+「결제 서비스에 backoffice를 넣었어요」 · 「Project 3 · 함께 쓰는 Service 1」에 「열기」다(한때 「관계 보기」 — 관계 그래프가 없어져 하나로 모았다). 단추는 그 Project 상세 · Service 상세로 가서 사람이 거기서 다시 고치고, 대상이 그사이
 사라졌으면 꺼진다. 되돌리기 단추는 없다. Project 제거 · Service 삭제는 화면에서만 한다 — Runtime은 지우지 않고 그 화면을 안내한다.
 _「변경 사항」 아래의 PR 줄과 가른다._ 그것은 Work의 PR 상태 한 줄이고, 이것은 대화로 한 설정이다. 요약 카드의 「결과물」이나 리뷰의
 결과물도 아니다 — 그것은 Work가 만든 것이다.

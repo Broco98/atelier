@@ -413,7 +413,12 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/features/thread/SlashMenu.tsx",
       className: "gap-px",
-      why: "「/」 메뉴 — 머리와 줄 사이 1(restart 시안 Composer `.ra-menu`의 `gap: 1px`)",
+      why: "「/」 · 「@」 메뉴(한 카드 `ComposerListbox`) — 머리와 줄 사이 1(restart 시안 Composer `.ra-menu`의 `gap: 1px`)",
+    },
+    {
+      file: "src/features/thread/ThreadComposer.tsx",
+      className: "py-px",
+      why: "입력칸의 언급 칠 — 파란 면의 위아래 1(restart 02b-3 · 시안 Composer `.ra-mention`의 `padding: 1px 4px`). 인라인 안쪽이라 줄 자리를 밀지 않는다",
     },
     // 사이드바 줄의 글리프와 글자 사이 9 — 시안 `.ra-sr-row`의 `gap: 9px`(restart 02a-3). nav 줄 · Work 줄 · Thread 줄이 한 벌이라 한 파일
     // (`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C). 한때(v1 티켓 46 – 02a-2) Codex 사이드바를 잰 줄 사이 1 · 소제목 아래 3 · 앞 묶음 뒤

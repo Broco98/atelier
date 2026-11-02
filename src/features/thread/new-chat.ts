@@ -10,15 +10,16 @@ import { threadUiStore } from "./thread-store";
 export const newChatKey = (tab: number): string => `new-chat:${tab}`;
 
 /**
- * 그 열쇠의 글 · 첨부 · 인용을 지운다 — 새 채팅 탭을 닫았거나 그 탭이 채팅이 됐다(보낸 뒤라 비어 있다). 다른 열쇠의 것은 그대로다. 지울 것이
+ * 그 열쇠의 글 · 첨부 · 인용 · 넣은 언급을 지운다 — 새 채팅 탭을 닫았거나 그 탭이 채팅이 됐다(보낸 뒤라 비어 있다). 다른 열쇠의 것은 그대로다. 지울 것이
  * 없으면 스토어를 건드리지 않는다 — 구독한 입력창이 깨어나지 않게.
  */
 export function forgetNewChat(key: string): void {
   threadUiStore.setState((state) => {
-    if (!(key in state.drafts) && !(key in state.quotes) && state.filled !== key) return state;
+    if (!(key in state.drafts) && !(key in state.quotes) && !(key in state.mentions) && state.filled !== key) return state;
     const { [key]: _draft, ...drafts } = state.drafts;
     const { [key]: _quote, ...quotes } = state.quotes;
-    return { ...state, drafts, quotes, filled: state.filled === key ? null : state.filled };
+    const { [key]: _mentions, ...mentions } = state.mentions;
+    return { ...state, drafts, quotes, mentions, filled: state.filled === key ? null : state.filled };
   });
   attachmentStore.setState((state) => {
     if (!(key in state)) return state;
