@@ -905,3 +905,113 @@ fn 선_codex_채팅은_세션을_열_때_찾지_못하면_codex의_못_찾음이
     let states = events.engine_states();
     assert!(codex_missing(&states), "Codex의 것 하나만 알린다: {states:?}");
 }
+
+// ── 판(restart 01c-11 · 스토리 43) ─────────────────────────────────────────────────────
+//
+// 스펙 「01c — Codex」 판 — 실측한 `codex-acp` 2.2.2와 `codex` 0.162.1이 시험한 판이다. 연 Codex의 `agentInfo.version`이나 `codex --version`이
+// 다르면 Runtime 경고(01b-8의 `stderr` 줄)를 적고 대화는 막지 않는다. 시험한 판이면 아무것도 적지 않는다 — 축복한 Codex 기록(`thread-codex` 등)에
+// `stderr` 줄이 없다. Claude는 판을 보지 않는다 — 축복한 Claude 기록에도 없다.
+
+/// 그 판들의 가짜로 새 Codex 채팅의 첫 턴을 돌린 기록.
+fn first_turn_with(extra: &[(&str, &str)]) -> Vec<Value> {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", extra));
+    let thread = host
+        .start_thread_picking("Reply with exactly one word: ok", &[], ThreadLink::NoWork, codex())
+        .expect("판이 달라도 첫 말은 간다");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+    record
+}
+
+/// 경고가 턴 사이(열림 뒤 · 첫 말 앞)에 한 줄로 서고 첫 턴은 녹음대로 끝났다.
+fn assert_warned_and_answered(record: &[Value], warning: &str) {
+    assert_eq!(common::payloads_of(record, "stderr"), [json!({"line": warning})], "{}", common::lines_text(record));
+    let at = first_at(record, "stderr");
+    assert!(first_at(record, "session") < at && at < first_at(record, "sent"), "턴 사이에 선다:\n{}", common::lines_text(record));
+    assert_eq!(of_kind(record, "turn-end")[0]["payload"]["stopReason"], "end_turn", "대화는 막히지 않는다");
+    assert_eq!(answer_of(record, 1), "ok");
+}
+
+#[test]
+fn codex_acp가_시험한_판과_다르면_열_때_runtime_경고가_서고_대화는_막히지_않는다() {
+    let record = first_turn_with(&[("FAKE_ACP_VERSION", "2.5.0")]);
+
+    assert_warned_and_answered(
+        &record,
+        "시험하지 않은 Codex 판이에요 — codex-acp 2.5.0(시험한 판 2.2.2). 대화는 그대로 이어 가지만 다르게 움직일 수 있어요",
+    );
+}
+
+#[test]
+fn codex가_시험한_판과_다르면_열_때_runtime_경고가_서고_둘_다_다르면_한_줄에_둘을_적는다() {
+    let record = first_turn_with(&[("FAKE_CODEX_VERSION", "0.170.0")]);
+    assert_warned_and_answered(
+        &record,
+        "시험하지 않은 Codex 판이에요 — codex 0.170.0(시험한 판 0.162.1). 대화는 그대로 이어 가지만 다르게 움직일 수 있어요",
+    );
+
+    let record = first_turn_with(&[("FAKE_ACP_VERSION", "2.5.0"), ("FAKE_CODEX_VERSION", "0.170.0")]);
+    assert_warned_and_answered(
+        &record,
+        "시험하지 않은 Codex 판이에요 — codex-acp 2.5.0(시험한 판 2.2.2) · codex 0.170.0(시험한 판 0.162.1). 대화는 그대로 이어 가지만 다르게 움직일 수 있어요",
+    );
+}
+
+// ── 대화 정리(restart 01c-11 · 스토리 52) ───────────────────────────────────────────────
+//
+// 스펙 「01b — 대화 정리」 — 두 Runtime을 한 모양으로 맞춘다. Codex의 `tool_call`(`Compact conversation`, `think`)이 그 모양이고, Claude 변환기가
+// `status: "compacting"`을 같은 줄로 옮긴다. 01b-4가 뜬 claude 2.1.316의 `/compact`와 01c-1이 뜬 codex-acp 2.2.2의 `/compact`를 Host에 흘려 기록된
+// 줄을 맞댄다. 두 녹음 모두 셋째 말이 `/compact`다.
+
+/// 턴에 서는 update — 화면의 접기가 턴의 줄로 읽는 것(`fold.ts`의 `TURN_UPDATES`)과 도구 줄의 끝. 사용량 · 세션 정보 · 명령 목록은 턴의 표다.
+const TURN_LINES: [&str; 6] = ["tool_call", "tool_call_update", "agent_message_chunk", "agent_thought_chunk", "plan", "plan_update"];
+
+/// 그 채팅의 셋째 턴(`/compact`)에 기록된 턴의 줄 — 대화 정리 줄의 id는 Runtime이 짓는 값이라 `정리`로 바꾼다 — 과 그 턴의 끝 까닭.
+fn compact_turn(sandbox: &Sandbox, host: &ConversationHost, thread: &str, words: [&str; 2]) -> (Vec<Value>, Value) {
+    for (turn, said) in words.into_iter().enumerate() {
+        sandbox.wait_thread_kind(thread, "turn-end", turn + 1);
+        host.send_to_thread(thread, said).expect("이어 말하기");
+    }
+    let record = sandbox.wait_thread_kind(thread, "turn-end", 3);
+    let ends: Vec<usize> = record.iter().enumerate().filter(|(_, line)| line["kind"] == "turn-end").map(|(at, _)| at).collect();
+    let turn = &record[ends[1] + 1..ends[2]];
+    let lines = turn
+        .iter()
+        .filter(|line| line["kind"] == "update")
+        .map(|line| line["payload"]["update"].clone())
+        .filter(|update| TURN_LINES.iter().any(|kind| update["sessionUpdate"] == *kind))
+        .map(|mut update| {
+            if update.get("toolCallId").is_some() {
+                update["toolCallId"] = json!("정리");
+            }
+            update
+        })
+        .collect();
+    (lines, record[ends[2]]["payload"]["stopReason"].clone())
+}
+
+#[test]
+fn claude와_codex의_대화_정리는_같은_acp_줄을_만든다() {
+    let first = "Remember the word lantern. Reply with exactly one word: ok";
+    let words = ["Say one short sentence about lanterns.", "/compact"];
+
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.316/stream-compact")]));
+    let thread = host.start_thread(first, ThreadLink::NoWork).expect("Claude 채팅의 첫 말");
+    let claude = compact_turn(&sandbox, &host, &thread, words);
+    host.shut_down();
+
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/compact", &[]));
+    let thread = host.start_thread_picking(first, &[], ThreadLink::NoWork, codex()).expect("Codex 채팅의 첫 말");
+    let codex = compact_turn(&sandbox, &host, &thread, words);
+    host.shut_down();
+
+    let shape = vec![
+        json!({"sessionUpdate": "tool_call", "toolCallId": "정리", "title": "Compact conversation", "kind": "think", "status": "in_progress"}),
+        json!({"sessionUpdate": "tool_call_update", "toolCallId": "정리", "status": "completed"}),
+    ];
+    assert_eq!(codex, (shape, json!("end_turn")), "codex-acp 2.2.2의 정리 턴은 끝나는 정리 줄 하나다");
+    assert_eq!(claude, codex, "Claude의 정리 턴이 Codex와 같은 줄을 만든다");
+}

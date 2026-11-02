@@ -16,6 +16,7 @@ mod quote;
 mod records;
 mod redact;
 mod runtime;
+mod tested;
 mod thread_tools;
 mod translator;
 

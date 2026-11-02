@@ -62,11 +62,13 @@ use super::{
     Draft, FlowChunk, HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
 };
 use crate::discovery::{Agent, FoundProgram};
+use crate::login;
 use crate::login_env::AgentEnv;
 use crate::policy::{AskLevel, Card};
 use crate::quote::{Attached, Quote};
 use crate::records::{heard_since_session_start, session_payload, Recorder, SessionState, ThreadLog};
 use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, QuestionAnswer, SessionPlace};
+use crate::tested;
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use gate::Gate;
 use seat::{Docs, Grant, Writer};
@@ -1111,6 +1113,19 @@ impl ConversationHost {
                 return Err(HostError::Open { thread: thread.to_owned(), reason });
             }
         };
+        // Codex는 연 판을 시험한 판과 견주어, 다르면 Runtime 경고(01b-8의 `stderr` 줄)를 적는다(restart 01c-11) — 열 때마다다. 대화는 막지 않는다:
+        // 적지 못해도 그대로 연다. `codex --version`은 세션이 열린 **뒤에** 돈다 — 에이전트와 함께 띄우면 막힌다. macOS에는 `pipe2`가 없어
+        // `Command::spawn`이 exec를 기다리는 파이프에 CLOEXEC를 늦게 걸고, 그 틈에 갈라진 에이전트가 파이프를 물려받으면 에이전트가 끝날 때까지
+        // spawn이 돌아오지 않는다. 둘을 함께 띄우게 지은 첫 구현이 시험에서 그렇게 멈췄다.
+        if runtime == Runtime::Codex {
+            let cwd = login::quiet_place(env, &self.data_root);
+            let codex = programs.iter().find(|program| program.name == "codex");
+            let codex = codex.and_then(|codex| tested::codex_version(&codex.path, env, &cwd));
+            let agent = opened.initialize["agentInfo"]["version"].as_str();
+            if let Some(Err(error)) = tested::codex_warning(agent, codex.as_deref()).map(|warning| recorder.stderr(warning)) {
+                eprintln!("{error}");
+            }
+        }
         // Codex는 연 뒤에 채팅의 값을 넣는다 — 새로 열든 되살리든 모드가 풀려 있다(restart 스펙 「01c — Codex」 모드). 받지 않으면 턴을 열지 않는다:
         // 모드가 풀린 채 턴이 돌면 경계가 사라진다. Session을 끄고 죽음 줄에 까닭을 적는다 — 보내던 말은 가지 않았고 다음 말이 다시 띄운다.
         if runtime == Runtime::Codex {

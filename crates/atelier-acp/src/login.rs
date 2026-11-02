@@ -112,14 +112,14 @@ fn program<'a>(programs: &'a [FoundProgram], name: &str) -> Option<&'a Path> {
 }
 
 /// 확인 명령 하나가 남긴 것.
-struct Ran {
-    exit: Option<Exit>,
-    stdout: Vec<u8>,
+pub(crate) struct Ran {
+    pub exit: Option<Exit>,
+    pub stdout: Vec<u8>,
 }
 
 /// 확인 명령을 끝까지 돈다 — 에이전트와 같은 env를 통째로 주고, 새 세션에, stdin 없이 띄운다. 끝나면(한도를 넘겨도)
-/// 그룹째 끄고 거둔다.
-fn run_to_end(program: &Path, args: &[&str], env: &AgentEnv, cwd: &Path) -> Ran {
+/// 그룹째 끄고 거둔다. 판 확인(`codex --version`, `tested.rs`)도 이것으로 돈다.
+pub(crate) fn run_to_end(program: &Path, args: &[&str], env: &AgentEnv, cwd: &Path) -> Ran {
     let mut command = Command::new(program);
     command
         .args(args)

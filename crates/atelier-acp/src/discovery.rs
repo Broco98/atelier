@@ -53,12 +53,34 @@ struct Program {
     install: &'static str,
 }
 
+// 시험한 판(restart 스펙 「01c — Codex」 판 · 스토리 43) — 실측한 `codex-acp`와 `codex`다. 설치 안내가 이 판을 깔고, Codex를 열 때 연 판이 이것과
+// 다르면 Runtime 경고를 적는다(`tested.rs`). 판을 올릴 때는 실측을 다시 하고 녹음(`tests/fixtures/codex-acp-<판>/`)을 새로 뜬다. `claude`는 며칠마다
+// 판이 바뀌어 보지 않는다 — live 점검 기록에 판을 남긴다. 설치 명령에 글자 그대로 잇도록(`concat!`) 매크로로 둔다.
+macro_rules! codex_acp_tested {
+    () => {
+        "2.2.2"
+    };
+}
+macro_rules! codex_tested {
+    () => {
+        "0.162.1"
+    };
+}
+/// 시험한 `codex-acp`의 판 — `initialize`의 `agentInfo.version`과 견준다.
+pub(crate) const CODEX_ACP_TESTED: &str = codex_acp_tested!();
+/// 시험한 `codex`의 판 — `codex --version`과 견준다. 샌드박스와 도구 제한 시간이 `codex` 쪽에 있어 이것도 본다.
+pub(crate) const CODEX_TESTED: &str = codex_tested!();
+
 /// Claude Code 공식 설치 명령(네이티브 설치본 — `~/.local/bin/claude`).
 const CLAUDE: Program = Program { name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" };
-const CODEX_ACP: Program = Program { name: "codex-acp", install: "npm i -g @agentclientprotocol/codex-acp" };
+const CODEX_ACP: Program =
+    Program { name: "codex-acp", install: concat!("npm i -g @agentclientprotocol/codex-acp@", codex_acp_tested!()) };
 /// codex 공식 설치 스크립트 — npm · Homebrew 판이 아니라 이것으로 깐 `~/.local/bin/codex`를 쓴다
-/// (three-axes 결정 26).
-const CODEX: Program = Program { name: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh" };
+/// (three-axes 결정 26). 스크립트의 `--release`로 시험한 판을 깐다.
+const CODEX: Program = Program {
+    name: "codex",
+    install: concat!("curl -fsSL https://chatgpt.com/codex/install.sh | sh -s -- --release ", codex_tested!()),
+};
 const NODE: Program = Program { name: "node", install: "brew install node" };
 
 /// 엔진 확인의 답. 앱 명령을 건너 화면으로 가므로 `state`로 가르는 꼴로 나간다 — 프런트의 `EngineCheck` 타입과
