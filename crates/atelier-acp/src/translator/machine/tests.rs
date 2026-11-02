@@ -561,6 +561,24 @@ fn 모델_생각_깊이와_mcp_서버는_새로_열기와_이어_열기_모두_c
 }
 
 #[test]
+fn 계획_모드의_도구_호출이_앱의_판정을_지나도록_claude의_자동_판정을_끄고_띄운다() {
+    // 구현 스펙 「01a — 권한」, live 점검 01a. 자동 모드를 쓰는 계정은 `--permission-mode plan`도 자동 모드 판정으로 돌아, 명령과 웹이
+    // `can_use_tool` 없이 실행된다. 넷 모두로 재는 까닭은 칩이 세션 도중에 「계획」으로 바꾸기도 하기 때문이다.
+    let revive = json!({"sessionId": "yesterday", "cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}});
+    let opens = [
+        ("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {"permissionMode": "plan"}}})),
+        ("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {"permissionMode": "default"}}})),
+        ("session/resume", revive.clone()),
+        ("session/load", revive),
+    ];
+    for (method, params) in opens {
+        let args = launched_by(method, params);
+        let settings = flag(&args, "--settings").unwrap_or_else(|| panic!("{method}: --settings가 없다: {args:?}"));
+        assert_eq!(serde_json::from_str::<Value>(&settings).unwrap(), json!({"useAutoModeDuringPlan": false}), "{method}");
+    }
+}
+
+#[test]
 fn meta의_지운_칸은_읽지_않아_claude가_기본_도구_전부로_뜬다() {
     let args = launched_with(json!({"builtinTools": ["read"], "instructionsFile": "/old/host.instructions.md"}));
     for name in ["--tools", "--disallowedTools", "--append-system-prompt-file"] {

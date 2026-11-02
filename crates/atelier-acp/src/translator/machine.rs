@@ -48,6 +48,13 @@ const ALLOW_ONCE: &str = "allow_once";
 const ALLOW_SESSION: &str = "allow_session";
 const REJECT: &str = "reject";
 const IMPLEMENT_PLAN: &str = "implement_plan";
+
+/// claude를 띄울 때 얹는 설정 — 계획 모드가 자동 모드 판정을 쓰지 않게 한다(구현 스펙 「01a — 권한」, live 점검 01a).
+///
+/// 자동 모드를 쓸 수 있는 계정의 claude는 `--permission-mode plan`에서도 그 판정으로 돌아, 명령 · 웹 · 일부 MCP를 `can_use_tool` 없이
+/// 실행한다. 앱의 판정(앱 경계 · 쓰기 자리 · 모드 표)을 지나지 않는 길이다. 사용자 설정이 아니라 띄우는 인자로 끈다. 세션 도중에 칩이
+/// 「계획」으로 바꾸기도 하므로 모드와 상관없이 언제나 준다.
+const PLAN_ASKS_THE_APP: &str = r#"{"useAutoModeDuringPlan":false}"#;
 const REVISE_PLAN: &str = "revise_plan";
 /// 질문의 선택지 id — 답하기 · 나중에(v1 티켓 26).
 const ANSWER: &str = "answer";
@@ -335,6 +342,8 @@ impl Machine {
             "--verbose",
             "--permission-prompt-tool",
             "stdio",
+            "--settings",
+            PLAN_ASKS_THE_APP,
             if reviving { "--resume" } else { "--session-id" },
             &session_id,
         ];

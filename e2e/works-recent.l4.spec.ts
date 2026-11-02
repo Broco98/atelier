@@ -54,7 +54,7 @@ async function workRows(page: Page): Promise<string[]> {
   const names = await page.getByRole("option").evaluateAll((els) =>
     els.map((el) => el.textContent?.trim() ?? ""),
   );
-  return names.filter((name) => name.endsWith("작업공간"));
+  return names.filter((name) => name.endsWith("만든 작업"));
 }
 
 // 결정 11. **마지막으로 연 것이 위다** — 이력 파일을 쓰는 쪽과 읽어 순서를 세우는 쪽이
