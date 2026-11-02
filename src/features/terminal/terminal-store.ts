@@ -69,6 +69,7 @@ import {
   setShellKey,
   setShellName,
   setTitle,
+  shellCapNotice,
   shellOpenNotice,
   shellsOf,
   slugOfOwner,
@@ -155,6 +156,9 @@ interface ShellInstance {
   // **새 칸의 자리가 아니다.** 셸 안 ⌘T는 이 값의 `owner`로 화면에 요청만 보내고, 자리는
   // 화면의 기본 자리 함수가 정한다(UI개선 결정 19). 여기서 읽는 것은 spawn의 cwd와 그 소유자다.
   origin: ShellOrigin;
+  // 셸이 처음 말한 뒤 백엔드가 쳐 넣을 시작 명령(restart 01c-10 — 「터미널에서 로그인」). 그 밖의 셸은 `null`이다. origin에 두지 않는다 —
+  // origin은 이 셸의 자리일 뿐이고, 그 자리에서 다시 여는 셸이 같은 명령을 돌면 안 된다.
+  command: string | null;
   fontsReady: boolean;
   opened: boolean;
   // **여는 데 실패했다.** 이미 뜬 PTY를 거두고 이 칸에 다시는 쓰지 않는다 — 떠 있는데 볼 수
@@ -244,7 +248,7 @@ export function requestNewShell(owner: ShellOwner): void {
  * 부르는 쪽이 다시 정하게 되어, 그 판정을 한 자리에 모아 둔 `shellOpenNotice`의 계약이 깨진다
  * (그 함수 주석).
  */
-function openShellQuietly(origin: ShellOrigin, auto: boolean): OpenedShell | null {
+function openShellQuietly(origin: ShellOrigin, auto: boolean, command: string | null = null): OpenedShell | null {
   // 여기만 상태를 **읽어서** 계산한다 — `openShell`이 새 상태와 함께 발급한 id를 돌려주고
   // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
   // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
@@ -252,7 +256,7 @@ function openShellQuietly(origin: ShellOrigin, auto: boolean): OpenedShell | nul
   if (!opened) return null;
 
   terminalStore.setState(() => opened.state);
-  const instance = createInstance(opened.id, origin);
+  const instance = createInstance(opened.id, origin, command);
   instances.set(instance.id, instance);
   void loadFont(instance);
   return opened;
@@ -280,6 +284,19 @@ export function openNewShell(origin: ShellOrigin): void {
   if (notice !== null) {
     for (const listen of openRejectedListeners) listen(notice);
   }
+}
+
+/**
+ * 시작 명령이 도는 셸을 하나 띄운다(restart 01c-10 — 「터미널에서 로그인」이 Runtime의 로그인 명령을 싣는다). 명령은 백엔드가 셸이 처음
+ * 말한 뒤 쳐 넣는다(`pty_spawn`의 `command`). **사람이 누른 길이다** — `openNewShell`처럼 자동 셸이 아니고 그 셸이 켜진다.
+ *
+ * **거절을 듣는 화면에 알리지 않고 돌려준다.** 단추는 Terminal 밖(채팅 화면)에 있어 그 화면의 토스트 자리가 말한다 — 거절 알림
+ * (`onShellOpenRejected`)으로 보내면 듣는 work 화면이 엉뚱한 자리에서 말한다. 문장은 `shellCapNotice`가 짓는다 — 잠긴 `+` 행과 ⌘T의
+ * 토스트가 읽는 그 문장이다(결정 47).
+ */
+export function openShellRunning(origin: ShellOrigin, command: string): { id: number } | { notice: string } {
+  const opened = openShellQuietly(origin, false, command);
+  return opened ? { id: opened.id } : { notice: shellCapNotice(terminalStore.state, origin.owner) };
 }
 
 /**
@@ -1336,7 +1353,7 @@ export function detachShell(id: number): void {
   pendingFocus = nextPendingFocus(pendingFocus, { kind: "detached", id });
 }
 
-function createInstance(id: number, origin: ShellOrigin): ShellInstance {
+function createInstance(id: number, origin: ShellOrigin, command: string | null): ShellInstance {
   // **설정을 여기서 파일에서 읽지 않는다** — 앱이 뜰 때 한 번 읽어 스토어에 들어 있고
   // (`terminal-settings.ts`), 셸을 만들 때마다 읽으면 ⌘T가 IPC 왕복을 탄다. 아직 안 왔으면
   // `terminalLook`이 기본값으로 답하고, 늦게 오면 아래 `restyleShells`가 이 칸을 따라오게 한다.
@@ -1420,6 +1437,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     webgl: null,
     ptyId: null,
     origin,
+    command,
     fontsReady: false,
     opened: false,
     broken: false,
@@ -1897,7 +1915,7 @@ async function spawn(instance: ShellInstance) {
     // (결정 25). `null`이면 데이터 루트이고 그 자리가 어디인지도 백엔드만 안다.
     const cols = instance.term.cols;
     const rows = instance.term.rows;
-    const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);
+    const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, instance.command, channel);
     // **이 왕복 사이에 `×`가 눌렸을 수 있다.** 그때 `closeShell`은 `ptyId`가 아직 null이라
     // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
     // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —

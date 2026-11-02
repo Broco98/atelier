@@ -1036,7 +1036,7 @@ fn 로그인이_풀린_codex_채팅의_로그인_필요는_codex의_것으로_�
     assert_eq!(record.last().unwrap()["payload"], json!({"state": "login-required"}), "{}", common::lines_text(&record));
     assert_eq!(
         events.engine_states(),
-        [EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), login: None, missing: vec![] }],
+        [EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), missing: vec![] }],
         "Claude의 엔진 상태는 건드리지 않는다 — Claude 채팅에 로그인 카드가 서지 않는다"
     );
 

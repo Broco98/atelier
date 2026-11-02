@@ -1245,8 +1245,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }],
     loggedIn: true,
   } satisfies EngineCheck,
-  thread_start_login: null,
-  thread_cancel_login: null,
+  // 「터미널에서 로그인」이 Terminal의 새 셸에 칠 로그인 명령(restart 01c-10). 기본 엔진은 로그인돼 있어 카드가 서지 않으므로 이 답을 쓰는 검사는 아직 없다.
+  thread_login_command: "/opt/fixture/bin/claude auth login",
   thread_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ThreadQuitCounts,
   // 새 Thread — 첫 말과 함께 세운 Thread의 id. 답(첫 턴)은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   thread_start: FIXTURE_THREAD.id,

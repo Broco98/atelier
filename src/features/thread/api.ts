@@ -42,8 +42,11 @@ import type {
 export const threadApi = {
   /** 그 Runtime을 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 찾기」 · 「다시 확인」이다(로그인 환경을 새로 읽는다). */
   checkEngine: (runtime: Runtime, reread: boolean) => invoke<EngineCheck>("thread_check_engine", { runtime, reread }),
-  startLogin: (runtime: Runtime) => invoke<void>("thread_start_login", { runtime }),
-  cancelLogin: (runtime: Runtime) => invoke<void>("thread_cancel_login", { runtime }),
+  /**
+   * 그 Runtime의 로그인 명령 한 줄(restart 01c-10) — 로그인 셸의 PATH에서 찾은 실행 파일과 로그인 인자다. 「터미널에서 로그인」이 Terminal에 연
+   * 새 셸에 친다(`terminal-login.ts`). 못 찾으면 거절되고 그 Runtime의 「못 찾음」이 엔진 상태 이벤트로 온다.
+   */
+  loginCommand: (runtime: Runtime) => invoke<string>("thread_login_command", { runtime }),
   /** 앱 종료 확인 창의 셈 — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 메모리만 읽는다. */
   quitCounts: () => invoke<QuitCounts>("thread_quit_counts"),
   /** 모든 Thread의 요약 — 새것이 먼저다. 깨진 Thread도 줄이 선다. */

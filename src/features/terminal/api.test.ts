@@ -16,22 +16,30 @@ describe("셸을 띄우는 IPC", () => {
   it("`pty_spawn`이 origin의 cwd를 싣는다", async () => {
     calls.length = 0;
     const origin = topTerminal();
-    await terminalApi.spawn(origin.cwd, 80, 24, null as never);
+    await terminalApi.spawn(origin.cwd, 80, 24, null, null as never);
 
     expect(calls).toHaveLength(1);
     expect(calls[0].name).toBe("pty_spawn");
     // 최상위는 cwd가 없다 — 홈이 어디인지는 백엔드만 안다(결정 25).
     expect(calls[0].args.cwd).toBeNull();
+    expect(calls[0].args.command).toBeNull();
+  });
+
+  // restart 01c-10 — 「터미널에서 로그인」은 로그인 명령을 시작 명령으로 싣는다. 백엔드가 셸이 처음 말한 뒤 쳐 넣는다.
+  it("`pty_spawn`이 시작 명령을 그대로 싣는다", async () => {
+    calls.length = 0;
+    await terminalApi.spawn(null, 80, 24, "'/opt/my tools/claude' auth login", null as never);
+    expect(calls[0].args.command).toBe("'/opt/my tools/claude' auth login");
   });
 
   // **인자 객체가 평평해야 한다.** `tauri-commands.test.ts`의 인자 대조가 중첩 `{}`를
   // 만나면 그 호출을 통째로 못 보고 넘어간다 — 그러면 이름이 어긋나도 초록이다.
-  // 여기서는 그 대조가 보는 것과 같은 것을 값으로 확인한다: 최상위 키 넷이 그대로 선다.
+  // 여기서는 그 대조가 보는 것과 같은 것을 값으로 확인한다: 최상위 키 다섯이 그대로 선다.
   it("인자가 평평하다 — 중첩 객체로 접지 않는다", async () => {
     calls.length = 0;
     const origin = topTerminal();
-    await terminalApi.spawn(origin.cwd, 80, 24, null as never);
-    expect(Object.keys(calls[0].args).sort()).toEqual(["cols", "cwd", "onFrame", "rows"]);
+    await terminalApi.spawn(origin.cwd, 80, 24, null, null as never);
+    expect(Object.keys(calls[0].args).sort()).toEqual(["cols", "command", "cwd", "onFrame", "rows"]);
   });
 
   // 닫기는 까닭과 셸의 주인을 싣는다(티켓 11) — 백엔드가 그 닫기가 끝낸 것을 정리 기록에 적는다. 주인은 work의 slug이고

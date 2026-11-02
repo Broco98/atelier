@@ -268,7 +268,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
             <div className={starting === null ? "w-full" : "px-5 pb-4"}>
               <div className={COLUMN}>{composer}</div>
             </div>
-            {/* 안내 카드의 「설치 안내」 · 「명령 복사」가 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
+            {/* 안내 카드의 「설치 안내」 · 「터미널에서 로그인」(셸 상한)이 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
             {guide && <Toaster />}
           </div>
         }
@@ -814,7 +814,7 @@ function ThreadBody({
             />
           </Beside>
         </div>
-        {/* 안내 카드의 「설치 안내」 · 「명령 복사」가 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
+        {/* 안내 카드의 「설치 안내」 · 「터미널에서 로그인」(셸 상한)이 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
         {guide && toasts && <Toaster />}
       </div>
     </ArrivalScope>

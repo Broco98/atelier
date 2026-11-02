@@ -1895,9 +1895,10 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
 
   // 결정 25. **셸이 뜨는 자리는 origin의 cwd다** — 펴는 것은 백엔드다. 래퍼가 인자를 싣는 것은 `api.test.ts`가 값으로
   // 재지만, **스토어가 그것을 실제로 넘기는지**는 어느 seam에도 안 보인다(이 모듈은 `@xterm/*`를 끌고 온다). 모드는
-  // 스토어가 모른다 — API 층의 상수다(ui-refresh 결정 22).
+  // 스토어가 모른다 — API 층의 상수다(ui-refresh 결정 22). 시작 명령(restart 01c-10)은 칸이 쥔 것을 그대로 싣는다 — 값으로는
+  // `terminal-store.test.ts`의 「시작 명령이 도는 셸」이 잰다.
   it("spawn이 origin의 cwd를 그대로 넘긴다", () => {
-    expect(store).toContain("const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);");
+    expect(store).toContain("const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, instance.command, channel);");
   });
 
   // **여는 origin과 조회하는 소유자가 같은 인자에서 나와야 한다.** 갈리면 `ensureShell`의 「비었나」가 영영 참이라,

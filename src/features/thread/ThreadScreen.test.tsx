@@ -138,7 +138,7 @@ describe("채팅 화면", () => {
     const claude = { ...chat, id: "20261010-100031" };
     setDraft(view.id, "보내려던 말");
     setDraft(claude.id, "Claude에 쓰던 말");
-    applyEngineEvent({ agent: "codex", found: true, loggedIn: false, login: null, missing: [] });
+    applyEngineEvent({ agent: "codex", found: true, loggedIn: false, missing: [] });
     try {
       const html = draw(view, codexRecord);
       expect(html).toContain("Codex에 로그인이 안 돼 있어요");
@@ -150,10 +150,10 @@ describe("채팅 화면", () => {
       expect(other).not.toContain("로그인이 안 돼 있어요");
       expect(other).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>Claude에 쓰던 말<\/textarea>/);
 
-      applyEngineEvent({ agent: "codex", found: true, loggedIn: true, login: null, missing: [] });
+      applyEngineEvent({ agent: "codex", found: true, loggedIn: true, missing: [] });
       expect(draw(view, codexRecord)).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>보내려던 말<\/textarea>/);
     } finally {
-      applyEngineEvent({ agent: "codex", found: true, loggedIn: true, login: null, missing: [] });
+      applyEngineEvent({ agent: "codex", found: true, loggedIn: true, missing: [] });
       setDraft(view.id, "");
       setDraft(claude.id, "");
     }
@@ -191,7 +191,7 @@ describe("새 채팅 화면", () => {
   // 다른 Runtime으로 바꾼다. 쓰던 말은 입력창의 것이라 카드가 걷히면 그대로 선다. 바꾼 Runtime의 카드는 Codex 쪽 시험(`GuideCard.test.tsx`)이 잰다.
   it("고른 Runtime을 쓸 수 없으면 입력창 자리에 카드가 서고 다른 Runtime으로 바꾸는 단추가 선다 — 쓰던 말은 남는다", () => {
     setDraft(NEW_THREAD, "보내려던 말");
-    applyEngineEvent({ agent: "claude", found: false, loggedIn: null, login: null, missing: [{ name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" }] });
+    applyEngineEvent({ agent: "claude", found: false, loggedIn: null, missing: [{ name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" }] });
     try {
       const html = drawNew();
       expect(html).toContain("무엇을 만들까요?");
@@ -201,10 +201,10 @@ describe("새 채팅 화면", () => {
       expect(html).toContain(">설치 안내<");
       expect(html).not.toContain('aria-label="보낼 말"');
 
-      applyEngineEvent({ agent: "claude", found: true, loggedIn: true, login: null, missing: [] });
+      applyEngineEvent({ agent: "claude", found: true, loggedIn: true, missing: [] });
       expect(drawNew()).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>보내려던 말<\/textarea>/);
     } finally {
-      applyEngineEvent({ agent: "claude", found: true, loggedIn: true, login: null, missing: [] });
+      applyEngineEvent({ agent: "claude", found: true, loggedIn: true, missing: [] });
       setDraft(NEW_THREAD, "");
     }
   });

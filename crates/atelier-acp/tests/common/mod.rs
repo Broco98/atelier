@@ -563,10 +563,10 @@ impl Sandbox {
     }
 
     /// 로그인 검사의 로그인 셸. 가짜 ACP 에이전트의 시나리오와 로그인 흉내의 자리(영수증 · 엔진마다의 로그인 파일)를
-    /// 로그인 env에 싣는다 — 호스트가 띄우는 로그인 명령 · 에이전트까지 닿는 길은 로그인 env뿐이다.
+    /// 로그인 env에 싣는다 — 호스트가 도는 로그인 확인 · 에이전트까지 닿는 길은 로그인 env뿐이다.
     ///
     /// `browser`는 `BROWSER`의 값이다. 검사는 `/usr/bin/true`로 진짜 브라우저를 막는다(실측 함정 40). `None`이면
-    /// `BROWSER`를 싣지 않는다 — 그러면 엔진은 PATH의 `open`을 부르고, 그것은 이 샌드박스의 기록용 가짜다.
+    /// `BROWSER`를 싣지 않는다 — 그러면 무엇이 브라우저를 열려 해도 PATH의 `open`을 부르고, 그것은 이 샌드박스의 기록용 가짜다.
     pub fn login_shell_for_login(&self, scenario: &str, browser: Option<&str>, extra: &[(&str, &str)]) -> ShellSource {
         let bin = self.login_bin();
         let acp = self.acp_receipts().display().to_string();
@@ -606,47 +606,14 @@ impl Sandbox {
         let _ = fs::remove_file(self.auth_file(agent));
     }
 
-    /// 그 엔진의 로그인 파일이 있나.
-    pub fn logged_in_file(&self, agent: Agent) -> bool {
-        self.auth_file(agent).exists()
-    }
-
-    /// 기다리는 로그인 명령을 끝낸다 — `ok`면 로그인 파일을 쓰고 exit 0, 아니면 쓰지 않고 exit 1.
-    pub fn finish_login(&self, agent: Agent, ok: bool) {
-        let gate = format!("{}-login.{}", engine_name(agent), if ok { "go" } else { "fail" });
-        fs::write(self.login_receipts().join(gate), "").unwrap();
-    }
-
-    /// 로그인 명령이 띄워질 때마다 남긴 영수증(pid · Unix 세션 · stdin이 TTY인가 · 인자 · 손주 pid).
-    pub fn login_runs(&self, agent: Agent) -> Vec<Value> {
-        json_lines(&self.login_receipts().join(format!("{}-login.runs", engine_name(agent))))
-    }
-
-    /// 로그인 명령이 받은 시그널들(`TERM` · `INT`).
-    pub fn login_signals(&self, agent: Agent) -> Vec<String> {
-        self.login_lines(&format!("{}-login.signals", engine_name(agent)))
-    }
-
     /// 로그인 확인이 불린 인자들 — 부를 때마다 한 줄.
     pub fn status_calls(&self, agent: Agent) -> Vec<String> {
         self.login_lines(&format!("{}-status.calls", engine_name(agent)))
     }
 
-    /// 기록용 가짜 `open`이 받은 것들 — 엔진이 브라우저를 열려고 넘긴 URL.
-    pub fn opened(&self) -> Vec<String> {
-        self.login_lines("open")
-    }
-
     fn login_lines(&self, name: &str) -> Vec<String> {
         text_lines(&self.login_receipts().join(name))
     }
-}
-
-/// 로그인 명령의 프로세스들 — 가짜 자신과 그 손주.
-pub fn login_pids(run: &Value) -> Vec<u32> {
-    let mut pids = vec![run["pid"].as_u64().expect("pid") as u32];
-    pids.extend(run["grandchild"].as_u64().map(|pid| pid as u32));
-    pids
 }
 
 // ── S26 — L1이 남긴 기록을 L3 자료로 ─────────────────────────────────────────────

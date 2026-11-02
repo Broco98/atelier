@@ -187,11 +187,17 @@ pub fn open_record(pool: &PtyPool, root: &Path, version: &str) {
 }
 
 /// 셸 하나를 띄운다. cwd가 없으면 데이터 루트에서 뜬다(최상위 터미널).
+///
+/// **시작 명령**(`command`, restart 01c-10)을 주면 셸이 처음 말한 뒤 그 줄을 셸에 쳐 넣는다 — 사람이 프롬프트에 친 것과 같다.
+/// 「터미널에서 로그인」이 Runtime의 로그인 명령을 이것으로 친다. 셸을 `-c`로 띄우지 않는 것은, 명령이 끝나도 셸이 남아 사람이 결과를
+/// 읽고 이어 치게 하려는 것이다 — 로그인 셸(`new_default_prog`)과 rc도 그대로다. 처음 말한 뒤에 치는 것은 읽기 전에 쓴 줄을 셸이
+/// 버릴 수 있어서다(풀 배선 검사의 `spawn_until_it_speaks`와 같은 까닭).
 pub fn spawn(
     pool: &Arc<PtyPool>,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
+    command: Option<String>,
     on_frame: Channel<InvokeResponseBody>,
 ) -> Result<PtySpawned, String> {
     let dir = resolve_cwd(cwd)?;
@@ -245,6 +251,7 @@ pub fn spawn(
     // 온다」는 계약이 두 일의 순서에서 공짜로 나온다. 채널도 여기로 옮긴다 — 명령 인자로
     // 받은 채널은 명령이 리턴하는 순간 drop되고, 그 뒤의 send는 조용히 버려진다.
     let owner = Arc::clone(pool);
+    let mut start = command;
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -259,6 +266,9 @@ pub fn spawn(
                     stamps.store(clock::now_ms(), Ordering::Relaxed);
                     if on_frame.send(InvokeResponseBody::Raw(buf[..n].to_vec())).is_err() {
                         break;
+                    }
+                    if let Some(line) = start.take() {
+                        type_start(&owner, id, &line);
                     }
                 }
                 Err(e) => {
@@ -286,6 +296,17 @@ pub fn spawn(
     });
 
     Ok(PtySpawned { id, shell_key, shell_name })
+}
+
+/// 시작 명령을 셸에 친다 — 엔터(`\r`)까지. 셸이 그새 끝났으면 아무 일도 없다.
+///
+/// **첫 입력으로 적지 않는다**(프로세스 스펙 P1). 셸이 처음 말한 때는 rc가 아직 돌 수 있다 — p10k의 instant prompt는 rc 맨 앞에서
+/// 프롬프트를 찍고 `gitstatusd`를 그 뒤에 띄운다. 여기서 적으면 그 셸 도우미가 사람이 띄운 것으로 읽혀, 빈 셸을 닫을 때마다 묻는다.
+/// 도는 로그인 명령은 닫기 전 물음의 「명령이 도는가」가 잡는다.
+fn type_start(pool: &PtyPool, id: u32, command: &str) {
+    if let Err(e) = write(pool, id, &format!("{command}\r")) {
+        eprintln!("atelier: pty {id} start command failed: {e}");
+    }
 }
 
 /// 셸 프로세스와 그 입출력 — `spawn`이 실패할 수 있는 몫에서 나온 것.
@@ -2366,11 +2387,13 @@ mod tests {
         /// 끝나면 리더 스레드가 그 셸 키를 문 생존자를 끝낸다. 자식은 SIGTERM을 무시한다 — 끝내기가 2초 도는 동안 키가 기록에
         /// 남는지 본다. 끝낸 것이 정리 기록과 알림에 서는지도 본다.
         Exit,
+        /// 시작 명령을 준 셸을 띄운다(restart 01c-10 — 「터미널에서 로그인」). 셸이 그 명령을 돌고도 남는지 본다. 자식은 안 띄운다.
+        Start,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 11] = [
+        const ALL: [Scene; 12] = [
             Scene::Close,
             Scene::CloseIgnoring,
             Scene::CloseThenExit,
@@ -2382,6 +2405,7 @@ mod tests {
             Scene::RecordFailed,
             Scene::Startup,
             Scene::Exit,
+            Scene::Start,
         ];
 
         fn name(self) -> &'static str {
@@ -2397,6 +2421,7 @@ mod tests {
                 Scene::RecordFailed => "record-failed",
                 Scene::Startup => "startup",
                 Scene::Exit => "exit",
+                Scene::Start => "start",
             }
         }
 
@@ -2434,8 +2459,8 @@ mod tests {
                 // 경로를 argv[0]으로 두면 뒤의 인자가 잘리는 자리가 코드가 아니라 체크아웃 · target 경로의 길이에 달린다(경로가
                 // 143자를 넘으면 자식 테스트 이름이 잘렸다 — 재 봤다). 커널 이름은 여전히 exec 경로에서 온다.
                 Scene::Record => format!("{}\n", child("ignore-term", &format!("ARGV0={RECORD_ARGV0} "))),
-                Scene::Ask | Scene::RecordFailed | Scene::Startup => {
-                    unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 셸에 자식을 안 띄운다")
+                Scene::Ask | Scene::RecordFailed | Scene::Startup | Scene::Start => {
+                    unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면 · 시작 명령 장면은 셸에 자식을 안 띄운다")
                 }
             }
         }
@@ -2454,7 +2479,8 @@ mod tests {
                 | Scene::Record
                 | Scene::RecordFailed
                 | Scene::Startup
-                | Scene::Exit => false,
+                | Scene::Exit
+                | Scene::Start => false,
             }
         }
 
@@ -2470,7 +2496,8 @@ mod tests {
                 | Scene::Record
                 | Scene::RecordFailed
                 | Scene::Startup
-                | Scene::Exit => false,
+                | Scene::Exit
+                | Scene::Start => false,
             }
         }
 
@@ -2479,9 +2506,13 @@ mod tests {
         fn records(self) -> bool {
             match self {
                 Scene::Record | Scene::RecordFailed | Scene::Startup | Scene::ExitKeeping | Scene::Exit => true,
-                Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::Reload | Scene::CloseKeeping | Scene::Ask => {
-                    false
-                }
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::CloseThenExit
+                | Scene::Reload
+                | Scene::CloseKeeping
+                | Scene::Ask
+                | Scene::Start => false,
             }
         }
 
@@ -2498,7 +2529,8 @@ mod tests {
                 | Scene::CloseKeeping
                 | Scene::Ask
                 | Scene::RecordFailed
-                | Scene::Startup => false,
+                | Scene::Startup
+                | Scene::Start => false,
             }
         }
 
@@ -2515,7 +2547,8 @@ mod tests {
                 | Scene::Record
                 | Scene::RecordFailed
                 | Scene::Startup
-                | Scene::Exit => false,
+                | Scene::Exit
+                | Scene::Start => false,
             }
         }
 
@@ -2531,7 +2564,8 @@ mod tests {
                 | Scene::ExitKeeping
                 | Scene::Ask
                 | Scene::RecordFailed
-                | Scene::Startup => false,
+                | Scene::Startup
+                | Scene::Start => false,
             }
         }
 
@@ -2549,7 +2583,8 @@ mod tests {
                 | Scene::Ask
                 | Scene::Record
                 | Scene::RecordFailed
-                | Scene::Exit => false,
+                | Scene::Exit
+                | Scene::Start => false,
             }
         }
     }
@@ -2694,6 +2729,16 @@ mod tests {
         on_the_pool_side("a_shell_that_fails_to_spawn_takes_its_key_off_the_record", Scene::RecordFailed);
     }
 
+    /// **시작 명령을 주면 셸이 처음 말한 뒤 그 명령을 쳐 돌린다**(restart 01c-10 — 「터미널에서 로그인」이 로그인 명령을 이것으로 친다).
+    /// 명령이 끝나도 셸은 남는다 — 사람이 결과를 읽고 이어 친다. 시작 명령은 첫 입력으로 적지 않는다(`type_start`).
+    ///
+    /// 앵커: 셈을 시켜 답(`start-42`)이 친 글(`start-$((6*7))`)의 메아리와 갈린다 — 메아리만 보이면 셸이 돌지 않은 것이다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_shell_given_a_start_command_runs_it_and_stays() {
+        on_the_pool_side("a_shell_given_a_start_command_runs_it_and_stays", Scene::Start);
+    }
+
     /// **시작 정리는 죽은 실행이 남긴 표식 자식을 끝내고 그 실행의 기록을 지운다**(프로세스 결정 6 · 티켓 10). 기록이 없는
     /// 세대의 키를 문 자식은 출처 불명이라 고르지 않는다 — 누구의 것인지 모른다. 앱이 크래시한 뒤 다시 켜면 지난 실행의
     /// dev 서버가 끝나는 것의 백엔드 절반이다(토스트의 절반은 L3 `e2e/startup-report.spec.ts`).
@@ -2819,6 +2864,7 @@ mod tests {
         pool.announce_with(move |ended| heard_end.lock().unwrap_or_else(|e| e.into_inner()).push(ended));
         match scene {
             Scene::RecordFailed => return record_failed_side(&pool, &home),
+            Scene::Start => return start_side(&pool, &home),
             Scene::Startup => return startup_side(&pool),
             Scene::Close
             | Scene::CloseIgnoring
@@ -2930,8 +2976,8 @@ mod tests {
                 wait_until(|| !pool.lock().contains_key(&spawned.id));
             }
             // 위에서 제 안쪽(`ask_side` · `record_failed_side` · `startup_side`)으로 갈라져 여기 안 온다.
-            Scene::Ask | Scene::RecordFailed | Scene::Startup => {
-                unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 거두는 길을 안 탄다")
+            Scene::Ask | Scene::RecordFailed | Scene::Startup | Scene::Start => {
+                unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면 · 시작 명령 장면은 거두는 길을 안 탄다")
             }
         }
         let closed = began.elapsed();
@@ -3022,8 +3068,8 @@ mod tests {
             }
             Scene::Record => record_side(&pool, &home, &seen, &announced),
             Scene::Exit => exit_side(&seen, &announced),
-            Scene::Ask | Scene::RecordFailed | Scene::Startup => {
-                unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 거두는 길을 안 탄다")
+            Scene::Ask | Scene::RecordFailed | Scene::Startup | Scene::Start => {
+                unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면 · 시작 명령 장면은 거두는 길을 안 탄다")
             }
         }
     }
@@ -3066,7 +3112,7 @@ mod tests {
             Ok(())
         });
         let spawned =
-            super::spawn(pool, Some(home.display().to_string()), 80, 24, frames).expect("셸을 띄운다");
+            super::spawn(pool, Some(home.display().to_string()), 80, 24, None, frames).expect("셸을 띄운다");
         let raised_on_spawn = listed(&crate::processes::shell_key::mint(spawned.id));
         crate::processes::testkit::wait_until(|| spoke.load(Ordering::Relaxed));
         (spawned, raised_on_spawn)
@@ -3276,7 +3322,7 @@ mod tests {
 
         std::env::set_var("SHELL", home.join("no-such-shell"));
         let before = on_the_record().map(|file| file.updated_us);
-        let refused = super::spawn(pool, Some(home.display().to_string()), 80, 24, Channel::new(|_| Ok(())));
+        let refused = super::spawn(pool, Some(home.display().to_string()), 80, 24, None, Channel::new(|_| Ok(())));
         let after = on_the_record();
 
         assert!(refused.is_err(), "없는 `$SHELL`인데 셸 띄우기가 성공했다 ({:?})", refused.map(|spawned| spawned.id));
@@ -3290,6 +3336,37 @@ mod tests {
             Some(Vec::new()),
             "셸 띄우기가 실패했는데 올린 키가 기록에 남았다 — 다른 실행이 이 키를 「살아 있는 셸」로 읽는다"
         );
+    }
+
+    /// 풀 배선 장면 `Start`의 안쪽 — 시작 명령을 준 셸을 띄우고, 그 셸이 낸 바이트에서 명령의 답을 찾는다.
+    #[cfg(target_os = "macos")]
+    fn start_side(pool: &std::sync::Arc<super::PtyPool>, home: &Path) {
+        use tauri::ipc::{Channel, InvokeResponseBody};
+
+        use crate::processes::testkit::wait_until;
+
+        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let into = std::sync::Arc::clone(&heard);
+        let frames = Channel::new(move |frame| {
+            if let InvokeResponseBody::Raw(bytes) = frame {
+                into.lock().unwrap_or_else(|e| e.into_inner()).extend(bytes);
+            }
+            Ok(())
+        });
+        let command = Some("echo start-$((6*7))".to_string());
+        let spawned = super::spawn(pool, Some(home.display().to_string()), 80, 24, command, frames).expect("셸을 띄운다");
+        let said = || String::from_utf8_lossy(&heard.lock().unwrap_or_else(|e| e.into_inner())).into_owned();
+
+        assert!(wait_until(|| said().contains("start-42")), "셸이 시작 명령을 돌지 않았다 — 셸이 낸 것:\n{}", said());
+        assert!(
+            crate::processes::testkit::holds_for(Duration::from_millis(300), || pool.lock().contains_key(&spawned.id)),
+            "시작 명령이 끝나자 셸도 끝났다 — 사람이 결과를 읽을 셸이 남아야 한다"
+        );
+        assert!(
+            pool.lock().get(&spawned.id).is_some_and(|shell| shell.first_input_us.is_none()),
+            "시작 명령이 첫 입력으로 적혔다 — 그 뒤에 뜬 셸 도우미가 사람이 띄운 것으로 읽힌다"
+        );
+        let _ = super::end_for_exit(pool);
     }
 
     /// 풀 배선 장면 `Startup`의 안쪽 — 셸은 안 띄운다. 기록은 안쪽의 임시 데이터 루트에만 있다: 이 실행의 것(풀이 열었다)과
