@@ -1,3 +1,4 @@
+import type { ReadingPlace } from "@/features/thread/reading-place";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import { pressed, TAB_HOTKEYS } from "@/lib/hotkeys";
 import type { Attention } from "./shell-attention";
@@ -156,11 +157,14 @@ export interface Shell {
  *
  * **id는 종류를 가리지 않고 한 줄에서 발급한다**(`nextId`). 켜진 칸(`activeByOwner`) · 끌기 · 탭 줄의 콜백이 모두 수 하나로
  * 칸을 부르므로, 번호가 종류마다 따로 돌면 셸 3과 파일 탭 3이 같은 칸으로 읽힌다.
+ *
+ * 채팅 탭은 **읽던 자리**(`place`, restart 02a-6)도 든다 — 숨은 채팅 탭은 내려가므로 굴림 자리를 칸이 쥐었다가 돌아오면 되살린다
+ * (`keepChatPlace`). 칸이 빠지면 함께 사라진다 — 다시 연 탭은 새 탭이라 바닥에서 연다.
  */
 export type BundleTab =
   | { kind: "shell"; id: number }
   | ({ kind: "code"; id: number } & CodeTarget)
-  | { kind: "chat"; id: number; thread: string };
+  | { kind: "chat"; id: number; thread: string; place?: ReadingPlace };
 
 /**
  * 파일 탭이 가리키는 것 — 그 work의 **프로젝트**와 그 워크트리 기준 **경로**(조각은 `/`). 이 둘이 파일 탭의 정체다 —
@@ -566,6 +570,33 @@ export function openChatTab(state: ShellsState, owner: ShellOwner, thread: strin
     (tab) => tab.kind === "chat" && tab.thread === thread,
     (id) => ({ kind: "chat", id, thread }),
   );
+}
+
+/** 그 화면 묶음에서 그 채팅의 탭이 쥔 읽던 자리(restart 02a-6). 탭이 없거나 쥔 자리가 없으면 `null`이다 — 바닥에서 연다. */
+export function chatPlaceOf(state: ShellsState, owner: ShellOwner, thread: string): ReadingPlace | null {
+  const tab = bundleOf(state, owner).find((one) => one.kind === "chat" && one.thread === thread);
+  return tab?.kind === "chat" ? (tab.place ?? null) : null;
+}
+
+/**
+ * 그 채팅의 탭에 **읽던 자리**를 쥔다(restart 02a-6) — 채팅 탭이 내려갈 때 화면이 건넨다. 탭이 없으면(닫혔다 · 작업공간이 사라졌다)
+ * 받은 상태 그대로다 — 쥘 탭이 없다. 같은 자리면 그대로다 — 묶음을 새로 세우면 그 화면이 다시 그려진다(`sameScreen`).
+ *
+ * 차례 · 켜진 칸은 안 바뀐다 — 그 칸 하나만 자리를 바꿔 든다. 셸 배열도 그대로라 차례를 바꾸는 자리(`withBundle`)를 타지 않는다.
+ */
+export function keepChatPlace(state: ShellsState, owner: ShellOwner, thread: string, place: ReadingPlace): ShellsState {
+  const tabs = bundleOf(state, owner);
+  const at = tabs.findIndex((one) => one.kind === "chat" && one.thread === thread);
+  const tab = tabs[at];
+  if (tab?.kind !== "chat" || samePlace(tab.place ?? null, place)) return state;
+  const next = [...tabs];
+  next[at] = { ...tab, place };
+  return { ...state, bundles: { ...state.bundles, [owner]: next } };
+}
+
+/** 두 자리가 같은가 — 바닥끼리거나, 위에서 잰 거리가 같다. */
+function samePlace(a: ReadingPlace | null, b: ReadingPlace): boolean {
+  return a !== null && a.kind === b.kind && (a.kind === "bottom" || (b.kind === "at" && a.top === b.top));
 }
 
 /** 프로세스 없는 칸(파일 탭 · 채팅 탭)을 여는 한 벌 — 같은 정체면 그 칸을 켜고, 없으면 끝에 붙이고 켠다. 최상위 터미널은 안 받는다. */
@@ -1232,7 +1263,8 @@ export function sameScreen(
   if (a === b) return true;
   if (a.shells.length !== b.shells.length) return false;
   if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
-  // 묶음은 그 화면의 차례가 바뀔 때만 새 배열이다(`openShell` · `withBundle` · `removeShell`) — 정체로 견주면 된다.
+  // 묶음은 그 화면의 차례가 바뀌거나(`openShell` · `withBundle` · `removeShell`) 채팅 탭이 읽던 자리를 바꿔 쥘 때만(`keepChatPlace` — 탭을
+  // 옮길 때 한 번이다) 새 배열이다 — 정체로 견주면 된다.
   if (bundleOf(a, owner) !== bundleOf(b, owner)) return false;
   const mine = shellsOf(a, owner);
   const theirs = shellsOf(b, owner);

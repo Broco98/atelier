@@ -5,7 +5,7 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { SummaryToggle, ThreadMenu, ThreadMenuItems, WorkCrumb } from "./ThreadHead";
 
 // Thread 화면의 머리 줄(02 구현 스펙 §6 · S13 · S15 · 캔버스 v35 Screen-Live 머리 줄) — 왼쪽에 (이은 Work면 「폴더 · 작업공간 이름 ›」) ·
-// Thread 이름, 오른쪽에 「…」 · 요약 고정 토글이 선다. 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
+// Thread 이름과 그 바로 뒤 「…」, 오른쪽 끝에 요약 고정 토글이 선다(restart 02a-7 — 자리는 `ThreadScreen.test.tsx`). 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
 // 눌림(`aria-pressed`)과 메뉴의 항목이다. 자리 · 색(14/500 · #898a8b · 켜진 면 #ebebec)은 시안 비교와 L3가 본다.
 
 const none = () => {};
@@ -38,7 +38,7 @@ describe("Thread 메뉴(S15)", () => {
     expect(withoutIds(inContext(none))).toBe(withoutIds(markup));
   });
 
-  // 머리 줄 오른쪽 「…」(28 · #898a8b)가 이 메뉴를 연다 — 글리프뿐인 단추라 이름은 툴팁 글자다.
+  // 머리 줄 이름 뒤 「…」(28 · #898a8b)가 이 메뉴를 연다 — 글리프뿐인 단추라 이름은 툴팁 글자다.
   it("머리 줄의 「…」는 메뉴를 여는 「채팅 메뉴」 단추다", () => {
     const markup = renderToStaticMarkup(<ThreadMenu rename={none} />);
     expect(markup).toMatch(/^<button[^>]*aria-label="채팅 메뉴"/);

@@ -9,10 +9,10 @@ import { SIDEBAR_MOTION } from "./panel-layout";
 //   <header>(44 · 끌기) ─ 왼쪽 칸: 신호등 자리 · 셸 컨트롤(사이드바 토글 · 뒤 · 앞 · 검색)
 //                       └ 화면 자리: 지금 화면이 보낸 이름 · 할 일(`ScreenHead` — 포털)
 //
-// - **화면 자리의 왼쪽 끝은 사이드바를 따른다** — 열렸으면 카드 자리 왼쪽 끝(사이드바 오른쪽 끝 — 사이드바는 카드 밖 크롬 위다, 03 구현
-//   스펙 §3 · restart 02a-2)과 같은 x이고 그 앞에 세로선 하나가 선다(Codex). 접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 왼쪽 칸의 폭이 그 끝이고, 폭은 사이드바 폭과 같은 박자
-//   (`SIDEBAR_MOTION` — Codex spring .3s, 02 티켓 12)로 옮겨 간다 — 사이드바를 끄는 동안은 둘 다 트랜지션을 끄고 커서를 곧장 따른다(`Sidebar`의 `asideClass`). 사이드바
-//   폭(`--sidebar-width`)은 앱 셸 뿌리가 싣는다 — 사이드바와 이 줄이 한 값을 읽는다.
+// - **화면 자리는 셸 컨트롤 바로 뒤 세로선 다음에 선다**(restart 02a-7 · 시안 Main · MainLoose `.ra-title` · `.ra-tsep`) — 사이드바가
+//   열렸든 접혔든 같다. 왼쪽 칸의 폭이 셸 컨트롤 끝(`--titlebar-inset-head`)이고, 세로선(0.5 × 16 `border-heavy`)이 그 뒤 6에, 이름이 선 뒤
+//   10에 선다. 한때(02 – 02a-6) 사이드바가 열려 있으면 이름이 본문 카드 왼쪽 끝 x(사이드바 폭)에서 섰고 사이드바 폭을 따라 옮겨 갔다(Codex).
+//   전체화면에 들고 날 때 셸 컨트롤이 옮겨 가는 것(`--titlebar-controls-left`)은 사이드바와 같은 박자다(`SIDEBAR_MOTION` — spring .3s).
 // - **줄 전부가 창을 끄는 자리다**(`deep`) — 창 맨 위 줄이라 제목 막대의 관례를 따른다. 버튼 · 포커스를 받는 이름은 Tauri가 스스로
 //   비켜 둔다(셸 컨트롤의 버튼 사이 틈도 끈다).
 // - **화면은 제 이름과 할 일만 보낸다** — 그릇은 여기 하나이고 화면은 `ScreenHead`로 그 안에 그린다. 머리의 상태(이름 고치기 · 카드
@@ -26,40 +26,34 @@ import { SIDEBAR_MOTION } from "./panel-layout";
 export const ShellHeadSlot = createContext<HTMLElement | null>(null);
 
 interface ShellHeadRowProps {
-  /** 사이드바가 열렸나 — 화면 자리의 왼쪽 끝과 세로선이 이것으로 갈린다. */
-  open: boolean;
-  /** 사이드바 폭을 끄는 중인가 — 그동안은 왼쪽 칸도 트랜지션 없이 따른다. */
-  dragging: boolean;
   /** 화면 자리 그릇을 받는다(앱 셸이 쥐고 `ShellHeadSlot`으로 내린다). */
   onSlot: (slot: HTMLElement | null) => void;
   /** 왼쪽 칸에 서는 셸 컨트롤. */
   children: ReactNode;
 }
 
-export function ShellHeadRow({ open, dragging, onSlot, children }: ShellHeadRowProps) {
+export function ShellHeadRow({ onSlot, children }: ShellHeadRowProps) {
   return (
     <header data-tauri-drag-region="deep" className="flex h-(--size-titlebar) shrink-0 items-center">
       {/* 신호등은 이 칸의 왼쪽에 OS가 그린다(`tauri.conf.json`의 `trafficLightPosition`) — 컨트롤은 그 끝에서 16 띄운 자리
-          (`--titlebar-controls-left`)에서 시작한다. 전체화면에 들고 날 때 그 자리가 옮겨 가는 것도 같은 박자다. */}
+          (`--titlebar-controls-left`)에서 시작하고, 칸은 컨트롤 끝에서 닫힌다. 전체화면에 들고 날 때 그 자리가 옮겨 가는 것은 사이드바와 같은
+          박자다. */}
       <div
         className={cn(
-          "flex h-full shrink-0 items-center pl-(--titlebar-controls-left)",
-          !dragging && cn("transition-[width,padding]", SIDEBAR_MOTION),
-          open ? "w-(--titlebar-inset-sidebar)" : "w-(--titlebar-inset-head)",
+          "flex h-full w-(--titlebar-inset-head) shrink-0 items-center pl-(--titlebar-controls-left)",
+          "transition-[width,padding]",
+          SIDEBAR_MOTION,
         )}
       >
         {children}
       </div>
-      {/* 세로선은 `separator`(#e5e5e5) 20 — 줄 가운데에 위아래 12씩 비운다(Codex). 이름이 그 뒤 14에서 시작한다(시안 `.tb-c`). 화면이
-          아무것도 보내지 않으면(새 Thread) 선도 서지 않는다. 오른쪽 끝 여백은 8이다(시안 `.tb-r` — 06). */}
+      {/* 세로선은 시안 `.ra-tsep` — 0.5 × 16 `border-heavy`, 줄(44) 가운데에 위아래 14씩 비운다. 셸 컨트롤 끝에서 6 뒤에 서고 이름은 그
+          뒤 10에서 시작한다(`margin: 0 10px 0 6px`). 화면이 아무것도 보내지 않으면(새 Thread) 선도 서지 않는다. 오른쪽 끝 여백은 8이다(시안
+          `.ra-title`의 `padding-right` — 06의 `.tb-r`도 같다). */}
       <div
         ref={onSlot}
         data-slot="screen-head"
-        className={cn(
-          "relative flex h-full min-w-0 flex-1 items-center pr-2",
-          open &&
-            "pl-3.5 before:absolute before:inset-y-3 before:left-0 before:w-px before:bg-separator empty:before:hidden",
-        )}
+        className="relative ml-1.5 flex h-full min-w-0 flex-1 items-center pr-2 pl-2.5 before:absolute before:inset-y-3.5 before:left-0 before:w-[0.5px] before:bg-border-heavy empty:before:hidden"
       />
     </header>
   );

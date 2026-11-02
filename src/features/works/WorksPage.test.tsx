@@ -15,12 +15,13 @@ import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 import { threadQuery, threadsQuery } from "@/features/thread/hooks";
-import { mergeLines } from "@/features/thread/thread-store";
+import { addChunk, discardFlow, mergeLines, setDraft } from "@/features/thread/thread-store";
 import type { RecordLine, ThreadSummary, ThreadView } from "@/features/thread/types";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import {
+  keepChatPlace,
   MAX_SHELLS,
   NO_SHELLS,
   openChatTab,
@@ -1236,6 +1237,93 @@ describe("WorksPage 채팅 탭", () => {
     const markup = render({}, "spec", null, {}, { view: chat, lines: said });
     expect(kindsOf(tabRowOf(markup)).filter((cell) => cell.on).map((cell) => cell.kind)).toEqual(["spec"]);
     expect(pathBarOf(markup)).not.toBe("");
+  });
+
+  // restart 02a-6 — 숨은 채팅 탭은 내려서 기록 구독과 조각 그리기를 멈춘다. 켜진 채팅 탭 하나만 그리므로 숨은 탭의 기록 줄도 흐르는 글도 화면에
+  // 없다. 기록 · 글 · 첨부 · 인용은 스토어에 있어 남고, 굴림 자리는 탭이 쥐었다가 돌아오면 되살린다.
+  describe("숨은 채팅 탭", () => {
+    const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
+    // 도는 턴의 채팅 — 물음 하나 뒤 답이 흐른다.
+    const running: ThreadView = { ...chat, id: "20261010-110000", title: "흐르는 채팅", live: true, lastSeq: 1 };
+    const asked: RecordLine[] = [{ seq: 1, at: at(1), kind: "sent", payload: { text: "숨은 탭의 물음" } }];
+
+    function drawBoth(tab: ViewTab, thread: string | null): string {
+      const client = new QueryClient();
+      client.setQueryData(worksQuery().queryKey, [work]);
+      client.setQueryData(threadsQuery().queryKey, [summaryOf(chat), summaryOf(running)]);
+      client.setQueryData(threadQuery(chat.id).queryKey, chat);
+      client.setQueryData(threadQuery(running.id).queryKey, running);
+      mergeLines(running.id, asked);
+      return renderToStaticMarkup(
+        <QueryClientProvider client={client}>
+          <ToastProvider>
+            <WorksPage
+              sidebarOpen
+              selectedSlug={work.slug}
+              currentFile={null}
+              onSelectFile={() => {}}
+              tab={tab}
+              onSelectTab={() => {}}
+              code={null}
+              onOpenCode={() => {}}
+              thread={thread}
+              onOpenChat={() => {}}
+              split={null}
+              onSelectSplit={() => {}}
+              onFollowBundle={() => {}}
+              onDropInto={() => {}}
+            />
+          </ToastProvider>
+        </QueryClientProvider>,
+      );
+    }
+
+    beforeEach(() => {
+      terminalStore.setState(() => openChatTab(openChatTab(NO_SHELLS, ownerOf(work.slug), running.id), ownerOf(work.slug), chat.id));
+      addChunk(running.id, { stream: 1, kind: "message", offset: 0, text: "숨은탭에흐르는답" });
+    });
+    afterEach(() => {
+      discardFlow(running.id, 1);
+      setDraft(running.id, "");
+    });
+
+    it("다른 채팅 탭이 켜지면 숨은 탭의 기록 줄과 흐르는 글을 그리지 않는다", () => {
+      // 켜면 그 채팅이 선다 — 이 시험이 그리는 자리가 실제로 흐르는 글을 그린다는 것부터 본다.
+      const shown = drawBoth("chat", running.id);
+      expect(shown).toContain("숨은 탭의 물음");
+      expect(shown).toContain("숨은탭에흐르는답");
+
+      const hidden = drawBoth("chat", chat.id);
+      expect(hidden).not.toContain("숨은 탭의 물음");
+      expect(hidden).not.toContain("숨은탭에흐르는답");
+      expect(hidden.match(/aria-label="보낼 말"/g)).toHaveLength(1);
+    });
+
+    it("셸이나 파일 탭이 켜지면 채팅을 그리지 않는다", () => {
+      const markup = drawBoth("terminal", null);
+      expect(markup).not.toContain("숨은탭에흐르는답");
+      expect(markup).not.toContain('aria-label="보낼 말"');
+    });
+
+    it("돌아온 탭은 쥔 자리에 서고 쓰던 말이 남는다 — 위로 올려 읽던 탭에는 「맨 아래로」가 선다", () => {
+      setDraft(running.id, "숨은 동안 쓰던 말");
+      terminalStore.setState((state) => keepChatPlace(state, ownerOf(work.slug), running.id, { kind: "at", top: 480 }));
+      const back = drawBoth("chat", running.id);
+      expect(back).toContain('aria-label="맨 아래로"');
+      expect(back).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>숨은 동안 쓰던 말<\/textarea>/);
+    });
+
+    it("바닥을 따라가던 탭은 바닥으로 돌아온다 — 「맨 아래로」가 없다", () => {
+      terminalStore.setState((state) => keepChatPlace(state, ownerOf(work.slug), running.id, { kind: "bottom" }));
+      expect(drawBoth("chat", running.id)).not.toContain('aria-label="맨 아래로"');
+    });
+
+    // 내려가는 순간은 정적 렌더에 없다 — 화면이 그 탭의 자리를 묶음에 쥐는 배선을 소스로 못박는다. 굴림 거리는 L3(02a-16)가 잰다.
+    it("채팅 탭 몸이 탭이 쥔 자리를 받고, 내려갈 때 그 탭에 쥔다", () => {
+      const worksPage = source("WorksPage.tsx");
+      expect(worksPage).toContain("place={chatPlaceOf(shellState, ownerOf(selected.slug), chatThread)}");
+      expect(worksPage).toContain("onLeave={(place) => keepChatTabPlace(ownerOf(selected.slug), chatThread, place)}");
+    });
   });
 });
 

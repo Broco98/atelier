@@ -10,10 +10,10 @@ import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 // 끝)과 본문 카드에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의 화면들(Terminal · Processes · Archive · Settings · Work 화면)도 같은 머리 줄에
 // 제 이름 · 할 일을 보낸다(`FrameHead`).
 //
-//   머리 줄의 화면 자리(`ScreenHead`) ─ 이름 앞(`lead`) · 이름(있으면 · 그 자리에서 바꾼다) ··· 오른쪽 끝(`end`)
+//   머리 줄의 화면 자리(`ScreenHead`) ─ 이름 앞(`lead`) · 이름(있으면 · 그 자리에서 바꾼다) · 이름의 ⋯(`menu`) ··· 오른쪽 끝(`end`)
 //   카드 자리 ─ 본문 카드 `<main>` — 화면이 건넨 것이 곧장 선다
 //
-// - **머리 줄의 자리 · 끌기 · 세로선은 셸의 것이다** — 이름이 사이드바 끝을 따라 옮겨 가는 것도 셸이 든다(`ShellHeadRow`). 바꿀 수 있는
+// - **머리 줄의 자리 · 끌기 · 세로선은 셸의 것이다** — 이름이 셸 컨트롤 뒤 세로선 다음에 서는 것도 셸이 든다(`ShellHeadRow`). 바꿀 수 있는
 //   이름은 포커스를 받는 요소라 Tauri가 끌기에서 스스로 비켜 둔다 — 끄는 자리의 두 번 클릭은 창 키우기라, 두 번 클릭이 이름 바꾸기인
 //   이름은 끌면 안 된다. 이름이 없는 새 Thread는 머리 줄 가운데가 빈다(F1-Home 보드).
 // - **Codex 머리 줄 모양이다**(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽은 이름 앞 · 이름이 틈 8로 한 줄이고, 오른쪽 끝은 28 아이콘 버튼들이
@@ -27,7 +27,9 @@ interface PlainHeadProps {
   lead?: ReactNode;
   /** 머리 줄의 이름 — 없으면 머리 줄 가운데가 빈다(새 Thread). */
   title?: { name: string; rename?: HeadRename };
-  /** 머리 줄 오른쪽 끝 — Thread의 「…」 · 요약 고정 토글(02 §6). */
+  /** 이름 바로 뒤 — 그 이름의 ⋯(채팅 메뉴, restart 02a-7 · 시안 MainLoose `.ra-crumb` 뒤 `.ra-tbtn`). 이름과 틈 없이 붙는다. */
+  menu?: ReactNode;
+  /** 머리 줄 오른쪽 끝 — Thread의 요약 고정 토글(02 §6). */
   end?: ReactNode;
 }
 
@@ -37,12 +39,12 @@ interface PlainFrameProps extends PlainHeadProps {
   children: ReactNode;
 }
 
-export function PlainFrame({ lead, title, end, label, children }: PlainFrameProps) {
+export function PlainFrame({ lead, title, menu, end, label, children }: PlainFrameProps) {
   return (
     <>
-      {(lead || title || end) && (
+      {(lead || title || menu || end) && (
         <ScreenHead>
-          <PlainHead lead={lead} title={title} end={end} />
+          <PlainHead lead={lead} title={title} menu={menu} end={end} />
         </ScreenHead>
       )}
       {/* 본문 카드 — 카드 자리를 다 쓴다(카드 자리가 가로 줄이다). 겉은 공용 틀의 본문 카드와 한 벌이다(`CARD_FACE` — 면 surface · 둥글기 8
@@ -59,8 +61,11 @@ export function PlainFrame({ lead, title, end, label, children }: PlainFrameProp
   );
 }
 
-/** 머리 줄 화면 자리에 서는 것 — 셸의 화면 자리(가로 flex · 가운데 맞춤)의 직계로 선다. */
-export function PlainHead({ lead, title, end }: PlainHeadProps) {
+/**
+ * 머리 줄 화면 자리에 서는 것 — 셸의 화면 자리(가로 flex · 가운데 맞춤)의 직계로 선다. 이름 뒤 ⋯(`menu`)는 이름 묶음 밖 바로 뒤에 틈 없이
+ * 선다 — 시안 `.ra-title`은 틈이 없어 28 상자가 이름 글자 끝에 붙는다. 이름이 길면 이름만 줄어 말줄임이 되고 ⋯는 그대로다.
+ */
+export function PlainHead({ lead, title, menu, end }: PlainHeadProps) {
   return (
     <>
       {(lead || title) && (
@@ -69,6 +74,7 @@ export function PlainHead({ lead, title, end }: PlainHeadProps) {
           {title && <PlainTitle name={title.name} rename={title.rename} />}
         </div>
       )}
+      {menu && <div className="flex shrink-0 items-center">{menu}</div>}
       {end && <HeadEnd>{end}</HeadEnd>}
     </>
   );

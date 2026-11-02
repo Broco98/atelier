@@ -50,6 +50,7 @@ import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
 import { DEFAULT_RUNTIME, isRuntime, runtimeNameOf } from "./runtime";
+import { atBottom, leavingPlace, type ReadingPlace } from "./reading-place";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
@@ -71,10 +72,10 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   본문 카드에 들 것만 건넨다(`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
 // - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
-//   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 오른쪽
-//   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
-//   다 없다, S23). 옛 Work 알약(브랜치)은 걷었다(S14). 시안의 머리 줄 Work
-//   탭은 짓지 않는다 — Work 화면 몫이다.
+//   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 이름 바로
+//   뒤에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)가, 오른쪽 끝에 요약 고정 토글이 선다(restart 02a-7 · 시안 MainLoose 창
+//   머리 — 한때 「…」도 오른쪽 끝이었다. Work 없는 Thread에도 선다 — 첫 말 전의 새 Thread에는 둘 다 없다, S23). 옛 Work 알약(브랜치)은
+//   걷었다(S14). 이 화면은 탭 줄이 없는 채팅 — 작업공간 밖 채팅과 읽기만 되는 채팅 — 의 자리다(restart 02a-4 · 02a-7).
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
 //   아래 28에 입력창과 트레이뿐이다. 시안의 Service 제안 줄은 짓지 않는다(03
 //   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 범위를
@@ -328,14 +329,9 @@ export function ThreadScreen({ thread }: { thread: string }) {
         ) : undefined
       }
       title={{ name, rename: renameName }}
-      end={
-        view ? (
-          <>
-            <ThreadMenu key={thread} rename={renameName?.onStart ?? null} />
-            {card.hasCard && <SummaryToggle open={card.cardOpen} onToggle={card.toggle} />}
-          </>
-        ) : undefined
-      }
+      // ⋯는 제목 바로 뒤다(restart 02a-7 · 시안 MainLoose 창 머리) — 오른쪽 끝에는 요약 단추만 선다.
+      menu={view ? <ThreadMenu key={thread} rename={renameName?.onStart ?? null} /> : undefined}
+      end={card.hasCard ? <SummaryToggle open={card.cardOpen} onToggle={card.toggle} /> : undefined}
     >
       <ThreadPane thread={thread} view={view} error={error} isPending={isPending} card={card} problem={problem} />
     </PlainFrame>
@@ -349,13 +345,27 @@ export function ThreadScreen({ thread }: { thread: string }) {
  *
  * **요약 단추는 임시로 탭 본문 오른쪽 위에 선다**(02a-9가 창 머리로 옮긴다) — 열림은 채팅 화면과 같은 지역 상태다(`useThreadCard` —
  * 채팅마다 기억한다). 단추가 그 자리를 쓰므로 카드는 단추 아래에 선다.
+ *
+ * **숨은 채팅 탭은 내려간다**(restart 02a-6) — 작업공간 화면은 켜진 채팅 탭 하나만 꽂는다. 기록 구독과 조각 그리기가 함께 멈추고,
+ * 기록 · 글 · 첨부 · 인용은 스토어에 있어 남는다. 굴림 자리는 탭이 쥔다 — 돌아오면 쥔 자리(`place`)에서 서고, 내려갈 때 그 자리를
+ * 건넨다(`onLeave`).
  */
-export function WorkChat({ thread }: { thread: string }) {
+export function WorkChat({ thread, place, onLeave }: { thread: string } & ChatPlace) {
   const { data: view, error, isPending } = useThread(thread);
   const card = useThreadCard(thread, view);
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <ThreadPane thread={thread} view={view} error={error} isPending={isPending} card={card} problem={null} under />
+      <ThreadPane
+        thread={thread}
+        view={view}
+        error={error}
+        isPending={isPending}
+        card={card}
+        problem={null}
+        under
+        place={place}
+        onLeave={onLeave}
+      />
       {card.hasCard && (
         <div className="absolute top-2 right-2 z-20">
           <SummaryToggle open={card.cardOpen} onToggle={card.toggle} />
@@ -392,6 +402,16 @@ function useThreadCard(thread: string, view: ThreadView | undefined) {
 type ThreadCard = ReturnType<typeof useThreadCard>;
 
 /**
+ * 채팅 탭이 쥔 굴림 자리(restart 02a-6) — 작업공간의 채팅 탭만 건넨다. `/threads/:id`의 채팅은 탭이 없어 늘 바닥에서 연다.
+ */
+interface ChatPlace {
+  /** 돌아온 탭이 쥐고 있던 자리. 없으면 바닥이다(처음 여는 탭). */
+  place?: ReadingPlace | null;
+  /** 내려갈 때 그 자리를 건넨다. */
+  onLeave?: (place: ReadingPlace) => void;
+}
+
+/**
  * 채팅의 본문 — 흐름 · 입력창과 요약 카드 자리다. 채팅 화면(`ThreadScreen`)은 `PlainFrame`의 본문 카드에, 작업공간의 채팅 탭(`WorkChat`)은
  * 작업공간 화면의 탭 본문 카드에 꽂는다. `under`면 카드가 탭 본문 오른쪽 위의 요약 단추 아래에 선다(임시 — 02a-9).
  */
@@ -403,6 +423,8 @@ function ThreadPane({
   card,
   problem,
   under = false,
+  place,
+  onLeave,
 }: {
   thread: string;
   view: ThreadView | undefined;
@@ -411,7 +433,7 @@ function ThreadPane({
   card: ThreadCard;
   problem: string | null;
   under?: boolean;
-}) {
+} & ChatPlace) {
   const navigate = useNavigate();
   const { gone, cardWork, hasCard, cardOpen, setCardOpen, opened, setOpened, expanded } = card;
   // 대화 속 문서 카드(스토리 102)가 여는 길 — 이은 Work의 spec 폴더(절대 경로)를 알아야 그 턴이 쓴 문서를 가린다. 보관된 Work는 목록에
@@ -472,6 +494,8 @@ function ThreadPane({
             beside={hasCard && cardOpen}
             toasts={!expanded}
             onShowChanges={showChanges}
+            place={place}
+            onLeave={onLeave}
           />
         </DocPlace.Provider>
       </div>
@@ -594,6 +618,8 @@ function ThreadBody({
   beside,
   toasts,
   onShowChanges,
+  place,
+  onLeave,
 }: {
   view: ThreadView;
   problem: string | null;
@@ -602,7 +628,7 @@ function ThreadBody({
   /** 안내 카드의 토스트가 이 본문 아래에 서나 — 넓힌 카드가 서 있으면 그 보기의 토스트 자리(`ExpandedViewer`)가 받는다. */
   toasts: boolean;
   onShowChanges: (pr: PrLine) => void;
-}) {
+} & ChatPlace) {
   const navigate = useNavigate();
   const thread = view.id;
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread));
@@ -630,8 +656,10 @@ function ThreadBody({
   };
 
   const last = model.turns[model.turns.length - 1];
-  // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」).
-  const changes = last ? changedFiles(last) : null;
+  // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」). 작업공간 밖
+  // 채팅에는 서지 않는다 — 열 곳(넓힌 카드)이 없다(restart 02a-7 · 구현 스펙 「02a — 작업공간 밖 채팅」). 대화의 문서 카드도 같은 까닭으로
+  // 서지 않는다 — 문서를 가릴 spec 폴더가 없어 `DocPlace`가 비어 있다(`ThreadPane`의 `docPlace`).
+  const changes = last && view.work !== null ? changedFiles(last) : null;
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
   const askingCwd = asking ? view.cwd : null;
@@ -641,8 +669,26 @@ function ThreadBody({
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
   const scroller = useRef<HTMLDivElement>(null);
-  const stuck = useRef(true);
-  const [away, setAway] = useState(false);
+  // 바닥에 붙어 있나 · 위에서 굴린 거리. 돌아온 채팅 탭은 쥐었던 자리에서 선다(restart 02a-6) — 위로 올려 읽던 탭은 바닥을 따라가지
+  // 않고 「맨 아래로」가 선 채로 그 자리에 서고, 바닥을 따라가던 탭과 처음 여는 채팅은 바닥이다(그사이 쌓인 줄의 끝).
+  const stuck = useRef(place?.kind !== "at");
+  const scrolled = useRef(place?.kind === "at" ? place.top : 0);
+  const [away, setAway] = useState(place?.kind === "at");
+  // 처음 설 때 한 번 그 자리로 굴리고, 내려갈 때(숨은 탭 · 다른 채팅 · 화면을 떠남) 그 자리를 쥔다. 아래 끝 따라가기보다 먼저 돈다 —
+  // 위에서 읽던 자리를 바닥으로 끌어 내리지 않게. 줄어든 창에서 그 자리가 바닥에 닿았으면 바닥으로 읽는다. 쥘 자리는 굴릴 때마다 적은
+  // 값이다 — 내려가는 순간의 상자를 읽지 않는다.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && place?.kind === "at") {
+      el.scrollTop = place.top;
+      const bottom = atBottom(el);
+      stuck.current = bottom;
+      setAway(!bottom);
+    }
+    return () => onLeave?.(leavingPlace(stuck.current, scrolled.current));
+    // 돌아온 순간의 자리만 읽는다 — 선 뒤에 쥔 자리가 바뀌어도 다시 굴리지 않는다. 쥐는 길(`onLeave`)도 처음 받은 것이다 — 이 본문은
+    // 채팅마다 새로 서고(`key`) 쥐는 길은 그 채팅의 탭을 그때 찾는다.
+  }, []);
   // 맨 아래를 보던 흐름은 끝을 따라간다 — 기록 줄이 늘 때와 흐르는 글이 늘 때(`FollowTail`).
   const follow = useCallback(() => {
     const el = scroller.current;
@@ -747,10 +793,11 @@ function ThreadBody({
           ref={scroller}
           onScroll={(event) => {
             const el = event.currentTarget;
-            const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-            stuck.current = atBottom;
-            setAway(!atBottom);
-            if (atBottom) read();
+            const bottom = atBottom(el);
+            stuck.current = bottom;
+            scrolled.current = el.scrollTop;
+            setAway(!bottom);
+            if (bottom) read();
           }}
           className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-4 scroll-quiet"
         >

@@ -42,7 +42,7 @@ import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
-  /** 폭(끌어서 바꾸고 기억한다) — 앱 셸이 쥐고 뿌리에 싣는다(`--sidebar-width` · `--sidebar-min` — 머리 줄의 이름 자리도 같은 값을 읽는다). */
+  /** 폭(끌어서 바꾸고 기억한다) — 앱 셸이 쥐고 뿌리에 싣는다(`--sidebar-width` · `--sidebar-min`). */
   size: ResizableWidth;
   /** 「새 채팅」(v1 티켓 05) — 앱 셸이 씨앗 없는 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
@@ -311,7 +311,7 @@ function SidebarFrame({
   return (
     // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 이 안에서는 `selected-row`가 투명한 `fill-nav-selected`(.053)다(index.css의 그
     // 유틸리티 · 02 티켓 05 — Codex 사이드바). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
-    // 폭 변수(`--sidebar-width` · `--sidebar-min`)는 앱 셸 뿌리가 싣는다 — 머리 줄의 이름 자리가 같은 값으로 사이드바 끝을 따른다.
+    // 폭 변수(`--sidebar-width` · `--sidebar-min`)는 앱 셸 뿌리가 싣는다.
     <aside ref={box} id={SIDEBAR_ID} data-sidebar="" className={asideClass(open, size.dragging)}>
       {/* fixed inner width so text doesn't reflow while the width animates.
 
@@ -362,7 +362,7 @@ function asideClass(open: boolean, dragging: boolean): string {
     "relative overflow-x-clip",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 박자는 Codex 사이드바의 spring(.3s · `ease-spring` — 02 구현 스펙 §12)이다 — 내용은 그대로 둔 채(안쪽 고정 폭) 잘리며 옅어진다.
-    // 머리 줄의 왼쪽 칸(`ShellHead`)이 같은 박자로 사이드바 끝을 따른다(`panel-layout`의 `SIDEBAR_MOTION`).
+    // 머리 줄의 이름 자리는 사이드바를 따르지 않는다(restart 02a-7 — 셸 컨트롤 뒤다, `ShellHead`).
     !dragging && SIDEBAR_MOTION,
     !dragging && (open ? "transition-[width,min-width]" : "transition-[width]"),
     // **접히면 틈 하나 폭으로 남는다**(restart 02a-2 · 시안 `.ra-side[data-open="false"]`의 `size-gap`) — 창 왼쪽 끝과 카드 사이 틈 8이 이

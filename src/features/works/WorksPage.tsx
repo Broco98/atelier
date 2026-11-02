@@ -27,6 +27,7 @@ import {
   activeTabOf,
   bundleOf,
   bundleTabOf,
+  chatPlaceOf,
   closesShellFromWindow,
   opensShellFromWindow,
   ownerOf,
@@ -42,6 +43,7 @@ import {
   closeViewTab,
   closeOtherShells,
   dropShellOnSlot,
+  keepChatTabPlace,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
@@ -788,7 +790,18 @@ function WorksPage({
 
   // 채팅 탭의 몸 — 채팅의 흐름과 입력창이다(restart 02a-4 · `WorkChat`). 머리는 탭 줄이라 채팅은 머리 없이 몸만 꽂는다. 채팅마다 새로
   // 선다(`key`) — 굴린 자리 · 펼친 줄이 다른 채팅으로 따라가지 않게(`/threads/:id`와 같다).
-  const chatBody = selected && chatThread !== null && <WorkChat key={chatThread} thread={chatThread} />;
+  //
+  // **켜진 채팅 탭 하나만 꽂는다 — 숨은 채팅 탭은 내려간다**(restart 02a-6 · 구현 스펙 「02a — 숨은 탭」). 기록 구독과 조각 그리기가
+  // 함께 멈춘다. 기록 · 글 · 첨부 · 인용은 스토어에 있어 남고, 굴림 자리는 묶음의 그 탭이 쥔다 — 몸이 내려갈 때 건네고(`onLeave`),
+  // 돌아오면 그 자리에서 선다(`place`). 쥐는 길은 그때의 묶음에서 탭을 찾는다 — 닫힌 탭에는 쥐지 않는다.
+  const chatBody = selected && chatThread !== null && (
+    <WorkChat
+      key={chatThread}
+      thread={chatThread}
+      place={chatPlaceOf(shellState, ownerOf(selected.slug), chatThread)}
+      onLeave={(place) => keepChatTabPlace(ownerOf(selected.slug), chatThread, place)}
+    />
+  );
 
   // 채팅 탭의 이름 — 칸은 채팅 id만 든다. 이름은 채팅 목록(사이드바와 같은 캐시)에서 읽는다: 이름이 없으면 「새 채팅」, 깨진 채팅이면
   // 「열 수 없는 채팅」이다(사이드바 채팅 줄과 같은 말 — `ThreadRow`). 목록에 아직 없으면 「채팅」이다.

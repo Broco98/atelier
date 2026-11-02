@@ -13,6 +13,7 @@ import {
   asksBeforeClose,
   atCap,
   bundleOf,
+  chatPlaceOf,
   CLOSE_NOTICE,
   CLOSE_REASONS,
   closeNotice,
@@ -29,6 +30,7 @@ import {
   isInPlaceGap,
   isLiveShellOf,
   isQuietShell,
+  keepChatPlace,
   liveOwnerlessOf,
   markOwnerless,
   MAX_SHELLS,
@@ -506,6 +508,37 @@ describe("채팅 탭을 묶음에 세운다", () => {
     const { state: shells, ids } = opened(2, originFor("ga"));
     const state = withShellActive(openChatTab(shells, ga, X), ga);
     expect(activeIdOf(state, ga)).toBe(ids[0]);
+  });
+
+  // restart 02a-6 — 숨은 채팅 탭은 내려가고 굴림 자리는 탭이 쥔다. 돌아오면 그 자리이고, 탭을 닫았다 다시 열면 새 탭이라 바닥에서 연다.
+  describe("읽던 자리", () => {
+    const reading = { kind: "at", top: 480 } as const;
+    const both = openChatTab(openChatTab(NO_SHELLS, ga, X), ga, Y);
+
+    it("탭마다 쥐고, 그 탭을 다시 켜도 그대로다", () => {
+      const kept = keepChatPlace(both, ga, X, reading);
+      expect(chatPlaceOf(kept, ga, X)).toEqual(reading);
+      expect(chatPlaceOf(kept, ga, Y)).toBeNull();
+      expect(chatPlaceOf(openChatTab(kept, ga, X), ga, X)).toEqual(reading);
+      expect(chatPlaceOf(keepChatPlace(kept, ga, X, { kind: "bottom" }), ga, X)).toEqual({ kind: "bottom" });
+    });
+
+    it("쥐어도 묶음의 차례와 켜진 칸은 그대로다", () => {
+      const kept = keepChatPlace(both, ga, X, reading);
+      expect(bundleOf(kept, ga).map((tab) => tab.id)).toEqual(bundleOf(both, ga).map((tab) => tab.id));
+      expect(activeIdOf(kept, ga)).toBe(activeIdOf(both, ga));
+    });
+
+    it("같은 자리를 다시 쥐면 상태가 그대로다", () => {
+      const kept = keepChatPlace(both, ga, X, reading);
+      expect(keepChatPlace(kept, ga, X, { kind: "at", top: 480 })).toBe(kept);
+    });
+
+    it("닫은 탭을 다시 열면 쥔 자리가 없다 — 탭이 없는 채팅의 자리는 쥐지 않는다", () => {
+      const closed = withoutNonShellTabsOf(keepChatPlace(both, ga, X, reading), ga);
+      expect(keepChatPlace(closed, ga, X, reading)).toBe(closed);
+      expect(chatPlaceOf(openChatTab(closed, ga, X), ga, X)).toBeNull();
+    });
   });
 });
 

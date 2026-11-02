@@ -55,7 +55,7 @@ function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   // 타이틀바 왼쪽 여백은 index.css의 [data-titlebar]가 계산한다 — 전체화면 여부만 여기서 알려준다
   const fullscreen = useIsFullscreen();
-  // 사이드바 폭(끌어서 바꾸고 기억한다) — 사이드바와 머리 줄의 이름 자리가 함께 읽어 여기서 쥔다(뿌리의 `--sidebar-width`). 기본 폭은 DS
+  // 사이드바 폭(끌어서 바꾸고 기억한다) — 사이드바가 읽어 여기서 쥔다(뿌리의 `--sidebar-width`). 기본 폭은 DS
   // `size-sidebar`(290)이고 범위(240–400)는 지금 것을 잇는다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면 그대로 선다
   // (`useResizableWidth`가 저장값을 읽는 규칙) — 기본값이 바뀌어도 고른 폭을 버리지 않는다. 끄는 동안 다시 그려지는 것은 셸의 얕은
   // 층이다 — 본문(`Outlet`)은 memo라 따라 그려지지 않는다.
@@ -361,7 +361,7 @@ function AppShell() {
   return (
     <div
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
-      // 사이드바 폭은 뿌리에 싣는다 — 사이드바(`Sidebar`)와 머리 줄 이름 자리(`ShellHeadRow` — 사이드바 오른쪽 끝을 따른다)가 한 값을 읽는다.
+      // 사이드바 폭은 뿌리에 싣는다 — 사이드바(`Sidebar`)가 읽는다. 머리 줄의 이름 자리는 사이드바를 따르지 않는다(restart 02a-7 — 셸 컨트롤 뒤다).
       style={
         {
           "--sidebar-width": `${sidebarSize.width}px`,
@@ -381,7 +381,7 @@ function AppShell() {
 
           **DOM 차례가 보이는 차례다** — 창의 Tab이 창 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)에서 시작해 머리 줄의 화면 것(이름 ·
           할 일) → 사이드바 → 본문으로 간다. 머리 줄이 카드 위 크롬에 한 줄로 서서, 읽는 차례(왼쪽 위 → 오른쪽 → 아래)를 따른다. */}
-      <ShellHeadRow open={sidebarOpen} dragging={sidebarSize.dragging} onSlot={setHeadSlot}>
+      <ShellHeadRow onSlot={setHeadSlot}>
         <ShellControls
           sidebarOpen={sidebarOpen}
           onToggleSidebar={toggleSidebar}
@@ -393,7 +393,7 @@ function AppShell() {
           카드들이 뜬다. 창 오른쪽 · 아래 끝의 틈 8은 이 줄이 든다(시안 `.ra-body`의 `0 8px 8px 0`) — 사이드바도 창 아래 끝에서 8 위까지 선다.
           왼쪽 틈은 사이드바의 몫이다 — 열리면 사이드바 폭 안의 좌우 8(행이 창 왼쪽 끝 + 8에서 선다), 접히면 틈 하나 폭(`Sidebar`의
           `asideClass` — 시안 `.ra-side[data-open=false] { width: 8px }`)이라 카드가 창 왼쪽 끝 + 8까지 넓어진다. 머리 줄의 이름
-          자리(`--titlebar-inset-sidebar` = 사이드바 폭)는 카드 자리 왼쪽 끝을 가리킨다. */}
+          자리는 이 줄을 따르지 않고 셸 컨트롤 뒤 세로선 다음이다(restart 02a-7 — `ShellHeadRow`). */}
       <div className="flex min-h-0 flex-1 pr-2 pb-2">
         <Sidebar
           open={sidebarOpen}

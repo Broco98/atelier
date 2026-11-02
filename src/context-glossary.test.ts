@@ -403,8 +403,10 @@ describe("말의 사전", () => {
       expect(bodyOf("머리 줄"), piece).toContain(piece);
     }
     expect(bodyOf("머리 줄")).toContain("_피할 말_: 위 막대");
-    // 이름의 자리 — 사이드바가 열려 있으면 본문 카드 왼쪽 끝과 같은 자리다(사이드바 오른쪽 끝이 카드 자리의 왼쪽 끝이다).
-    expect(bodyOf("머리 줄")).toContain("본문 카드 왼쪽 끝과 같은 자리");
+    // 이름의 자리 — 사이드바와 상관없이 셸 컨트롤 바로 뒤 세로선 다음이다(restart 02a-7 · 시안 `.ra-tsep`). 한때(02 – 02a-6) 사이드바가
+    // 열려 있으면 본문 카드 왼쪽 끝과 같은 자리였다 — 사전이 그 자리를 말하면 다음 사람이 이름을 사이드바 끝에 되세운다.
+    expect(bodyOf("머리 줄")).toContain("셸 컨트롤 바로 뒤 세로선 하나 다음에서 시작한다");
+    expect(bodyOf("머리 줄")).not.toContain("본문 카드 왼쪽 끝과 같은 자리");
     for (const piece of ["8 틈", "둥근", "본문 카드", "작업 패널 카드", "레일 카드", "네 모서리가 모두 보인다"]) {
       expect(bodyOf("카드"), piece).toContain(piece);
     }

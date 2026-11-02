@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { readFileSync } from "fs";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "url";
 import { describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ import { workFixture } from "@/features/works/work-fixture";
 import { fillDraft, mergeLines, NEW_THREAD, setDraft, setQueue, takeFill } from "./thread-store";
 import { seedOf, withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
 import { NewThreadScreen, ThreadScreen, WorkChat } from "./ThreadScreen";
+import type { ReadingPlace } from "./reading-place";
 import type { RecordLine, ThreadView } from "./types";
 
 // 엔진은 앱 명령으로만 닿는다 — 확인을 붙들어 두는 시험이 그 답을 정한다.
@@ -25,6 +27,12 @@ vi.mock("@tanstack/react-router", async (original) => ({
   useNavigate: () => () => Promise.resolve(),
   useRouter: () => ({ state: { location: { pathname: "/" } } }),
 }));
+
+// 채팅 화면의 창 머리는 앱 셸의 머리 줄로 포털을 탄다 — 정적 렌더는 포털을 못 그려, 머리를 이 마크업 안 머리 줄에 곧장 세운다
+// (`screen-head-inline`). 머리는 `<header data-slot="screen-head">`로 선다.
+vi.mock("@/components/shell/ShellHead", async (actual) =>
+  (await import("@/components/shell/screen-head-inline")).inlineScreenHead(actual),
+);
 
 // 채팅 하나가 Runtime 세션 하나다 — 화면은 `participants` · `handles` · `queues` 없이 채팅의 값만으로 그려진다. Rust만 고치면 L2 자료는 그대로
 // 초록인데 실제 앱이 터지는 자리라, 엔진이 내는 꼴 그대로의 값을 쿼리 캐시에 앉히고 화면 전체를 그려 본다.
@@ -356,7 +364,7 @@ describe("작업공간의 채팅 탭", () => {
   const work = workFixture();
   const linked: ThreadView = { ...chat, id: "20261010-120000", work: work.slug };
 
-  function drawTab(view: ThreadView): string {
+  function drawTab(view: ThreadView, place: ReadingPlace | null = null): string {
     const client = new QueryClient();
     client.setQueryData(worksQuery().queryKey, [work]);
     client.setQueryData(threadQuery(view.id).queryKey, view);
@@ -364,11 +372,22 @@ describe("작업공간의 채팅 탭", () => {
     return renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ToastProvider>
-          <WorkChat thread={view.id} />
+          <WorkChat thread={view.id} place={place} onLeave={() => {}} />
         </ToastProvider>
       </QueryClientProvider>,
     );
   }
+
+  // restart 02a-6 — 숨은 채팅 탭은 내려간다. 돌아온 탭은 탭이 쥔 읽던 자리에서 선다 — 위로 올려 읽던 탭은 바닥을 따라가지 않아 「맨 아래로」가
+  // 서고, 바닥을 따라가던 탭과 처음 여는 탭은 바닥이라 서지 않는다. 굴림 거리 자체는 정적 마크업에 없어 L3(02a-16)가 잰다.
+  it("위로 올려 읽던 탭은 그 자리로 돌아와 「맨 아래로」가 선다", () => {
+    expect(drawTab(linked, { kind: "at", top: 480 })).toContain('aria-label="맨 아래로"');
+  });
+
+  it("바닥을 따라가던 탭과 처음 여는 탭은 바닥이라 「맨 아래로」가 없다", () => {
+    expect(drawTab(linked, { kind: "bottom" })).not.toContain('aria-label="맨 아래로"');
+    expect(drawTab(linked)).not.toContain('aria-label="맨 아래로"');
+  });
 
   it("제 카드 없이 흐름과 입력창만 선다", () => {
     const html = drawTab(linked);
@@ -382,5 +401,87 @@ describe("작업공간의 채팅 탭", () => {
     expect(html).toMatch(/<section[^>]*aria-label="요약"/);
     const toggle = /<button\b[^>]*aria-label="요약 고정"[^>]*>/.exec(html)?.[0] ?? "";
     expect(toggle).toContain('aria-pressed="true"');
+  });
+});
+
+/** 창 머리 — 화면이 셸의 머리 줄로 보낸 것(이 파일에서는 제자리 `header`에 선다). */
+const headOf = (html: string) => html.match(/<header data-slot="screen-head">[\s\S]*?<\/header>/)?.[0] ?? "";
+/** 머리 오른쪽 끝 묶음(`HeadEnd`). */
+const endOf = (head: string) => head.slice(head.indexOf("data-head-actions"));
+/** 머리의 채팅 이름 칸 — 이름 글자만 든 `span`. */
+const titleTag = (head: string, title: string) => head.match(new RegExp(`<span[^>]*>${title}</span>`))?.[0] ?? "";
+
+// restart 02a-7 · 스토리 92 · 보드 MainLoose 창 머리 · Shell 「어디에 서나」 — 탭 줄이 없는 채팅(작업공간 밖 채팅, 작업공간이 보관되거나 지워져
+// 읽기만 되는 채팅)은 `/threads/:id`에 서고 창 머리를 쓴다: 셸 컨트롤 뒤 세로선 다음에 제목, 그 바로 뒤에 ⋯(채팅 메뉴)가 서고, 요약 단추는
+// 오른쪽 끝이다. 이름은 창 머리에서 바꾼다(두 번 클릭 · F2 · ⋯의 「이름 바꾸기」 — 읽기만인 채팅은 못 바꾼다).
+describe("탭 줄이 없는 채팅의 창 머리", () => {
+  it("작업공간 밖 채팅은 제목 바로 뒤에 ⋯가 서고, 요약 단추만 오른쪽 끝에 선다", () => {
+    const head = headOf(draw({ ...chat, id: "20261010-130000" }));
+    const at = [chat.title, 'aria-label="채팅 메뉴"', "data-head-actions", 'aria-label="요약 고정"'].map((one) => head.indexOf(one));
+    expect(at.every((one) => one > -1), head).toBe(true);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+    expect(endOf(head)).not.toContain("채팅 메뉴");
+  });
+
+  it("작업공간 밖 채팅의 이름은 창 머리에서 바꾼다 — 제목이 포커스를 받고 F2가 이름 바꾸기다", () => {
+    const title = titleTag(headOf(draw({ ...chat, id: "20261010-130001" })), chat.title);
+    expect(title).toContain('tabindex="0"');
+    expect(title).toContain('aria-keyshortcuts="F2"');
+  });
+
+  it("보관된 작업공간의 채팅도 창 머리에 제목과 ⋯가 선다 — 이름은 바꾸지 못한다", () => {
+    const view: ThreadView = { ...chat, id: "20261010-130002", work: "shelved-work", readOnly: "archived" };
+    const head = headOf(draw(view));
+    expect(head.indexOf(chat.title)).toBeGreaterThan(-1);
+    expect(head.indexOf('aria-label="채팅 메뉴"')).toBeGreaterThan(head.indexOf(chat.title));
+    expect(endOf(head)).not.toContain("채팅 메뉴");
+    const title = titleTag(head, chat.title);
+    expect(title).not.toBe("");
+    expect(title).not.toContain("aria-keyshortcuts");
+  });
+});
+
+// restart 02a-7 · 구현 스펙 「02a — 작업공간 밖 채팅」 — 작업공간 밖 채팅에는 열 곳(넓힌 카드)이 없어 대화의 문서 카드와 바뀐 파일 알약을 그리지
+// 않는다. 작업공간의 채팅(채팅 탭)에는 그대로 선다.
+describe("작업공간 밖 채팅의 대화", () => {
+  const HOME = "/Users/tester";
+  const atHome = (lines: RecordLine[]) => JSON.parse(JSON.stringify(lines).split("~/.atelier/").join(`${HOME}/.atelier/`)) as RecordLine[];
+  const worked = atHome(
+    readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-work.jsonl", import.meta.url)), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as RecordLine),
+  );
+  const slug = "refund-partial-amount";
+  const made = workFixture({ slug, specDir: `~/.atelier/works/${slug}/spec` });
+
+  function drawWith(view: ThreadView, lines: RecordLine[], body: (id: string) => ReactNode): string {
+    const client = new QueryClient();
+    client.setQueryData(worksQuery().queryKey, [made]);
+    client.setQueryData(["home-dir"], HOME);
+    client.setQueryData(threadQuery(view.id).queryKey, view);
+    mergeLines(view.id, lines);
+    return renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ToastProvider>{body(view.id)}</ToastProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("바뀐 파일 알약이 없다 — 작업공간의 채팅 탭에는 선다", () => {
+    const pill = /aria-label="\d+개 파일 변경됨"/;
+    const loose = drawWith({ ...chat, id: "20261010-140000" }, blessed, (id) => <ThreadScreen thread={id} />);
+    expect(loose).toContain("hello from turn");
+    expect(loose).not.toMatch(pill);
+    const linked = drawWith({ ...chat, id: "20261010-140001", work: slug }, blessed, (id) => <WorkChat thread={id} />);
+    expect(linked).toMatch(pill);
+  });
+
+  it("대화의 문서 카드가 없다 — 작업공간의 채팅 탭에는 선다", () => {
+    const last = worked[worked.length - 1].seq;
+    const loose = drawWith({ ...chat, id: "20261010-140002", lastSeq: last }, worked, (id) => <ThreadScreen thread={id} />);
+    expect(loose).not.toContain("data-doc-card");
+    const linked = drawWith({ ...chat, id: "20261010-140003", work: slug, lastSeq: last }, worked, (id) => <WorkChat thread={id} />);
+    expect(linked).toContain("data-doc-card");
   });
 });

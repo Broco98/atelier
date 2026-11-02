@@ -13,6 +13,7 @@ import { viewAction } from "@/components/shell/processes-view";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { windowFocused } from "@/lib/window-focus";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
+import type { ReadingPlace } from "@/features/thread/reading-place";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import {
@@ -44,6 +45,7 @@ import {
   firstInputOfId,
   hasBundleTab,
   isLiveShellOf,
+  keepChatPlace,
   liveOwnerlessOf,
   markExited,
   markFailed,
@@ -348,8 +350,17 @@ export function showChatTab(owner: ShellOwner, thread: string): void {
 }
 
 /**
+ * 그 화면의 채팅 탭에 **읽던 자리**를 쥔다(`keepChatPlace`, restart 02a-6) — 채팅 탭의 몸이 내려갈 때 work 화면이 부른다. 그 채팅의
+ * 탭이 이미 빠졌으면 아무 일도 없다.
+ */
+export function keepChatTabPlace(owner: ShellOwner, thread: string, place: ReadingPlace): void {
+  terminalStore.setState((state) => keepChatPlace(state, owner, thread, place));
+}
+
+/**
  * 보기 탭(파일 탭 · 채팅 탭)을 **확인 없이** 닫는다(git-integration 스토리 37 · 50 · restart 02a-5 — `removeViewTab`). 셸 칸이면 아무 일도
- * 없다 — 셸은 `requestCloseShell`로 닫는다. 채팅 탭을 닫아도 채팅에는 아무것도 부르지 않는다 — 채팅과 돌던 턴은 그대로다.
+ * 없다 — 셸은 `requestCloseShell`로 닫는다. 채팅 탭을 닫아도 채팅에는 아무것도 부르지 않는다 — 채팅과 돌던 턴은 그대로다. 칸이
+ * 빠지면 그 칸이 쥐던 읽던 자리(02a-6)도 함께 사라진다 — 다시 연 탭은 바닥에서 연다.
  */
 export function closeViewTab(id: number): void {
   terminalStore.setState((state) => removeViewTab(state, id));
