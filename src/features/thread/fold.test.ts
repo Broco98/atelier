@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
   answeringLine,
+  endNotice,
   finalFrom,
   finalMessages,
   foldThread,
@@ -91,11 +92,6 @@ describe("Thread 기록을 턴으로 접는다", () => {
 // 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 끝난 턴의 「N초 동안 작업」은 펼쳐야 보이는 일(도구 줄 · 생각 · 앞선 답)이 있을 때만
 // 선다. 말만 한 턴에는 빈 머리가 서지 않는다. 접힌 턴에도 남는 줄(계획 · 질문 · 카드의 결정 줄)만 있는 턴도 펼칠 것이 없다.
 describe("작업 구분선", () => {
-  it("Runtime이 거절한 턴은 그 까닭을 말하고 Agent를 말하지 않는다", () => {
-    const end = { stopReason: "refusal", durationMs: 1000, cancelledByUs: false, error: null, at: at(1) };
-    expect(headline(end)).toBe("이 요청에는 답할 수 없어 멈췄어요");
-  });
-
   it("도구 없이 끝난 턴에는 구분선이 없고, 도구를 쓴 턴은 「N초 동안 작업」이다", () => {
     const [first, second] = foldThread(blessed).turns;
     expect(workLine(first)).toBeNull();
@@ -107,14 +103,14 @@ describe("작업 구분선", () => {
     expect(running.turns.map(workLine)).toEqual([null, null]);
   });
 
-  it("끝 까닭이 있는 턴은 도구가 없어도 그 까닭이 선다 — 펼칠 것은 없다", () => {
+  it("안내 줄이 없는 끝 까닭은 도구가 없어도 그 까닭이 선다 — 펼칠 것은 없다", () => {
     const lines = blessed.map((line, index) =>
       line.kind === "turn-end" && blessed.findIndex((one) => one.kind === "turn-end") === index
-        ? { ...line, payload: { ...(line.payload as Record<string, unknown>), stopReason: "max_tokens" } }
+        ? { ...line, payload: { ...(line.payload as Record<string, unknown>), stopReason: "pause_turn" } }
         : line,
     );
     const [first] = foldThread(lines).turns;
-    expect(workLine(first)).toEqual({ text: "답이 길이 한도에 닿아 멈췄어요", unfolds: false });
+    expect(workLine(first)).toEqual({ text: "멈췄어요 — pause_turn", unfolds: false });
   });
 });
 
@@ -301,8 +297,104 @@ describe("도구 줄의 끝", () => {
     const gone = foldThread(lines, 26);
     expect(gone.running).toBe(false);
     const turn = gone.turns[2];
-    expect(turn.end?.error).toBe("앱이 꺼지며 끊겼어요");
+    expect(turn.end?.cut).toBe("앱이 꺼지며 끊겼어요");
     expect(turn.entries.map((entry) => entry.kind === "tool" && entry.cut)).toEqual([true]);
+  });
+});
+
+// 실패한 턴(01b-5 · 스토리 67) — 글 유무가 아니라 턴 끝 줄의 `error`로 읽는다. 바탕은 진짜 claude가 API 오류를 받은 녹음을 되감은 축복 기록이다.
+describe("실패한 턴", () => {
+  const failed = record("thread-failed");
+  const API_ERROR =
+    "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8123).";
+  const failing = { code: -32603, message: "API 오류 500" };
+  const tool = (seq: number) =>
+    update(seq, 2, { sessionUpdate: "tool_call", toolCallId: "t1", title: "pnpm test", kind: "execute", status: "completed" });
+  const said = (seq: number, words: string) =>
+    update(seq, 3, { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: words } });
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "고쳐 줘" } };
+  const ended = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(9), kind: "turn-end", payload });
+
+  it("글이 일부 왔어도 실패다 — 까닭이 턴 끝에 남고 받은 글은 턴 끝 메시지로 남는다", () => {
+    const [turn] = foldThread(failed).turns;
+    expect(turn.end).toMatchObject({ stopReason: null, error: API_ERROR, cut: null });
+    expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual([
+      "The first part of the answer arrives, and then the API fails in the middle",
+    ]);
+  });
+
+  it("안내는 까닭을 보이고, 받은 글이 있을 때만 남아 있다고 말한다", () => {
+    expect(endNotice(foldThread(failed).turns[0])).toEqual({
+      kind: "failed",
+      title: "이 턴이 실패로 끝났어요.",
+      detail: `${API_ERROR} 받은 글까지는 남아 있어요.`,
+    });
+    const [nothing] = foldThread([sent, ended(2, { error: failing })]).turns;
+    expect(endNotice(nothing)?.detail).toBe("API 오류 500.");
+  });
+
+  it("스스로 이어 간 턴도 같은 줄로 실패한다", () => {
+    const own = foldThread(failed).turns[2];
+    expect(own.sent).toBeNull();
+    expect(own.end).toMatchObject({ stopReason: null, error: API_ERROR });
+    expect(endNotice(own)?.kind).toBe("failed");
+  });
+
+  it("실패한 뒤의 턴은 실패가 아니다", () => {
+    const { turns, running } = foldThread(failed);
+    expect(running).toBe(false);
+    expect(turns.map((turn) => turn.end?.error !== null)).toEqual([true, false, true, false]);
+    expect(endNotice(turns[3])).toBeNull();
+  });
+
+  it("펼칠 일이 있으면 「N초 후에 실패했습니다」로 접히고, 없으면 구분선 없이 안내가 말한다", () => {
+    const worked = foldThread([sent, tool(2), said(3, "반쯤 고쳤어요"), ended(4, { durationMs: 8000, error: failing })]).turns[0];
+    expect(workLine(worked)).toEqual({ text: "8초 후에 실패했습니다", unfolds: true });
+    expect(finalMessages(worked)).toHaveLength(1);
+    expect(workLine(foldThread(failed).turns[0])).toBeNull();
+  });
+
+  it("Session이 사라진 턴은 실패한 턴과 갈라 읽는다 — 까닭은 `cut`이고 안내가 서지 않는다", () => {
+    const died: RecordLine = { seq: 4, at: at(4), kind: "session", payload: { state: "died", reason: "signal 9" } };
+    const [turn] = foldThread([sent, said(2, "고치는 중"), died]).turns;
+    expect(turn.end).toMatchObject({ stopReason: null, error: null, cut: "Claude Code가 끝났어요" });
+    expect(endNotice(turn)).toBeNull();
+    expect(workLine(turn)?.text).toBe("멈췄어요 — Claude Code가 끝났어요");
+  });
+});
+
+// 끝 까닭 안내(01b-5 · 스토리 68 · Cards 보드 「거절」 · 「턴 한도」 · Thread 보드 「길이 제한」) — 진짜 claude는 셋 다 `is_error`로 끝내지만 실패가 아니다.
+describe("끝 까닭의 안내 줄", () => {
+  const [refused, limited, usedUp] = foldThread(record("thread-limits")).turns;
+
+  it("거절 · 길이 제한 · 턴 한도는 실패가 아니라 그 끝 까닭이다", () => {
+    expect([refused, limited, usedUp].map((turn) => [turn.end?.stopReason, turn.end?.error])).toEqual([
+      ["refusal", null],
+      ["max_tokens", null],
+      ["max_turn_requests", null],
+    ]);
+  });
+
+  it("끝 까닭마다 보드의 문장이 안내 줄로 선다", () => {
+    expect(endNotice(refused)).toEqual({ kind: "refusal", title: "이 요청에는 답할 수 없어요.", detail: "말을 바꿔서 다시 보내 보세요." });
+    expect(endNotice(limited)).toEqual({ kind: "max_tokens", title: "답이 길이 제한에서 끊겼어요.", detail: "이어서 쓰게 할 수 있어요." });
+    expect(endNotice(usedUp)).toEqual({ kind: "max_turn_requests", title: "요청 수 한도에 닿았어요.", detail: "이어서 시킬 수 있어요." });
+  });
+
+  it("까닭은 안내가 말하므로 구분선은 펼칠 일이 있을 때만 「N초 동안 작업」이다", () => {
+    expect(workLine(refused)).toBeNull();
+    expect(workLine(limited)).toBeNull();
+    expect(workLine(usedUp)).toEqual({ text: "3초 동안 작업", unfolds: true });
+  });
+
+  it("보통 턴에는 안내가 없다", () => {
+    expect(foldThread(blessed).turns.map(endNotice)).toEqual([null, null]);
+  });
+
+  it("멈춘 턴과 거부로 멈춘 턴은 안내가 아니라 구분선이 말한다", () => {
+    const end = { durationMs: 1000, error: null, cut: null, at: at(1) };
+    expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: true })).toBe("1초 후에 중단했습니다");
+    expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: false })).toBe("거부해서 멈췄어요");
   });
 });
 
@@ -461,7 +553,7 @@ describe("한 세션의 턴", () => {
     const lines = [sent(1, 1, "고쳐 줘"), said(2, 2, "고치는 중"), died];
     const model = foldThread(lines);
     expect(model.running).toBe(false);
-    expect(model.turns.map((turn) => turn.end?.error ?? null)).toEqual(["Claude Code가 끝났어요"]);
+    expect(model.turns.map((turn) => turn.end?.cut ?? null)).toEqual(["Claude Code가 끝났어요"]);
     expect(foldThread([...lines, sent(4, 4, "다시 해 줘")]).running).toBe(true);
   });
 

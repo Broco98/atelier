@@ -77,6 +77,11 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 /// - `2.1.316/stream-interrupt` — 답이 흐르는 도중에 interrupt로 멈춘 턴과 맥락을 이어 답한 턴. 멈춘 턴의 완성 줄은 그때까지 낸 글이다.
 /// - `2.1.316/stream-compact` — 말 두 턴 · `/compact`의 턴 · 정리한 맥락으로 답한 턴(restart 티켓 01b-4). 정리의 턴은 답이 없다.
 /// - `2.1.316/stream-compact-empty` — 정리할 것이 없는 첫 턴의 `/compact`(`compact_result: "failed"`, 까닭은 `<synthetic>` 답)와 다음 턴.
+/// - `2.1.316/stream-failed` — 답이 흐르는 도중에 API가 끊긴 턴 · 백그라운드를 건 턴 · 스스로 이어 간 턴의 같은 오류 · 뒤이은 턴(restart 티켓
+///   01b-5). claude는 진짜이고 API만 가짜다(몰이의 `stub_api.py`). 끊긴 메시지에는 `assistant` 완성 줄이 없고 `is_api_error_message`인
+///   `<synthetic>` 줄과 `result{subtype: "success", is_error: true}`가 잇는다.
+/// - `2.1.316/stream-limits` — 거절 · 길이 제한 · 턴 한도로 끝난 세 턴(restart 티켓 01b-5). 같은 가짜 API에 앱에 없는 `--max-turns 1`로 떴다.
+///   claude는 거절을 한 번, 길이 제한을 세 번 스스로 다시 묻고 나서 끝낸다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -102,6 +107,8 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.316/stream-interrupt", include_str!("../../tests/fixtures/claude-2.1.316/stream-interrupt.jsonl")),
     ("2.1.316/stream-compact", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact.jsonl")),
     ("2.1.316/stream-compact-empty", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact-empty.jsonl")),
+    ("2.1.316/stream-failed", include_str!("../../tests/fixtures/claude-2.1.316/stream-failed.jsonl")),
+    ("2.1.316/stream-limits", include_str!("../../tests/fixtures/claude-2.1.316/stream-limits.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");

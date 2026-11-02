@@ -392,11 +392,7 @@ impl<H: TurnHands> Seat<'_, H> {
             }
         };
         let (started, before) = ours.map_or((None, None), |turn| (Some(turn.started), Some(turn.before)));
-        let (response, error) = match end.result {
-            Ok(response) => (Some(response), None),
-            Err(error) => (None, Some(error)),
-        };
-        let line = finish(started, response, error, end.cancelled_by_us, false);
+        let line = finish(started, end.result, end.cancelled_by_us, false);
         let closed = self.close(before, line).and_then(|now| {
             if lost_login {
                 self.hands.login_lost()?;
@@ -427,8 +423,8 @@ impl<H: TurnHands> Seat<'_, H> {
     /// 턴 밖 끝(S4) — 우리 턴의 끝과 같은 길이다(three-axes 티켓 06 · 07 · 11): 고친 곳을 견주어 `changes` 줄을 적고, 턴 밖 턴
     /// 표지를 단 턴 끝 줄을 적고, work가 사라졌으면 끄고, 아니면 걸림이 없을 때 대기 줄의 맨 앞을 보낸다. 시작을 못 보고 끝만
     /// 와도 턴 끝 줄은 선다(걸린 시간 0). 우리 턴이 도는 사이에 온 끝은 우리 턴을 건드리지 않는다 — 끄기도 대기 줄도 우리 턴의
-    /// 끝이 맡는다.
-    pub(super) fn self_ended(mut self, response: Value) -> Result<(), RecordError> {
+    /// 끝이 맡는다. `result`는 답이나 실패한 턴의 오류다(restart 01b-5) — 턴 끝 줄의 같은 칸에 적는다.
+    pub(super) fn self_ended(mut self, result: Result<Value, Value>) -> Result<(), RecordError> {
         let own = match self.order.take_phase() {
             Phase::Own(own) => Some(own),
             Phase::Both(turn, own) => {
@@ -442,7 +438,7 @@ impl<H: TurnHands> Seat<'_, H> {
         };
         let (started, before, stopped) =
             own.map_or((None, None, false), |own| (Some(own.started), own.before, own.stopped));
-        let line = finish(started, Some(response), None, stopped, true);
+        let line = finish(started, result, stopped, true);
         let closed = self.close(before, line);
         if matches!(self.order.phase, Phase::Ours(_) | Phase::Both(..)) {
             return closed.map(|_| ());
@@ -544,7 +540,7 @@ impl<H: TurnHands> Seat<'_, H> {
         }
         if let Err(reason) = self.hands.prompt(prompt) {
             self.order.phase = Phase::Idle { after_last: None };
-            let line = finish(Some(started), None, Some(json!({"message": reason})), false, false);
+            let line = finish(Some(started), Err(json!({"message": reason})), false, false);
             self.close(Some(before), line).map_err(Refused::Record)?;
             return Err(Refused::Send(reason));
         }
@@ -567,14 +563,12 @@ fn set_apart(block: &mut Value) {
     }
 }
 
-/// 턴 끝 줄 하나 — 끝 까닭은 답의 `stopReason`이고, 걸린 시간은 시작을 못 봤으면 0이다.
-fn finish(
-    started: Option<Instant>,
-    response: Option<Value>,
-    error: Option<Value>,
-    cancelled_by_us: bool,
-    out_of_turn: bool,
-) -> TurnEndLine {
+/// 턴 끝 줄 하나 — 끝 까닭은 답의 `stopReason`이고, 오류로 끝난 턴에는 끝 까닭이 없다. 걸린 시간은 시작을 못 봤으면 0이다.
+fn finish(started: Option<Instant>, result: Result<Value, Value>, cancelled_by_us: bool, out_of_turn: bool) -> TurnEndLine {
+    let (response, error) = match result {
+        Ok(response) => (Some(response), None),
+        Err(error) => (None, Some(error)),
+    };
     TurnEndLine {
         stop_reason: response.as_ref().and_then(|response| response["stopReason"].as_str()).map(str::to_owned),
         duration_ms: started.map_or(0, |at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)),
@@ -1076,7 +1070,7 @@ mod tests {
             Event::TurnEnded => seat.turn_ended(ended("end_turn")).map_err(|_| "기록"),
             Event::TurnCancelled => seat.turn_ended(cancelled()).map_err(|_| "기록"),
             Event::TurnLostLogin => seat.turn_ended(login_lost()).map_err(|_| "기록"),
-            Event::SelfEnded => seat.self_ended(json!({"stopReason": "end_turn"})).map_err(|_| "기록"),
+            Event::SelfEnded => seat.self_ended(Ok(json!({"stopReason": "end_turn"}))).map_err(|_| "기록"),
         }
     }
 
@@ -1343,7 +1337,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(5));
         rig.seat().turn_ended(ended("end_turn")).unwrap();
         rig.seat().turn_ended(ended("end_turn")).unwrap();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
 
         let zeros: Vec<bool> = rig
             .since(0)
@@ -1381,7 +1375,7 @@ mod tests {
         assert_eq!(rig.hands.shots, 1, "마지막 턴 끝에 견준 「지금」을 그 턴의 앞으로 삼는다");
 
         let mark = rig.mark();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
         assert_eq!(plain(rig.since(mark)), [Did::Changes(1, 2), self_end()]);
     }
 
@@ -1390,7 +1384,7 @@ mod tests {
         let mut rig = Rig::new();
         rig.seat().self_started();
         assert_eq!(rig.hands.shots, 1);
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
         assert_eq!(plain(rig.since(0)), [Did::Changes(1, 2), self_end()]);
     }
 
@@ -1402,7 +1396,7 @@ mod tests {
         assert_eq!(rig.hands.shots, 0);
 
         let mark = rig.mark();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
         assert_eq!(plain(rig.since(mark)), [self_end()]);
         assert!(rig.order.turning(), "우리 턴은 그대로 돈다");
 
@@ -1422,7 +1416,7 @@ mod tests {
 
         rig.seat().turn_ended(ended("end_turn")).unwrap();
         rig.seat().self_started();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
 
         assert_eq!(plain(rig.since(mark)), [turn_end(), self_end()]);
         assert_eq!(rig.hands.shots, 0);
@@ -1438,7 +1432,7 @@ mod tests {
         rig.hands.permission = true;
 
         let mark = rig.mark();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
         assert_eq!(plain(rig.since(mark)), [Did::Changes(1, 2), self_end()]);
         assert_eq!(rig.hold(), Some(Hold::Permission));
 
@@ -1532,7 +1526,7 @@ mod tests {
         assert_eq!(rig.hold(), Some(Hold::SelfTurn));
 
         let mark = rig.mark();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
         assert_eq!(plain(rig.since(mark)), [self_end(), sent("대기"), Did::Prompt, queue(&[])]);
         assert_eq!(rig.hands.shots, 2, "턴 밖 턴은 앞이 없어 견주지 않았다 — 맨 앞의 턴 앞은 새로 찍는다");
 
@@ -1744,12 +1738,25 @@ mod tests {
     // ── 7. 멈추기와 「우리가 멈췄나」 ─────────────────────────────────────────────────────────────────────────────────
 
     #[test]
+    fn 턴_밖_턴이_실패하면_턴_끝_줄이_오류를_싣는다() {
+        let mut rig = Rig::new();
+        rig.seat().self_started();
+
+        rig.seat().self_ended(Err(json!({"code": -32603, "message": "API Error"}))).unwrap();
+
+        assert_eq!(
+            plain(rig.since(0)),
+            [Did::Changes(1, 2), Did::TurnEnd { out_of_turn: true, by_us: false, error: true, zero: false }]
+        );
+    }
+
+    #[test]
     fn 스스로_이어_간_턴을_멈추면_그_턴_밖_끝에_우리가_멈춤이_실린다() {
         let mut rig = Rig::new();
         rig.seat().self_started();
 
         rig.seat().stop().unwrap();
-        rig.seat().self_ended(json!({"stopReason": "cancelled"})).unwrap();
+        rig.seat().self_ended(Ok(json!({"stopReason": "cancelled"}))).unwrap();
 
         assert_eq!(
             plain(rig.since(0)),
@@ -1765,7 +1772,7 @@ mod tests {
         let mark = rig.mark();
 
         rig.seat().stop().unwrap();
-        rig.seat().self_ended(json!({"stopReason": "cancelled"})).unwrap();
+        rig.seat().self_ended(Ok(json!({"stopReason": "cancelled"}))).unwrap();
         rig.seat().turn_ended(ended("cancelled")).unwrap();
 
         assert_eq!(
@@ -1800,7 +1807,7 @@ mod tests {
         rig.hands.cancel_fails = true;
 
         let refused = rig.seat().stop();
-        rig.seat().self_ended(self_response()).unwrap();
+        rig.seat().self_ended(Ok(self_response())).unwrap();
 
         assert!(matches!(&refused, Err(Refused::Send(reason)) if reason == "멈추기를 보내지 못했다"), "{refused:?}");
         assert_eq!(plain(rig.since(0)), [Did::Changes(1, 2), self_end()]);
@@ -1846,7 +1853,7 @@ mod tests {
                         Ok(())
                     }
                     5 => rig.seat().turn_ended([ended("end_turn"), cancelled(), login_lost()][dice.roll(3)].clone()),
-                    6 | 7 => rig.seat().self_ended(self_response()),
+                    6 | 7 => rig.seat().self_ended(Ok(self_response())),
                     8 => {
                         let queue = rig.order.queue();
                         let id = if queue.is_empty() { "없는 말".to_owned() } else { queue[dice.roll(queue.len())].id.clone() };

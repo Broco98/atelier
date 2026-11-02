@@ -9,6 +9,7 @@ import { decisionText } from "./approval";
 import { useArrival } from "./arrival";
 import {
   answeringLine,
+  endNotice,
   finalFrom,
   headline,
   keptFolded,
@@ -18,6 +19,7 @@ import {
   usageText,
   workLine,
   type DecisionEntry,
+  type EndNotice,
   type Entry,
   type Notice,
   type QuestionEntry,
@@ -67,7 +69,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12). 대화를 정리하는 동안은 같은 자리의 「대화를 정리하는 중」이다
 //   (01b-4 · Tools 보드 — 정리 신호가 오는 동안만, `compacting`). 정리 줄은 작업 로그에 서지 않는다.
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
-//   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
+//   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다. 실패한 턴과 거절 · 길이 제한 · 턴 한도는 받은 글 뒤의 안내 줄이 말한다(01b-5 · Cards 보드 ·
+//   `EndNoticeLine`) — 글이 있어도 그렇다. 끝난 답이 아니라 동작 줄이 없다. 모양은 02b-5가 맞춘다.
 // - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
 //   사이의 옅은 줄이다.
 // - 마지막으로 끝난 답 아래에만 응답 액션(복사)과 그 턴의 사용량이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」). 「…」는 무엇을 둘지
@@ -290,11 +293,13 @@ function TurnView({
   const waitingFirst = !turn.end && turn.entries.length === 0 && !compacting;
   const thinking = !turn.end && !compacting && lastEntry?.kind === "thought";
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
-  const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
+  // 받은 글 없이 Session이 사라진 턴 — 실패한 턴과 다르다(`TurnEnd.cut`).
+  const cut = turn.end !== null && turn.end.cut !== null && final.length === 0;
+  const notice = endNotice(turn);
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
   // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴에는 없다. 구분선이 없거나 펼칠 것이 없는 턴은 늘 접힌 모양이다.
-  const line = turn.end && !failed && !stopped ? workLine(turn) : null;
-  const unfolded = open && (stopped || failed || line?.unfolds === true);
+  const line = turn.end && !cut && !stopped ? workLine(turn) : null;
+  const unfolded = open && (stopped || cut || line?.unfolds === true);
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다.
@@ -311,9 +316,9 @@ function TurnView({
       {!waitingFirst && (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
           {turn.end ? (
-            failed ? (
+            cut ? (
               <ErrorLine
-                error={turn.end.error}
+                error={turn.end.cut}
                 retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "", turn.attachments)}
               />
             ) : stopped ? (
@@ -351,7 +356,8 @@ function TurnView({
           {!stopped &&
             final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
           {turn.end && <CreatedDocs turn={turn} name={runtime} />}
-          {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} usage={turn.usage} />}
+          {notice && <EndNoticeLine notice={notice} />}
+          {turn.end && last && !stopped && !notice && finalText !== "" && <AnswerActions text={finalText} usage={turn.usage} />}
         </div>
       )}
     </>
@@ -520,6 +526,18 @@ function ErrorLine({ error, retry }: { error: string | null; retry: (() => void)
         </Button>
       )}
     </div>
+  );
+}
+
+/** 턴 끝의 안내 줄(Cards 보드 `.ra-notice` — 「실패한 턴」 · 「거절」 · 「턴 한도」, Thread 보드 「길이 제한」). 모양은 02b-5가 맞춘다. */
+function EndNoticeLine({ notice }: { notice: EndNotice }) {
+  return (
+    <p data-end-notice={notice.kind} className="flex items-start gap-2 text-sm text-fg-secondary">
+      <CircleAlert className="mt-0.5 size-4 shrink-0 text-fg" aria-hidden />
+      <span className="min-w-0 wrap-anywhere">
+        <b className="font-medium text-fg">{notice.title}</b> {notice.detail}
+      </span>
+    </p>
   );
 }
 

@@ -49,20 +49,24 @@ import { particle } from "@/lib/particle";
 // - **Runtime 경고는 `stderr` 줄이다**(01b-8 · 구현 스펙 「01b — 그 밖의 Runtime 신호」) — 이어진 줄을 안내 하나로 묶어 그 자리에 세운다. 도는
 //   턴의 줄이면 턴 안에(`WarningEntry`), 턴 밖의 줄이면 턴 사이에(`Notice`) 선다. 일이 아니라서 턴을 열지 않고, 답한 것으로 치지 않고,
 //   앞뒤의 답을 끊지 않는다(`lastWork`). 그래서 대화를 막지 않는다.
+// - **실패한 턴은 글 유무가 아니라 `turn-end`의 `error`로 읽는다**(01b-5 · 스토리 67) — 글이 일부 왔어도 실패다. 끝 줄 없이 Session이 사라진 턴은 실패한 턴과
+//   가른다(`TurnEnd.cut`) — 그쪽은 다시 이을 일이다. 실패와 끝 까닭(거절 · 길이 제한 · 턴 한도)은 턴 끝의 안내 줄이 말한다(`endNotice`).
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
 
 /** 턴이 끝난 모양 — `turn-end` 줄, 또는 그 줄 없이 Session이 사라진 것(죽음 · 닫힘 · 앱을 다시 켬). */
 export interface TurnEnd {
-  /** Runtime이 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 말을 받지 않았거나 사라졌으면 null이다. */
+  /** Runtime이 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 실패했거나 사라졌으면 null이다. */
   stopReason: string | null;
   /** 말을 보낸 때부터 끝날 때까지. */
   durationMs: number;
   /** 우리가 멈췄나 — `cancelled`가 사람의 멈춤인지 Runtime의 거부인지를 가른다. */
   cancelledByUs: boolean;
-  /** 말을 받지 않은 오류나 사라진 까닭. */
+  /** 실패한 까닭 — `turn-end` 줄의 `error`다. 글이 왔어도 실패다. 실패하지 않았으면 null이다. */
   error: string | null;
+  /** 끝 줄 없이 Session이 사라진 까닭(죽음 · 닫힘 · 앱을 다시 켬). 실패한 턴과 가른다. 사라지지 않았으면 null이다. */
+  cut: string | null;
   /** 끝난 때 — 턴 끝 줄(또는 Session이 사라진 줄)의 시각. 함께 돈 턴들의 말한 차례를 가른다(사이드바의 마지막 말). */
   at: string;
 }
@@ -611,7 +615,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       turnsBefore: turns.length,
     });
   // 세션의 프로세스가 사라졌다 — 열린 턴은 끝났고, 걸린 권한 요청에는 답할 곳이 없고, 끝을 받지 못한 도구 줄은 끊겼다.
-  const vanish = (at: string, error: string) => {
+  const vanish = (at: string, cut: string) => {
     for (const id of pending.keys()) dropAsk(id);
     connecting = false;
     for (const turn of turns) {
@@ -622,7 +626,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       stopReason: null,
       durationMs: Math.max(0, Date.parse(at) - Date.parse(open.startedAt)) || 0,
       cancelledByUs: false,
-      error,
+      error: null,
+      cut,
       at,
     };
     close(open);
@@ -765,6 +770,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
           cancelledByUs: payload.cancelledByUs === true,
           error,
+          cut: null,
           at: line.at,
         };
         if (turn.end.stopReason === "cancelled" && turn.end.cancelledByUs) {
@@ -1353,22 +1359,53 @@ export function spoken(ms: number): string {
   return minutes % 60 === 0 ? `${hours}시간` : `${hours}시간 ${minutes % 60}분`;
 }
 
-const STOPPED: Record<string, string> = {
-  max_tokens: "답이 길이 한도에 닿아 멈췄어요",
-  max_turn_requests: "한 턴의 요청 한도에 닿아 멈췄어요",
-  refusal: "이 요청에는 답할 수 없어 멈췄어요",
-};
+/** 끝 까닭의 안내 줄(Cards 보드 「거절」 · 「턴 한도」 · Thread 보드 「길이 제한」). */
+const END_NOTICES = new Map([
+  ["refusal", { title: "이 요청에는 답할 수 없어요.", detail: "말을 바꿔서 다시 보내 보세요." }],
+  ["max_tokens", { title: "답이 길이 제한에서 끊겼어요.", detail: "이어서 쓰게 할 수 있어요." }],
+  ["max_turn_requests", { title: "요청 수 한도에 닿았어요.", detail: "이어서 시킬 수 있어요." }],
+]);
+
+/** 턴 끝의 안내 줄 — 실패한 턴과 끝 까닭이 있는 턴이다. `kind`는 `failed`이거나 그 끝 까닭이다. */
+export interface EndNotice {
+  kind: string;
+  title: string;
+  detail: string;
+}
+
+/** 까닭 글을 문장으로 맺는다 — Runtime이 준 글은 마침표가 있기도 하고 없기도 하다. */
+const sentence = (words: string): string => (/[.!?。]$/.test(words) ? words : `${words}.`);
+
+/**
+ * 그 턴의 안내 줄(Cards 보드 「실패한 턴」 · 01b-5) — 실패는 까닭을 보이고 받은 글이 있으면 남아 있다고 말한다. 끝 까닭은 보드의 문장이다. 도는 턴 · 보통으로
+ * 끝난 턴 · 멈춘 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 「다시 잇기」다(01b-6).
+ */
+export function endNotice(turn: Turn): EndNotice | null {
+  if (turn.end === null) return null;
+  if (turn.end.error !== null) {
+    const received = turn.entries.some((entry) => entry.kind === "message");
+    const detail = sentence(turn.end.error);
+    return { kind: "failed", title: "이 턴이 실패로 끝났어요.", detail: received ? `${detail} 받은 글까지는 남아 있어요.` : detail };
+  }
+  const reason = turn.end.stopReason ?? "";
+  const notice = END_NOTICES.get(reason);
+  return notice ? { kind: reason, ...notice } : null;
+}
+
+/** 까닭을 구분선이 말하지 않아도 되는 끝 — 보통의 끝과 안내 줄이 말하는 끝 까닭이다. */
+const plainEnd = (end: TurnEnd): boolean => end.stopReason === "end_turn" || END_NOTICES.has(end.stopReason ?? "");
 
 /**
  * 작업 구분선의 글(02 구현 스펙 §8 · Diff-Chat 「작업 구분선」). `end_turn`이면 「N초 동안 작업」(Codex 결 — v1은 「작업함」), 우리가 멈춘
- * `cancelled`면 「N초 후에 중단했습니다」, 그 밖은 까닭을 보인다.
+ * `cancelled`면 「N초 후에 중단했습니다」, 실패면 「N초 후에 실패했습니다」, 그 밖은 까닭을 보인다. 안내 줄이 말하는 끝 까닭은 `end_turn`과 같다(Thread 보드 「길이 제한」).
  */
 export function headline(end: TurnEnd): string {
   const took = spoken(end.durationMs);
-  if (end.stopReason === "end_turn") return `${took} 동안 작업`;
+  if (end.error !== null) return `${took} 후에 실패했습니다`;
+  if (plainEnd(end)) return `${took} 동안 작업`;
   if (end.stopReason === "cancelled") return end.cancelledByUs ? `${took} 후에 중단했습니다` : "거부해서 멈췄어요";
-  if (end.stopReason !== null) return STOPPED[end.stopReason] ?? `멈췄어요 — ${end.stopReason}`;
-  return end.error ? `멈췄어요 — ${end.error}` : "멈췄어요";
+  if (end.stopReason !== null) return `멈췄어요 — ${end.stopReason}`;
+  return end.cut ? `멈췄어요 — ${end.cut}` : "멈췄어요";
 }
 
 /** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 질문에 답한 줄 · 카드의 결정 줄 · 결과 카드는 다시 보는 것이라 접어도 선다. 접으면 숨는 경고는 경고가 아니라서 Runtime 경고도 남는다. */
@@ -1390,14 +1427,14 @@ export const shownEntry = (entry: Entry): boolean => entry.kind !== "thought" ||
  * 끝난 턴의 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 글(`headline`)과 펼칠 것이 있나(`unfolds`). 펼칠 것은 턴 끝 메시지 앞의 줄
  * 가운데 접으면 숨는 것(도구 줄 · 생각 · 앞선 답 · 승인 결정 줄)이다.
  * - **펼칠 것 없이 끝난 턴(`end_turn`)에는 구분선이 없다** — 말만 한 턴에 빈 머리가 서지 않는다(Codex). 계획처럼 접힌 턴에도
- *   남는 줄만 있는 턴도 그렇다.
- * - 끝 까닭이 있는 턴(길이 한도 · 거절 …)은 펼칠 것이 없어도 그 까닭이 선다 — 오류와 중단은 문장으로 말한다.
+ *   남는 줄만 있는 턴도 그렇다. 안내 줄이 말하는 턴(실패 · 거절 · 길이 제한 · 턴 한도)도 같다 — 까닭은 안내가 말한다.
+ * - 그 밖에 끝 까닭이 있는 턴은 펼칠 것이 없어도 그 까닭이 선다 — 오류와 중단은 문장으로 말한다.
  * - 도는 턴은 null이다(「N초 동안 작업 중입니다」가 따로 선다 — `runningHeadline`).
  */
 export function workLine(turn: Turn): { text: string; unfolds: boolean } | null {
   if (turn.end === null) return null;
   const unfolds = turn.entries.slice(0, finalFrom(turn)).some((entry) => shownEntry(entry) && !keptFolded(entry));
-  if (!unfolds && turn.end.stopReason === "end_turn") return null;
+  if (!unfolds && (plainEnd(turn.end) || turn.end.error !== null)) return null;
   return { text: headline(turn.end), unfolds };
 }
 

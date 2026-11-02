@@ -265,8 +265,7 @@ fn unsent(error: impl std::fmt::Display) -> AnswerError {
 /// 턴 하나의 끝.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TurnEnd {
-    /// `session/prompt`의 답 원문(`stopReason` · `usage` …), 또는 에이전트가 말을 받지 않은 오류
-    /// (`{code, message, data?}`).
+    /// `session/prompt`의 답 원문(`stopReason` · `usage` …), 또는 오류(`{code, message, data?}`) — 말을 받지 않았거나 턴이 실패했다.
     pub result: Result<Value, Value>,
     /// 그 턴에 우리가 `session/cancel`을 보냈나. Codex는 거부 선택지도 `cancelled`로 끝내므로 이 표지로 가른다
     /// (워크플로 함정 14).

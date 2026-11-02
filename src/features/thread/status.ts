@@ -2,7 +2,6 @@ import type { StatusMarkKind } from "@/components/shell/status-mark";
 import { describeApproval } from "./approval";
 import { awaitingLogin, isLoginRequired } from "./engine-store";
 import {
-  finalMessages,
   foldOf,
   isCardAsk,
   type PendingAsk,
@@ -23,12 +22,13 @@ import type { RecordLine, ThreadView } from "./types";
 // |---|---|---|
 // | 1 | 내 차례 | 답을 기다리는 물음이 있다 — 승인 · Work 만들기 카드 · 질문(`model.asks` — 앱을 다시 켜 답할 곳이 없는 물음은 접기가 걷는다) |
 // | 2 | 작업 중 | 턴이 돈다 — 로그인을 기다리며 멈춘 턴은 돌지 않는 것이다 |
-// | 3 | 실패 | 로그인 필요 · 마지막 턴이 답 없이 끝났다(오류 · 프로세스 죽음 · 앱이 꺼지며 끊김) |
+// | 3 | 실패 | 로그인 필요 · 마지막 턴이 실패했다(`error`) · 끝 없이 끊겼다(프로세스 죽음 · 앱이 꺼지며 끊김) |
 // | 4 | 중단 | 마지막 턴을 사람이 멈췄다 |
 // | 5 | 새 결과 | 마지막 턴 끝 줄이 읽은 자리 뒤에 있다 |
 //
-// - **「마지막 턴」은 끝난 때가 가장 늦은 턴이다** — 함께 도는 턴(멘션, v1 티켓 14)은 선 차례와 끝난 차례가 다르다. 답 없이
-//   끝난 턴의 판정은 흐름의 「답하지 못했습니다」(`ThreadFlow`)와 같다: 끝 까닭이 없고 턴 끝 메시지가 없다.
+// - **「마지막 턴」은 끝난 때가 가장 늦은 턴이다** — 함께 도는 턴(멘션, v1 티켓 14)은 선 차례와 끝난 차례가 다르다.
+// - **실패는 글 유무로 가르지 않는다**(01b-5 · 스토리 67) — 글이 일부 왔어도 실패한 턴은 실패이고, 끊긴 턴도 새 결과가 아니다. 거절 · 길이 제한 · 턴 한도는
+//   실패가 아니라 그 끝 까닭이다(`fold.ts`의 `TurnEnd`).
 // - **미리보기**는 상태가 정한다 — 내 차례면 기다리는 것(「승인 · pnpm prisma migrate dev」), 작업 중이면 지금 도는 도구의 문구(보드 「pnpm
 //   test auth 실행 중」 — 도구가 없으면 마지막 말이 남는다 · Work 만들기 카드면 「작업공간 만들기 · 제목」, v1 티켓 30 · 질문이면 「질문 · 첫 물음」, v1 티켓 26), 실패면 그 까닭(「실패」는 그리는 쪽이 앞에 단다), 중단이면 「중단했습니다」다.
 // - 실패 · 중단은 읽어도 남는다 — 읽은 자리가 가르는 것은 새 결과뿐이다. 다음 턴이 끝나면 걷힌다.
@@ -77,9 +77,8 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
   }
   if (login) return { kind: "failed", at: login.at, text: "로그인이 필요해요" };
   const last = lastEnded(model.turns);
-  if (last?.end && last.end.stopReason === null && finalMessages(last).length === 0) {
-    return { kind: "failed", at: last.end.at, text: last.end.error ?? "Claude Code와 연결이 끊겼어요" };
-  }
+  const why = last?.end ? (last.end.error ?? last.end.cut) : null;
+  if (last?.end && why !== null) return { kind: "failed", at: last.end.at, text: why };
   if (last?.end?.stopReason === "cancelled" && last.end.cancelledByUs) {
     return { kind: "stopped", at: last.end.at, text: "중단했습니다" };
   }

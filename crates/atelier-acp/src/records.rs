@@ -139,7 +139,7 @@ pub(crate) enum SessionState {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TurnEndLine {
-    /// 에이전트가 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 말을 받지 않았으면 null이다.
+    /// 에이전트가 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 오류로 끝난 턴은 null이다.
     pub stop_reason: Option<String>,
     /// 말을 보낸 때부터 턴이 끝날 때까지.
     pub duration_ms: u64,
@@ -150,7 +150,7 @@ pub(crate) struct TurnEndLine {
     /// `session/prompt`의 답 원문 — 사용량 같은 수치는 보이지 않고 기록만 한다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<Value>,
-    /// 에이전트가 말을 받지 않은 오류 원문(`{code, message, data?}`).
+    /// 턴이 실패한 오류 원문(`{code, message, data?}`) — 말을 받지 않았거나 Runtime이 실패로 끝낸 턴이다. 글이 왔어도 실패다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Value>,
 }

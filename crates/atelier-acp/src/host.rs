@@ -225,8 +225,8 @@ struct ConvState {
 /// 변환기가 표시한 턴 밖 턴의 시작 · 끝(three-axes S4) — `session_info_update`의 `_meta.atelier.outOfTurn`.
 enum OutOfTurn {
     Started,
-    /// 끝 — 몸은 `session/prompt`의 답과 같은 꼴(`stopReason` · `_meta`)이다.
-    Ended(Value),
+    /// 끝 — 몸은 `session/prompt`의 답(`stopReason` · `_meta`)이나 오류(`{code, message, data}`)와 같은 꼴이다.
+    Ended(Result<Value, Value>),
 }
 
 impl OutOfTurn {
@@ -238,7 +238,7 @@ impl OutOfTurn {
         let mark = &update["_meta"]["atelier"]["outOfTurn"];
         match mark["state"].as_str()? {
             "started" => Some(OutOfTurn::Started),
-            "ended" => Some(OutOfTurn::Ended(mark["response"].clone())),
+            "ended" => Some(OutOfTurn::Ended(mark.get("error").cloned().map_or_else(|| Ok(mark["response"].clone()), Err))),
             _ => None,
         }
     }
@@ -330,9 +330,9 @@ impl Conv {
                     self.seat(&mut state).self_started();
                     written
                 }
-                Some(OutOfTurn::Ended(response)) => {
+                Some(OutOfTurn::Ended(result)) => {
                     let mut state = self.lock_state();
-                    self.seat(&mut state).self_ended(response)
+                    self.seat(&mut state).self_ended(result)
                 }
                 None => self.recorder.update(raw),
             },

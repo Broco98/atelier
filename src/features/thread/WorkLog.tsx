@@ -462,7 +462,7 @@ const DIVIDER = "flex w-full items-center gap-1 border-b border-separator-soft p
 /**
  * 작업 구분선(02 구현 스펙 §8 · Diff-Chat · Screen-Live — Codex 결) — 「N초 동안 작업 ›」과 그 아래 가는 선. 펼칠 것이 있으면(`onToggle`)
  * 단추이고 셰브런이 펼치면 ∨로 돈다. 도는 동안은 「N초 동안 작업 중입니다」가 같은 줄에 선다(셰브런 없음). 펼칠 것 없이 끝 까닭만 있는
- * 턴(길이 한도 …)도 셰브런 없는 같은 줄이다. 턴이 끝나 도는 줄이 이 줄로 바뀌면 같은 자리에서 떠오른다(v1 티켓 43 · 줄 바뀜 —
+ * 턴(거부 …)도 셰브런 없는 같은 줄이다. 턴이 끝나 도는 줄이 이 줄로 바뀌면 같은 자리에서 떠오른다(v1 티켓 43 · 줄 바뀜 —
  * `arrival`은 그 턴의 열쇠다). 위 2(`pt-0.5`)는 말풍선 → 첫 글자 잉크 51.5를 지킨다(`ThreadFlow`의 `TURN_GAP`).
  */
 export function WorkDivider({

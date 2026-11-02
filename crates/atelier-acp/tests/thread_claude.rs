@@ -341,6 +341,73 @@ fn 앱_서버에_연결하지_못하면_기록에_경고_줄이_서고_턴은_�
     assert!(payloads_of(&record, "turn-end")[0]["error"].is_null(), "경고가 턴을 실패시키지 않는다");
 }
 
+/// `stream-failed`의 API 오류 글 — 턴 끝 줄의 `error`에 그대로 적힌다.
+const API_ERROR: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8123).";
+
+/// `stream-failed`에서 API가 끊기기 전까지 받은 글.
+const RECEIVED: &str = "The first part of the answer arrives, and then the API fails in the middle";
+
+#[test]
+fn 실패한_턴은_받은_글을_남기고_턴_끝의_error에_적히고_스스로_이어_간_턴도_같은_줄을_쓴다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.316/stream-failed", &[], "FAIL-STREAM");
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let failed = &payloads_of(&record, "turn-end")[0];
+    assert_eq!(
+        (failed["stopReason"].clone(), failed["error"]["code"].clone(), failed["error"]["message"].as_str()),
+        (Value::Null, json!(-32603), Some(API_ERROR)),
+        "{}",
+        common::lines_text(&record)
+    );
+    assert_eq!(failed["error"]["data"]["claudeCode"]["result"]["subtype"], "success", "그 턴의 result 원문이 실린다");
+    assert_eq!(answers_after(&record, 0), [RECEIVED], "받은 글은 턴 끝보다 앞에 한 줄로 남고 오류 글은 답이 아니다");
+
+    host.send_to_thread(&thread, "START-BG").expect("실패한 뒤에도 말을 보낼 수 있다");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    let ends = payloads_of(&record, "turn-end");
+    assert_eq!(ends[1]["stopReason"], "end_turn");
+    let own = &ends[2];
+    assert_eq!(
+        (own["stopReason"].clone(), own["outOfTurn"].clone(), own["error"]["message"].as_str()),
+        (Value::Null, json!(true), Some(API_ERROR)),
+        "{}",
+        common::lines_text(&record)
+    );
+    assert_eq!(own["error"]["data"]["claudeCode"]["result"]["origin"]["kind"], "task-notification");
+    assert!(own.get("response").is_none(), "{own}");
+    let between = &record[turn_end_at(&record, 1) + 1..turn_end_at(&record, 2)];
+    assert_eq!(answers_after(between, 0), [RECEIVED]);
+
+    host.send_to_thread(&thread, "Reply with one word: ok").expect("턴 밖 턴이 실패해도 대기 줄이 풀린다");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 4);
+    assert_eq!(payloads_of(&record, "turn-end")[3]["stopReason"], "end_turn");
+
+    host.shut_down();
+    // 화면의 접기와 사이드바(L2)가 이 기록으로 실패를 읽는다.
+    common::assert_record("thread-failed", &settled(&sandbox, &record, &thread, &session));
+}
+
+#[test]
+fn 거절과_길이_제한과_턴_한도는_실패가_아니라_그_끝_까닭으로_적힌다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.316/stream-limits", &[], "REFUSE");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "MAXTOKENS").expect("둘째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.send_to_thread(&thread, "USE-TOOL").expect("셋째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+
+    let ends = payloads_of(&record, "turn-end");
+    let reasons: Vec<&Value> = ends.iter().map(|end| &end["stopReason"]).collect();
+    assert_eq!(reasons, ["refusal", "max_tokens", "max_turn_requests"], "{}", common::lines_text(&record));
+    assert!(ends.iter().all(|end| end.get("error").is_none()), "{ends:?}");
+
+    host.shut_down();
+    // 화면의 안내 줄(L2)이 이 기록으로 끝 까닭을 읽는다.
+    common::assert_record("thread-limits", &settled(&sandbox, &record, &thread, &session));
+}
+
 #[test]
 fn 사용자_서버만_실패한_턴은_기록에_경고_줄이_없다() {
     let sandbox = Sandbox::new();

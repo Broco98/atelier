@@ -1499,6 +1499,110 @@ fn noauth_authentication_failed가_온_턴은_session_prompt에_minus_32000으�
     assert!(answers_of(&bench.turn_updates(id)).is_empty(), "미로그인 오류의 <synthetic> 글은 답으로 옮기지 않는다(실측 함정 33)");
 }
 
+// ── 실패한 턴(restart 01b-5) ─────────────────────────────────────────────────────────
+
+/// `stream-failed`의 API 오류 — 진짜 claude가 `result.result`에 낸 글. 까닭은 이 글 그대로 호스트로 간다.
+const API_ERROR: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8123).";
+
+/// `stream-failed`에서 끊기기 전까지 받은 글.
+const RECEIVED: [&str; 4] = ["The first part of ", "the answer arrives, ", "and then the API ", "fails in the middle"];
+
+#[test]
+fn 답이_흐르는_도중에_api_오류가_오면_session_prompt에_오류로_답하고_받은_글은_남고_오류_글은_답이_되지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-failed"));
+
+    let failed = bench.prompt("FAIL-STREAM");
+
+    let error = bench.error(failed);
+    assert_eq!((error["code"].clone(), error["message"].as_str()), (json!(-32603), Some(API_ERROR)));
+    let result = &error["data"]["claudeCode"]["result"];
+    assert_eq!(
+        (result["subtype"].as_str(), result["is_error"].as_bool(), result["api_error_status"].as_u64()),
+        (Some("success"), Some(true), Some(500)),
+        "그 턴의 result 원문이 실린다 — 평가의 재료다"
+    );
+    assert_eq!(answers_of(&bench.turn_updates(failed)), RECEIVED, "받은 글만 답이다 — `<synthetic>` 오류 글은 까닭으로만 간다");
+    assert_eq!(bench.stderr(), Vec::<String>::new(), "완성 줄이 오지 않으면 합을 잴 것이 없다");
+
+    let next = bench.prompt("START-BG");
+    assert_eq!(bench.result(next)["stopReason"], "end_turn", "실패한 턴 뒤에도 claude는 살아 있다");
+    assert_eq!(bench.launches().len(), 1);
+}
+
+#[test]
+fn 스스로_이어_간_턴의_api_오류는_턴_밖_끝_표지의_error로_나간다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-failed"));
+    bench.prompt("FAIL-STREAM");
+    let started = bench.prompt("START-BG");
+
+    let answered = bench.at(|seen| matches!(seen, Seen::Acp(line) if is_reply_to(line, started)));
+    let own = bodies(&bench.acp_in(answered + 1..bench.seen.len()));
+
+    let marks = out_of_turn_marks(&own);
+    assert_eq!(marks.len(), 2, "{marks:?}");
+    let ended = &marks[1];
+    assert_eq!(ended["state"], "ended");
+    assert_eq!((ended["error"]["code"].clone(), ended["error"]["message"].as_str()), (json!(-32603), Some(API_ERROR)));
+    assert_eq!(ended["error"]["data"]["claudeCode"]["result"]["origin"]["kind"], "task-notification");
+    assert!(ended.get("response").is_none(), "실패한 끝에는 끝 까닭이 없다 — `session/prompt` 오류와 같다: {ended}");
+    assert_eq!(answers_of(&own), RECEIVED);
+    let next = bench.prompt("Reply with one word: ok");
+    assert_eq!(bench.result(next)["stopReason"], "end_turn");
+}
+
+#[test]
+fn 우리가_끊지_않은_error_during_execution은_실패이고_까닭은_errors다() {
+    // 원문의 셋째 턴은 SIGINT로 끝났다 — interrupt를 보내지 않은 `result/error_during_execution`이다.
+    let mut bench = Bench::open(Claude::replaying("2.1.309/interrupt-sigint"));
+    let first = bench.prompt("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+    bench.cancel();
+    assert_eq!(bench.result(first)["stopReason"], "cancelled", "우리가 끊은 턴은 실패가 아니다");
+    bench.prompt("방금 무엇을 돌리려 했고 끝났는지 한 문장으로");
+
+    let failed = bench.prompt("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+
+    let error = bench.error(failed);
+    assert_eq!(error["code"], -32603);
+    assert_eq!(error["message"], "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use");
+    assert_eq!(error["data"]["claudeCode"]["result"]["subtype"], "error_during_execution");
+}
+
+#[test]
+fn 우리가_interrupt를_보낸_턴은_api_오류로_끝나도_실패가_아니다() {
+    // 멈추기와 API 오류가 엇갈린 꼴 — 녹음에 없어 그 `result`를 손으로 넣는다. 되감기는 interrupt를 기다리며 멈춰 있다.
+    let mut bench = Bench::open(Claude::replaying("2.1.309/interrupt-sigint"));
+    let id = bench.prompt("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+    let session = bench.session_id.clone();
+    bench.machine.step(Input::Acp(json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session}})));
+
+    let result = json!({"type": "result", "subtype": "success", "is_error": true, "stop_reason": "stop_sequence", "result": "API Error: 500"});
+    let outputs = bench.machine.step(Input::Claude(result));
+
+    let answer = outputs.iter().find_map(|output| if let Output::Acp(line) = output { is_reply_to(line, id).then_some(line) } else { None });
+    let answer = answer.expect("그 말에 답한다");
+    assert!(answer.get("error").is_none(), "사람이 멈춘 턴에 실패 안내가 서지 않는다: {answer}");
+}
+
+#[test]
+fn 거절과_길이_제한과_턴_한도는_is_error여도_그_stop_reason으로_끝나고_오류_글은_답이_되지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-limits"));
+
+    let refused = bench.prompt("REFUSE");
+    assert_eq!(bench.result(refused)["stopReason"], "refusal");
+    assert_eq!(bench.result(refused)["_meta"]["claudeCode"]["result"]["is_error"], true, "진짜 claude는 거절도 is_error로 끝낸다");
+    assert_eq!(answers_of(&bench.turn_updates(refused)).join(""), "I can't help with that.I can't help with that.");
+
+    // 진짜 claude의 길이 제한은 `result.stop_reason`이 `stop_sequence`이고 끝 까닭은 `api_error` 칸에 있다.
+    let limited = bench.prompt("MAXTOKENS");
+    let response = bench.result(limited);
+    assert_eq!(response["stopReason"], "max_tokens");
+    assert_eq!(response["_meta"]["claudeCode"]["result"]["stop_reason"], "stop_sequence");
+    assert!(answers_of(&bench.turn_updates(limited)).iter().all(|answer| !answer.starts_with("API Error")));
+
+    let used_up = bench.prompt("USE-TOOL");
+    assert_eq!(bench.result(used_up)["stopReason"], "max_turn_requests");
+}
+
 // ── 멈추기 · 권한 · 바꾸기 ───────────────────────────────────────────────────────────
 
 #[test]

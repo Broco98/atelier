@@ -336,3 +336,42 @@ describe("Runtime 경고의 자리", () => {
     expect(renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" onRetry={() => {}} />)).toContain("끝났어요");
   });
 });
+
+// 실패한 턴과 끝 까닭의 안내(01b-5 · Cards 보드) — 글이 있어도 턴 끝 자리에 안내 줄이 선다. 문장은 `fold.test.ts`의 `endNotice`가 재고, 여기서는 자리를 잰다.
+describe("턴 끝 안내", () => {
+  const record = (name: string): RecordLine[] =>
+    readFileSync(fileURLToPath(new URL(`../../../crates/atelier-acp/tests/records/${name}.jsonl`, import.meta.url)), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as RecordLine);
+  const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
+  const flow = (lines: readonly RecordLine[]) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />);
+  const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
+
+  it("실패한 턴은 받은 글 뒤에 안내가 서고 「다시 시도」도 복사 줄도 없다", () => {
+    const markup = flow(through(record("thread-failed"), 7));
+    expect(markup.indexOf("fails in the middle")).toBeGreaterThan(-1);
+    expect(markup.indexOf('data-end-notice="failed"')).toBeGreaterThan(markup.indexOf("fails in the middle"));
+    expect(words(markup)).toContain("이 턴이 실패로 끝났어요.");
+    expect(words(markup)).toContain("받은 글까지는 남아 있어요.");
+    expect(markup).not.toContain("다시 시도");
+    expect(markup).not.toContain("답 복사");
+  });
+
+  it("거절과 턴 한도도 안내 줄로 선다", () => {
+    expect(words(flow(through(record("thread-limits"), 8)))).toContain("이 요청에는 답할 수 없어요.");
+    expect(flow(record("thread-limits"))).toContain('data-end-notice="max_turn_requests"');
+  });
+
+  it("끊긴 턴은 실패 안내가 아니라 끊김 줄이다", () => {
+    const at = "2026-10-10T10:01:00.000+09:00";
+    const markup = flow([
+      { seq: 1, at, kind: "sent", payload: { text: "고쳐 줘" } },
+      { seq: 2, at, kind: "session", payload: { state: "died", reason: "signal 9" } },
+    ]);
+    expect(markup).not.toContain("data-end-notice");
+    expect(words(markup)).toContain("답하지 못했습니다. Claude Code가 끝났어요.");
+    expect(markup).toContain("다시 시도");
+  });
+});

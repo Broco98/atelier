@@ -14,6 +14,7 @@
 //! - 옮기지 않는 것: 모델이 `Skill`을 부를 때 · 압축이 요약문을 넣을 때 생기는 `isSynthetic` 글(사람의 말이 아니다, 실측 함정 34) ·
 //!   `isReplay` 글(사람이 보낸 말의 메아리 — 호스트가 이미 `sent`로 적었다. 압축의 `local-command-stdout`도 이 꼴이다) · 훅 ·
 //!   `thinking_tokens` · `rate_limit_event` · 글 조각이 아닌 `stream_event` · 글이 빈 조각 · 서브에이전트의 조각(`parent_tool_use_id`).
+//!   API 오류를 감싼 `<synthetic>` 답(`is_api_error_message`)은 상태 기계가 답으로 옮기지 않는다 — 같은 글이 `result`에 있다.
 //! - **서브에이전트**(`Agent`, 워크플로 함정 10) — 그 안에서 일어난 일(`parent_tool_use_id`가 붙은 줄)과 `task_*` 이벤트는
 //!   대화의 흐름이 아니라 그 도구 줄의 `_meta`로 싣는다. 서브에이전트의 글이 대화의 답으로 섞이지 않고, 기록에는 평가의
 //!   재료로 남는다(three-axes 결정 18). 화면은 이 원문에서 안쪽 도구를 모두 쥐어 그린다(`subagent.ts` — 표를 바꾸면 그쪽도 바꾼다).
@@ -235,20 +236,41 @@ impl Stream {
 
 /// `result` → `session/prompt`의 답. 끝 까닭을 ACP 이름으로 옮기고, `result` 원문(비용 · 사용량 · 서브에이전트 통계 · 끝난
 /// 까닭)을 `_meta`에 싣는다 — 호스트가 턴 끝 줄에 남기는 평가의 재료다(three-axes 결정 18). `interrupted`는 그 턴에
-/// 변환기가 interrupt를 보냈나다.
+/// 변환기가 interrupt를 보냈나다. 실패한 턴([`failure`])은 답이 아니라 오류로 끝난다.
 pub(super) fn prompt_response(result: &Value, interrupted: bool) -> Value {
     json!({"stopReason": stop_reason(result, interrupted), "_meta": {"claudeCode": {"result": result}}})
 }
 
-/// claude의 끝 → ACP `stopReason`. 모르는 값과 우리가 끊지 않은 `error_during_execution`은 `end_turn`이다(워크플로 §8).
-/// 우리가 interrupt를 보낸 턴의 `error_during_execution`(`terminal_reason: aborted_tools | aborted_streaming`)만
-/// `cancelled`다 — interrupt가 닿기 전에 턴이 끝났으면 그 끝 그대로다(워크플로 관문 G2).
+/// 턴이 실패했으면 그 까닭 — `is_error`가 참이고 우리가 끊지 않았고 끝 까닭으로 말할 수 없는 턴이다(restart 01b-5). `subtype: "success"`로
+/// 오는 API 오류도 같다. 거절 · 길이 제한 · 턴 한도도 `is_error`로 끝나지만(2.1.316 실측) 그 `stopReason`으로 둔다. interrupt를 보낸 턴은
+/// 어떻게 끝났든 사람이 멈춘 턴이다.
+pub(super) fn failure(result: &Value, interrupted: bool) -> Option<String> {
+    (result["is_error"] == true && !interrupted && stop_reason(result, interrupted) == "end_turn").then(|| why(result))
+}
+
+/// claude가 말한 까닭 — API 오류는 `result`의 글이고 실행 오류는 `errors`다. 둘 다 없으면 `subtype`이다.
+pub(super) fn why(result: &Value) -> String {
+    if let Some(said) = result["result"].as_str().filter(|said| !said.trim().is_empty()) {
+        return said.to_owned();
+    }
+    let errors: Vec<&str> = result["errors"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    if errors.is_empty() {
+        result["subtype"].as_str().unwrap_or("result").to_owned()
+    } else {
+        errors.join(" · ")
+    }
+}
+
+/// claude의 끝 → ACP `stopReason`. 모르는 값은 `end_turn`이다(워크플로 §8). 우리가 interrupt를 보낸 턴의 `error_during_execution`
+/// (`terminal_reason: aborted_tools | aborted_streaming`)만 `cancelled`다 — interrupt가 닿기 전에 턴이 끝났으면 그 끝 그대로다(워크플로 관문
+/// G2). 스스로 다시 묻다 끝낸 길이 제한은 `stop_reason`이 `stop_sequence`이고 끝 까닭이 `api_error` 칸에 있다(2.1.316 실측).
 fn stop_reason(result: &Value, interrupted: bool) -> &'static str {
     match (result["subtype"].as_str(), result["stop_reason"].as_str()) {
         (Some("error_during_execution"), _) if interrupted => "cancelled",
         (Some("error_max_turns"), _) => "max_turn_requests",
         (Some("success"), Some("max_tokens")) => "max_tokens",
         (Some("success"), Some("refusal")) => "refusal",
+        (Some("success"), _) if result["api_error"] == "max_output_tokens" => "max_tokens",
         _ => "end_turn",
     }
 }

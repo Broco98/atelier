@@ -4,8 +4,8 @@
 //!
 //! 세션 열기(three-axes 티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
 //! 턴(three-axes 티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
-//! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답). 답과 생각은 `--include-partial-messages`로 받아 조각으로
-//! 옮긴다(restart 01b).
+//! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답, 실패면 오류). 답과 생각은 `--include-partial-messages`로 받아
+//! 조각으로 옮긴다(restart 01b).
 //! 제어(three-axes 티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
 //! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
 //! 질문(`AskUserQuestion` → 물음을 실은 요청, v1 티켓 26), 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
@@ -559,11 +559,11 @@ impl Machine {
             self.not_opened(&line);
         } else if line["type"] == "result" {
             self.turn_ended(&line);
-        } else if line["type"] == "assistant" && line["error"] == AUTHENTICATION_FAILED {
-            // S3 — 로그인이 안 된 claude의 `<synthetic>` 오류(실측 함정 32 · 33). 답으로 옮기지 않는다 — 내장 명령의
-            // `<synthetic>` 답과는 `error` 키로 가른다. 그 턴의 `result`가 `-32000`이 된다.
+        } else if line["type"] == "assistant" && line["is_api_error_message"] == true {
+            // API 오류를 감싼 `<synthetic>` 줄(실측 함정 32 · 33, 2.1.316 실측). 답으로 옮기지 않는다 — 같은 글이 그 턴의 `result`에
+            // 실려 까닭이 되고, 내장 명령의 `<synthetic>` 답에는 이 표지가 없다. 미로그인(S3)이면 그 턴의 `result`가 `-32000`이 된다.
             if let Turn::Ours { auth_failed, .. } = &mut self.turn {
-                *auth_failed = true;
+                *auth_failed |= line["error"] == AUTHENTICATION_FAILED;
             }
         } else {
             let updates = self.stream.updates(&line);
@@ -832,13 +832,13 @@ impl Machine {
         }
     }
 
-    /// claude의 `result` — 턴 끝 하나다. 사용량을 알리고, 걸린 `session/prompt`에 끝 까닭으로 답한다. 둘째 턴부터 다시 오는
-    /// `system/init`은 새 세션이 아니므로 턴은 같은 세션에서 이어진다.
+    /// claude의 `result` — 턴 끝 하나다. 사용량을 알리고, 걸린 `session/prompt`에 끝 까닭으로 답한다. 실패한 턴이면 오류로 답한다
+    /// ([`turn_outcome`]). 둘째 턴부터 다시 오는 `system/init`은 새 세션이 아니므로 턴은 같은 세션에서 이어진다.
     ///
     /// - 백그라운드 작업이 남아도 여기서 턴을 끝낸다(S4) — 워크플로 티켓 09의 「한 턴으로 접기」는 하지 않는다. 사람이 dev 서버처럼
     ///   오래 사는 작업 뒤에 갇히지 않는다.
     /// - 걸린 `session/prompt`가 없는 `result`는 claude가 스스로 이어 간 턴의 끝이다 — `_meta.atelier.outOfTurn`으로 표시한 턴 밖
-    ///   끝 알림(`session_info_update`)을 낸다. 몸은 `session/prompt`의 답과 같은 꼴이다. 그 턴 뒤로 미뤄 둔 말이 있으면 이제 넣는다.
+    ///   끝 알림(`session_info_update`)을 낸다. 몸은 `session/prompt`의 답이나 오류와 같은 꼴이다. 그 턴 뒤로 미뤄 둔 말이 있으면 이제 넣는다.
     fn turn_ended(&mut self, result: &Value) {
         let Some(session_id) = self.session_id() else { return };
         self.stream.turn_ended();
@@ -852,15 +852,22 @@ impl Machine {
                     let data = json!({"claudeCode": {"result": result}});
                     self.send(error_with_data(&id, AUTH_REQUIRED, "Authentication required", data));
                 } else {
-                    self.send(reply(&id, stream::prompt_response(result, interrupted)));
+                    let answer = match turn_outcome(result, interrupted) {
+                        Ok(response) => reply(&id, response),
+                        Err(error) => json!({"jsonrpc": "2.0", "id": id, "error": error}),
+                    };
+                    self.send(answer);
                 }
                 return;
             }
             Turn::Claudes { interrupted, held } => (interrupted, held),
             Turn::Idle => (false, None),
         };
-        let response = stream::prompt_response(result, interrupted);
-        self.send(out_of_turn(&session_id, json!({"state": "ended", "response": response})));
+        let mark = match turn_outcome(result, interrupted) {
+            Ok(response) => json!({"state": "ended", "response": response}),
+            Err(error) => json!({"state": "ended", "error": error}),
+        };
+        self.send(out_of_turn(&session_id, mark));
         let Some(held) = held else { return };
         self.turn = Turn::Ours { id: held.id, interrupted: false, auth_failed: false };
         self.to_claude(held.line);
@@ -870,8 +877,7 @@ impl Machine {
     /// 요청에 답하고, 같은 id의 다음 단계(load)가 claude를 다시 띄우지 않게 기억한다.
     fn not_opened(&mut self, result: &Value) {
         let Some(opening) = self.take_opening() else { return };
-        let errors: Vec<&str> = result["errors"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-        let why = if errors.is_empty() { result["subtype"].as_str().unwrap_or("result").to_owned() } else { errors.join(" · ") };
+        let why = stream::why(result);
         let reason = if opening.revive {
             format!("claude가 세션을 되살리지 못했습니다: {why}")
         } else {
@@ -1011,6 +1017,15 @@ fn reply(id: &Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
 
+/// 턴의 끝 — `session/prompt`의 답, 실패한 턴이면 그 오류(`{code, message, data}`). 호스트는 오류를 턴 끝 줄의 `error` 칸에 적는다. 턴
+/// 밖 끝 표지도 같은 값을 싣는다. `data`에는 답의 `_meta`처럼 `result` 원문을 싣는다.
+fn turn_outcome(result: &Value, interrupted: bool) -> Result<Value, Value> {
+    match stream::failure(result, interrupted) {
+        Some(why) => Err(json!({"code": -32603, "message": why, "data": {"claudeCode": {"result": result}}})),
+        None => Ok(stream::prompt_response(result, interrupted)),
+    }
+}
+
 /// claude `AskUserQuestion`의 물음들 → 엔진이 읽는 꼴(v1 티켓 26) — `{question, header?, description?, multiSelect, options[]{label,
 /// description?}}`. 빈 글 칸은 뺀다. 미리보기(`preview`)는 싣지 않는다 — 질문 카드는 글로만 고른다. 물음 글이 없는 물음 · 이름이 없는
 /// 선택지는 버린다.
@@ -1060,7 +1075,7 @@ fn session_update(session_id: &str, update: Value) -> Value {
 }
 
 /// 턴 밖 턴의 표지(S4) — `session_info_update`의 `_meta.atelier.outOfTurn`에 시작(`{state: "started"}`) · 끝(`{state: "ended",
-/// response}`)을 싣는다. 호스트와의 계약이다(`host.rs`의 `OutOfTurn`).
+/// response}`, 실패면 `{state: "ended", error}`)을 싣는다. 호스트와의 계약이다(`host.rs`의 `OutOfTurn`).
 fn out_of_turn(session_id: &str, mark: Value) -> Value {
     session_update(session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"outOfTurn": mark}}}))
 }

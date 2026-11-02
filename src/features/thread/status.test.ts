@@ -192,6 +192,30 @@ describe("실패", () => {
     expect(statusOf(lines, live(22))).toEqual({ kind: "failed", at: second(22), text: "API 사용량을 넘었어요" });
   });
 
+  // 01b-5 — 글 유무가 아니라 `error`로 읽는다. 진짜 claude가 API 오류를 받은 기록이다(`thread-failed`).
+  it("글이 일부 온 뒤 오류로 끝난 턴도 실패다 — 읽어도 남는다", () => {
+    const failed = record("thread-failed");
+    const lines = through(failed, 7);
+    const words = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8123).";
+    expect(statusOf(lines, live(0))).toMatchObject({ kind: "failed", text: words });
+    expect(statusOf(lines, live(7))?.kind).toBe("failed");
+  });
+
+  it("스스로 이어 간 턴이 실패해도 실패다", () => {
+    expect(statusOf(through(record("thread-failed"), 17), live(13))?.kind).toBe("failed");
+  });
+
+  it("끝 까닭이 있는 턴은 실패가 아니다 — 길이 제한과 거절은 답을 낸 끝이다", () => {
+    expect(statusOf(through(record("thread-limits"), 8), live(0))?.kind).toBe("new");
+    expect(statusOf(record("thread-limits"), live(18))).toBeNull();
+  });
+
+  // 끊김은 실패한 턴이 아니지만(`TurnEnd.cut`) 사이드바의 표시는 같은 실패다 — 끝나지 않은 턴이 새 결과로 보이면 안 된다.
+  it("받은 글이 있어도 Session이 사라진 턴은 실패로 표시된다", () => {
+    const lines = [sent(1, "고쳐 줘"), answer(2, "고치는 중"), sessionLine(3, { state: "died", reason: "signal 9" })];
+    expect(statusOf(lines, live(0))).toEqual({ kind: "failed", at: second(3), text: "Claude Code가 끝났어요" });
+  });
+
   // 로그인 필요(three-axes 티켓 12)는 Session이 열리지 못한 것이다 — 보낸 말의 턴은 답을 받지 못한 채 열려 있다.
   it("로그인이 필요해 멈춘 Thread는 작업 중이 아니라 실패다", () => {
     const lines = [...twoTurns, sent(21, "이어서 해 줘"), sessionLine(22, { state: "login-required" })];
