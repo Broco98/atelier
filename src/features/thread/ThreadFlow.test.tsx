@@ -6,11 +6,14 @@ import { describe, expect, it } from "vitest";
 import { Arrival, settledPlace } from "./arrival";
 import { foldThread, type QuestionEntry } from "./fold";
 import { addChunk } from "./thread-store";
-import ThreadFlow, { AnsweredRow, DocPlace, type FlowActions } from "./ThreadFlow";
+import ThreadFlow, { AnsweredRow, DocPlace, TURN_BOX, TURN_GAP, type FlowActions } from "./ThreadFlow";
 import { threadUiStore, turnKey } from "./thread-store";
 import type { RecordLine } from "./types";
 
 const ACTIONS: FlowActions = { fill: () => {}, reconnect: () => {}, reconnecting: false, reconnectFailure: null };
+
+/** 말 머리(보낸 시각 · 「메시지 복사」 — restart 02b-6)를 걷은 흐름 — 턴의 줄과 안내만 재는 시험이 쓴다. 말 머리는 「내 말의 말 머리」가 잰다. */
+const withoutMeta = (markup: string) => markup.replace(/<div data-message-meta[^>]*>[\s\S]*?<\/div>/g, "");
 
 // 답한 카드(02 구현 스펙 §10 · 캔버스 v35 Components 「답한 카드」 · 02 코드 리뷰 S3) — 흐름에 물음마다 한 줄 카드로 남는다: **초록 ✓ 13** · 물은
 // 제목 · 오른쪽 끝 고른 답. 무엇이 서는지(물음마다의 줄 · 나중에)는 `question.test.ts`의 `answeredCards`가 재고, 여기서는 그 줄의 표지를 잰다 —
@@ -125,7 +128,7 @@ describe("Runtime 이름으로 말하는 흐름", () => {
     payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
   });
   const flow = (lines: readonly RecordLine[]) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />);
+    withoutMeta(renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />));
   const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
 
   // States 보드 04 「생각 중 — 보낸 뒤 첫 출력까지」(restart 02b-1). 한때 Runtime 이름의 「답하는 중」과 점 셋이 섰다.
@@ -180,6 +183,9 @@ describe("Runtime 이름으로 말하는 흐름", () => {
     );
     expect(markup).toContain("Claude Code가 만듦 · 27줄 · 같이 고칠 수 있어요");
     expect(markup).not.toContain("Host가 만듦");
+    // ChatCards 보드 「문서 카드」(restart 02b-6) — 답 아래 16(턴 안 줄 사이 8 + 8)이고, 여럿이면 사이 8로 쌓인다. 한때 답 아래 8이었다.
+    const docs = /<div data-created-docs="true" class="([^"]*)"/.exec(markup)?.[1].split(" ");
+    expect(docs).toEqual(expect.arrayContaining(["mt-2", "gap-2"]));
   });
 });
 
@@ -205,6 +211,19 @@ describe("답 아래 사용량", () => {
     const markup = flow(foldThread(lines.filter((line) => line.seq !== 18)));
     expect(shown(markup)).toEqual([]);
     expect(markup).toContain('aria-label="답 복사"');
+  });
+
+  // Cards 보드 「답 아래 줄」 `.ra-actions`(restart 02b-6) — 답(또는 문서 카드) 아래 12에 열 왼쪽 끝부터 선다. 복사는 26 · 둥근 8 · 글리프 14 ·
+  // `fg-tertiary`이고 사용량은 그 곁 2 + 8에 12 / 18이다. 한때 24 단추 · 글리프 15 · `fg-subtle`이 왼쪽으로 4 나가 답 아래 6에 섰다.
+  it("복사 단추는 26 · 글리프 14 · 옅은 글자이고, 줄은 답 아래 12에 열 왼쪽 끝부터 선다", () => {
+    const markup = flow(foldThread(lines));
+    const row = /<div data-answer-actions="true" class="([^"]*)">([\s\S]*?)<\/div>/.exec(markup);
+    expect(row?.[1].split(" ")).toEqual(expect.arrayContaining(["mt-1", "gap-0.5"]));
+    expect(row?.[1]).not.toMatch(/-ml-/);
+    const button = /<button[^>]*aria-label="답 복사"[^>]*class="([^"]*)"/.exec(row![2]) ?? /<button[^>]*class="([^"]*)"[^>]*aria-label="답 복사"/.exec(row![2]);
+    expect(button?.[1].split(" ")).toEqual(expect.arrayContaining(["icon-button-sm", "text-fg-tertiary"]));
+    expect(row![2]).toMatch(/<svg[^>]*class="[^"]*\bsize-3\.5\b/);
+    expect(row![2]).toMatch(/<span data-usage[^>]*class="[^"]*\bpl-2\b[^"]*\btext-xs\b/);
   });
 
   // 긴 답에서 이 줄을 더하는 배치가 턴 끝의 프레임에 얹히지 않게 한 프레임 뒤에 선다(01b-9). 처음 그린 화면에는 곧바로 선다.
@@ -445,8 +464,10 @@ describe("끊긴 턴의 안내", () => {
   };
   const cut: RecordLine[] = [{ seq: 1, at, kind: "sent", payload: { text: "고쳐 줘" } }, said, session(3, { state: "died", reason: "signal 9" })];
   const drawn = (lines: readonly RecordLine[], actions: Partial<FlowActions> | null = {}) =>
-    renderToStaticMarkup(
-      <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" actions={actions && { ...ACTIONS, ...actions }} />,
+    withoutMeta(
+      renderToStaticMarkup(
+        <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" actions={actions && { ...ACTIONS, ...actions }} />,
+      ),
     );
   const shown = (markup: string) => markup.replace(/<[^>]*>/g, " ");
 
@@ -640,6 +661,90 @@ describe("흐르는 글", () => {
       <ThreadFlow thread="흐름-없음" model={foldThread([sent(1, "물음"), thought(2, "")])} runtime="Claude Code" />,
     );
     expect(markup).toContain("생각 중");
+  });
+});
+
+// 턴 상자(restart 02b-6 · States · Thread · MainCards 보드 `.ra-turn`) — 턴 하나가 상자 하나다: 내 말(말풍선 · 말 머리), 턴의 줄, 그 턴 뒤에 온 PR
+// 카드가 칸 사이 16으로 선다. 턴 사이는 48(`--gap-turn`)이다. 한때 흐름 한 줄에 말풍선 · 턴 상자 · PR 카드가 나란히 줄 사이 46으로 섰다(02b-1).
+describe("턴 상자", () => {
+  const css = readFileSync(fileURLToPath(new URL("../../index.css", import.meta.url)), "utf8");
+  const lines = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-pr.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  /** 그 속성을 단 `div`마다의 마크업 — 열고 닫는 `div`를 세어 끝을 찾는다. */
+  const boxes = (markup: string, attribute: string) =>
+    [...markup.matchAll(new RegExp(`<div ${attribute}`, "g"))].map((match) => {
+      let depth = 0;
+      const tags = /<div\b|<\/div>/g;
+      tags.lastIndex = match.index;
+      for (let tag = tags.exec(markup); tag; tag = tags.exec(markup)) {
+        depth += tag[0] === "</div>" ? -1 : 1;
+        if (depth === 0) return markup.slice(match.index, tag.index + 6);
+      }
+      return markup.slice(match.index);
+    });
+
+  it("턴 사이는 `--gap-turn`의 48이고 턴 안 칸 사이는 16이다", () => {
+    const turnGap = /--gap-turn:\s*(\d+)px/.exec(css)?.[1];
+    expect(turnGap).toBe("48");
+    expect(TURN_GAP).toBe(`gap-${Number(turnGap) / 4}`);
+    expect(TURN_BOX.split(" ")).toContain("gap-4");
+  });
+
+  it("말과 턴의 줄, 턴 뒤에 온 PR 카드가 그 턴의 상자에 선다", () => {
+    const markup = renderToStaticMarkup(<ThreadFlow thread="턴-상자" model={foldThread(lines)} runtime="Claude Code" />);
+    const [box, ...more] = boxes(markup, "data-turn-box");
+    expect(more).toEqual([]);
+    expect(box).toContain("data-message-meta");
+    expect(box.split("<section").length - 1).toBe(lines.filter((line) => line.kind === "pr").length);
+    expect(box.indexOf("<section")).toBeGreaterThan(box.indexOf("답 복사"));
+  });
+});
+
+// 내 말의 말 머리(restart 02b-6 · Cards 보드 「내 말 — 기본 · 호버」 · Thread 보드 `.ra-msg-meta` · 스토리 72) — 말풍선 아래 4에 26 줄이 서고, 보낸
+// 시각과 「메시지 복사」가 옅음에서 호버로 선다. 줄은 늘 자리를 차지한다 — 호버로 흐름이 밀리지 않는다.
+describe("내 말의 말 머리", () => {
+  const today = (hour: number, minute: number) => {
+    const at = new Date();
+    at.setHours(hour, minute, 0, 0);
+    return at.toISOString();
+  };
+  const lines: RecordLine[] = [
+    { seq: 1, at: today(14, 14), kind: "sent", payload: { text: "테스트도 같이 돌려 줘" } },
+    {
+      seq: 2,
+      at: today(14, 15),
+      kind: "update",
+      payload: { sessionId: "s", update: { sessionUpdate: "agent_message_chunk", messageId: "m2", content: { type: "text", text: "돌렸어요" } } },
+    },
+    { seq: 3, at: today(14, 15), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false } },
+  ];
+  const flow = (pending: { text: string; attachments: []; quote: null } | null = null) =>
+    renderToStaticMarkup(<ThreadFlow thread="말-머리" model={foldThread(lines)} runtime="Claude Code" pending={pending} />);
+  /** 말 머리 줄 — 시각 · 복사 단추. */
+  const meta = (markup: string) => [...markup.matchAll(/<div data-message-meta[^>]*>([\s\S]*?)<\/div>/g)];
+
+  it("말풍선 아래에 보낸 시각과 「메시지 복사」가 선다", () => {
+    const [row, ...more] = meta(flow());
+    expect(more).toEqual([]);
+    expect(row[1].replace(/<[^>]*>/g, "")).toBe("오후 2:14");
+    expect(row[1]).toContain('aria-label="메시지 복사"');
+    const markup = flow();
+    expect(markup.indexOf("data-message-meta")).toBeGreaterThan(markup.indexOf("테스트도 같이 돌려 줘"));
+  });
+
+  it("호버 전에는 옅음 속에 숨어 자리만 차지하고, 말에 올리거나 초점이 들면 선다", () => {
+    const [row] = meta(flow());
+    const classes = /class="([^"]*)"/.exec(row[0])![1].split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["h-6.5", "opacity-0", "group-hover/message:opacity-100", "group-focus-within/message:opacity-100"]));
+  });
+
+  it("기록에 서기 전의 보낸 말에도 복사가 선다 — 시각은 기록이 말한다", () => {
+    const rows = meta(flow({ text: "이어서 고쳐 줘", attachments: [], quote: null }));
+    expect(rows).toHaveLength(2);
+    expect(rows[1][1]).toContain('aria-label="메시지 복사"');
+    expect(rows[1][1].replace(/<[^>]*>/g, "")).toBe("");
   });
 });
 

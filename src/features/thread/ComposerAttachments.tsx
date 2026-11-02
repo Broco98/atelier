@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
-import { File, FileText, Folder, Image, X, type LucideIcon } from "lucide-react";
+import { FileText, Folder, Image, X, type LucideIcon } from "lucide-react";
 import { threadApi } from "./api";
 import { Arriving } from "./arrival";
 import { addAttachments, attachmentKind, attachmentName, attachmentSize, removeAttachment, type AttachmentKind } from "./attachments";
@@ -15,9 +15,8 @@ import type { Attachment } from "./types";
 // - **받은 경로는 엔진이 잰다**(`describe_attachments` — 크기 · 폴더인가). 칩은 그 답으로 서고, 보낼 때 엔진이 같은 판정으로 다시 잰다.
 // - 내용은 읽지 않는다 — 그림도 칩(그림 아이콘 · 이름 · 크기)으로만 선다.
 
-const ICONS: Record<AttachmentKind, LucideIcon> = { file: File, image: Image, folder: Folder };
-/** 입력창 칩의 글리프 — 파일은 글 줄이 그어진 문서다(시안 Composer `ic-file-text`). */
-const COMPOSER_ICONS: Record<AttachmentKind, LucideIcon> = { ...ICONS, file: FileText };
+/** 칩의 글리프 — 파일은 글 줄이 그어진 문서다(시안 Composer · Cards `ic-file-text`). 입력창의 칩과 말풍선 위의 칩이 같다. */
+const ICONS: Record<AttachmentKind, LucideIcon> = { file: FileText, image: Image, folder: Folder };
 
 /** 받은 경로를 재서 그 입력창(`key`)의 칩으로 더한다. 거절되면 그 글로 실패한다(칩은 그대로다). */
 export async function attachPaths(key: string, paths: readonly string[]): Promise<void> {
@@ -78,7 +77,7 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
       {attachments.map((attached) => {
         const name = attachmentName(attached);
         const size = attachmentSize(attached);
-        const Icon = COMPOSER_ICONS[attachmentKind(attached)];
+        const Icon = ICONS[attachmentKind(attached)];
         return (
           <Arriving
             as="li"
@@ -106,24 +105,25 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
   );
 }
 
-/** 내 말풍선 위의 칩(보드 `.fchip` — 40 높이 · 떠 있는 면 · 그림 칸 24 · 이름 · 크기). 하나씩 한 줄에, 오른쪽에 붙는다. */
+/**
+ * 내 말풍선 위의 칩(Cards 보드 「내 말 — 첨부와 함께」 `.ra-att` · restart 02b-6) — 입력창의 칩과 같은 28 · 둥근 10 · `fill-soft` · 12 `fg-secondary`의
+ * 글리프 14 · 이름이고 ×가 없다(안쪽 오른쪽 6). 칩 사이 6으로 한 줄에 서서 오른쪽에 붙는다. 크기는 가리키면 경로와 함께 보인다. 한때 40 높이의
+ * 떠 있는 카드(보드 `.fchip`)가 하나씩 한 줄에 섰다.
+ */
 export function SentAttachments({ attachments }: { attachments: readonly Attachment[] }) {
   return (
-    <ul aria-label="첨부" className="flex max-w-[78%] flex-col items-end gap-2 self-end">
+    <ul aria-label="첨부" className="flex max-w-[78%] flex-wrap justify-end gap-1.5">
       {attachments.map((attached) => {
         const size = attachmentSize(attached);
         const Icon = ICONS[attachmentKind(attached)];
         return (
           <li
             key={attached.path}
-            title={attached.path}
-            className="inline-flex h-10 max-w-full items-center gap-2 rounded-2xl bg-surface pr-3 pl-2.5 text-chat-meta shadow-hairline"
+            title={size ? `${attached.path} · ${size}` : attached.path}
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-1.5 pl-2 text-xs text-fg-secondary"
           >
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-fill-soft text-fg-secondary">
-              <Icon className="size-3.5" aria-hidden />
-            </span>
+            <Icon className="size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0 truncate">{attachmentName(attached)}</span>
-            {size && <span className="shrink-0 text-xs text-fg-tertiary">{size}</span>}
           </li>
         );
       })}

@@ -430,7 +430,7 @@ fn service를_고치면_고친_칸만_바뀌고_결과_카드가_project_수와_
         "그 항목 줄만 끼운다 — 주석 · 나머지 글은 그대로(화면 상세의 넣기와 같은 core 고치기)"
     );
     assert!(!said[0].0 && said[0].1.starts_with("Service `결제-서비스`(결제 서비스)를 고쳤다 — Project: web-app, api-server, backoffice"), "{}", said[0].1);
-    assert!(said[0].1.contains("사람이 「관계 보기」로 그 화면에서 다시 고칠 수 있다"), "Service 고침 카드의 단추는 「관계 보기」다: {}", said[0].1);
+    assert!(said[0].1.contains("사람이 「열기」로 그 화면에서 다시 고칠 수 있다"), "Service 고침 카드의 단추도 「열기」다(restart 02b-6): {}", said[0].1);
     assert!(said[1].0 && said[1].1.contains("등록되지 않은 Project예요(billing)") && said[1].1.contains("고치지 않았다"), "{}", said[1].1);
     assert!(said[2].0 && said[2].1.starts_with("없는 Service다: 정산 — Service(list_services): 결제-서비스, 사내-도구"), "{}", said[2].1);
     assert_eq!(said[3], (false, "바뀐 것이 없다 — Service `결제-서비스`는 그대로다.".to_owned()));
@@ -439,7 +439,7 @@ fn service를_고치면_고친_칸만_바뀌고_결과_카드가_project_수와_
         cards,
         [json!({"action": "service-edited", "slug": "결제-서비스", "name": "결제 서비스", "title": "결제 서비스에 backoffice를 넣었어요",
                 "detail": "Project 3 · 함께 쓰는 Service 1"})],
-        "캔버스 F4-KitChat 「Service 고침」 칸 — 「관계 보기」"
+        "ChatCards 「Service 고침」 칸 — 단추는 「열기」(restart 02b-6)"
     );
 }
 

@@ -2,14 +2,14 @@ import { memo, useEffect, useRef, useState, type ReactElement } from "react";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Copy } from "lucide-react";
 import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
+import { CopyButton } from "./CopyButton";
 import { continueBlocks, type BlockScan } from "./markdown-blocks";
 
 // Agent 답의 본문(v1 티켓 05 · 캔버스 Messages 보드 「Agent 답변」 · 「스트리밍」) — 말풍선 없이 본문 그대로다(14/22.75 · 블록 사이 12).
 // three-axes 답(`chat/ChatMarkdown.tsx`)을 옮겨 왔고, 달라진 것은 둘이다.
-// - **코드 블록**은 보드의 `.cb`다 — `radius-3xl`(20) · `surface-code` 면 하나, 머리 34에 언어와 복사. 테두리가 없다.
+// - **코드 블록**은 Cards 보드의 `.at-code`다 — `radius-3xl`(20) · `surface-code` 면에 1 `border-light` 링, 머리에 언어와 복사(`CodeBlock`).
 // - **흐르는 답은 조각이 도착하는 방식으로 선다**(`streaming` — 02 구현 스펙 §12 「답 글자 도착」 · 스토리 99). 새로 온 낱말만
 //   .7s(`duration-arrive`) 동안 옅었다가 또렷해진다(`word-in`, index.css) — 깜빡이는 커서는 쓰지 않는다. 낱말을 감싸는 것은 hast 단계의
 //   작은 플러그인이다(`rehypeStream`): 렌더러는 같은 자리의 요소를 다시 쓰므로 이미 선 낱말은 다시 움직이지 않고, 끝에 붙은 낱말만 새로
@@ -79,25 +79,19 @@ const components: Components = {
   ),
 };
 
-/** 코드 블록 — 머리(언어 · 복사)와 고정폭 본문. 보드의 `.cb`(20 · `surface-code` · 머리 34)다. */
+/**
+ * 코드 블록(Cards 보드 「코드 블록」 · DS `.at-code` · restart 02b-6) — 둥근 20 · `surface-code` 면에 안쪽 1 `border-light` 링. 머리는 안쪽 12 12 4 16 ·
+ * 13 / 18에 언어(글 빛 그대로)와 오른쪽 복사(`CopyButton` — 26 · 글리프 14 · `fg-tertiary`, 스토리 72)이고, 본문은 안쪽 6 16 16 · 고정폭 13 / 20이다.
+ * 한때 보드의 `.cb`(머리 34 · 12 `fg-tertiary` 언어 · 링 없음)였다.
+ */
 function CodeBlock({ lang, code }: { lang: string | undefined; code: string }) {
-  const [copied, setCopied] = useState(false);
   return (
-    <figure className="overflow-hidden rounded-3xl bg-surface-code">
-      <div className="flex h-8.5 items-center gap-2 pr-1.5 pl-4 text-xs text-fg-tertiary">
+    <figure className="overflow-hidden rounded-3xl bg-surface-code inset-ring inset-ring-border-light">
+      <figcaption className="flex items-center gap-2 pt-3 pr-3 pb-1 pl-4 text-chat-meta">
         <span className="min-w-0 flex-1 truncate">{lang ?? "코드"}</span>
-        <button
-          type="button"
-          aria-label="코드 복사"
-          onClick={() => {
-            void navigator.clipboard?.writeText(code).then(() => setCopied(true));
-          }}
-          className="icon-button-quiet icon-button-sm text-fg-secondary focus-ring"
-        >
-          {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-        </button>
-      </div>
-      <pre className="overflow-x-auto px-4 pb-3.5 font-mono text-code scroll-quiet">
+        <CopyButton text={code} label="코드 복사" />
+      </figcaption>
+      <pre className="overflow-x-auto px-4 pt-1.5 pb-4 font-mono text-code scroll-quiet">
         <code className={lang ? `language-${lang}` : undefined}>{code}</code>
       </pre>
     </figure>

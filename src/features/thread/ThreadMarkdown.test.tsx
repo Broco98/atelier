@@ -78,3 +78,29 @@ describe("덩어리로 나눠 그린 답", () => {
     expect(markup).toContain('class="word-in">첫');
   });
 });
+
+// Cards 보드 「코드 블록」(restart 02b-6 · DS `.at-code`) — 둥근 20 · `surface-code` 면에 안쪽 1 `border-light` 링. 머리는 안쪽 12 12 4 16 · 13 / 18에 언어와
+// 오른쪽 복사(26 · 글리프 14 · `fg-tertiary` — `CopyButton`), 본문은 안쪽 6 16 16 · 고정폭 13 / 20이다. 한때 머리 34 · 12 `fg-tertiary` 언어 · 링 없음 ·
+// 본문 위 0 · 아래 14였다.
+describe("코드 블록", () => {
+  const markup = render("```rust\nconst DELAYS: [u64; 3] = [1, 2, 4];\n```", false);
+  const classes = (pattern: RegExp) => pattern.exec(markup)?.[1].split(" ") ?? [];
+
+  it("면은 둥근 20 · `surface-code` · 안쪽 1 `border-light` 링이다", () => {
+    expect(classes(/<figure class="([^"]*)"/)).toEqual(
+      expect.arrayContaining(["rounded-3xl", "bg-surface-code", "inset-ring", "inset-ring-border-light"]),
+    );
+  });
+
+  it("머리는 언어와 오른쪽 「코드 복사」이고, 복사 단추는 대화의 복사와 같다", () => {
+    expect(classes(/<figcaption class="([^"]*)"/)).toEqual(expect.arrayContaining(["pt-3", "pr-3", "pb-1", "pl-4", "gap-2", "text-chat-meta"]));
+    expect(markup).toMatch(/<figcaption[^>]*><span[^>]*>rust<\/span>/);
+    expect(classes(/<button[^>]*aria-label="코드 복사"[^>]*class="([^"]*)"/)).toEqual(
+      expect.arrayContaining(["icon-button-sm", "text-fg-tertiary"]),
+    );
+  });
+
+  it("본문은 안쪽 6 16 16의 고정폭 13 / 20이다", () => {
+    expect(classes(/<pre class="([^"]*)"/)).toEqual(expect.arrayContaining(["pt-1.5", "px-4", "pb-4", "font-mono", "text-code"]));
+  });
+});

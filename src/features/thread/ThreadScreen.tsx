@@ -57,7 +57,7 @@ import { atBottom, leavingPlace, type ReadingPlace } from "./reading-place";
 import { chatSeat, followTab, rightShown, useRightSeat, workSeat, type BodyTab, type RightMove } from "./right-place";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, FollowTail, StartingLine, TURN_GAP, UserMessage, type FlowActions, type SentWords } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, FollowTail, PendingTurn, type FlowActions, type SentWords } from "./ThreadFlow";
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
@@ -386,9 +386,8 @@ function NewChat({
       {starting !== null ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-8 pb-7 scroll-quiet">
           <Beside open={beside}>
-            <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
-              <UserMessage text={starting.text} attachments={starting.attachments} quote={starting.quote} />
-              <StartingLine />
+            <div className="text-chat-body">
+              <PendingTurn sent={starting} starting />
             </div>
           </Beside>
         </div>
