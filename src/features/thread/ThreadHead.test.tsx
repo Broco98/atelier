@@ -5,7 +5,7 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { SummaryToggle, ThreadMenu, ThreadMenuItems, WorkCrumb } from "./ThreadHead";
 
 // Thread 화면의 머리 줄(02 구현 스펙 §6 · S13 · S15 · 캔버스 v35 Screen-Live 머리 줄) — 왼쪽에 (이은 Work면 「폴더 · 작업공간 이름 ›」) ·
-// Thread 이름과 그 바로 뒤 「…」, 오른쪽 끝에 요약 고정 토글이 선다(restart 02a-7 — 자리는 `ThreadScreen.test.tsx`). 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
+// Thread 이름과 그 바로 뒤 「…」, 오른쪽 끝에 요약 단추(「요약 카드」)가 선다(restart 02a-7 — 자리는 `ThreadScreen.test.tsx`). 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
 // 눌림(`aria-pressed`)과 메뉴의 항목이다. 자리 · 색(14/500 · #898a8b · 켜진 면 #ebebec)은 시안 비교와 L3가 본다.
 
 const none = () => {};
@@ -52,14 +52,14 @@ describe("Thread 메뉴(S15)", () => {
   });
 });
 
-describe("요약 고정 토글", () => {
-  // 시안 Screen-Live의 머리 줄 오른쪽 끝 토글(`aria-label="요약 고정"`). 이름은 할 일이고 켬/끔은 `aria-pressed`가 말한다 — 눌러도 이름이
-  // 바뀌지 않는다. 요약 카드를 여닫고 Work 없는 Thread에도 선다(07).
-  it("이름은 「요약 고정」 하나이고, 열림을 aria-pressed로 말한다", () => {
+describe("요약 단추", () => {
+  // 시안 Main · MainLoose 창 머리 오른쪽의 단추(`aria-label="요약 카드"` — restart 02a-9 · SummarySheet 규격 「「요약 고정」에서 「요약 카드」로」).
+  // 이름은 여닫는 것이고 켬/끔은 `aria-pressed`가 말한다 — 눌러도 이름이 바뀌지 않는다. 요약 카드를 여닫고 Work 없는 Thread에도 선다(07).
+  it("이름은 「요약 카드」 하나이고, 열림을 aria-pressed로 말한다", () => {
     const on = renderToStaticMarkup(<SummaryToggle open onToggle={none} />);
     const off = renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />);
-    expect(on).toMatch(/^<button[^>]*aria-label="요약 고정"[^>]*aria-pressed="true"/);
-    expect(off).toMatch(/^<button[^>]*aria-label="요약 고정"[^>]*aria-pressed="false"/);
+    expect(on).toMatch(/^<button[^>]*aria-label="요약 카드"[^>]*aria-pressed="true"/);
+    expect(off).toMatch(/^<button[^>]*aria-label="요약 카드"[^>]*aria-pressed="false"/);
   });
 
   // 02 코드 리뷰 C1 — 맨 버튼이라 Tab 정류장임을 `tabindex`로 명시한다. macOS WebKit(앱의 WKWebView)의 Tab은 `tabindex` 없는 맨 `<button>`에

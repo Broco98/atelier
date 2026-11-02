@@ -47,10 +47,10 @@ describe("머리 줄에 보내는 것", () => {
         lead={<button type="button">작업공간 열기</button>}
         title={{ name: "구현" }}
         menu={<button type="button">채팅 메뉴</button>}
-        end={<button type="button">요약 고정</button>}
+        end={<button type="button">요약 카드</button>}
       />,
     );
-    const at = ["작업공간 열기", "구현", "채팅 메뉴", "data-head-actions", "요약 고정"].map((text) => html.indexOf(text));
+    const at = ["작업공간 열기", "구현", "채팅 메뉴", "data-head-actions", "요약 카드"].map((text) => html.indexOf(text));
     expect(at.every((one) => one > -1)).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
   });

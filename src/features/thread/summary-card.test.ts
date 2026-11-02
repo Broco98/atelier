@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ReadingScope, ScopeWhy } from "@/features/services/scope";
 import type { ProjectChanges, ProjectPr, SpecTree } from "@/features/works/types";
 import type { DocWriting } from "./types";
@@ -11,10 +11,8 @@ import {
   freshFiles,
   prRows,
   projectRows,
-  readSummaryOpen,
   sourceProjects,
   summarySections,
-  writeSummaryOpen,
   type PrRow,
   type SummaryInput,
 } from "./summary-card";
@@ -316,42 +314,5 @@ describe("소스의 Project — 읽는 범위(03 §7)", () => {
   it("범위를 아직 읽지 못했으면 worktree가 선 Project만 서고, Work 없는 Thread는 소스가 없다", () => {
     expect(sourceProjects(undefined, work(["api-server"]))).toEqual([{ project: "api-server", editing: true }]);
     expect(sourceProjects(undefined, null)).toEqual([]);
-  });
-});
-
-describe("요약 카드 열림 기억(S22)", () => {
-  const stored = new Map<string, string>();
-  beforeEach(() => {
-    stored.clear();
-    globalThis.localStorage = {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => void stored.set(key, value),
-    } as Storage;
-  });
-  afterEach(() => {
-    // @ts-expect-error — 시험이 심은 저장소를 걷는다.
-    delete globalThis.localStorage;
-  });
-
-  it("Thread마다 기억하고, 적은 적이 없으면 열려 있다 — 같은 Work의 다른 Thread는 따로다", () => {
-    expect(readSummaryOpen("20261025-100000")).toBe(true);
-    writeSummaryOpen("20261025-100000", false);
-    expect(readSummaryOpen("20261025-100000")).toBe(false);
-    expect(readSummaryOpen("20261025-110000"), "다른 Thread는 따로다").toBe(true);
-    writeSummaryOpen("20261025-100000", true);
-    expect(readSummaryOpen("20261025-100000")).toBe(true);
-  });
-
-  it("저장소를 읽지 못하면 열린 것으로 본다", () => {
-    globalThis.localStorage = {
-      getItem: () => {
-        throw new Error("막힘");
-      },
-      setItem: () => {
-        throw new Error("막힘");
-      },
-    } as unknown as Storage;
-    writeSummaryOpen("20261025-100000", false);
-    expect(readSummaryOpen("20261025-100000")).toBe(true);
   });
 });

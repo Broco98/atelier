@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "url";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/ui/toast";
 import { scopeKey } from "@/features/services/hooks";
 import type { ReadingScope, ScopeOf } from "@/features/services/scope";
@@ -13,8 +13,10 @@ import { worksQuery } from "@/features/works/hooks";
 import { workFixture } from "@/features/works/work-fixture";
 import { fillDraft, mergeLines, NEW_THREAD, setDraft, setQueue, takeFill } from "./thread-store";
 import { seedOf, withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
-import { NewThreadScreen, ThreadScreen, WorkChat } from "./ThreadScreen";
+import { NewThreadScreen, ThreadScreen, useWorkRightPlace, WorkChat, type ChatCard } from "./ThreadScreen";
 import type { ReadingPlace } from "./reading-place";
+import { chatSeat, moveSeat, rightPlaceStore } from "./right-place";
+import type { WorkView } from "@/features/works/types";
 import type { RecordLine, ThreadView } from "./types";
 
 // 엔진은 앱 명령으로만 닿는다 — 확인을 붙들어 두는 시험이 그 답을 정한다.
@@ -358,13 +360,19 @@ describe("새 채팅 화면", () => {
   });
 });
 
-// restart 02a-4 — 작업공간의 채팅은 작업공간 화면의 채팅 탭에 선다. 머리 줄은 작업공간의 것이라 채팅은 머리 없이 본문만 꽂히고(`PlainFrame`의
-// 머리는 셸 머리 줄에 포털해 겹친다), 요약 카드를 여닫는 단추는 **임시로** 탭 본문 오른쪽 위에 선다(02a-9가 창 머리로 옮긴다).
+/** 작업공간 화면이 채팅 탭 몸에 건네는 오른쪽 자리 — 시험은 값만 바꿔 건넨다. */
+function cardOf(over: Partial<ChatCard> = {}): ChatCard {
+  return { open: false, opened: null, docPlace: null, onShowChanges: () => {}, onOpen: () => {}, onClose: () => {}, ...over };
+}
+
+// restart 02a-4 — 작업공간의 채팅은 작업공간 화면의 채팅 탭에 선다. 머리 줄은 작업공간의 것이라 채팅은 머리 없이 본문만 꽂힌다(`PlainFrame`의
+// 머리는 셸 머리 줄에 포털해 겹친다). restart 02a-9 — 요약 단추는 작업공간 화면의 창 머리에 서고, 오른쪽 자리의 값은 작업공간 화면이 쥐어 몸에
+// 건넨다(`ChatCard`). 몸은 받은 대로 대화 폭과 카드 자리를 그린다.
 describe("작업공간의 채팅 탭", () => {
   const work = workFixture();
   const linked: ThreadView = { ...chat, id: "20261010-120000", work: work.slug };
 
-  function drawTab(view: ThreadView, place: ReadingPlace | null = null): string {
+  function drawTab(view: ThreadView, place: ReadingPlace | null = null, card: ChatCard = cardOf()): string {
     const client = new QueryClient();
     client.setQueryData(worksQuery().queryKey, [work]);
     client.setQueryData(threadQuery(view.id).queryKey, view);
@@ -372,7 +380,7 @@ describe("작업공간의 채팅 탭", () => {
     return renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ToastProvider>
-          <WorkChat thread={view.id} place={place} onLeave={() => {}} />
+          <WorkChat thread={view.id} card={card} place={place} onLeave={() => {}} />
         </ToastProvider>
       </QueryClientProvider>,
     );
@@ -396,11 +404,79 @@ describe("작업공간의 채팅 탭", () => {
     expect(html).toContain('aria-label="보낼 말"');
   });
 
-  it("요약 카드가 열린다 — 단추가 그 열림을 말한다", () => {
-    const html = drawTab(linked);
+  // 02a-4의 임시 단추(탭 몸 오른쪽 위)를 걷었다 — 단추는 창 머리 하나다(`WorksPage.test.tsx`).
+  it("몸 안에 요약 단추가 없다", () => {
+    const html = drawTab(linked, null, cardOf({ open: true }));
+    expect(html).not.toContain('aria-label="요약 카드"');
+    expect(html).not.toContain("요약 고정");
+  });
+
+  it("오른쪽 자리가 요약 카드면 카드가 서고, 아니면 없다", () => {
+    expect(drawTab(linked, null, cardOf({ open: true }))).toMatch(/<section[^>]*aria-label="요약"/);
+    expect(drawTab(linked, null, cardOf({ open: false }))).not.toMatch(/<section[^>]*aria-label="요약"/);
+  });
+
+  it("작은 카드는 대화를 넓은 폭 그대로 두고 판 위 · 오른쪽 8에 선다", () => {
+    const html = drawTab(linked, null, cardOf({ open: true }));
+    expect(html).toContain("width:100%");
+    expect(html).not.toContain("var(--size-thread-beside)");
+    // 단추가 쓰던 탭 몸 오른쪽 위 자리(02a-4의 임시 — 카드가 그 아래 `top-11`에 섰다)가 걷혀 카드가 판 위 8에 선다.
+    expect(html).toMatch(/class="pointer-events-none absolute[^"]*\btop-2\b/);
+    expect(html).not.toContain("top-11");
+  });
+
+  // 스토리 95 — 넓힌 카드는 대화 옆에 선다. 대화는 왼쪽 480(`size-thread-beside`)에 남고 카드가 그 오른쪽을 채운다.
+  it("넓힌 카드가 연 것이 있으면 대화가 왼쪽 480에 남고 카드가 넓어진다", () => {
+    const html = drawTab(linked, null, cardOf({ open: true, opened: { kind: "doc", path: "overview.md" } }));
+    expect(html).toContain("width:var(--size-thread-beside)");
+    expect(html).toContain("left:var(--size-thread-beside)");
+    expect(html).toMatch(/<section[^>]*aria-label="요약"[^>]*data-expanded=""/);
+  });
+});
+
+// restart 02a-9 · 스토리 93 · 94 · SummarySheet 표 — 탭 줄이 없는 채팅(작업공간 밖 · 보관)은 그 채팅을 열쇠로 오른쪽 자리를 쥔다(`chatSeat`).
+// 처음 열면 카드가 닫혀 있고 창 머리의 「요약 카드」가 연다. 작업공간 밖 채팅은 작은 카드만 쓴다 — 넓힐 곳이 없다.
+describe("탭 줄이 없는 채팅의 오른쪽 자리", () => {
+  afterEach(() => rightPlaceStore.setState(() => ({})));
+
+  it("처음 열면 요약 카드가 닫혀 있고 창 머리의 「요약 카드」가 꺼져 있다", () => {
+    const html = draw({ ...chat, id: "20261010-150000" });
+    expect(html).not.toMatch(/<section[^>]*aria-label="요약"/);
+    expect(/<button\b[^>]*aria-label="요약 카드"[^>]*>/.exec(headOf(html))?.[0]).toContain('aria-pressed="false"');
+  });
+
+  it("오른쪽 자리가 요약 카드면 작은 카드가 서고 단추가 켜진다", () => {
+    const id = "20261010-150001";
+    moveSeat(chatSeat(id), null, { kind: "toggle", place: "summary" });
+    const html = draw({ ...chat, id });
     expect(html).toMatch(/<section[^>]*aria-label="요약"/);
-    const toggle = /<button\b[^>]*aria-label="요약 고정"[^>]*>/.exec(html)?.[0] ?? "";
-    expect(toggle).toContain('aria-pressed="true"');
+    expect(/<button\b[^>]*aria-label="요약 카드"[^>]*>/.exec(headOf(html))?.[0]).toContain('aria-pressed="true"');
+  });
+
+  it("작업공간 밖 채팅에는 넓힌 카드가 없다 — 넓혀 둔 값이어도 작은 카드이고 대화가 넓은 폭이다", () => {
+    const id = "20261010-150002";
+    moveSeat(chatSeat(id), null, { kind: "expand", target: { kind: "doc", path: "overview.md" } });
+    const html = draw({ ...chat, id });
+    expect(html).toMatch(/<section[^>]*aria-label="요약"/);
+    expect(html).not.toContain("data-expanded");
+    expect(html).not.toContain("var(--size-thread-beside)");
+  });
+
+  it("값은 채팅마다다 — 한 채팅에서 연 카드가 다른 채팅에 서지 않는다", () => {
+    moveSeat(chatSeat("20261010-150003"), null, { kind: "toggle", place: "summary" });
+    expect(draw({ ...chat, id: "20261010-150004" })).not.toMatch(/<section[^>]*aria-label="요약"/);
+  });
+});
+
+// SummarySheet 표 「넓힌 카드」 · 「×」의 사이드바 칸 — 넓힌 카드가 서 있는 동안 사이드바가 접히고 걷히면 되돌아온다. 접기는 효과라 정적 그림에
+// 없다 — 판정(`rightShown`의 `opened`)은 `right-place.test.ts`가 재고, 여기서는 작업공간 화면의 오른쪽 자리가 그 판정으로 접는 배선을 못박는다.
+// 채팅 화면(탭 줄이 없는 채팅)에는 넓힌 카드가 없어 접는 자리가 없다. 손짓은 L3(02a-16)가 잰다.
+describe("넓힌 카드와 사이드바", () => {
+  const screen = readFileSync(fileURLToPath(new URL("./ThreadScreen.tsx", import.meta.url)), "utf8");
+
+  it("작업공간 화면의 오른쪽 자리가 넓힌 카드가 서 있는 동안 사이드바를 접는다 — 접는 자리는 거기 하나다", () => {
+    expect(screen).toContain("useFoldSidebar(shown.opened !== null);");
+    expect(screen.match(/useFoldSidebar\(/g)).toHaveLength(2);
   });
 });
 
@@ -412,12 +488,12 @@ const endOf = (head: string) => head.slice(head.indexOf("data-head-actions"));
 const titleTag = (head: string, title: string) => head.match(new RegExp(`<span[^>]*>${title}</span>`))?.[0] ?? "";
 
 // restart 02a-7 · 스토리 92 · 보드 MainLoose 창 머리 · Shell 「어디에 서나」 — 탭 줄이 없는 채팅(작업공간 밖 채팅, 작업공간이 보관되거나 지워져
-// 읽기만 되는 채팅)은 `/threads/:id`에 서고 창 머리를 쓴다: 셸 컨트롤 뒤 세로선 다음에 제목, 그 바로 뒤에 ⋯(채팅 메뉴)가 서고, 요약 단추는
-// 오른쪽 끝이다. 이름은 창 머리에서 바꾼다(두 번 클릭 · F2 · ⋯의 「이름 바꾸기」 — 읽기만인 채팅은 못 바꾼다).
+// 읽기만 되는 채팅)은 `/threads/:id`에 서고 창 머리를 쓴다: 셸 컨트롤 뒤 세로선 다음에 제목, 그 바로 뒤에 ⋯(채팅 메뉴)가 서고, 요약 단추
+// (「요약 카드」 — 02a-9)는 오른쪽 끝이다. 이름은 창 머리에서 바꾼다(두 번 클릭 · F2 · ⋯의 「이름 바꾸기」 — 읽기만인 채팅은 못 바꾼다).
 describe("탭 줄이 없는 채팅의 창 머리", () => {
   it("작업공간 밖 채팅은 제목 바로 뒤에 ⋯가 서고, 요약 단추만 오른쪽 끝에 선다", () => {
     const head = headOf(draw({ ...chat, id: "20261010-130000" }));
-    const at = [chat.title, 'aria-label="채팅 메뉴"', "data-head-actions", 'aria-label="요약 고정"'].map((one) => head.indexOf(one));
+    const at = [chat.title, 'aria-label="채팅 메뉴"', "data-head-actions", 'aria-label="요약 카드"'].map((one) => head.indexOf(one));
     expect(at.every((one) => one > -1), head).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
     expect(endOf(head)).not.toContain("채팅 메뉴");
@@ -455,6 +531,12 @@ describe("작업공간 밖 채팅의 대화", () => {
   const slug = "refund-partial-amount";
   const made = workFixture({ slug, specDir: `~/.atelier/works/${slug}/spec` });
 
+  /** 작업공간 화면이 하듯 그 작업공간의 오른쪽 자리를 쥐어 채팅 탭 몸에 건넨다 — 문서 카드의 자리(spec 폴더)도 거기서 온다. */
+  function TabBody({ id, work }: { id: string; work: WorkView }) {
+    const right = useWorkRightPlace(work, { split: false, chat: true, tab: 1 });
+    return <WorkChat thread={id} card={right.card} />;
+  }
+
   function drawWith(view: ThreadView, lines: RecordLine[], body: (id: string) => ReactNode): string {
     const client = new QueryClient();
     client.setQueryData(worksQuery().queryKey, [made]);
@@ -473,7 +555,7 @@ describe("작업공간 밖 채팅의 대화", () => {
     const loose = drawWith({ ...chat, id: "20261010-140000" }, blessed, (id) => <ThreadScreen thread={id} />);
     expect(loose).toContain("hello from turn");
     expect(loose).not.toMatch(pill);
-    const linked = drawWith({ ...chat, id: "20261010-140001", work: slug }, blessed, (id) => <WorkChat thread={id} />);
+    const linked = drawWith({ ...chat, id: "20261010-140001", work: slug }, blessed, (id) => <TabBody id={id} work={made} />);
     expect(linked).toMatch(pill);
   });
 
@@ -481,7 +563,7 @@ describe("작업공간 밖 채팅의 대화", () => {
     const last = worked[worked.length - 1].seq;
     const loose = drawWith({ ...chat, id: "20261010-140002", lastSeq: last }, worked, (id) => <ThreadScreen thread={id} />);
     expect(loose).not.toContain("data-doc-card");
-    const linked = drawWith({ ...chat, id: "20261010-140003", work: slug, lastSeq: last }, worked, (id) => <WorkChat thread={id} />);
+    const linked = drawWith({ ...chat, id: "20261010-140003", work: slug, lastSeq: last }, worked, (id) => <TabBody id={id} work={made} />);
     expect(linked).toContain("data-doc-card");
   });
 });

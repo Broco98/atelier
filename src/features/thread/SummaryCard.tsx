@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
@@ -46,11 +46,9 @@ import {
   finishedDocs,
   freshFiles,
   prRows,
-  readSummaryOpen,
   sourceProjects,
   summarySections,
   workPrsKey,
-  writeSummaryOpen,
   type ChangeSummary,
   type PrRow,
   type SourceRow,
@@ -89,24 +87,6 @@ import { Unfold } from "./WorkLog";
 
 /** 카드가 열린 동안 PR을 다시 읽는 간격(v1 §12 「카드가 열려 있는 동안 60초마다」). */
 const PR_EVERY = 60_000;
-
-/**
- * 그 Thread의 요약 카드가 열려 있나와 여닫기(S22) — 처음 보는 Thread는 이 컴퓨터에 적어 둔 값(없거나 못 읽으면 열림)이고, 여닫으면
- * 적는다. 적지 못해도 이 화면이 떠 있는 동안은 고른 대로다. Thread가 없으면(카드가 서지 않는 자리) 늘 닫혀 있다.
- */
-export function useSummaryOpen(thread: string | null): [boolean, (open: boolean) => void] {
-  const [chosen, setChosen] = useState<Readonly<Record<string, boolean>>>({});
-  const open = thread !== null && (chosen[thread] ?? readSummaryOpen(thread));
-  const set = useCallback(
-    (next: boolean) => {
-      if (thread === null) return;
-      writeSummaryOpen(thread, next);
-      setChosen((now) => ({ ...now, [thread]: next }));
-    },
-    [thread],
-  );
-  return [open, set];
-}
 
 /** 카드의 겉(Codex 요약 카드) — 진행 중이든 보관됐든 Work가 없든 같다. */
 const SHELL =

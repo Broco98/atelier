@@ -100,6 +100,7 @@ describe("말의 사전", () => {
         "상태 표시",
         "알림 띠",
         "요약 카드",
+        "오른쪽 자리",
         "고르는 것의 라벨은 소문자 영어",
       ]),
     );
@@ -153,6 +154,27 @@ describe("말의 사전", () => {
   // ui-refresh 결정 9 · 10. 작업 패널을 고르는 칸이 패널 머리의 탭에서 바탕 오른쪽 끝의 레일로 나갔다. 사전이 그 자리를 모르면
   // 다음 사람이 옛 말 「패널 탭」으로 부르는데, 레일 칸은 켜진 것이 0개일 수 있어(켜진 칸을 다시 누르면 닫힌다) 탭이 아니다.
   // 거부어에 들어야 접근성 이름 검사(위)가 레일 묶음 · 칸 · 토글의 이름에서 그 낱말을 문다.
+  // restart 02a-9 · 스토리 93 · 94 · 96 — spec 패널과 요약 카드는 오른쪽 자리 하나를 나눠 쓴다. 요약 단추의 이름은 「요약 카드」다(한때 「요약
+  // 고정」). 열림은 Thread마다 적던 값(02 S22)이 아니라 오른쪽 자리의 값이다.
+  it("「오른쪽 자리」가 spec 패널과 요약 카드가 나눠 쓰는 값 하나를 말하고, 「요약 카드」가 창 머리의 「요약 카드」를 말한다", () => {
+    for (const piece of ["spec 패널", "요약 카드", "하나만", "작업공간마다", "넓힌 카드", "사이드바", "작업공간 밖 채팅"]) {
+      expect(bodyOf("오른쪽 자리"), piece).toContain(piece);
+    }
+    expect(bodyOf("요약 카드")).toContain("「요약 카드」");
+    expect(bodyOf("요약 카드")).toContain("오른쪽 자리");
+    expect(bodyOf("요약 카드")).not.toMatch(/요약\s*고정/);
+    expect(bodyOf("요약 카드")).not.toContain("Thread마다 기억");
+    expect(bodyOf("패널 토글")).toContain("오른쪽 자리");
+  });
+
+  // restart 02a-10 · SummarySheet 표의 탭 줄 — 카드는 채팅 탭에 선다. 셸 · 파일 탭이 켜지면 닫히고, 다른 채팅 탭이면 작은 카드로 돌아오며, 셸 ·
+  // 파일 탭에서 「요약 카드」를 누르면 채팅 탭을 먼저 켠다.
+  it("「오른쪽 자리」가 탭을 옮길 때의 규칙을 말한다", () => {
+    for (const piece of ["채팅 탭에 선다", "셸 · 파일 탭이 켜지면", "다른 채팅 탭", "채팅 탭을 먼저 켠다", "가장 최근에 켠 채팅 탭"]) {
+      expect(bodyOf("오른쪽 자리"), piece).toContain(piece);
+    }
+  });
+
   it("「레일」 · 「패널 토글」이 등재돼 있고, 「레일」이 「패널 탭」을 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["레일", "패널 토글"]));
     expect(bodyOf("레일")).toContain("_피할 말_: 패널 탭");
@@ -436,10 +458,11 @@ describe("말의 사전", () => {
   // 02 구현 스펙 §2 · §7. v1 Work 카드를 Codex 요약 카드로 바꿨다 — Work 없는 Thread에도 서고, 열림은 Work가 아니라 Thread마다 기억한다.
   // 사전이 옛 말을 그대로 두면 다음 사람이 「Work의 자리」로 읽어 Work 없는 Thread에서 카드를 걷거나 기억을 Work로 되돌린다. Processes의
   // 「맨 위 요약 카드」는 합계 카드라 불러 두 말이 겹치지 않는다.
-  it("「요약 카드」가 등재돼 있고 「Work 카드」를 거부하며, Work 없는 Thread · Thread마다 기억을 말한다", () => {
+  // restart 02a-9 — 열림은 Thread마다 적던 값이 아니라 오른쪽 자리의 값이다(위 「오른쪽 자리」).
+  it("「요약 카드」가 등재돼 있고 「Work 카드」를 거부하며, Work 없는 Thread · 오른쪽 자리를 말한다", () => {
     expect(names).not.toContain("Work 카드");
     expect(refused).toEqual(expect.arrayContaining(["Work 카드", "Work 패널"]));
-    for (const piece of ["Work 없는 Thread면 결과물 · 소스만", "Thread마다 기억한다", "「모두 보기」", "보관됨"]) {
+    for (const piece of ["Work 없는 Thread면 결과물 · 소스만", "오른쪽 자리의 값이다", "「모두 보기」", "보관됨"]) {
       expect(bodyOf("요약 카드"), piece).toContain(piece);
     }
     expect(bodyOf("Processes")).toContain("합계 카드");
