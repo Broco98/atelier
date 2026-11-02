@@ -188,6 +188,33 @@ mod tests {
     }
 
     #[test]
+    fn 버리라는_메시지가_지금_흐름일_때만_쌓인_글을_버리고_그_흐름을_지울_조각을_돌려준다() {
+        let mut chunks = Chunks::default();
+        chunks.push(message(json!("끝난"), "끝난 글"));
+        assert_eq!(chunks.discard("다른"), None, "지금 흐름이 아닌 메시지는 버리지 않는다");
+
+        let written = chunks.push(message(json!("끊긴"), "끊긴 글")).expect("앞 흐름은 기록 줄이 된다");
+        assert_eq!(written["update"]["content"]["text"], "끝난 글");
+        assert_eq!(chunks.discard("끝난"), None, "이미 기록 줄이 된 흐름은 그대로다");
+
+        let gone = FlowChunk { stream: 2, kind: FlowKind::Message, offset: 0, text: String::new(), discarded: true };
+        assert_eq!(chunks.discard("끊긴"), Some(gone));
+        assert_eq!((chunks.flowing(), chunks.unsent(), chunks.take()), (None, None, None), "버린 글은 어디로도 나가지 않는다");
+
+        chunks.push(message(json!("다시"), "다시 받은 글"));
+        assert_eq!(chunks.flowing().map(|chunk| (chunk.stream, chunk.text)), Some((3, "다시 받은 글".to_owned())), "다시 받은 글은 새 흐름이다");
+    }
+
+    #[test]
+    fn 버리라는_표지는_session_info_update의_discardMessage다() {
+        let mark = update(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"discardMessage": "msg_1"}}}));
+        assert_eq!(discarded(&mark), Some("msg_1"));
+        let other = update(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"outOfTurn": {"state": "started"}}}}));
+        assert_eq!(discarded(&other), None);
+        assert_eq!(discarded(&message(json!("msg_1"), "글")), None);
+    }
+
+    #[test]
     fn 글이_아닌_내용과_사람의_조각은_쌓을_조각이_아니다() {
         assert!(is_chunk(&message(json!("m"), "글")));
         let image = update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "image", "data": "…"}}));
