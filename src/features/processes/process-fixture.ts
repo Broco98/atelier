@@ -11,6 +11,7 @@ import type {
   ProcessRow,
   ProcessSnapshot,
   Share,
+  Unread,
 } from "./types";
 
 // 검사가 짓는 프로세스 자료 — 지표 · 신원 · 스냅샷의 행 · 풀의 셸 · 스냅샷. **이 모양을 리터럴로 짓는 자리를 여기 하나로 모았다**(코드
@@ -90,6 +91,9 @@ export const NO_TOTALS: AtelierTotals = { total: null, cpu: null, app: null, web
 /** 아무것도 못 읽은 아틀리에 앱의 줄(macOS 밖의 앱과 같다). */
 export const NO_BODY: BodyRows = { rust: NO_METRICS, webview: NO_METRICS, webkit: [] };
 
+/** 못 읽은 것이 없는 장 — 까닭마다 0이다(macOS 밖의 앱과 같다). */
+export const NO_UNREAD: Unread = { denied: 0, gone: 0, other: 0 };
+
 /** 못 잰 몫 — 「—」. */
 export const NO_SHARE: Share = { cpu: null, memory: null };
 
@@ -140,6 +144,7 @@ export function snapshotFixture({ verdict = {}, ...over }: SnapshotOver = {}): P
     instances: [],
     recordHead: null,
     measuredAt: MEASURED_AT,
+    unread: NO_UNREAD,
     mac: null,
     atelier: NO_TOTALS,
     body: NO_BODY,

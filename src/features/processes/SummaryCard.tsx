@@ -4,6 +4,7 @@ import { terminalStore } from "@/features/terminal/terminal-store";
 import { cn } from "@/lib/utils";
 import { useProcessTrend } from "./hooks";
 import { NOT_READ } from "./metrics";
+import { STALE_FIGURE } from "./tree-rows";
 import {
   WEBVIEW_EXCLUDED,
   appBodyNote,
@@ -138,14 +139,15 @@ function Dot() {
 }
 
 /**
- * 타일의 큰 수 — 숫자는 `heading-lg`, 단위(`GB` · `%` · `개`)는 14 · 500 `fg-secondary`다(DS `.at-tile .v`). **글자는 이어 붙는다**:
+ * 타일의 큰 수 — 숫자는 `heading-lg`, 단위(`GB` · `%` · `개`)는 14 · 500 `fg-secondary`다(DS `.at-tile .v`). 값이 멎으면 옅어진다(`STALE_FIGURE`
+ * — restart 03-9). **글자는 이어 붙는다**:
  * 요소의 글자가 표기 함수의 결과(`formatMemory` · `formatHeadCpu`) 그대로라, 스냅샷의 값을 같은 함수로 적은 글자를 L3가 이 요소에서
  * 읽는다. 못 읽은 값(「—」)은 단위가 없다.
  */
 function Figure({ text, ...rest }: { text: string; "data-figure"?: string }) {
   const [, value = text, unit = ""] = /^(.*\d)(\D*)$/.exec(text) ?? [];
   return (
-    <p className="text-heading-lg whitespace-nowrap tabular-nums" {...rest}>
+    <p className={cn("text-heading-lg whitespace-nowrap tabular-nums", STALE_FIGURE)} {...rest}>
       {value}
       {unit && <span className="ml-0.5 text-sm font-medium text-fg-secondary">{unit}</span>}
     </p>

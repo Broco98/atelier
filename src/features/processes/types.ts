@@ -124,6 +124,8 @@ export interface ProcessSnapshot {
   recordHead: number | null;
   /** 이 장을 잰 시각(에포크 ms) — 머리의 「…에 잰 값」(restart 03-5 · 스토리 129). */
   measuredAt: number;
+  /** 이 장에서 지표를 못 읽은 것의 수 — 까닭마다(restart 03-9 · 스토리 133). 그 몫은 시스템 · 못 읽음에 든다. */
+  unread: Unread;
   /**
    * 맥 전체 — 줄과 같은 순간에 읽었다(restart 03-5 「한 표본」). macOS 밖이면 `null`이다 — 화면이 「측정 안 됨」으로 말한다.
    */
@@ -134,6 +136,19 @@ export interface ProcessSnapshot {
   body: BodyRows;
   /** 맥 전체의 나눔 — 다른 앱의 줄, 시스템 · 못 읽음, 합계(restart 03-6). 아틀리에의 몫은 `atelier`다. */
   breakdown: Breakdown;
+}
+
+/**
+ * **못 읽은 것의 수 — 까닭마다**(restart 03-9 · 스토리 133) — Rust `processes::metrics::Unread`. 우리 트리와 다른 앱 가운데 지표를 못 읽은
+ * 것이다. 그 몫은 맥 전체에서 읽은 합을 뺀 「시스템 · 못 읽음」에 든다. macOS 밖은 아무것도 안 읽어 늘 0이다.
+ */
+export interface Unread {
+  /** 커널이 읽기를 거절했다 — 남의 uid(`sudo` 밑의 것). */
+  denied: number;
+  /** 그사이 끝났다 — 표를 찍은 뒤 읽기 전에 끝난 것, 좀비, pid가 남에게 넘어간 것. */
+  gone: number;
+  /** 그 밖의 까닭 — 커널이 다른 오류를 줬다. */
+  other: number;
 }
 
 /**

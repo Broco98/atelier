@@ -297,6 +297,12 @@ function Guide() {
 export const CoresContext = createContext<number | null>(null);
 
 /**
+ * **멈춘 숫자는 옅다**(restart 03-9 · 시안 `.pr-root[data-stale="true"] .pr-num, .pr-mem` — 50%). 화면의 구르는 몸이 멈춤이면 `data-stale`을 단다
+ * (`ProcessesPage` · `group/sample`). 줄의 메모리 · CPU 칸과 요약 타일의 큰 수가 이것을 입는다 — 포트 · 이름은 그대로다.
+ */
+export const STALE_FIGURE = "group-data-stale/sample:opacity-50";
+
+/**
  * 줄의 숫자 칸 — 메모리 · CPU · 포트(프로세스 결정 10 · 티켓 28). 글자는 표기 함수의 결과 그대로다(`formatMemory` · `formatCpu` ·
  * `formatPorts` — nav 메타와 다른 묶음도 같은 함수를 읽는다). 숫자 열은 오른쪽 맞춤이다.
  *
@@ -325,7 +331,7 @@ function Figures({
     <>
       <span className="flex items-center justify-end gap-2 whitespace-nowrap">
         {share !== null && <MemoryBar share={share} />}
-        <span data-cell="memory" className="tabular-nums">
+        <span data-cell="memory" className={cn("tabular-nums", STALE_FIGURE)}>
           {formatMemory(metrics.memory)}
         </span>
       </span>
@@ -334,7 +340,7 @@ function Figures({
       <span
         data-cell="cpu"
         title={tip && cores !== null ? activityMonitorTip(metrics.cpu, cores) : undefined}
-        className="text-right whitespace-nowrap tabular-nums"
+        className={cn("text-right whitespace-nowrap tabular-nums", STALE_FIGURE)}
       >
         {formatCpu(metrics.cpu)}
       </span>
@@ -365,11 +371,14 @@ export function LedgerRow({
   kind,
   name,
   note,
+  noteTip,
   metrics,
 }: {
   kind: "system" | "total";
   name: string;
   note: string;
+  /** 말의 툴팁 — 시스템 · 못 읽음 줄이 못 읽은 것의 까닭을 든다(restart 03-9). `title`이다(`Figures`의 포트 칸과 같은 까닭). */
+  noteTip?: string;
   metrics: ProcessMetrics;
 }) {
   return (
@@ -388,7 +397,9 @@ export function LedgerRow({
       <span className="flex min-w-0 items-center gap-1.5 self-stretch">
         <FoldSlot />
         <span className="shrink-0">{name}</span>
-        <span className="min-w-0 truncate text-xs font-normal text-fg-tertiary">{note}</span>
+        <span title={noteTip} className="min-w-0 truncate text-xs font-normal text-fg-tertiary">
+          {note}
+        </span>
       </span>
       <Figures metrics={metrics} ports={false} share={null} tip={false} />
       <span />

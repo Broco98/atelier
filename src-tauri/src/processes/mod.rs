@@ -43,7 +43,7 @@
 //! `pty.rs`에 있다.
 //!
 //! **안 쓰임 경고는 항목마다 끈다.** 수집 · 지표 · 웹뷰 물음은 macOS에만 있어, 다른 OS의 앱 빌드에서는 그것만 부르는 조각(`ProcArgs`
-//! · `ticks_to_ns` · `EnvScope::reads` · `Readings::skipped` · `WebContentAnswer::Late`)이 안 쓰인다 — 그 항목에만
+//! · `ticks_to_ns` · `EnvScope::reads` · `Unread::count` · `WebContentAnswer::Late`)이 안 쓰인다 — 그 항목에만
 //! `cfg_attr(not(target_os = "macos"), allow(dead_code))`를 단다(`quit.rs`의 `hook`과 같은 방식). 모듈 한 줄로 끄면 새로 죽은 코드가
 //! 어느 OS에서도 안 보인다.
 

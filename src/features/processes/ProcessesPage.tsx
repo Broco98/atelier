@@ -20,7 +20,7 @@ import {
 import { worksQuery } from "@/features/works/hooks";
 import { StatusIcon } from "@/features/works/status";
 import { askThenEnd } from "./actions";
-import { otherAppRows, systemNote, totalNote } from "./breakdown";
+import { otherAppRows, systemNote, totalNote, unreadNote } from "./breakdown";
 import CleanupLogSection from "./CleanupLogSection";
 import { OPEN_AT_FIRST, foldKey, liveFoldKeys, type Folds, type RowFold, type SectionId } from "./folds";
 import { useCleanupLog, useProcessSnapshot } from "./hooks";
@@ -37,6 +37,8 @@ import {
   subtreeAt,
   withMemory,
 } from "./process-tree";
+import { sampleNote } from "./sample-beat";
+import { BeatLine, SampleNoteBand, useSampleBeat } from "./SampleStatus";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
 import { webviewParts } from "./summary-card";
@@ -99,7 +101,12 @@ import type { CleanupEvent, PoolShell, ProcessMetrics, ProcessSnapshot } from ".
 const PLACE = navItem("processes");
 
 function ProcessesPage() {
-  const { data: snapshot, dataUpdatedAt } = useProcessSnapshot();
+  const query = useProcessSnapshot();
+  const { data: snapshot, dataUpdatedAt } = query;
+  // **믿을 수 있는 표시**(restart 03-9) — 머리가 잰 시각 · 첫 표본을 기다림 · 멈춤을 말하고, 안내 띠가 멈춤(다시 읽기)이나 못 읽은 것을 말한다.
+  // 멈춤이면 숫자가 옅어진다(구르는 몸의 `data-stale`).
+  const beat = useSampleBeat(query);
+  const note = sampleNote(beat, snapshot);
   // **이 화면이 서 있는 동안이 「화면이 열려 있다」다**(티켓 29) — nav 메타의 `●`가 창 포커스와 함께 이것으로 「봤다」를 가른다.
   useEffect(() => openProcessesScreen(), []);
   // 스토어의 셸 전부 — 화면마다 갈리지 않고 한 벌이다(owner가 화면을 싣는다). 상태 칸이 셸 상태를 읽으므로 좁히지 않는다.
@@ -186,19 +193,26 @@ function ProcessesPage() {
           items={(name) => <ProcessRowMenuItems name={name} />}
         >
           {(region) => (
+            // **멈춤이면 숫자가 옅어진다**(restart 03-9 · 시안 `.pr-root[data-stale="true"]` — 머리 숫자와 줄의 메모리 · CPU가 50%). 숫자 칸이
+            // 이 표식을 읽는다(`group-data-stale/sample`).
             <div
               onContextMenu={region.onContextMenu}
               onKeyDown={region.onKeyDown}
-              className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-10 scroll-quiet"
+              data-stale={beat.kind === "stalled" ? "" : undefined}
+              className="group/sample min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-10 scroll-quiet"
             >
               <div className="mx-auto w-full max-w-(--measure-wide)">
                 {/* **제목은 머리 줄이 보여 주고, 제목 역할은 이 줄이 진다** — 머리 줄의 이름은 제목 역할이 없는 글자라(설정
                     화면과 같은 사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
                 <h2 className="sr-only">{PLACE.label}</h2>
+                {/* 머리 — 언제 잰 값인지(restart 03-9 · 스토리 129 · 130 · 131). */}
+                <BeatLine beat={beat} />
                 {/* 줄의 CPU 칸에 포인터를 올리면 활성 상태 보기 눈금이 뜬다(restart 03-6) — 그 눈금의 코어 수다. */}
                 <CoresContext.Provider value={snapshot?.mac?.cores ?? null}>
                   {/* 요약 타일(티켓 30) — 메모리 합계와 추이 · CPU · 셸 · 고아. 셸 수(풀의 셸)도 여기 선다. */}
                   <SummaryCard snapshot={snapshot} />
+                  {/* 안내 띠 — 멈춤과 다시 읽기, 또는 남는 까닭으로 못 읽은 것(restart 03-9 · 시안 `pr-note`). */}
+                  {note && <SampleNoteBand note={note} />}
                   <ColumnHead />
                   {tree.length > 0 && (
                     // **작업 구획**(판 06 문구 표 R6) — 셸 묶음의 머리다. 수는 그 안의 셸이다.
@@ -301,10 +315,12 @@ function ProcessesPage() {
                   {/* 다른 앱과 시스템 · 못 읽음(restart 03-6) — 아틀리에 밖의 몫이다. */}
                   {snapshot && <OthersSection snapshot={snapshot} fold={folds.section("others")} />}
                   {snapshot && (
+                    // 못 읽은 것의 수는 이 줄의 말에, 까닭은 그 말의 툴팁에 선다(restart 03-9 — 그사이 끝난 것만이면 띠가 안 선다).
                     <LedgerRow
                       kind="system"
                       name="시스템 · 못 읽음"
                       note={systemNote(snapshot)}
+                      noteTip={unreadNote(snapshot) ?? undefined}
                       metrics={shareMetrics(snapshot.breakdown.system)}
                     />
                   )}

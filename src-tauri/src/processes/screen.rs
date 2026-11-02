@@ -30,7 +30,7 @@ use super::apps::OtherApp;
 use super::breakdown::Breakdown;
 use super::instances::{Build, InstanceFile};
 use super::machine::Machine;
-use super::metrics::Measured;
+use super::metrics::{Measured, Unread};
 use super::summary::{sum_read, Body, Totals};
 use super::verdict::{InstanceRecord, Verdict};
 use super::{shell_key, webkit, Identity, Proc};
@@ -52,6 +52,9 @@ pub struct ScreenSnapshot {
     pub record_head: Option<u64>,
     /// 이 장을 잰 시각(에포크 ms) — 머리의 「…에 잰 값」(restart 03-5 · 스토리 129).
     pub measured_at: u64,
+    /// 이 장에서 지표를 못 읽은 것의 수 — 까닭마다(restart 03-9 · 스토리 133). 우리 트리와 다른 앱의 읽기를 합친 것이다. 그 몫은 시스템 ·
+    /// 못 읽음에 든다 — 화면이 안내 띠와 그 줄의 말로 보인다.
+    pub unread: Unread,
     /// 맥 전체 — 줄과 같은 순간에 읽었다(restart 03-5). macOS 밖이면 `None`이다 — 화면이 「측정 안 됨」으로 말한다.
     pub mac: Option<Machine>,
     /// 아틀리에 합계 — 줄과 같은 표본에서 지었다(restart 03-5). 요약의 그것과 같은 함수다(`Totals::of`).
@@ -232,6 +235,7 @@ impl ScreenSnapshot {
             instances,
             record_head,
             measured_at: measured.measured_at,
+            unread: measured.unread,
             mac: measured.machine,
             body: BodyRows::of(body, measured),
             breakdown: Breakdown::of(&atelier, apps, measured.machine),
@@ -337,6 +341,8 @@ mod tests {
     ///
     /// **아틀리에 앱의 줄과 나눔도 싣는다**(restart 03-6) — 앱 본체(Rust)와 웹뷰(WebContent)의 지표(`body`), 다른 앱의 줄 · 시스템 ·
     /// 못 읽음 · 합계(`breakdown`). 아틀리에 합계에는 예외 · 고아 · 다른 인스턴스도 든다.
+    ///
+    /// **못 읽은 수를 까닭마다 싣는다**(restart 03-9) — 권한 없음 · 그사이 끝남 · 그 밖. 아무것도 안 읽은 장은 모두 0이다.
     #[test]
     fn the_snapshot_crosses_the_wire_in_the_shape_the_frontend_reads() {
         let mut vite = row(200, 100, "node");
@@ -380,6 +386,8 @@ mod tests {
             cpu: HashMap::from([(vite.id, 12.5), (zsh, 0.25), (app, 1.25), (tmux.id, 0.5)]),
             machine: Some(Machine { cpu: Some(37.5), memory: Some(12_884_901_888), cores: 10 }),
             measured_at: 1_758_000_100_000,
+            // 못 읽은 것 — 권한 없음 둘, 그사이 끝남 하나(restart 03-9).
+            unread: Unread { denied: 2, gone: 1, other: 0 },
         };
 
         let instances = vec![
@@ -460,6 +468,8 @@ mod tests {
                 ],
                 "recordHead": 7,
                 "measuredAt": 1_758_000_100_000u64,
+                // 이 장에서 못 읽은 것 — 까닭마다(restart 03-9). 그 몫은 시스템 · 못 읽음에 든다.
+                "unread": { "denied": 2, "gone": 1, "other": 0 },
                 "mac": { "cpu": 37.5, "memory": 12_884_901_888u64, "cores": 10 },
                 // 아틀리에 합계 — 앱 본체 + 이 실행의 셸(G-1의 zsh) + 셸의 자손(vite · esbuild · gitstatusd) + 예외(tmux)다. 고아 · 다른
                 // 인스턴스도 들지만 이 장에서는 못 읽었다. 줄과 같은 표본의 값이다.
@@ -492,6 +502,11 @@ mod tests {
             serde_json::to_value(ScreenSnapshot::of(&verdict, vec![], &Body::default(), &Measured::default(), vec![], vec![], None)).unwrap();
         assert_eq!(blank["recordHead"], serde_json::Value::Null, "머리가 없는데 번호가 섰다");
         assert_eq!(blank["mac"], serde_json::Value::Null, "맥 전체를 안 쟀는데(macOS 밖) 값이 섰다 — 화면이 「측정 안 됨」을 못 말한다");
+        assert_eq!(
+            blank["unread"],
+            serde_json::json!({ "denied": 0, "gone": 0, "other": 0 }),
+            "아무것도 안 읽었는데 못 읽은 것이 섰다"
+        );
         assert_eq!(
             blank["atelier"],
             serde_json::json!({ "total": null, "cpu": null, "app": null, "webviewExcluded": true }),

@@ -49,7 +49,10 @@ export interface CardFigures {
    * 맞는다」 — 줄을 더한 것과 머리가 같다).
    */
   cpu: string;
-  /** 머리 아래 줄 — 눈금(맥 전체 · 코어 수), 또는 왜 숫자가 없는지(첫 스냅샷 전 · 첫 표본 · macOS 밖). */
+  /**
+   * 머리 아래 줄 — 눈금(맥 전체 · 코어 수), 또는 왜 숫자가 없는지(첫 스냅샷 전 · 첫 표본 · macOS 밖). 첫 표본까지는 무엇을 기다리는지 말한다
+   * (restart 03-9 · 스토리 130).
+   */
   cpuNote: string;
   /** 아틀리에 메모리 합계. */
   memory: string;
@@ -69,11 +72,11 @@ export const NOT_MEASURED = "측정 안 됨";
  */
 export function cardFigures(snapshot: ProcessSnapshot | undefined): CardFigures {
   if (snapshot === undefined) {
-    return { cpu: NOT_READ, cpuNote: "재는 중", memory: NOT_READ, app: NOT_READ, webviewExcluded: false };
+    return { cpu: NOT_READ, cpuNote: "첫 표본을 찍는 중이에요", memory: NOT_READ, app: NOT_READ, webviewExcluded: false };
   }
   const { mac, atelier, breakdown } = snapshot;
   const cpuNote =
-    mac === null ? NOT_MEASURED : mac.cpu === null ? "두 번 재야 알 수 있어요" : `맥 전체 · 코어 ${mac.cores}개`;
+    mac === null ? NOT_MEASURED : mac.cpu === null ? "두 번 재야 알 수 있어요 · 곧 채워져요" : `맥 전체 · 코어 ${mac.cores}개`;
   return {
     cpu: formatHeadCpu(breakdown.total.cpu),
     cpuNote,

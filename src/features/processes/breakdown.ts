@@ -57,10 +57,44 @@ export function totalNote(snapshot: ProcessSnapshot): string {
   return overRead(snapshot) ? "이 표본은 읽은 값의 합이에요" : "맥 전체 측정값과 같아요";
 }
 
-/** **시스템 · 못 읽음 줄의 말**(시안 Processes) — 무엇을 뺀 몫인지, 넘은 표본은 왜 0인지. macOS 밖은 「측정 안 됨」이다. */
+/**
+ * **시스템 · 못 읽음 줄의 말**(시안 Processes) — 무엇을 뺀 몫인지, 넘은 표본은 왜 0인지. 못 읽은 것이 있으면 그 수가 이 몫에 들었다고
+ * 앞에 적는다(restart 03-9 · 시안 「일부 못 읽음」 — 까닭은 이 줄의 툴팁 `unreadNote`). macOS 밖은 「측정 안 됨」이다.
+ */
 export function systemNote(snapshot: ProcessSnapshot): string {
   if (snapshot.mac === null) return NOT_MEASURED;
-  return overRead(snapshot) ? "이 표본은 읽은 합이 측정값을 넘어 0이에요" : "측정값에서 읽은 것을 뺀 몫";
+  if (overRead(snapshot)) return "이 표본은 읽은 합이 측정값을 넘어 0이에요";
+  const unread = unreadCount(snapshot);
+  return unread > 0 ? `읽지 못한 ${unread}개 포함 · 측정값에서 읽은 것을 뺀 몫` : "측정값에서 읽은 것을 뺀 몫";
+}
+
+/** 이 장에서 못 읽은 것의 수 — 까닭을 가리지 않고. */
+function unreadCount(snapshot: ProcessSnapshot): number {
+  const { denied, gone, other } = snapshot.unread;
+  return denied + gone + other;
+}
+
+/**
+ * **못 읽은 수와 까닭**(restart 03-9 · 스토리 133 · 시안 Processes 「일부 못 읽음」) — 「3개를 읽지 못했어요 · 권한 없음 2, 그사이 끝남 1. 그 몫은
+ * 「시스템 · 못 읽음」에 들어 있어요.」 0인 까닭은 안 적는다. 다 읽었으면 없다. 안내 띠(`sampleNote`)와 시스템 · 못 읽음 줄의 툴팁이 이 글이다.
+ * 맥 전체가 없으면(macOS 밖) 그 몫을 보이는 줄이 없어 뒤 문장을 뺀다.
+ */
+export function unreadNote(snapshot: ProcessSnapshot): string | null {
+  const count = unreadCount(snapshot);
+  if (count === 0) return null;
+  const { denied, gone, other } = snapshot.unread;
+  const why = (
+    [
+      ["권한 없음", denied],
+      ["그사이 끝남", gone],
+      ["그 밖", other],
+    ] as const
+  )
+    .filter(([, n]) => n > 0)
+    .map(([name, n]) => `${name} ${n}`)
+    .join(", ");
+  const head = `${count}개를 읽지 못했어요 · ${why}.`;
+  return snapshot.mac === null ? head : `${head} 그 몫은 「시스템 · 못 읽음」에 들어 있어요.`;
 }
 
 /**

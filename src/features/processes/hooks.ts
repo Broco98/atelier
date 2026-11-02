@@ -1,4 +1,4 @@
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 import { processesApi } from "./api";
 
 // **`Processes` 화면의 폴러가 사는 자리다**(프로세스 스펙 「수집」 · 티켓 26). 터미널 폴더 밖에 두는 것은 그 폴더의 시계 규칙
@@ -33,6 +33,15 @@ export const snapshotQuery = queryOptions({
 
 export function useProcessSnapshot() {
   return useQuery(snapshotQuery);
+}
+
+/**
+ * **다시 읽기**(restart 03-9 · 스토리 132) — 박자(2초)를 기다리지 않고 **곧바로 한 번** 스냅샷을 묻는다. 묻는 중인 박자가 있으면 그것을 버리고
+ * 새로 묻는다(`cancelRefetch` — 멎은 물음을 기다리지 않는다). 실패하면 쿼리에 실패가 앉아 멈춤이 남는다(`beatOf`). 화면의 쿼리를 그대로
+ * 다시 묻는다 — 보는 쪽을 하나 더 세우면 박자가 하나 더 걸린다(`useProcessSnapshot`의 머리말).
+ */
+export function readSnapshotNow(client: QueryClient): Promise<void> {
+  return client.refetchQueries({ queryKey: snapshotQuery.queryKey, exact: true }, { cancelRefetch: true });
 }
 
 /**
