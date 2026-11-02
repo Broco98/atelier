@@ -310,4 +310,24 @@ describe("바뀐 파일 알약 — 마지막 턴의 편집을 센다", () => {
       deleted: 3,
     });
   });
+
+  it("spec 폴더에 새로 쓴 문서는 세지 않는다 — 그 문서는 문서 카드가 연다(Thread 보드 「2개 파일 변경됨 +41 −4」)", () => {
+    const spec = "/w/spec";
+    const turn = {
+      entries: [
+        tool({ toolCallId: "1", kind: "edit", status: "completed", content: [{ type: "diff", path: "/w/spec/재시도-규칙.md", newText: "a\nb\nc" }] }),
+        tool({ toolCallId: "2", kind: "edit", status: "completed", content: [{ type: "diff", path: "/w/src/watcher.rs", oldText: "a", newText: "b\nc" }] }),
+        tool({ toolCallId: "3", kind: "edit", status: "completed", content: [{ type: "diff", path: "/w/spec/decisions.md", oldText: "a", newText: "b" }] }),
+      ],
+    };
+    expect(changedFiles(turn, spec)).toEqual({
+      files: [
+        { path: "/w/src/watcher.rs", added: 2, deleted: 1 },
+        { path: "/w/spec/decisions.md", added: 1, deleted: 1 },
+      ],
+      added: 3,
+      deleted: 2,
+    });
+    expect(changedFiles({ entries: turn.entries.slice(0, 1) }, spec)).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
@@ -895,10 +895,15 @@ function ThreadBody({
   const engine = useStore(threadEngineStore, (state) => engineOf(state, view.runtime));
   const guide = view.readOnly ? null : guideKind(engine, awaitingLogin(lines));
   const last = model.turns[model.turns.length - 1];
-  // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」). 작업공간 밖
-  // 채팅에는 서지 않는다 — 열 곳(넓힌 카드)이 없다(restart 02a-7 · 구현 스펙 「02a — 작업공간 밖 채팅」). 대화의 문서 카드도 같은 까닭으로
-  // 서지 않는다 — 문서를 가릴 spec 폴더가 없어 `DocPlace`가 비어 있다(`ThreadPane`의 `docPlace`).
-  const changes = last && view.work !== null ? changedFiles(last) : null;
+  // 알약이 세는 것 — 끝난 마지막 턴의 편집이다. 턴이 끝나야 들어선다(Cards 보드 「바뀐 파일 알약 — 턴이 끝나면 chip-in」 · Thread 보드의
+  // `end`, restart 02b-9b — 한때 도는 동안에도 끝난 편집만큼 섰다). 도는 동안의 편집은 작업 로그가 말한다. 멈춘 턴 · 끊긴 턴도 그렇다 — 로그가
+  // 펼친 채 남아 바뀐 파일을 그 줄들이 말한다(States 14 · 15, `ThreadFlow`의 `halted` · `cutTurn`). spec 폴더에 새로 쓴 문서는 세지 않는다 — 답
+  // 아래 문서 카드가 연다(`changedFiles`의 `specRoot`). 작업공간 밖 채팅에는 서지 않는다 — 열 곳(넓힌 카드)이 없다(restart 02a-7 · 구현 스펙
+  // 「02a — 작업공간 밖 채팅」). 대화의 문서 카드도 같은 까닭으로 서지 않는다 — 문서를 가릴 spec 폴더가 없어 `DocPlace`가 비어 있다
+  // (`ThreadPane`의 `docPlace`).
+  const specRoot = useContext(DocPlace)?.specRoot ?? null;
+  const settled = last?.end != null && last.end.stopReason !== "cancelled" && last.end.cut === null;
+  const changes = settled && view.work !== null ? changedFiles(last, specRoot) : null;
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
   const askingCwd = asking ? view.cwd : null;
@@ -1082,6 +1087,10 @@ function ThreadBody({
               // 「@」 언급은 그 채팅의 자리에서 찾는다 — 작업 폴더 · spec 폴더 · 읽는 범위의 Project(restart 02b-3).
               mentions={{ thread }}
               running={model.running}
+              // 내려가 있던 Session을 다시 여는 동안 보낸 말(States 02 「세션 여는 중」 · Thread 보드 `connecting` — restart 02b-9b)은 새 채팅의 첫 말처럼
+              // 「채팅을 시작하는 중…」 · 모델 칩 스켈레톤 · 「보내는 중」 원이다. 열린 Session에 보낸 후속 말(States 03)은 그리지 않는다 — 보내기가
+              // 짧아 한 프레임 깜박임이 된다(결정 02b-2).
+              busy={shownPending !== null && model.connecting}
               onSend={send}
               onStop={() => threadApi.stop(thread)}
               onNewThread={() => void navigate({ to: "/" })}

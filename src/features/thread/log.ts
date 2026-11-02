@@ -89,12 +89,18 @@ export interface Changes {
   deleted: number;
 }
 
-/** 그 턴의 끝난 편집이 바꾼 파일들 — 같은 파일은 한 줄로 더한다. 바꾼 것이 없으면 null이다. */
-export function changedFiles(turn: Pick<Turn, "entries">): Changes | null {
+/**
+ * 그 턴의 끝난 편집이 바꾼 파일들 — 같은 파일은 한 줄로 더한다. 바꾼 것이 없으면 null이다. `specRoot`(이은 작업공간의 spec 폴더)를 알면 그
+ * 안에 새로 쓴 문서(작업 로그의 문서 줄 — `describeTool`의 `doc`)는 세지 않는다 — 그 문서는 답 아래 문서 카드가 연다(Thread 보드의 알약은
+ * 코드 두 파일만 센다, restart 02b-9b).
+ */
+export function changedFiles(turn: Pick<Turn, "entries">, specRoot: string | null = null): Changes | null {
   const byPath = new Map<string, ChangedFile>();
   for (const entry of turn.entries) {
     if (!isTool(entry) || entry.call.status !== "completed") continue;
-    for (const piece of describeTool(entry).diffs) {
+    const view = describeTool(entry, specRoot);
+    if (view.doc) continue;
+    for (const piece of view.diffs) {
       const file = byPath.get(piece.path) ?? { path: piece.path, added: 0, deleted: 0 };
       file.added += piece.added;
       file.deleted += piece.deleted;
