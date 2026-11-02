@@ -126,6 +126,21 @@ describe("작업공간 도구의 기둥", () => {
     expect(classOf(asideTag(markup))).toContain("max-w-[calc(100%-var(--panel-reserve)-var(--panel-trail,0px))]");
   });
 
+  it("작업공간을 떠나 접힐 때 패널 카드는 옅어지지 않고 잘리기만 한다 — 작업공간 안에서 닫으면 옅어진다", () => {
+    // 시안 `.ra-panelwrap` — 상자가 접히며 잘린다. 떠나는 동안 마지막 몸(`held-body`)이 500ms 내내 보여야 하므로 안쪽을 옅게 하지 않는다.
+    // 작업공간 안의 여닫기는 앞 판의 접힘 장치(`foldingInnerClass` — 닫을 때 0.15s 옅어짐, 02a-2)를 그대로 쓴다.
+    const inner = (markup: string) => classOf(markup.match(/<aside[^>]*>\s*<div[^>]*>/)?.[0].replace(/^<aside[^>]*>\s*/, "") ?? "");
+    stand(false);
+    expect(inner(column()), "작업공간 안에서 닫은 패널").toEqual(expect.arrayContaining(["opacity-0", "transition-opacity"]));
+    foldWorkTools();
+    const left = inner(column());
+    expect(left, "패널 안쪽을 찾지 못했다").toContain("pl-2");
+    expect(left).not.toContain("opacity-0");
+    expect(left.some((name) => name.startsWith("transition"))).toBe(false);
+    stand(true);
+    expect(inner(column())).toContain("opacity-100");
+  });
+
   it("작업공간의 일(아카이브 · 삭제)이 도는 동안 패널의 몸은 누를 수 없다", () => {
     stand(true, true);
     expect(column().match(/<div[^>]*data-work-panel-body[^>]*>/)?.[0]).toMatch(/\binert=""/);
@@ -150,8 +165,16 @@ describe("작업공간 화면이 기둥을 세운다", () => {
     // 세우고 접는 것은 이펙트라 정적 그림에 없다 — 레이아웃 이펙트가 세우고 그 정리가 접는 자리를 소스로 잰다. 앱 위의 들고 남은 시안
     // 비교가 fixture로 걷는다.
     const source = readFileSync(fileURLToPath(new URL("./WorkTools.tsx", import.meta.url)), "utf8");
-    expect(source).toMatch(/useLayoutEffect\(\(\) => \{\s*showWorkTools\(/);
-    expect(source).toMatch(/useLayoutEffect\(\(\) => \(\) => foldWorkTools\(\), \[\]\)/);
+    expect(source).toMatch(/useLayoutEffect\(\(\) => \{\s*dropHeldBody\(\);\s*showWorkTools\(/);
+    expect(source).toMatch(/foldWorkTools\(\);\s*\},\s*\[\],?\s*\);/);
+  });
+
+  it("내려갈 때 패널이 열려 있었으면 몸의 그림을 남기고 접는다 — 접히는 동안 트리가 보인다", () => {
+    // 레이아웃 이펙트의 정리는 화면의 몸(포털의 자식)이 자리에서 걷히기 전에 돈다 — 그 순간 떠 둔다. 닫혀 있었으면 상자 폭이 이미 0이라
+    // 남길 것이 없다. 다시 서면(`showWorkTools` 앞) 사본을 걷는다. 앱 위의 프레임은 시안 비교가 잰다.
+    const source = readFileSync(fileURLToPath(new URL("./WorkTools.tsx", import.meta.url)), "utf8");
+    const cleanup = source.match(/useLayoutEffect\(\s*\(\) => \(\) => \{[\s\S]*?\},\s*\[\],?\s*\);/)?.[0] ?? "";
+    expect(cleanup, "내려갈 때의 정리를 찾지 못했다").toMatch(/if \(at && seen\.current\.open\) holdBody\(at\);\s*foldWorkTools\(\);/);
   });
 
   it("값은 앱이 도는 동안 하나다 — 세운 화면이 접으면 비고, 다시 세우면 새 값이다", () => {

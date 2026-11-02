@@ -2,6 +2,7 @@ import { createContext, useContext, useLayoutEffect, useRef, type ReactNode } fr
 import { createPortal } from "react-dom";
 import { Store, useStore } from "@tanstack/react-store";
 import { PanelBox } from "./Frame";
+import { dropHeldBody, holdBody } from "./held-body";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, WORK_PANEL_WIDTH } from "./panel-layout";
 import Rail from "./Rail";
 import useResizableWidth, { type ResizableWidth } from "./useResizableWidth";
@@ -87,6 +88,9 @@ export function WorkToolsBoxes({
       <PanelBox
         id={WORK_PANEL_ID}
         trail={RAIL_TRAIL}
+        // 작업공간을 떠나 접힐 때는 카드가 옅어지지 않고 잘리기만 한다(시안 `.ra-panelwrap`) — 남긴 마지막 몸(`holdBody`)이 접히는 500ms
+        // 내내 보인다. 작업공간 안의 여닫기는 앞 판의 접힘 장치대로 옅어진다(02a-2).
+        fade={tools !== null}
         slot={{
           label: WORK_PANEL_LABEL,
           open,
@@ -120,6 +124,10 @@ export function WorkToolsColumn({ onSlot }: { onSlot: (slot: HTMLElement | null)
  * **레이아웃 이펙트로 적는다** — 앱을 작업공간에서 처음 켤 때는 기둥과 화면이 같은 커밋에 서서, 그리기 전에 값이 닿아 기둥이 자라는
  * 움직임 없이 선다. 다른 화면에서 들어오면 이미 접혀 그려진 기둥이 자란다(Motion 「작업공간에 들어오면 폭 0 → 32」). 작업공간끼리 옮겨도
  * 화면은 그대로라 기둥이 접히지 않는다. 여닫는 함수는 회차마다 새로 짓는 것이라 기둥에는 늘 마지막 것을 부르는 한 벌을 적는다.
+ *
+ * **내려갈 때 패널이 열려 있었으면 몸의 그림을 남기고 접는다**(`holdBody`, restart 02a-14b) — 레이아웃 이펙트의 정리는 이 화면의 몸(포털의
+ * 자식)이 자리에서 걷히기 전에 돈다. 그래서 접히는 500ms 동안 마지막 spec 트리가 그대로 보이고, 접힘이 끝나면 빈다. 다시 서면 남긴 그림을
+ * 먼저 걷는다(StrictMode가 처음 설 때 정리 · 다시 세움을 한 번 더 돌려도 그 자리에서 걷힌다).
  */
 export function WorkTools({
   open,
@@ -133,13 +141,22 @@ export function WorkTools({
   children: ReactNode;
 }) {
   const slot = useContext(WorkToolsSlot);
-  const latest = useRef(onToggle);
+  // 기둥에 적은 여닫기와 내려갈 때의 정리가 읽는 마지막 값 — 회차마다 새로 짓는 것이라 늘 마지막 것을 읽는다.
+  const seen = useRef({ onToggle, slot, open });
   useLayoutEffect(() => {
-    latest.current = onToggle;
+    seen.current = { onToggle, slot, open };
   });
   useLayoutEffect(() => {
-    showWorkTools({ open, busy, onToggle: () => latest.current() });
+    dropHeldBody();
+    showWorkTools({ open, busy, onToggle: () => seen.current.onToggle() });
   }, [open, busy]);
-  useLayoutEffect(() => () => foldWorkTools(), []);
+  useLayoutEffect(
+    () => () => {
+      const at = seen.current.slot;
+      if (at && seen.current.open) holdBody(at);
+      foldWorkTools();
+    },
+    [],
+  );
   return slot ? createPortal(children, slot) : null;
 }
