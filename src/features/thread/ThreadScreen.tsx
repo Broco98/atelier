@@ -346,6 +346,8 @@ function NewChat({
       // 트레이는 첫 말 전에 상자 아래에서 범위를 고르고, 작업공간 만들기로 열었으면 그 앞에 「새 작업공간」 칩이 선다. 보낸 뒤 입력창이 바닥으로
       // 내려가면 트레이는 걷힌다 — 범위는 대화로 바꾼다.
       tray={starting === null ? { work: seeded, scope } : undefined}
+      // 보낸 뒤에는 바닥에 붙는다 — 보낸 말과 「생각 중」이 그 위로 지나간다.
+      docked={starting !== null}
       placeholder={startPlaceholder(link, title)}
     />
   );
@@ -1011,6 +1013,7 @@ function ThreadBody({
           <Beside open={beside}>
             <ThreadComposer
               draftKey={thread}
+              docked
               // 칩은 그 채팅의 Runtime대로 선다(`threadChips`) — Claude는 물어보는 정도, Codex는 채팅 파일의 Codex 모드와 Codex가 보낸 목록이다.
               mode={withActions(chips.mode, pickLevel, pickCodexMode)}
               model={modelChoice}

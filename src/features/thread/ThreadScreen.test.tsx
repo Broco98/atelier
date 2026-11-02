@@ -187,6 +187,11 @@ describe("채팅 화면", () => {
       expect(html).not.toContain("새 작업공간");
     }
   });
+
+  // Thread 보드 `.ra-dock::before` · 02b-2 — 바닥에 붙은 입력창 자리는 위 28에 페이드를 둬 굴리는 대화가 그 밑으로 사라진다.
+  it("입력창이 바닥에 붙은 자리(dock)에 선다", () => {
+    expect(draw({ ...chat, id: "20261010-100006" })).toMatch(/<div[^>]*data-dock=""/);
+  });
 });
 
 describe("새 채팅 화면", () => {
@@ -203,6 +208,11 @@ describe("새 채팅 화면", () => {
       </QueryClientProvider>,
     );
   };
+
+  // 첫 화면의 입력창은 물음 아래 가운데에 선다 — 바닥에 붙지 않아 지나갈 대화가 없다(보드 `.ra-home`).
+  it("첫 말 전의 입력창은 바닥 자리(dock)가 아니다", () => {
+    expect(drawNew()).not.toContain("data-dock");
+  });
 
   // 스토리 30 — 새 채팅에서 Claude Code와 Codex 중 하나를 고른다. 기본은 Claude Code다.
   it("Runtime 칩은 Claude Code를 고른 채 메뉴로 선다", () => {

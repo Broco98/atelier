@@ -107,6 +107,11 @@ export interface ThreadComposerProps {
    * 중(`busy`)에도 잠긴다 — Runtime은 그 말과 함께 떠났다.
    */
   runtime?: RuntimeChoice;
+  /**
+   * 입력창이 화면 바닥에 붙어 대화가 그 위로 굴러 지나가는가(Thread 보드 `.ra-dock`) — 그러면 위 28에 페이드가 서서 대화가 그 밑으로 사라진다.
+   * 첫 화면 가운데의 입력창(`.ra-home`)은 아니다.
+   */
+  docked?: boolean;
 }
 
 function ThreadComposer({
@@ -126,6 +131,7 @@ function ThreadComposer({
   tray,
   placeholder,
   runtime,
+  docked = false,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
   // 바깥이 이 입력창을 채웠다(주소의 입력 글 씨앗 · PR 카드 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
@@ -252,7 +258,7 @@ function ThreadComposer({
     </Tray>
   );
   return (
-    <div className="flex shrink-0 flex-col">
+    <div data-dock={docked ? "" : undefined} className={cn("flex shrink-0 flex-col", docked && DOCK_FADE)}>
       {above && <div className="flex flex-col gap-2 pb-2">{above}</div>}
       {card ?? (
         <form
@@ -380,6 +386,13 @@ function Tray({ children }: { children: ReactNode }) {
 function ModelSkeleton() {
   return <span role="status" aria-label="모델을 읽는 중" className="h-3 w-23 shrink-0 rounded-md skeleton-sweep" />;
 }
+
+/**
+ * 바닥 자리의 페이드(Thread 보드 `.ra-dock::before`) — 입력창 자리(대기 줄 · 카드 포함) 바로 위 28에 투명 → 판 면(`surface`)의 띠가 선다. 폭은 대화
+ * 열에서 좌우 16을 더 나간다(보드 dock 769 = 열 737 + 16 × 2). 누름은 받지 않는다 — 그 밑의 대화를 그대로 누르고 고른다.
+ */
+const DOCK_FADE =
+  "relative before:pointer-events-none before:absolute before:-inset-x-4 before:bottom-full before:h-7 before:bg-linear-to-b before:from-transparent before:to-surface";
 
 /** 입력창 아래 줄의 `+` — 28 원 · 글리프 15 · `fg-secondary`(Composer `.ra-cc.ic-only.sec`). */
 const ADD_BUTTON =
