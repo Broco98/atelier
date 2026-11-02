@@ -835,6 +835,21 @@ describe("Work 줄이 그 Work의 Thread를 품는다", () => {
     expect(chunkOf(markup, "나")).not.toContain("data-threads-of");
   });
 
+  // restart 02b-9b · Main 보드 — 펼친 「워처 실패 신호」 줄의 끝은 비고, 도는 스피너는 그 아래 「실패 신호 구현」 줄에 선다(접힌 「터미널 출력
+  // 배칭」은 줄에 선다). 펼치면 Thread의 표시는 제 줄이 말하고, 줄이 없는 셸의 신호만 Work 줄에 남는다(스토리 21 「셸 신호를 잃지 않는다」).
+  it("펼친 Work 줄은 Thread의 표시를 그 줄들에 넘기고 셸 신호만 든다", () => {
+    const markup = render(works("가", "나", "다"), ALL, {
+      threadCounts: { 가: 1, 나: 1, 다: 1 },
+      expanded: ["가", "나"],
+      threadMarks: { 가: ["working"], 나: ["working"], 다: ["working"] },
+      signals: { 나: "waiting" },
+    });
+    expect(marksOf(markup).map(({ slug, mark }) => [slug, mark])).toEqual([
+      ["나", "mine"],
+      ["다", "working"],
+    ]);
+  });
+
   it("Thread가 없는 Work는 펼친 것으로 적혀 있어도 아래에 아무것도 서지 않는다", () => {
     const markup = render(works("가"), ALL, { expanded: ["가"] });
     expect(markup).not.toContain("data-threads-of");

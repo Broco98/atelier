@@ -209,8 +209,9 @@ export function WorkSectionList({
       onRename={onRename}
       onRenameCommit={onRenameCommit}
       onRenameEnd={onRenameEnd}
-      // **오른쪽 끝의 표시 하나**(02 S8) — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호다. 고르는 것은 순수 함수 하나다.
-      mark={workMark(threads.marks[work.slug] ?? [], shells.signals[work.slug] ?? null)}
+      // **오른쪽 끝의 표시 하나**(02 S8) — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호다. 고르는 것은 순수 함수 하나다. 펼치면
+      // Thread의 표시는 그 아래 제 줄이 말하고 Work 줄에는 셸 신호만 남는다(Main 보드 — 펼친 줄의 끝이 빈다, restart 02b-9b).
+      mark={workMark(expanded ? [] : (threads.marks[work.slug] ?? []), shells.signals[work.slug] ?? null)}
       note={shells.notes[work.slug] ?? null}
       onOpen={onOpen}
       onHover={onHover}
