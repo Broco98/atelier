@@ -1335,6 +1335,21 @@ describe("WorksPage 오른쪽 자리", () => {
     expect(markup).toContain("width:var(--size-thread-beside)");
   });
 
+  // 토스트는 한 장이고(S26) 화면마다 자리가 하나다(S14) — 넓힌 카드가 서 있으면 그 보기(`ExpandedViewer`)의 자리가 받는다(구현 스펙 「설치
+  // 안내」 줄 · 채팅 본문의 `toasts={!expanded}`와 같다). 두 자리가 한 관리자를 읽으면 같은 토스트가 두 자리에 함께 선다(02a-15 — L3
+  // `target-menus` 「Works 문서에서 … 복사」).
+  it("넓힌 카드가 서 있으면 토스트 자리는 그 보기의 것 하나다 — 작은 카드 · 카드 없음에서는 화면의 자리 하나다", () => {
+    const places = (markup: string) => markup.match(/aria-label="메시지"/g)?.length ?? 0;
+    expect(places(onChat()), "카드 없음").toBe(1);
+    moveSeat(seat, "spec", { kind: "toggle", place: "summary" });
+    expect(places(onChat()), "작은 카드").toBe(1);
+    moveSeat(seat, "spec", { kind: "expand", target: { kind: "doc", path: "overview.md" } });
+    const expanded = onChat();
+    expect(expanded, "넓힌 카드를 찾지 못했다").toMatch(/<section[^>]*aria-label="요약"[^>]*data-expanded=""/);
+    expect(places(expanded), "넓힌 카드").toBe(1);
+    expect(expanded.indexOf('aria-label="메시지"'), "자리가 넓힌 카드의 보기 안에 선다").toBeGreaterThan(expanded.indexOf("data-viewer="));
+  });
+
   it("넓힌 카드의 × 뒤 — 작은 카드로 돌아오고 spec 패널은 접힌 채다", () => {
     moveSeat(seat, "spec", { kind: "expand", target: { kind: "doc", path: "overview.md" } });
     moveSeat(seat, "spec", { kind: "collapse" });

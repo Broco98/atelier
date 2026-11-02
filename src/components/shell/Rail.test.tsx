@@ -75,7 +75,6 @@ describe("레일이 들고 난다", () => {
         "bg-surface",
         "shadow-hairline",
         "shrink-0",
-        "overflow-hidden",
         "opacity-100",
       ]),
     );
@@ -93,13 +92,28 @@ describe("레일이 들고 난다", () => {
     expect(classOf(tag)).not.toContain("w-(--size-prail)");
   });
 
+  // 칸의 포커스 링(바깥 4)은 안쪽 2를 넘어 카드 밖으로 2 나간다 — 카드가 넘침을 자르면 그 링이 왼쪽 · 오른쪽 · 위에서 잘린다(codex-ds 결정
+  // 11 · 02a-15 — L3 `primitives` 「링을 다는 것은 … 잘리지 않는다」). 세로는 늘 자르지 않고, 가로는 접힌 동안 · 들고 나는 동안만 자른다 — 그동안은
+  // 28 칸이 좁아지는 카드에 잘린다(시안 `.ra-rail { overflow: hidden }`). 다 선 뒤에 놓는 순간은 폭의 길이만큼 늦고(넘침은 이산 값이라
+  // `transition-discrete`), 접을 때는 곧장 자른다.
+  it("레일 카드는 들고 나는 동안만 가로를 자르고, 다 선 뒤에는 칸의 링이 카드 끝에서 잘리지 않는다", () => {
+    const shown = classOf(railTag(draw(true, false)));
+    expect(shown).not.toContain("overflow-hidden");
+    expect(shown).toEqual(expect.arrayContaining(["overflow-x-visible", "transition-discrete"]));
+    const hidden = classOf(railTag(draw(false, false)));
+    expect(hidden).not.toContain("overflow-hidden");
+    expect(hidden).toContain("overflow-x-clip");
+    expect(hidden.find((name) => name.startsWith("transition-[")), "접을 때 넘침은 곧장 잘린다").not.toContain("overflow-x");
+  });
+
   it("폭 · 왼쪽 틈은 500ms spring, 옅음은 220ms 기본 곡선이고, 접힐 때 보임은 500ms 뒤에 꺼진다 · 동작 줄이기면 곧바로다", () => {
     const shown = classOf(railTag(draw(true, false)));
     expect(shown).toEqual(
       expect.arrayContaining([
-        "transition-[width,margin-left,opacity]",
-        "duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel)]",
-        "ease-[var(--ease-spring),var(--ease-spring),var(--ease-default)]",
+        "transition-[width,margin-left,opacity,overflow-x]",
+        "duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel),0s]",
+        "ease-[var(--ease-spring),var(--ease-spring),var(--ease-default),linear]",
+        "delay-[0s,0s,0s,var(--duration-panel-open)]",
         "motion-reduce:transition-none",
       ]),
     );
