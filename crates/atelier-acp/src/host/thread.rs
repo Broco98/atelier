@@ -59,7 +59,7 @@ use serde_json::{json, Value};
 
 use super::{
     claude_launch, end_together, find_programs, mark_taken, record_opened, ClaudeChoice, Conv, ConversationHost, Draft,
-    HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
+    FlowChunk, HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
 };
 use crate::discovery::{Agent, FoundProgram};
 use crate::login_env::AgentEnv;
@@ -149,7 +149,7 @@ pub enum QuestionReply {
 }
 
 /// Thread 하나의 지금 — `thread.json`에 기록의 끝 · 엔진의 살아 있는 상태를 더한 것. 화면이 Thread를 열 때(다시 켠 뒤 · ⌘R 뒤)
-/// 읽고, 그 뒤는 기록 줄 · 대기 줄 이벤트로 잇는다.
+/// 읽고, 그 뒤는 기록 줄 · 흐르는 글 · 대기 줄 이벤트로 잇는다.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadView {
@@ -168,6 +168,8 @@ pub struct ThreadView {
     pub queue: Vec<QueuedMessage>,
     /// 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 그 Thread는 읽기만이다(v1 티켓 38). 화면이 입력창 자리에 그 까닭을 보인다.
     pub read_only: Option<WorkGone>,
+    /// 지금 흐르는 글 — 받은 글 전부를 실은 오프셋 0의 조각이다. 새로 그린 화면이 이것에 다음 조각을 잇는다. 이 글의 기록 줄은 `last_seq` 뒤에 선다.
+    pub flowing: Option<FlowChunk>,
 }
 
 /// 호스트가 쥔 Thread들 — 떠 있는 Session, 연 기록, 색인.
@@ -306,19 +308,20 @@ impl ConversationHost {
         let file = self.read_thread_file(thread)?;
         let mut live = false;
         let mut queue = Vec::new();
-        if let Some(conv) = self.threads.find(thread) {
-            if let Some(state) = conv.lock_found() {
-                live = state.is_up();
-                queue = state.order.queue();
-            }
+        let conv = self.threads.find(thread);
+        if let Some(state) = conv.as_ref().and_then(|conv| conv.lock_found()) {
+            live = state.is_up();
+            queue = state.order.queue();
         }
         let last_seq = match self.threads.held_log(thread) {
             Some(log) => log.last_seq(),
             None => self.read_thread_record(thread, 0)?.last().map_or(0, |line| line.seq),
         };
+        // 기록의 끝을 읽은 뒤에 읽는다 — 그래서 이 글의 기록 줄은 늘 `last_seq` 뒤에 선다. 화면은 그것으로 번호가 겹친 옛 줄과 가른다.
+        let flowing = conv.and_then(|conv| conv.flowing());
         let (ask_level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
         let read_only = read_only::gone_of(&self.data_root, &file);
-        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queue, read_only })
+        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queue, read_only, flowing })
     }
 
     /// 기록 읽기 — 그 Thread의 기록에서 `after` 다음 seq의 줄들. 화면은 이것으로 그리고 그 뒤는 기록 줄 이벤트로 잇는다.

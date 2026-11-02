@@ -17,6 +17,8 @@ use tauri::{AppHandle, Emitter};
 /// 이벤트 이름들은 프런트(`src/features/thread/events.ts`)와 **문자열로만** 이어진다 — `events.test.ts`가 이 선언을 읽어 견준다.
 /// Channel이 아니라 이벤트인 것은 Thread가 새로고침을 넘어야 해서다(⌘R에 Agent가 죽지 않는다): Channel은 페이지와 함께 죽는다.
 pub const RECORD_EVENT: &str = "thread:record";
+/// 흐르는 글 한 조각 — Thread id · 조각. 기록하지 않는 화면의 몫이고(스펙 「01b — 스트리밍」), 같은 흐름의 기록 줄이 오면 화면이 지운다.
+pub const CHUNK_EVENT: &str = "thread:chunk";
 /// Thread의 Session의 대기 줄 바뀜 — Thread id · 대기 줄 전체. 대기 줄은 엔진 메모리에만 있다(S13).
 pub const QUEUE_EVENT: &str = "thread:queue";
 /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 이름 · 읽은 자리. Thread 폴더는 감시하지 않으므로 엔진이 알린다(S7).
@@ -59,11 +61,12 @@ pub fn announce(app: AppHandle, events: Receiver<HostEvent>) {
     });
 }
 
-/// 엔진의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ThreadRecordEvent` · `ThreadQueueEvent` · `ThreadList` ·
-/// `EngineState` · `WorkWritingEvent`와 같은 말이다.
+/// 엔진의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ThreadRecordEvent` · `ThreadChunkEvent` · `ThreadQueueEvent` ·
+/// `ThreadList` · `EngineState` · `WorkWritingEvent`와 같은 말이다.
 fn wire(event: &HostEvent) -> (&'static str, Value) {
     match event {
         HostEvent::ThreadRecord { thread, line } => (RECORD_EVENT, json!({"thread": thread, "seq": line.seq, "line": line})),
+        HostEvent::ThreadChunk { thread, chunk } => (CHUNK_EVENT, json!({"thread": thread, "chunk": chunk})),
         HostEvent::ThreadQueue { thread, queue } => (QUEUE_EVENT, json!({"thread": thread, "queue": queue})),
         HostEvent::ThreadList(summary) => (LIST_EVENT, serde_json::to_value(summary).expect("Thread 요약은 JSON이다")),
         HostEvent::Engine(state) => (ENGINE_EVENT, serde_json::to_value(state).expect("엔진 상태는 JSON이다")),
@@ -94,6 +97,20 @@ mod tests {
                 "line": {"seq": 7, "at": "2026-10-23T10:00:07.000+09:00", "kind": "turn-end",
                          "payload": {"stopReason": "end_turn"}},
             })
+        );
+    }
+
+    /// **흐르는 글의 조각은 Thread와 흐름 번호 · 종류 · 오프셋 · 글을 싣는다**(스펙 「01b — 스트리밍」). 화면이 번호로 지우고 오프셋으로 잇는다.
+    #[test]
+    fn a_flow_chunk_event_carries_the_thread_and_the_chunk() {
+        let chunk = atelier_acp::FlowChunk { stream: 3, kind: atelier_acp::FlowKind::Thought, offset: 12, text: "살펴본다".into() };
+        assert_eq!(
+            wire(&HostEvent::ThreadChunk { thread: "20261023-100000".into(), chunk }),
+            (
+                "thread:chunk",
+                json!({"thread": "20261023-100000",
+                       "chunk": {"stream": 3, "kind": "thought", "offset": 12, "text": "살펴본다"}})
+            )
         );
     }
 

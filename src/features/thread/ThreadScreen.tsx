@@ -49,7 +49,7 @@ import { ResultPlace, type ResultActions } from "./ResultCard";
 import { runtimeNameOf } from "./runtime";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage } from "./ThreadFlow";
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
@@ -531,10 +531,12 @@ function ThreadBody({
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
   const [away, setAway] = useState(false);
-  useLayoutEffect(() => {
+  // 맨 아래를 보던 흐름은 끝을 따라간다 — 기록 줄이 늘 때와 흐르는 글이 늘 때(`FollowTail`).
+  const follow = useCallback(() => {
     const el = scroller.current;
     if (el && stuck.current) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+  }, []);
+  useLayoutEffect(follow, [follow, lines]);
 
   // 읽은 자리(S38) — 요약이 정본이고(Thread 화면 밖에서도 요약 이벤트가 고친다), 방금 적으러 보낸 자리는 답이 오기 전에도 다시 보내지
   // 않는다. 안내 카드가 본문을 대신하면 흐름이 보이지 않는다.
@@ -624,14 +626,16 @@ function ThreadBody({
             <LogPlace.Provider value={view.cwd}>
               <PrPlace.Provider value={prActions}>
                 <ResultPlace.Provider value={resultActions}>
-                  <ThreadFlow
-                    thread={thread}
-                    model={model}
-                    runtime={runtime}
-                    onRetry={(text, attachments) =>
-                      void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
-                    }
-                  />
+                  <FollowTail.Provider value={follow}>
+                    <ThreadFlow
+                      thread={thread}
+                      model={model}
+                      runtime={runtime}
+                      onRetry={(text, attachments) =>
+                        void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+                      }
+                    />
+                  </FollowTail.Provider>
                 </ResultPlace.Provider>
               </PrPlace.Provider>
             </LogPlace.Provider>

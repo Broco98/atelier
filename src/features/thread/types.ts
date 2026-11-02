@@ -96,6 +96,8 @@ export interface ThreadView {
   queue: QueuedMessage[];
   /** 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 읽기만 된 Thread다(v1 티켓 38). 열린 화면은 목록 요약 이벤트가 고친다(`putSummary`). */
   readOnly: WorkGone | null;
+  /** 지금 흐르는 글 — 받은 글 전부를 실은 오프셋 0의 조각이다. 새로 그린 화면이 이것에 다음 조각을 잇는다(`settleFlowing`). */
+  flowing: FlowChunk | null;
   /**
    * 「새 작업공간」 칩을 둔 채 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. Work가 서기 전까지 잠긴 Work 칩이
    * 흐린 「새 작업공간」이다(`lockedWork`).
@@ -231,6 +233,25 @@ export interface ThreadRecordEvent {
   thread: string;
   seq: number;
   line: RecordLine;
+}
+
+/**
+ * 흐르는 글 한 조각(`atelier_acp::FlowChunk`) — 기록 줄이 아니다. 답이나 생각의 글이 기록 줄 하나로 합쳐지기 전까지 화면에 흐른다(스펙 「01b —
+ * 스트리밍」).
+ */
+export interface FlowChunk {
+  /** 흐름 번호 — 이 글이 합쳐질 기록 줄의 `update._meta.atelier.stream`이다. */
+  stream: number;
+  kind: "message" | "thought";
+  /** 이 조각의 글이 흐름의 글 안에서 서는 자리 — JS 문자열 그대로의 UTF-16 단위다. */
+  offset: number;
+  text: string;
+}
+
+/** 흐르는 글 이벤트(`thread:chunk`)가 싣는 것. */
+export interface ThreadChunkEvent {
+  thread: string;
+  chunk: FlowChunk;
 }
 
 /** 대기 줄 바뀜 이벤트(`thread:queue`)가 싣는 것 — 그 Session의 대기 줄 전체다. */

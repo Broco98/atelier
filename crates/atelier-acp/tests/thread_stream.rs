@@ -1,14 +1,17 @@
-//! L1 — Thread 엔진이 조각을 세션마다 쌓아 합친 글을 기록 줄 하나로 쓴다(restart 티켓 01b-2 · 스펙 「01b — 스트리밍」).
+//! L1 — Thread 엔진이 조각을 세션마다 쌓아 합친 글을 기록 줄 하나로 쓰고(restart 티켓 01b-2), 그동안 받은 글을 33ms로 묶어 기록하지 않는
+//! 화면 조각으로 보낸다(01b-3 · 스펙 「01b — 스트리밍」).
 //!
-//! 시험은 호스트에 Thread 명령을 넣고 기록만 본다. 진짜 claude 2.1.316의 녹음은 변환기를 지나 재고, 녹음에 없는 때(도중의 죽음 · 끄기 ·
-//! 턴 끝 뒤의 조각)는 가짜 ACP 에이전트를 변환기 자리에 두어 잰다.
+//! 시험은 호스트에 Thread 명령을 넣고 기록과 호스트가 낸 이벤트만 본다. 진짜 claude 2.1.316의 녹음은 변환기를 지나 재고, 녹음에 없는
+//! 때(도중의 죽음 · 끄기 · 턴 끝 뒤의 조각 · 조각 사이의 틈)는 가짜 ACP 에이전트를 변환기 자리에 두어 잰다.
 
 mod common;
 
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use atelier_acp::{ConversationHost, ThreadLink, TranslatorCommand};
-use common::{of_kind, Sandbox};
+use atelier_acp::{ConversationHost, FlowChunk, FlowKind, HostEvent, ThreadLink, TranslatorCommand};
+use common::{of_kind, wait_until, Events, Sandbox};
 use serde_json::Value;
 
 /// 그 녹음을 되감는 가짜 claude로 새 Thread를 세운다 — 첫 말이 곧 첫 턴이다.
@@ -20,6 +23,22 @@ fn thread_on(sandbox: &Sandbox, fixture: &str) -> (ConversationHost, String) {
 
 /// 가짜 ACP 에이전트를 변환기 자리에 둔 호스트로 새 Thread를 세운다. 그 시나리오의 첫 턴이 돈다.
 fn thread_on_agent(sandbox: &Sandbox, scenario: &str) -> (ConversationHost, String) {
+    thread_on_agent_emitting(sandbox, scenario, |_| {})
+}
+
+/// [`thread_on_agent`]와 같고 호스트가 낸 이벤트를 모은다.
+fn watched_on_agent(sandbox: &Sandbox, scenario: &str) -> (ConversationHost, String, Events) {
+    let events = Events::default();
+    let sink = events.clone();
+    let (host, thread) = thread_on_agent_emitting(sandbox, scenario, move |event| sink.push(event));
+    (host, thread, events)
+}
+
+fn thread_on_agent_emitting(
+    sandbox: &Sandbox,
+    scenario: &str,
+    emit: impl Fn(HostEvent) + Send + Sync + 'static,
+) -> (ConversationHost, String) {
     let receipts = sandbox.claude_receipts();
     let env = [
         ("FAKE_ACP_SCENARIO", scenario),
@@ -27,9 +46,42 @@ fn thread_on_agent(sandbox: &Sandbox, scenario: &str) -> (ConversationHost, Stri
         ("FAKE_ACP_RECEIPTS", receipts.to_str().unwrap()),
     ];
     let agent = TranslatorCommand::new(env!("CARGO_BIN_EXE_fake-acp-agent"), Vec::<String>::new());
-    let host = sandbox.host_builder_with_translator(sandbox.claude_login_shell("normal", &env), agent, |_| {}).build();
+    let host = sandbox.host_builder_with_translator(sandbox.claude_login_shell("normal", &env), agent, emit).build();
     let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     (host, thread)
+}
+
+/// 화면 조각들의 글을 잇는다.
+fn joined(chunks: &[FlowChunk]) -> String {
+    chunks.iter().map(|chunk| chunk.text.as_str()).collect()
+}
+
+/// 그 글이 다 나갈 때까지 기다린 화면 조각들.
+fn wait_chunks(events: &Events, thread: &str, text: &str) -> Vec<FlowChunk> {
+    wait_until("화면 조각이 그 글까지 나가지 않았다", || {
+        let chunks = events.thread_chunks(thread);
+        if joined(&chunks) == text {
+            Ok(chunks)
+        } else {
+            Err(format!("{chunks:#?}"))
+        }
+    })
+}
+
+/// 그 Thread의 조각과 흐름 번호가 있는 기록 줄이 나간 차례 — `(흐름 번호, 무엇)`.
+fn order_of(events: &Events, id: &str) -> Vec<(u64, &'static str)> {
+    events
+        .all()
+        .into_iter()
+        .filter_map(|event| match event {
+            HostEvent::ThreadChunk { thread, chunk } if thread == id => Some((chunk.stream, "조각")),
+            HostEvent::ThreadRecord { thread, line } if thread == id => {
+                let line = serde_json::to_value(line).unwrap();
+                line["payload"]["update"]["_meta"]["atelier"]["stream"].as_u64().map(|stream| (stream, "기록"))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// 호스트가 가짜의 조각을 다 받을 때까지 기다린다 — 가짜의 표지 줄이다(`stream_answer`).
@@ -189,6 +241,7 @@ fn session이_도중에_죽어도_받은_글이_죽음_줄보다_앞서_남는�
 
     let died = record.iter().position(|line| line["payload"]["state"] == "died").unwrap();
     assert!(at_chunk(&record, "흐르던 답") < died, "{}", common::lines_text(&record));
+    assert_eq!(host.thread(&thread).unwrap().flowing, None, "남은 글은 이제 기록에 있다");
     host.shut_down();
 }
 
@@ -220,5 +273,106 @@ fn 턴_끝_뒤에_온_조각은_곧바로_기록되고_다음_턴에_섞이지_�
     let text = |words: &str| ("agent_message_chunk".to_owned(), words.to_owned());
     let end = ("turn-end".to_owned(), String::new());
     assert_eq!(skeleton(&record), [text("앞선 턴의 글"), end.clone(), text("턴 끝 뒤의 글"), text("다음 턴의 글"), end]);
+    host.shut_down();
+}
+
+#[test]
+fn 받은_글이_기록하지_않는_화면_조각으로_흐르고_조각은_흐름_번호와_오프셋을_단다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, events) = watched_on_agent(&sandbox, "streams-then-holds");
+    wait_received(&sandbox, &thread);
+
+    let chunks = wait_chunks(&events, &thread, "흐르던 답");
+
+    assert_eq!((chunks[0].stream, chunks[0].kind, chunks[0].offset), (1, FlowKind::Message, 0));
+    assert!(chunk_lines(&sandbox.thread_record(&thread)).is_empty(), "조각은 기록을 늘리지 않는다");
+    host.shut_down();
+}
+
+#[test]
+fn 조각은_33ms로_묶여_나가고_오프셋은_화면의_글자_단위로_이어진다() {
+    let sandbox = Sandbox::new();
+    let events = Events::default();
+    let times = Arc::new(Mutex::new(Vec::new()));
+    let (sink, stamps) = (events.clone(), Arc::clone(&times));
+    let (host, thread) = thread_on_agent_emitting(&sandbox, "streams-steadily", move |event| {
+        if matches!(event, HostEvent::ThreadChunk { .. }) {
+            stamps.lock().unwrap().push(Instant::now());
+        }
+        sink.push(event);
+    });
+    wait_received(&sandbox, &thread);
+
+    let chunks = wait_chunks(&events, &thread, &"가😀".repeat(12));
+
+    assert!(chunks.len() < 12, "조각 12개가 묶이지 않았다: {chunks:#?}");
+    let mut at = 0;
+    for chunk in &chunks {
+        assert_eq!(chunk.offset, at, "{chunks:#?}");
+        at += chunk.text.encode_utf16().count();
+    }
+    assert_eq!(at, 36, "「가😀」는 UTF-16 세 단위다");
+    let times = times.lock().unwrap();
+    for pair in times.windows(2) {
+        let gap = pair[1] - pair[0];
+        assert!(gap >= Duration::from_millis(33), "33ms보다 잦게 나갔다: {gap:?}");
+    }
+    host.shut_down();
+}
+
+#[test]
+fn 글이_빈_생각도_흐름이_열렸다고_한_번_나간다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, events) = watched_on_agent(&sandbox, "thinks-then-holds");
+    wait_received(&sandbox, &thread);
+
+    let chunks = wait_until("생각 조각이 나가지 않았다", || {
+        let chunks = events.thread_chunks(&thread);
+        if chunks.is_empty() {
+            Err(String::new())
+        } else {
+            Ok(chunks)
+        }
+    });
+
+    assert_eq!(chunks, [FlowChunk { stream: 1, kind: FlowKind::Thought, offset: 0, text: String::new() }]);
+    assert_eq!(host.thread(&thread).unwrap().flowing, Some(chunks[0].clone()));
+    host.shut_down();
+}
+
+#[test]
+fn 조각은_그_흐름의_기록_줄보다_늘_먼저_나가고_기록_줄이_그_글을_잇는다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, events) = watched_on_agent(&sandbox, "streams-steadily");
+    wait_received(&sandbox, &thread);
+    wait_chunks(&events, &thread, &"가😀".repeat(12));
+
+    host.stop_thread(&thread).expect("멈추기");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    let order = order_of(&events, &thread);
+    let (last, chunks) = order.split_last().expect("조각과 기록 줄");
+    assert_eq!(*last, (1, "기록"), "{order:?}");
+    assert!(!chunks.is_empty() && chunks.iter().all(|one| *one == (1, "조각")), "{order:?}");
+    assert_eq!(chunk_lines(&record)[0]["payload"]["update"]["content"]["text"], joined(&events.thread_chunks(&thread)));
+    host.shut_down();
+}
+
+#[test]
+fn 진행_중인_글은_오프셋_0의_조각으로_읽히고_기록_줄이_서면_없어진다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, events) = watched_on_agent(&sandbox, "streams-then-holds");
+    wait_received(&sandbox, &thread);
+
+    // 화면에 나가기 전이든 뒤든 받은 글 전부다 — 새로 그린 화면은 이것에 다음 조각을 잇는다.
+    let whole = Some(FlowChunk { stream: 1, kind: FlowKind::Message, offset: 0, text: "흐르던 답".to_owned() });
+    assert_eq!(host.thread(&thread).unwrap().flowing, whole);
+    wait_chunks(&events, &thread, "흐르던 답");
+    assert_eq!(host.thread(&thread).unwrap().flowing, whole);
+
+    host.stop_thread(&thread).expect("멈추기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    assert_eq!(host.thread(&thread).unwrap().flowing, None);
     host.shut_down();
 }

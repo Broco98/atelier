@@ -25,6 +25,7 @@ const view = (id: string, work: string | null): ThreadView => ({
   live: true,
   queue: [],
   readOnly: null,
+  flowing: null,
 });
 
 function seeded(): QueryClient {

@@ -796,7 +796,7 @@ pub async fn startup_report(
 //
 // - 명령은 이름 · 인자 · 위임 한 줄이다. 엔진에는 `to_host` 한 길로만 간다 — 어느 부름이 막히는지 명령이 고르지 않는다.
 // - 턴은 기다리지 않는다 — 보내기 · 멈추기 · 지금 전하기 · 권한 답은 말이나 멈춤이나 답을 보내고 돌아온다. 열쇠는 Thread id이고,
-//   답과 턴 끝은 `thread::RECORD_EVENT`로, 대기 줄은 `thread::QUEUE_EVENT`로, 목록 요약은 `thread::LIST_EVENT`로 온다.
+//   답과 턴 끝은 `thread::RECORD_EVENT`로, 흐르는 글은 `thread::CHUNK_EVENT`로, 대기 줄은 `thread::QUEUE_EVENT`로, 목록 요약은 `thread::LIST_EVENT`로 온다.
 // - 엔진의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
 // - 다리로 탈 수 없다(`in_app_only`) — 엔진은 오래 사는 Agent를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
 // - v1은 Claude Code만 띄우므로(S3) 엔진을 고르는 인자가 없다. three-axes의 Work 안 대화창(`chat_*`)은 v1 티켓 08이 걷었다.

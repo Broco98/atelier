@@ -1,12 +1,15 @@
 import { Store } from "@tanstack/react-store";
 import type { Quote } from "@/features/works/QuotePick";
-import type { DocWriting, QueuedMessage, RecordLine } from "./types";
+import { isObject } from "./json";
+import type { DocWriting, FlowChunk, QueuedMessage, RecordLine, ThreadView } from "./types";
 
 // Thread 화면의 모듈 스토어(v1 티켓 05) — 화면 컴포넌트 밖에 산다.
 //
 // - **기록 줄은 앱 층이 받는다.** Thread는 엔진에서 돌고(다른 화면에 가 있어도), 돌아오면 그사이 흐른 줄이 다 보여야 한다. 구독은
 //   `AppShell` 하나(`useThreadFeeds`)이고 그 줄이 여기 쌓인다. Thread를 열 때 읽은 기록도 같은 자리에 합친다 — 두 길이 겹치므로
 //   **seq로 합친다**(같은 seq는 한 줄이다).
+// - **흐르는 글은 기록 줄과 따로 둔다**(스펙 「01b — 스트리밍」). 조각은 기록 줄이 아니라 접기를 다시 돌리지 않고, 구독은 흐름 꼬리의 작은 부품
+//   하나다 — 조각이 오는 동안 앞선 턴이 다시 그려지지 않는다.
 // - **입력 중인 글 · 펼친 작업 로그는 Thread 열쇠로 둔다** — 저장하지 않는다(앱을 다시 켜면 없다). 아직 id가 없는 새 Thread의 글은
 //   `NEW_THREAD` 열쇠다.
 
@@ -47,6 +50,53 @@ function merge(have: readonly RecordLine[], incoming: readonly RecordLine[]): re
     changed = true;
   }
   return changed ? [...bySeq.values()].sort((a, b) => a.seq - b.seq) : have;
+}
+
+/** 지금 흐르는 글 하나 — 받은 조각을 이은 것이다. 기록 줄이 되면 지운다. */
+export type FlowingText = Omit<FlowChunk, "offset">;
+
+/** Thread마다의 흐르는 글. Session 하나에 흐름은 하나다. */
+export const threadFlowStore = new Store<Readonly<Record<string, FlowingText>>>({});
+
+/**
+ * 조각 하나를 흐르는 글에 잇는다 — 조각 이벤트든 열 때 읽은 진행 글이든. 오프셋으로 이으므로 둘이 겹쳐도 글이 두 번 서지 않고, 이미 든 글은
+ * 고치지 않는다(멱등). 앞 글이 빠져 잇지 못하면 `false`다 — 새로 그린 화면이 이벤트를 듣기 전에 나간 조각이 그렇다.
+ */
+export function addChunk(thread: string, { stream, kind, offset, text }: FlowChunk): boolean {
+  const flowing = threadFlowStore.state[thread];
+  const have = flowing?.stream === stream ? flowing.text : null;
+  if (offset > (have?.length ?? 0)) return false;
+  if (have !== null && offset + text.length <= have.length) return true;
+  const joined = (have ?? "").slice(0, offset) + text;
+  threadFlowStore.setState((state) => ({ ...state, [thread]: { stream, kind, text: joined } }));
+  return true;
+}
+
+/** 그 기록 줄이 마친 흐름이면 흐르는 글을 지운다 — 글은 이제 그 줄에 있다. 기록 줄 이벤트에만 쓴다: 기록을 다시 읽은 줄은 앱을 다시 켜기 전의 번호일 수 있다. */
+export function finishFlow(thread: string, line: RecordLine): void {
+  const flowing = threadFlowStore.state[thread];
+  if (flowing === undefined || streamOf(line) !== flowing.stream) return;
+  threadFlowStore.setState(({ [thread]: _done, ...rest }) => rest);
+}
+
+/**
+ * 열 때 읽은 진행 글을 흐르는 글에 잇는다 — 기록을 합친 뒤에 부른다. 읽는 사이 그 흐름이 기록 줄이 됐으면 버린다. 그 줄은 늘 읽은 `lastSeq` 뒤에
+ * 선다 — 번호는 앱을 다시 켜면 1부터라 그 앞의 줄과 겹칠 수 있다.
+ */
+export function settleFlowing({ id, lastSeq, flowing }: ThreadView): void {
+  if (!flowing) return;
+  const written = linesOf(threadRecordStore.state, id).some((line) => line.seq > lastSeq && streamOf(line) === flowing.stream);
+  if (!written) addChunk(id, flowing);
+}
+
+/** 그 기록 줄이 합친 흐름의 번호(`update._meta.atelier.stream`) — 턴 안의 조각 줄만 있다. */
+function streamOf(line: RecordLine): number | null {
+  if (line.kind !== "update" || !isObject(line.payload)) return null;
+  const { update } = line.payload;
+  const meta = isObject(update) ? update._meta : null;
+  const atelier = isObject(meta) ? meta.atelier : null;
+  const stream = isObject(atelier) ? atelier.stream : null;
+  return typeof stream === "number" ? stream : null;
 }
 
 /**

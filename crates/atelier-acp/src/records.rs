@@ -15,7 +15,7 @@ use atelier_core::{Attachment, RecordLog};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::host::{Emit, HostEvent, QueuedMessage};
+use crate::host::{Emit, FlowChunk, HostEvent, QueuedMessage};
 use crate::past;
 use crate::policy::Card;
 use crate::quote::Quote;
@@ -174,6 +174,11 @@ impl Recorder {
     /// 대기 줄 바뀜(기록 밖의 소식)을 기록 줄과 같은 길로 내보낸다. 받는 closure는 호스트를 다시 부르면 안 된다.
     pub(crate) fn queue_changed(&self, queue: Vec<QueuedMessage>) {
         self.log.announce(HostEvent::ThreadQueue { thread: self.log.thread().to_owned(), queue })
+    }
+
+    /// 화면 조각(기록 밖의 소식)을 기록 줄과 같은 길로 내보낸다.
+    pub(crate) fn chunk(&self, chunk: FlowChunk) {
+        self.log.announce(HostEvent::ThreadChunk { thread: self.log.thread().to_owned(), chunk })
     }
 
     pub(crate) fn session(&self, state: SessionState) -> Result<(), RecordError> {
