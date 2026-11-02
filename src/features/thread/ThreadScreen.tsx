@@ -52,7 +52,7 @@ import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
 import { DEFAULT_RUNTIME, isRuntime, runtimeNameOf } from "./runtime";
 import { atBottom, leavingPlace, type ReadingPlace } from "./reading-place";
-import { chatSeat, rightShown, useRightSeat, workSeat, type RightMove } from "./right-place";
+import { chatSeat, followTab, rightShown, useRightSeat, workSeat, type BodyTab, type RightMove } from "./right-place";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
@@ -461,11 +461,22 @@ function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
  *
  * - **처음 값은 spec 패널이다**(SummarySheet 표 첫 줄) — 분할인 채 들어오면 패널이 접혀 있다(`split` — 결정 88).
  * - **넓힌 카드는 채팅이 본문에 서 있을 때만이다**(`chat`) — 셸 · 파일 탭 · 문서가 본문이면 카드가 없어 넓힌 것도 없고, 접었던 사이드바가
- *   돌아온다. 값(`opened`)은 남는다 — 탭을 옮길 때의 규칙은 02a-10이 더한다.
+ *   돌아온다.
+ * - **본문 탭이 바뀌면 표의 탭 줄대로 값을 바꾼다**(`tab` — restart 02a-10 · `followTab`) — 셸 · 파일 탭 · 문서가 켜지면 요약 카드가 닫히고, 다른
+ *   채팅 탭이 켜지면 넓힌 카드가 작은 카드로 돌아온다. 모르는 한 틱(`undefined`)은 세지 않는다.
  */
-export function useWorkRightPlace(work: WorkView | null, { split, chat }: { split: boolean; chat: boolean }) {
+export function useWorkRightPlace(
+  work: WorkView | null,
+  { split, chat, tab }: { split: boolean; chat: boolean; tab: BodyTab | undefined },
+) {
   const slug = work?.slug ?? null;
-  const [seat, move] = useRightSeat(slug === null ? null : workSeat(slug), split ? null : "spec");
+  const key = slug === null ? null : workSeat(slug);
+  const first = split ? null : "spec";
+  const [seat, move] = useRightSeat(key, first);
+  useEffect(() => {
+    if (key !== null && tab !== undefined) followTab(key, first, tab);
+    // 본문 탭이 바뀔 때만 잰다 — 처음 값(`first`)이 분할로 바뀌어도 탭은 그대로다(`useRightSeat`와 같다).
+  }, [key, tab]);
   const shown = rightShown(seat, chat);
   useFoldSidebar(shown.opened !== null);
   // 대화 속 문서 카드(스토리 102)가 여는 길 — 그 작업공간의 spec 폴더(절대 경로)를 알아야 그 턴이 쓴 문서를 가린다.

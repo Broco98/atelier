@@ -167,6 +167,14 @@ describe("말의 사전", () => {
     expect(bodyOf("패널 토글")).toContain("오른쪽 자리");
   });
 
+  // restart 02a-10 · SummarySheet 표의 탭 줄 — 카드는 채팅 탭에 선다. 셸 · 파일 탭이 켜지면 닫히고, 다른 채팅 탭이면 작은 카드로 돌아오며, 셸 ·
+  // 파일 탭에서 「요약 카드」를 누르면 채팅 탭을 먼저 켠다.
+  it("「오른쪽 자리」가 탭을 옮길 때의 규칙을 말한다", () => {
+    for (const piece of ["채팅 탭에 선다", "셸 · 파일 탭이 켜지면", "다른 채팅 탭", "채팅 탭을 먼저 켠다", "가장 최근에 켠 채팅 탭"]) {
+      expect(bodyOf("오른쪽 자리"), piece).toContain(piece);
+    }
+  });
+
   it("「레일」 · 「패널 토글」이 등재돼 있고, 「레일」이 「패널 탭」을 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["레일", "패널 토글"]));
     expect(bodyOf("레일")).toContain("_피할 말_: 패널 탭");

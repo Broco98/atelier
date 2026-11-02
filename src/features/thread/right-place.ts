@@ -1,6 +1,8 @@
 import { useCallback, useEffect } from "react";
 import { Store, useStore } from "@tanstack/react-store";
+import type { BundleTab } from "@/features/terminal/shell-registry";
 import type { Opened } from "./expanded";
+import type { WorkLanding } from "./work-threads";
 
 // **오른쪽 자리**(restart 02a-9 · 구현 스펙 「02a — 오른쪽 자리」 · 스토리 93 · 94 · 96 · 보드 SummarySheet 「오른쪽 자리는 하나다」) — spec 패널과
 // 요약 카드는 본문 카드 오른쪽의 같은 자리를 나눠 쓴다. 1440 창에서 둘을 함께 열면 대화에 남는 폭이 450이 안 되기 때문이다.
@@ -15,7 +17,8 @@ import type { Opened } from "./expanded";
 //   넓힌 카드가 서 있는 동안 화면이 접는다 — `useFoldSidebar`), 넓힌 카드의 ×는 작은 카드로 돌린다 — spec 패널은 접힌 채다.
 // - **넓힐 수 있는 자리만 넓힌 카드를 그린다**(`rightShown`) — 작업공간 밖 채팅은 작은 카드만 쓴다(구현 스펙 「02a — 작업공간 밖 채팅」).
 //
-// 탭을 옮길 때의 규칙(셸 · 파일 탭이 켜지면 값이 없음 · 다른 채팅 탭이면 작은 카드)은 02a-10이 더한다.
+// - **탭을 옮겨도 표의 규칙이 지켜진다**(restart 02a-10 · `followTab` · `cardTabOf`) — 카드는 채팅 탭에 선다. 셸 · 파일 탭이 켜지면 값이
+//   없음이 되고, 다른 채팅 탭이 켜지면 넓힌 카드가 작은 카드로 돌아온다. 셸 · 파일 탭에서 요약 카드를 여는 손짓은 채팅 탭을 먼저 켠다.
 
 /** 오른쪽 자리에 선 것 — spec 패널 · 요약 카드 · 없음. */
 export type RightPlace = "spec" | "summary" | null;
@@ -108,6 +111,57 @@ export function moveSeat(key: string, first: RightPlace, move: RightMove): void 
     const next = nextSeat(now, move);
     return next === now && state[key] !== undefined ? state : { ...state, [key]: next };
   });
+}
+
+/**
+ * **본문 탭**(restart 02a-10) — 작업공간 화면의 본문(분할이면 묶음 열)에 선 탭이다. 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이면 그 칸의 id, 셸 ·
+ * 파일 탭 · 문서면 `null`이다. 칸의 id로 재는 것은 새 채팅 탭이 첫 말로 채팅 탭이 되어도 같은 칸이라 같은 탭이어야 해서다(`settleNewChatTab`).
+ */
+export type BodyTab = number | null;
+
+/** 열쇠 하나가 본 본문 탭 — 지금 것과, 카드가 서는 탭을 켠 차례(가장 최근 것이 앞). */
+interface SeenTabs {
+  readonly now: BodyTab;
+  readonly recent: readonly number[];
+}
+
+/**
+ * 열쇠(`workSeat`)마다 본 본문 탭 — 오른쪽 자리 값의 곁에 산다. **작업공간을 떠났다 와도 그 작업공간의 탭으로 잰다** — 넓힌 채 다른 작업공간에
+ * 갔다가 다른 채팅 탭으로 돌아오면 「다른 채팅 탭을 켠다」다. 앱이 도는 동안 메모리에만 산다(묶음과 같다).
+ */
+export const bodyTabStore = new Store<Readonly<Record<string, SeenTabs>>>({});
+
+/**
+ * 그 열쇠의 본문 탭이 바뀌었다 — **SummarySheet 표의 탭 줄**대로 값을 바꾸고, 카드가 서는 탭이면 켠 차례에 적는다(`cardTabOf`).
+ * - 셸 · 파일 탭 · 문서가 켜지면 요약 카드가 닫혀 값이 없음이 된다 — 넓혀 있었으면 넓힌 것도 걷혀 사이드바가 돌아온다. spec 패널은 그대로다.
+ * - 다른 채팅 탭(새 채팅 탭도)이 켜지면 넓힌 카드가 작은 카드로 돌아온다. 셸에서 채팅 탭으로 온 것은 아니다 — 카드는 셸이 켜질 때 이미 닫혔다.
+ * - 같은 탭이면 아무 일도 안 한다 — 처음 보는 열쇠는 앞 탭이 없어 셸 · 파일 탭 · 문서일 때만 카드를 걷는다.
+ */
+export function followTab(key: string, first: RightPlace, tab: BodyTab): void {
+  const before = bodyTabStore.state[key]?.now;
+  if (before === tab) return;
+  bodyTabStore.setState((state) => {
+    const recent = state[key]?.recent ?? [];
+    return { ...state, [key]: { now: tab, recent: tab === null ? recent : [tab, ...recent.filter((id) => id !== tab)] } };
+  });
+  if (tab === null) moveSeat(key, first, { kind: "hide", place: "summary" });
+  else if (before !== undefined && before !== null) moveSeat(key, first, { kind: "collapse" });
+}
+
+/**
+ * **요약 카드가 설 채팅 탭**(restart 02a-10 · 구현 스펙 「02a — 오른쪽 자리」) — 셸 · 파일 탭 · 문서에서 요약 카드를 여는 손짓은 채팅 탭을 먼저
+ * 켠다. 켤 탭은 가장 최근에 켠 채팅 탭이다(켠 차례 — `followTab`). 켠 적이 없는 채팅 탭만 열려 있으면 묶음 끝의 것(가장 늦게 연 것)이다. 열린
+ * 채팅 탭이 없으면 가장 최근 채팅(`landing` — 부르는 쪽이 `landingOf`로 건넨다)을 탭으로 세우고, 채팅이 없으면 새 채팅 탭이다(`landing`의 `new`).
+ *
+ * 새 채팅 탭은 채팅 탭이 아니다(CONTEXT 「채팅 탭」 · 「새 채팅 탭」) — 고르지 않는다. 첫 말로 채팅 탭이 된 칸은 채팅 탭이라 고른다.
+ */
+export function cardTabOf(key: string, bundle: ReadonlyArray<BundleTab>, landing: WorkLanding): WorkLanding {
+  for (const id of bodyTabStore.state[key]?.recent ?? []) {
+    const tab = bundle.find((one) => one.id === id);
+    if (tab?.kind === "chat") return { kind: "thread", id: tab.thread };
+  }
+  const chats = bundle.flatMap((one) => (one.kind === "chat" ? [one.thread] : []));
+  return chats.length > 0 ? { kind: "thread", id: chats[chats.length - 1] } : landing;
 }
 
 /**

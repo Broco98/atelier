@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { BundleTab } from "@/features/terminal/shell-registry";
 import type { Opened } from "./expanded";
+import type { WorkLanding } from "./work-threads";
 import {
+  bodyTabStore,
+  cardTabOf,
   chatSeat,
   firstSeat,
+  followTab,
   moveSeat,
   nextSeat,
   rightPlaceStore,
@@ -109,6 +114,110 @@ describe("넓힐 수 없는 자리", () => {
   it("작업공간 밖 채팅에는 넓힌 카드가 없다 — 값이 넓혀 있어도 작은 카드다", () => {
     const wide = nextSeat(firstSeat(null), { kind: "expand", target: DOC });
     expect(rightShown(wide, false)).toEqual({ panel: false, card: true, opened: null });
+  });
+});
+
+// restart 02a-10 · 스토리 94 · 96 · 보드 SummarySheet 표의 탭 줄 — 요약 카드와 넓힌 카드는 채팅 탭에 선다. 본문 탭은 카드가 서는 탭(채팅 탭 ·
+// 새 채팅 탭)이면 그 칸의 id, 셸 · 파일 탭 · 문서면 `null`이다.
+describe("탭을 옮길 때의 오른쪽 자리 — SummarySheet 표의 탭 줄", () => {
+  afterEach(() => {
+    rightPlaceStore.setState(() => ({}));
+    bodyTabStore.setState(() => ({}));
+  });
+  const key = workSeat("refund-api");
+  const now = () => seatOf(rightPlaceStore.state, key, "spec");
+  const CHAT = 3;
+  const OTHER_CHAT = 7;
+  const SHELL = null;
+
+  it("셸 · 파일 탭을 켜면 요약 카드가 닫히고 값은 없음이 된다 — 넓혀 있었으면 사이드바가 되돌아온다", () => {
+    followTab(key, "spec", CHAT);
+    moveSeat(key, "spec", { kind: "expand", target: DOC });
+    followTab(key, "spec", SHELL);
+    expect(now()).toEqual({ place: null, opened: null });
+    expect(inWork(now())).toEqual({ panel: false, card: false, opened: null });
+  });
+
+  it("셸 · 파일 탭을 켜도 spec 패널은 그대로다", () => {
+    followTab(key, "spec", CHAT);
+    followTab(key, "spec", SHELL);
+    expect(inWork(now())).toEqual({ panel: true, card: false, opened: null });
+  });
+
+  it("다른 채팅 탭을 켜면 넓힌 카드가 작은 카드로 돌아온다 — 사이드바가 되돌아온다", () => {
+    followTab(key, "spec", CHAT);
+    moveSeat(key, "spec", { kind: "expand", target: DOC });
+    followTab(key, "spec", OTHER_CHAT);
+    expect(inWork(now())).toEqual({ panel: false, card: true, opened: null });
+  });
+
+  it("넓힌 채 다른 작업공간을 다녀와도 탭은 작업공간마다 잰다 — 같은 채팅 탭이면 그대로, 다른 채팅 탭이면 작은 카드다", () => {
+    followTab(key, "spec", CHAT);
+    moveSeat(key, "spec", { kind: "expand", target: DOC });
+    followTab(workSeat("watcher"), "spec", SHELL);
+    followTab(key, "spec", CHAT);
+    expect(now().opened).toBe(DOC);
+    followTab(workSeat("watcher"), "spec", 11);
+    followTab(key, "spec", OTHER_CHAT);
+    expect(inWork(now())).toEqual({ panel: false, card: true, opened: null });
+  });
+
+  it("셸에서 채팅 탭으로 돌아와도 닫힌 카드는 닫힌 채다", () => {
+    followTab(key, "spec", CHAT);
+    moveSeat(key, "spec", { kind: "show", place: "summary" });
+    followTab(key, "spec", SHELL);
+    followTab(key, "spec", CHAT);
+    expect(now()).toEqual({ place: null, opened: null });
+  });
+});
+
+// 구현 스펙 「02a — 오른쪽 자리」 — 요약 카드를 여는 손짓은 채팅 탭을 먼저 켠다. 가장 최근에 켠 채팅 탭, 열린 채팅 탭이 없으면 가장 최근 채팅을
+// 탭으로 세우고(`landingOf`가 고른 것), 채팅이 없으면 새 채팅 탭이다.
+describe("요약 카드가 설 채팅 탭", () => {
+  afterEach(() => bodyTabStore.setState(() => ({})));
+  const key = workSeat("refund-api");
+  const chatTab = (id: number, thread: string): BundleTab => ({ kind: "chat", id, thread });
+  const LATEST: WorkLanding = { kind: "thread", id: "latest" };
+
+  it("가장 최근에 켠 채팅 탭이다", () => {
+    const bundle = [chatTab(3, "a"), { kind: "shell", id: 5 } as const, chatTab(7, "b")];
+    followTab(key, "spec", 7);
+    followTab(key, "spec", 3);
+    followTab(key, "spec", null);
+    expect(cardTabOf(key, bundle, LATEST)).toEqual({ kind: "thread", id: "a" });
+  });
+
+  it("가장 최근에 켠 채팅 탭이 닫혔으면 그 앞에 켠 채팅 탭이다", () => {
+    followTab(key, "spec", 7);
+    followTab(key, "spec", 3);
+    expect(cardTabOf(key, [chatTab(7, "b")], LATEST)).toEqual({ kind: "thread", id: "b" });
+  });
+
+  it("새 채팅 탭은 채팅 탭이 아니다 — 첫 말을 보내 채팅 탭이 된 칸은 채팅 탭이다", () => {
+    followTab(key, "spec", 7);
+    followTab(key, "spec", 9);
+    expect(cardTabOf(key, [chatTab(7, "b"), { kind: "new-chat", id: 9 }], LATEST)).toEqual({ kind: "thread", id: "b" });
+    expect(cardTabOf(key, [chatTab(7, "b"), chatTab(9, "settled")], LATEST)).toEqual({ kind: "thread", id: "settled" });
+  });
+
+  it("열린 채팅 탭이 없으면 가장 최근 채팅을 탭으로 세우고, 채팅이 없으면 새 채팅 탭이다", () => {
+    followTab(key, "spec", 7);
+    const bundle = [{ kind: "shell", id: 5 } as const, { kind: "new-chat", id: 9 } as const];
+    expect(cardTabOf(key, bundle, LATEST)).toEqual(LATEST);
+    expect(cardTabOf(key, bundle, { kind: "new", work: "refund-api" })).toEqual({ kind: "new", work: "refund-api" });
+  });
+
+  it("열린 채팅 탭을 켠 적이 없어도 그 탭이다 — 묶음 끝의 것(가장 늦게 연 것)이다", () => {
+    expect(cardTabOf(key, [chatTab(3, "a"), chatTab(7, "b"), { kind: "shell", id: 9 }], LATEST)).toEqual({
+      kind: "thread",
+      id: "b",
+    });
+  });
+
+  it("켠 차례는 작업공간마다다", () => {
+    followTab(workSeat("watcher"), "spec", 7);
+    followTab(key, "spec", 3);
+    expect(cardTabOf(key, [chatTab(3, "a"), chatTab(7, "b")], LATEST)).toEqual({ kind: "thread", id: "a" });
   });
 });
 

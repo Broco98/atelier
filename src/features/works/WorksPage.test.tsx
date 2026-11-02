@@ -15,7 +15,7 @@ import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 import { threadQuery, threadsQuery } from "@/features/thread/hooks";
-import { moveSeat, rightPlaceStore, workSeat } from "@/features/thread/right-place";
+import { bodyTabStore, followTab, moveSeat, rightPlaceStore, workSeat } from "@/features/thread/right-place";
 import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
 import { addChunk, discardFlow, mergeLines, NEW_THREAD, setDraft } from "@/features/thread/thread-store";
 import type { RecordLine, ThreadSummary, ThreadView } from "@/features/thread/types";
@@ -193,10 +193,11 @@ describe("WorksPage 패널 토글과 레일", () => {
     expect(tags[0]).toContain('aria-expanded="false"');
   });
 
-  it("패널 토글은 레일이 서도 머리 줄 오른쪽 맨 끝, 분할 뒤에 하나 선다", () => {
+  it("패널 토글은 레일이 서도 머리 줄 오른쪽 맨 끝, 분할 · 요약 카드 뒤에 하나 선다", () => {
     // 칸이 `spec` · `files` 둘이라 레일이 선다(codex-ds 결정 25 — `railStands`). 한때 토글은 그때 머리 카드 밖 레일 열 위로
     // 나갔다(DS `.at-railtop`). 머리 카드를 걷어 화면 것이 머리 줄에 바로 서며(02 구현 스펙 §3 S2) 토글은 레일이 서든 안 서든 할 일
-    // 묶음의 맨 끝 — 보기 배치(분할) 뒤 — 하나다. 접혀 있을 때 펼치기가 하나 더 서던 갈래는 없다.
+    // 묶음의 맨 끝 — 보기 배치(분할)와 요약 단추(restart 02a-10 — 문서가 본문이어도 선다) 뒤 — 하나다. 접혀 있을 때 펼치기가 하나 더 서던
+    // 갈래는 없다.
     for (const split of [null, "lr"] as const) {
       const markup = render(specDocs(["overview.md"]), "spec", split);
       const group = headActionsOf(markup);
@@ -205,7 +206,8 @@ describe("WorksPage 패널 토글과 레일", () => {
       expect(panelToggleTags(group), `${split} — 할 일 묶음 안`).toHaveLength(1);
       const buttons = group.match(/<button[^>]*>/g) ?? [];
       expect(buttons[buttons.length - 1], `${split}`).toMatch(/aria-label="작업공간 패널 (?:접기|펼치기)"/);
-      expect(buttons[buttons.length - 2], `${split}`).toContain('aria-label="분할"');
+      expect(buttons[buttons.length - 2], `${split}`).toContain('aria-label="요약 카드"');
+      expect(buttons[buttons.length - 3], `${split}`).toContain('aria-label="분할"');
     }
   });
 
@@ -1383,6 +1385,7 @@ describe("WorksPage 오른쪽 자리", () => {
     vi.unstubAllGlobals();
     terminalStore.setState(() => NO_SHELLS);
     rightPlaceStore.setState(() => ({}));
+    bodyTabStore.setState(() => ({}));
   });
 
   it("창 머리의 「요약 카드」가 분할 뒤, 패널 토글 앞에 선다", () => {
@@ -1393,10 +1396,24 @@ describe("WorksPage 오른쪽 자리", () => {
     expect(at("작업공간 패널 접기")).toBe(at("요약 카드") + 1);
   });
 
-  // 탭을 옮길 때의 규칙(셸 · 파일 탭에서 단추를 누르면 최근 채팅 탭을 켠다)은 02a-10이다 — 그때까지 단추는 카드가 설 곳(채팅 탭)에만 선다.
-  it("「요약 카드」는 채팅이 본문에 설 때만 선다", () => {
-    expect(summaryButton(render({}, "spec"))).toBe("");
-    expect(summaryButton(render({}, "terminal"))).toBe("");
+  // restart 02a-10 — 셸 · 파일 탭 · 문서에서 누르면 채팅 탭을 먼저 켜고 작은 카드를 세운다(`cardTabOf`). 그래서 단추는 작업공간 화면에 늘
+  // 선다(시안 Main 창 머리). 셸 · 파일 탭이 켜지면 값이 없음이 되어 꺼져 있다.
+  it("「요약 카드」는 셸 · 파일 탭 · 문서에서도 같은 자리에 선다", () => {
+    for (const markup of [render({}, "spec"), render({}, "terminal")]) {
+      const buttons = headActionsOf(markup).match(/<button[^>]*>/g) ?? [];
+      const at = (label: string) => buttons.findIndex((tag) => tag.includes(`aria-label="${label}"`));
+      expect(at("요약 카드")).toBe(at("분할") + 1);
+      expect(summaryButton(markup)).toContain('aria-pressed="false"');
+    }
+  });
+
+  it("셸이 켜진 뒤의 자리 — 카드가 닫혀 단추가 꺼지고 spec 패널은 그대로다", () => {
+    followTab(seat, "spec", 1);
+    moveSeat(seat, "spec", { kind: "expand", target: { kind: "doc", path: "overview.md" } });
+    followTab(seat, "spec", null);
+    const markup = render({}, "terminal");
+    expect(summaryButton(markup)).toContain('aria-pressed="false"');
+    expect(panelToggleTags(markup)[0]).toContain('aria-expanded="false"');
   });
 
   it("채팅을 처음 열면 spec 패널이 열려 있고 요약 카드는 닫혀 있다", () => {
@@ -1460,9 +1477,20 @@ describe("WorksPage 오른쪽 자리", () => {
 
   it("작업공간 화면이 오른쪽 자리를 쥐고 채팅 탭 몸에 건넨다 — 넓힌 카드는 채팅이 본문에 설 때만이다", () => {
     const page = source("WorksPage.tsx");
-    expect(page).toContain("useWorkRightPlace(panelWork, { split: split !== null, chat: selected !== null && chatThread !== null })");
+    expect(page).toContain("chat: selected !== null && chatThread !== null,\n    tab: bodyTab,");
     expect(page).toContain("card={right.card}");
     expect(countOf(page, "<SummaryToggle")).toBe(1);
+  });
+
+  // 누름은 정적 그림에 없다 — 켤 채팅 탭을 고르는 것(`cardTabOf`)은 `right-place.test.ts`가 표의 줄마다 재고, 배선은 리터럴로 못박는다. 카드가
+  // 서는 탭이 아니면 채팅 탭을 먼저 켜고 작은 카드를 세운다(여닫기가 아니다 — 셸에서는 값이 늘 없음이라 같은 말이지만, 표가 「작은 카드」다).
+  it("셸 · 파일 탭에서 「요약 카드」는 채팅 탭을 먼저 켜고 작은 카드를 세운다", () => {
+    const page = source("WorksPage.tsx");
+    expect(page).toContain("<SummaryToggle open={right.summaryOpen} onToggle={pressSummary} />");
+    expect(page).toContain(
+      "const landing = cardTabOf(workSeat(selected.slug), bundleOf(terminalStore.state, ownerOf(selected.slug)), latest);",
+    );
+    expect(page).toContain('if (landing.kind === "thread") onOpenChat(landing.id);\n    else onOpenNewChat();\n    moveRight({ kind: "show", place: "summary" });');
   });
 });
 

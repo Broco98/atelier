@@ -61,6 +61,10 @@ import {
 } from "@/features/terminal/terminal-store";
 import { useRenameThread, useThreads } from "@/features/thread/hooks";
 import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
+import { lastSaid } from "@/features/thread/preview";
+import { cardTabOf, workSeat, type BodyTab } from "@/features/thread/right-place";
+import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
+import { landingOf } from "@/features/thread/work-threads";
 import { SummaryToggle, ThreadMenuItems } from "@/features/thread/ThreadHead";
 import { useWorkRightPlace, WorkChat, WorkNewChat } from "@/features/thread/ThreadScreen";
 import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
@@ -235,6 +239,18 @@ function columnShownOf(state: ShellsState, owner: ShellOwner | null): BundleShow
   return shown.kind === "new-chat" ? SHELL : shown;
 }
 
+/**
+ * **본문 탭**(restart 02a-10 · `BodyTab`) — 본문(분할이면 묶음 열)에 선 탭이다. 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이면 그 칸의 id, 셸 · 파일 탭 ·
+ * 문서면 `null`이다. 주소가 가리키는 칸이 아직 묶음에 서지 않은 한 틱(주소 → 묶음이 아직 안 돌았다)은 `undefined`다 — 그 틱의 지금 탭은 앞
+ * 탭이라 세면 탭이 두 번 바뀐 것으로 읽힌다.
+ */
+function bodyTabOf(state: ShellsState, owner: ShellOwner, chat: string | null, newChat: boolean): BodyTab | undefined {
+  if (chat !== null) return bundleOf(state, owner).find((tab) => tab.kind === "chat" && tab.thread === chat)?.id;
+  if (!newChat) return null;
+  const active = activeTabOf(state, owner);
+  return active?.kind === "new-chat" ? active.id : undefined;
+}
+
 function WorksPage({
   sidebarOpen,
   selectedSlug,
@@ -398,7 +414,18 @@ function WorksPage({
   //
   // **처음 값이 분할 여부를 본다**(결정 88). `?split=lr`로 새로 뜨거나 새로고침하면 아래 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면
   // 결정 88이 계산한 「터미널 ≈34칸에서 `claude` TUI가 깨진다」가 그대로 재현된다 — 그래서 분할인 채 처음 연 작업공간은 spec 패널이 접혀 있다.
-  const right = useWorkRightPlace(panelWork, { split: split !== null, chat: selected !== null && chatThread !== null });
+  //
+  // **탭을 옮겨도 표의 규칙이 지켜진다**(restart 02a-10 · SummarySheet 표의 탭 줄) — 본문 탭(`bodyTab`)이 셸 · 파일 탭 · 문서로 바뀌면 요약 카드가
+  // 닫히고, 다른 채팅 탭으로 바뀌면 넓힌 카드가 작은 카드로 돌아온다. 본문 탭은 칸의 id로 잰다 — 새 채팅 탭이 첫 말로 채팅 탭이 되어도 같은
+  // 칸이라 같은 탭이다(`settleNewChat`). 묶음 쪽 변화를 한 값으로 접어 구독한다 — 셸 타이틀에 이 화면이 다시 그려지지 않게.
+  const bodyTab = useStore(terminalStore, (state) =>
+    selected === null || opening ? undefined : bodyTabOf(state, ownerOf(selected.slug), chatThread, newChatShown),
+  );
+  const right = useWorkRightPlace(panelWork, {
+    split: split !== null,
+    chat: selected !== null && chatThread !== null,
+    tab: bodyTab,
+  });
   const { move: moveRight, panelOpen } = right;
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
@@ -1066,6 +1093,29 @@ function WorksPage({
     />
   ) : undefined;
 
+  /**
+   * 「요약 카드」를 눌렀다(restart 02a-10 · 구현 스펙 「02a — 오른쪽 자리」 · SummarySheet 표 「셸 · 파일 탭에서 요약 단추를 누른다」). 본문이 카드가
+   * 서는 탭(채팅 탭 · 새 채팅 탭)이면 그 자리에서 여닫는다. 아니면(셸 · 파일 탭 · 문서) **채팅 탭을 먼저 켜고** 작은 카드를 세운다 — spec 패널은
+   * 접힌다. 켤 탭은 가장 최근에 켠 채팅 탭이고, 열린 채팅 탭이 없으면 가장 최근 채팅(사이드바 작업공간 줄과 같은 `landingOf`)을 탭으로 세우며,
+   * 채팅이 없으면 새 채팅 탭이다(`cardTabOf`). 새 채팅 탭은 이미 선 것이 있으면 그 탭을 켠다(주소 → 묶음의 `showNewChatTab`).
+   *
+   * 「가장 최근」의 말은 이미 읽어 둔 기록에서 누른 순간에 센다(`-works-view`의 처음 여는 규칙과 같다). 값을 먼저 바꿔도 탭 줄 규칙이 걷지
+   * 않는다 — 그 규칙은 본문 탭이 바뀔 때만 돌고, 바뀐 본문은 채팅 탭이다.
+   */
+  const pressSummary = () => {
+    if (chatThread !== null || newChatShown) {
+      moveRight({ kind: "toggle", place: "summary" });
+      return;
+    }
+    if (selected === null) return;
+    const records = threadRecordStore.state;
+    const latest = landingOf(threads ?? [], selected.slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    const landing = cardTabOf(workSeat(selected.slug), bundleOf(terminalStore.state, ownerOf(selected.slug)), latest);
+    if (landing.kind === "thread") onOpenChat(landing.id);
+    else onOpenNewChat();
+    moveRight({ kind: "show", place: "summary" });
+  };
+
   // 머리 줄의 화면 것(codex-ds 스펙 §6 · 스토리 23 · 24 · 02 구현 스펙 §3 S2) — 왼쪽은 ⚡(work 아이콘 — 상태 글리프가 아니다)와 work 이름이다. 사이드바를 보지
   // 않아도 지금 어느 work인지 안다(⌘B로 사이드바를 접어도). **이름은 그 자리에서 바꾼다**(codex-ds 스펙 §9 · `rename`) — 이름의 두 번
   // 클릭 · F2, 또는 ⋯ · 이름 우클릭 메뉴의 「이름 바꾸기」로 들어가고, 지금 work 이름 명령(`set_work_title`)으로 저장한다.
@@ -1136,8 +1186,8 @@ function WorksPage({
         //
         // 그 뒤가 **요약 단추**(「요약 카드」 — restart 02a-9 · 스토리 93 · 시안 Main 창 머리 `.ra-tbtn` 「요약 카드」 · 「spec 패널 접기」)다 —
         // 오른쪽 자리를 요약 카드로 세우거나 걷는다. 틀이 그 뒤 맨 끝에 패널 토글을 세워, 오른쪽 자리를 나눠 쓰는 둘이 나란히 선다. 한때
-        // 채팅 탭 몸 오른쪽 위에 섰다(02a-4의 임시). **카드가 설 곳(채팅이 본문)에서만 선다** — 셸 · 파일 탭에서 누르면 채팅 탭을 켜는 규칙은
-        // 02a-10이 더한다.
+        // 채팅 탭 몸 오른쪽 위에 섰다(02a-4의 임시). **셸 · 파일 탭 · 문서에서도 선다**(restart 02a-10 — `pressSummary`가 채팅 탭을 먼저
+        // 켠다). 한때 채팅이 본문일 때만 섰다(02a-9).
         end: (
           <>
             <Hint
@@ -1151,9 +1201,7 @@ function WorksPage({
             >
               <Columns2 className={HEAD_GLYPH} />
             </Hint>
-            {chatBody && (
-              <SummaryToggle open={right.summaryOpen} onToggle={() => moveRight({ kind: "toggle", place: "summary" })} />
-            )}
+            <SummaryToggle open={right.summaryOpen} onToggle={pressSummary} />
           </>
         ),
       }
