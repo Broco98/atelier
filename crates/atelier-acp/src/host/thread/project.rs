@@ -18,7 +18,7 @@
 
 use std::path::PathBuf;
 
-use atelier_core::RecordKind;
+use atelier_core::{RecordKind, Runtime};
 use serde_json::{json, Value};
 
 use super::work::Card;
@@ -106,10 +106,17 @@ impl ConversationHost {
                     .into_iter()
                     .find(|(slug, _)| slug == &outside.project)
                     .map_or_else(String::new, |(_, folder)| format!(" `{}`", folder.display()));
-                let text = format!(
-                    "사람이 `{project}`을 읽기만 하기로 했다 — 고치지 않는다. 다음 턴부터 그 Project 폴더{folder}를 함께 열어 읽을 수 \
-                     있다(이번 턴에 그 폴더를 읽으면 사람에게 묻는다). 고쳐야 하면 사람에게 말로 묻는다."
-                );
+                // Codex에는 그 폴더를 함께 열지 않는다 — 읽기에는 필요 없고, Codex는 읽을 때 묻지 않는다(01c-6).
+                let text = match self.thread_runtime(thread) {
+                    Runtime::ClaudeCode => format!(
+                        "사람이 `{project}`을 읽기만 하기로 했다 — 고치지 않는다. 다음 턴부터 그 Project 폴더{folder}를 함께 열어 읽을 수 \
+                         있다(이번 턴에 그 폴더를 읽으면 사람에게 묻는다). 고쳐야 하면 사람에게 말로 묻는다."
+                    ),
+                    Runtime::Codex => format!(
+                        "사람이 `{project}`을 읽기만 하기로 했다 — 고치지 않는다. 그 Project 폴더{folder}는 읽기만 한다. 고쳐야 하면 사람에게 \
+                         말로 묻는다."
+                    ),
+                };
                 (text, false)
             }
             ProjectChoice::Decline => {
@@ -229,12 +236,23 @@ impl ConversationHost {
             (false, true) => format!("`{project}`에 worktree를 만들었다: `{}`{branch}", planted.path.display()),
             (false, false) => format!("`{project}` worktree가 이미 있다: `{}`{branch}", planted.path.display()),
         };
-        let next = self
-            .read_thread_file(thread)
-            .ok()
-            .and_then(|file| self.thread_place(thread, &file).ok())
+        let file = self.read_thread_file(thread).ok();
+        let next = file
+            .as_ref()
+            .and_then(|file| self.thread_place(thread, file).ok())
             .map_or_else(String::new, |place| format!(" 다음 턴부터 작업 폴더가 `{}`로 바뀐다.", place.cwd.display()));
-        (format!("{head}\n\n이 Project는 이 worktree 안에서만 고친다 — 이번 턴에는 이 절대 경로로 고친다.{next}"), false)
+        let when = match self.thread_runtime(thread) {
+            Runtime::ClaudeCode => format!("이번 턴에는 이 절대 경로로 고친다.{next}"),
+            // Codex의 쓸 수 있는 자리는 세션을 열 때 정해진다 — 그때 연 작업 폴더 안의 worktree만 이번 턴에 고칠 수 있다.
+            Runtime::Codex if file.and_then(|file| file.cwd).is_some_and(|cwd| planted.path.starts_with(cwd)) => {
+                "지금 작업 폴더 안이라 이번 턴에도 이 자리에서 고친다.".to_owned()
+            }
+            Runtime::Codex => format!(
+                "이번 턴에는 고치지 않는다 — 쓸 수 있는 자리는 세션을 열 때 정해져 이 worktree는 그 밖이다. 이번 턴을 마치면 다음 턴부터 \
+                 거기서 고친다.{next}"
+            ),
+        };
+        (format!("{head}\n\n이 Project는 이 worktree 안에서만 고친다 — {when}"), false)
     }
 
     /// 사람의 결정 줄(`question`) 하나를 적는다.

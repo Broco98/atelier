@@ -12,6 +12,7 @@ mod common;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use atelier_acp::{ConversationHost, HostError, ThreadLink, WorkChoice};
 use common::{of_kind, Sandbox};
@@ -191,6 +192,30 @@ fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사�
         Err(HostError::QuestionClosed { thread: thread.clone(), request: request_of(&asked) }),
         "닫힌 카드에는 답하지 못한다"
     );
+}
+
+#[test]
+fn claude_채팅의_카드는_codex의_카드_한도가_지나도_닫지_않고_사람의_답을_기다린다() {
+    // Codex 채팅은 이 한도에 카드를 닫는다(01c-8 · `thread_codex.rs`). Claude Code는 도구를 끊지 않는다.
+    let limit = Duration::from_millis(300);
+    let sandbox = Sandbox::new();
+    register(&sandbox, "api-server", "");
+    let host = sandbox.host_builder(calling(&sandbox, &[refund_proposal()]), |_| {}).card_limit(limit).build();
+    let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+
+    let asked = wait_card(&sandbox, &thread, "asked");
+    std::thread::sleep(limit * 4);
+    let record = sandbox.thread_record(&thread);
+    assert!(
+        of_kind(&record, "question").iter().all(|line| line["payload"]["state"] == "asked"),
+        "한도가 지나도 카드가 그대로 선다:\n{}",
+        common::lines_text(&record)
+    );
+    host.answer_work(&thread, &request_of(&asked), WorkChoice::Continue).expect("한도가 지난 뒤에도 답한다");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+    let answer = &answers(&sandbox, &thread)[0];
+    assert!(answer["content"][0]["text"].as_str().unwrap().starts_with("사용자가 Work 없이 계속하기로 함"), "{answer}");
 }
 
 #[test]

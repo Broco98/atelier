@@ -21,6 +21,7 @@ import {
   usageText,
   workLine,
   type DecisionEntry,
+  type UnansweredEntry,
   type EndNotice,
   type Entry,
   type Notice,
@@ -42,7 +43,7 @@ import { answeredCards } from "./question";
 import { SentQuoteChip } from "./QuoteChip";
 import { ResultCard } from "./ResultCard";
 import ThreadMarkdown from "./ThreadMarkdown";
-import { isToolCardAsk, isToolChoice, toolCardRow } from "./tool-cards";
+import { isCardDecision, isToolCardAsk, toolCardRow } from "./tool-cards";
 import { ToolChoiceRow } from "./ToolCards";
 import type { Quote } from "@/features/works/QuotePick";
 import type { Attachment } from "./types";
@@ -327,7 +328,7 @@ const TurnView = memo(function TurnView({ turn, runtime, open, waiting, compacti
   // 글이 빈 생각은 그리지 않는다(`shownEntry`).
   const before = turn.entries.slice(0, from).filter(shownEntry);
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
-  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isToolChoice(entry)) : [];
+  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isCardDecision(entry)) : [];
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   // 다시 이을 수 있을 때만 다시 잇자고 말한다 — 지난 턴과 읽기만인 채팅은 지난 일이다(`cutNotice`).
   const reconnectable = actions && severed && { failed: actions.reconnectFailure ?? severed.failed };
@@ -341,7 +342,7 @@ const TurnView = memo(function TurnView({ turn, runtime, open, waiting, compacti
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다.
-  const kept = turn.end ? turn.entries.filter((entry, at) => keptFolded(entry) && (at < from ? !unfolded : !isToolChoice(entry))) : [];
+  const kept = turn.end ? turn.entries.filter((entry, at) => keptFolded(entry) && (at < from ? !unfolded : !isCardDecision(entry))) : [];
   const keptRows = kept.map((entry) => <EntryView key={entry.key} entry={entry} />);
   return (
     <>
@@ -548,6 +549,8 @@ function EntryView({ entry }: { entry: Entry }) {
       return <ResultCard card={entry} />;
     case "warning":
       return <WarningLine warning={entry} />;
+    case "unanswered":
+      return <UnansweredRow entry={entry} />;
     // Thread 도구 카드의 결정 줄(Work 만들기 · Work 밖 Project · Service 질문 · Project 추가) — 갈래마다의 줄은 그 표다(`ToolCards.tsx`).
     default:
       return <ToolChoiceRow entry={entry} />;
@@ -573,6 +576,22 @@ function DecisionRow({ entry }: { entry: DecisionEntry }) {
       <Icon className="size-4 shrink-0" aria-hidden />
       <span>{decisionText(entry)}</span>
       {entry.words && <span className="min-w-0 text-fg-secondary wrap-anywhere">「{entry.words}」</span>}
+    </p>
+  );
+}
+
+/**
+ * 답이 없어 닫힌 카드의 결정 줄(01c-8 · Tools 보드 「승인 결정 줄」의 마지막 줄 `.ra-decision.no`) — 승인 결정 줄의 거부와 같은 모양이다. Codex 채팅에서만
+ * 선다 — Claude 채팅의 카드는 닫히지 않는다.
+ */
+function UnansweredRow({ entry }: { entry: UnansweredEntry }) {
+  return (
+    <p
+      data-decision="unanswered"
+      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
+    >
+      <X className="size-4 shrink-0" aria-hidden />
+      <span>답이 없어 닫음 · Codex는 5분까지만 기다려요</span>
     </p>
   );
 }

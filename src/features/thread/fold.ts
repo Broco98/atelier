@@ -7,11 +7,11 @@ import { prLineOf, type PrLine } from "./pr";
 import { innerCalls } from "./subagent";
 import { toolFields } from "./tool-fields";
 import {
-  cardOfChoice,
+  cardOfDecision,
   cardOfMcp,
+  isCardDecision,
   isToolCard,
   isToolCardAsk,
-  isToolChoice,
   toolCardRow,
   type ToolCard,
   type ToolCardAsk,
@@ -95,6 +95,7 @@ export type Entry =
   | DecisionEntry
   | QuestionEntry
   | ToolChoiceEntry
+  | UnansweredEntry
   | ResultEntry
   | WarningEntry;
 
@@ -190,6 +191,20 @@ export interface ProjectAddChoiceEntry {
   folder: string;
   root: string | null;
   /** 이 결정의 카드를 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
+  toolCallId: string | null;
+}
+
+/**
+ * 답이 없어 닫힌 카드의 결정 줄(01c-8 · Tools 보드 「승인 결정 줄」의 마지막 줄) — Codex는 MCP 도구를 300초에서 끊어서, Codex 채팅에서 카드로 사람을
+ * 기다리는 Thread 도구는 그 전에 카드를 닫는다(`question` `withdrawn` · `reason: timeout`). 「답이 없어 닫음 · Codex는 5분까지만 기다려요」. 그 카드를 낸
+ * Thread 도구 줄의 자리를 대신한다 — 도구의 실패 결과가 함께 서지 않는다.
+ */
+export interface UnansweredEntry {
+  kind: "unanswered";
+  key: string;
+  /** 닫힌 카드의 갈래. */
+  card: ToolCard;
+  /** 그 카드를 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
   toolCallId: string | null;
 }
 
@@ -767,11 +782,12 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           tool.allowed = allowedTools.get(tool.toolCallId) ?? null;
           const asking = cardOfTool(tool);
           if (asking) {
-            // 카드 줄이 먼저 왔다 — 그 카드의 도구 줄이 이것이다. 이미 답했으면 결정 줄이 그 자리다.
+            // 카드 줄이 먼저 왔다 — 그 카드의 도구 줄이 이것이다. 이미 답했거나 닫혔으면 결정 줄이 그 자리다.
             const waiting = [...pending].find(([key, one]) => one.card === asking && proposedBy.get(key) === null);
             if (waiting) proposedBy.set(waiting[0], tool.toolCallId);
             const choice = turn.entries.find(
-              (entry): entry is ToolChoiceEntry => isToolChoice(entry) && cardOfChoice(entry) === asking && entry.toolCallId === null,
+              (entry): entry is ToolChoiceEntry | UnansweredEntry =>
+                isCardDecision(entry) && cardOfDecision(entry) === asking && entry.toolCallId === null,
             );
             if (!waiting && choice) {
               choice.toolCallId = tool.toolCallId;
@@ -921,9 +937,14 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         }
         const asked = pending.get(requestId);
         dropAsk(requestId);
-        if (payload.state !== "answered" || asked === undefined || !isToolCardAsk(asked) || asked.card !== card) break;
+        if (asked === undefined || !isToolCardAsk(asked) || asked.card !== card) break;
         const toolCallId = proposedBy.get(requestId) ?? null;
-        const choice = toolCardRow(asked.card).answer(asked, payload, { key: `w${line.seq}`, toolCallId });
+        const at = { key: `w${line.seq}`, toolCallId };
+        // 답했으면 고른 것, 한도에 닫혔으면(01c-8) 「답이 없어 닫음」이 그 도구 줄 자리에 선다. 멈춤 · 끊김으로 거둔 카드는 그 턴의 끝이 말한다.
+        let choice: ToolChoiceEntry | UnansweredEntry;
+        if (payload.state === "answered") choice = toolCardRow(asked.card).answer(asked, payload, at);
+        else if (payload.state === "withdrawn" && payload.reason === "timeout") choice = { kind: "unanswered", card: asked.card, ...at };
+        else break;
         const home = toolCallId ? toolHome(turns, toolCallId) : null;
         if (home && toolCallId) {
           home.turn.entries.splice(home.turn.entries.indexOf(home.tool), 1, choice);
@@ -1524,7 +1545,7 @@ export function keptFolded(entry: Entry): boolean {
     entry.kind === "plan" ||
     entry.kind === "checklist" ||
     entry.kind === "question" ||
-    isToolChoice(entry) ||
+    isCardDecision(entry) ||
     entry.kind === "result" ||
     entry.kind === "warning"
   );
