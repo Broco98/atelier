@@ -129,6 +129,9 @@ fn a_child_the_real_tests_spawn() {
         }
         // 곧바로 끝난다. 부모가 거두기 전까지 좀비로 남는다.
         Some("exit") => {}
+        // 이 실행의 세대를 한 줄로 말하고 끝난다 — 함께 뜬 실행들의 세대를 견주는 검사(`shell_key`)가 쓴다. 세대는 처음 물을 때
+        // 잡히므로 이 줄이 이 실행이 세대를 짓는 순간이다.
+        Some("generation") => println!("generation=[{}]", super::shell_key::generation()),
         other => panic!("모르는 역할이다: {other:?}"),
     }
 }
