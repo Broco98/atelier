@@ -60,7 +60,7 @@ describe("상태 농도 스케일", () => {
   });
 
   // **상태 면의 이름은 `index.css`가 열거한 것뿐이다.** 면 알파 셋 · 흰 카드 안의 고른 면(`fill-selected`)에 02가 Codex 실측 둘을 더했다 —
-  // 한때 사이드바 · 사람 메뉴의 투명한 고른 면(`fill-nav-selected` .053, 02 스펙 §4 — restart 02a-3 뒤로 앱이 읽지 않는다)과 요약 고정 토글의 켜진 면(`fill-toggle-on` #ebebec,
+  // 한때 사이드바 · 사람 메뉴의 투명한 고른 면(`fill-nav-selected` .053, 02 스펙 §4 — restart 02a-3 뒤로 앱이 읽지 않는다)과 요약 단추의 켜진 면(`fill-toggle-on` #ebebec,
   // 스펙 §6). 새 면을 들이면 이 목록과 `index.css`의 상태 농도 머리말을 함께 고친다 — 목록 밖의 면은 면 알파를 써야 한다.
   const css = blankComments(readFileSync(join(root, "src", "index.css"), "utf8"));
   const lightFills = [

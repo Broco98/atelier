@@ -733,7 +733,7 @@
        **Codex 실측 크기**(02 구현 스펙 §9 · §12 · 티켓 01) — 둘은 아직 쓰는 자리가 없다.
          column       737   Thread의 대화 열과 입력창의 폭(10 — Codex 열 x 402–1139). DS `size-thread`(48rem)는 문서 · 설정 글 폭으로 남는다
          stream-fade  240   답이 흐르는 동안 끝을 옅게 지우는 그라데이션의 길이(12 「답 글자 도착」)
-       02의 다른 크기는 지금 토큰이다 — 셸 컨트롤 · 보내기 · 칩 · + · @ · 「…」 · 요약 고정 토글의 28은 `--size-control`, 요약 카드 폭 300은
+       02의 다른 크기는 지금 토큰이다 — 셸 컨트롤 · 보내기 · 칩 · + · @ · 「…」 · 요약 단추의 28은 `--size-control`, 요약 카드 폭 300은
        `--size-summary`(v1 `--size-work-card`의 이름을 고쳤다 — 07), 사이드바 줄 30은 `--size-row-nav`, 입력창 글 칸 최소 44는
        `--space-11`(눈금 11)이다.
 
@@ -833,7 +833,7 @@
          `fill-nav-selected` 한때 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). restart
                              02a-3이 사이드바 줄을 면 알파로 옮기고 사람 메뉴를 걷어 앱이 읽지 않는다 — 02 스펙 값을 재는
                              `tokens.test.ts`와 옛 판을 재는 L3가 읽어 남겼다
-         `fill-toggle-on`    Thread 머리 줄 요약 고정 토글의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
+         `fill-toggle-on`    Thread 머리 줄 요약 단추의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
        이 목록은 **열거**다(`state-scale.test.ts`가 `:root`의 `--fill-*` 이름을 맞댄다): 여기 없는 새 상태 배경은 유예된 것이 아니라
        면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널 토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
     --fill-soft: rgba(26, 28, 31, 0.05);
@@ -933,7 +933,7 @@
          separator             머리 줄 가운데 앞 세로선(02) · 한때 사람 메뉴의 구분선(04 — restart 02a-3이 메뉴를 걷었다)
          separator-soft        요약 카드의 칸 구분선(07) · 작업 구분선 아래 선(09) · 답한 질문 카드의 테두리(11)
          fill-nav-selected     한때 사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말). restart 02a-3 뒤로 앱이 읽지 않는다
-         fill-toggle-on        Thread 머리 줄 요약 고정 토글의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
+         fill-toggle-on        Thread 머리 줄 요약 단추의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
          face-person           한때 바닥 사람 줄의 얼굴 면(04 — 시안 F1-Home · Diff-Frame · Components의 `.ava`, 스펙 §4는 값을 적지 않았다 · restart 02a-3이 걷었다). 글자는
                                `fg-on-solid`. Agent 얼굴(`fill-active` 면)과 갈려 「나」가 한눈에 갈린다

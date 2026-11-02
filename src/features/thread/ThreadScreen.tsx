@@ -13,6 +13,7 @@ import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useReadingScope, useServices } from "@/features/services/hooks";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
+import type { WorkView } from "@/features/works/types";
 import { cn } from "@/lib/utils";
 import { withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
 import { newChatDoor, recallSearch } from "@/routes/-work-search";
@@ -51,6 +52,7 @@ import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
 import { DEFAULT_RUNTIME, isRuntime, runtimeNameOf } from "./runtime";
 import { atBottom, leavingPlace, type ReadingPlace } from "./reading-place";
+import { chatSeat, rightShown, useRightSeat, workSeat, type RightMove } from "./right-place";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
@@ -60,7 +62,7 @@ import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, Runtime, ThreadLink, ThreadView } from "./types";
 import type { ComposerTray, ModeChoice, ModelChoice, ScopeChoice } from "./ComposerChips";
-import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
+import { ArchivedSummaryCard, LooseSummaryCard, WorkSummaryCard } from "./SummaryCard";
 import { HeadWork, ServiceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { headService, heldScope, holdOf, holdPick, scopeArgs, shownScope, startScope, type ScopeHold } from "./service-chip";
 import { lockedWork, startLink, startPlaceholder } from "./work-chip";
@@ -73,7 +75,7 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 // - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
 //   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 이름 바로
-//   뒤에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)가, 오른쪽 끝에 요약 고정 토글이 선다(restart 02a-7 · 시안 MainLoose 창
+//   뒤에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)가, 오른쪽 끝에 요약 단추(「요약 카드」)가 선다(restart 02a-7 · 시안 MainLoose 창
 //   머리 — 한때 「…」도 오른쪽 끝이었다. Work 없는 Thread에도 선다 — 첫 말 전의 새 Thread에는 둘 다 없다, S23). 옛 Work 알약(브랜치)은
 //   걷었다(S14). 이 화면은 탭 줄이 없는 채팅 — 작업공간 밖 채팅과 읽기만 되는 채팅 — 의 자리다(restart 02a-4 · 02a-7).
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
@@ -107,13 +109,16 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
 // - **요약 카드**(02 구현 스펙 §7 · Screen-Live — v1 Work 카드를 바꿨다, `SummaryCard`) — 판 오른쪽 위에 위 · 오른쪽 8 띄워 떠 있고 높이는
 //   내용만큼이다. Work에 이은 Thread는 머리 · 변경 사항 · 결과물 · 소스, 보관된 Work의 Thread는 같은 카드에 「보관됨」, Work 없는 Thread는
-//   결과물 · 소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 머리 줄의 요약 고정 토글이 여닫고 머리 줄 Work 이름이 열며, 열림은
-//   **Thread마다** 기억한다(S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 왼쪽으로 비켜나고, 열고 닫을 때
-//   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 작업공간에서 새 채팅」은 그 Work를 고른 새 Thread(`/?work=`)다.
+//   결과물 · 소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 창 머리의 요약 단추(「요약 카드」)가 여닫고 머리 줄 Work 이름이 연다.
+//   **열림은 오른쪽 자리의 값이다**(restart 02a-9 · `right-place.ts`) — spec 패널과 한 자리를 나눠 쓰는 값 하나로, 작업공간의 채팅 탭은 작업공간
+//   화면이 작업공간마다, 이 화면은 채팅마다 쥔다. 처음 열면 닫혀 있다(SummarySheet 표 첫 줄 — 한때 Thread마다 이 컴퓨터에 적었고 처음엔 열려
+//   있었다, S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 왼쪽으로 비켜나고, 열고 닫을 때
+//   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 작업공간에서 새 채팅」은 그 작업공간의 새 채팅 탭이다(restart 02a-8).
 // - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드 — 02 §7 「넓힌 카드는 그대로다」) — 요약 카드의 줄 · 대화 속 문서 카드를
 //   누르면 카드가 넓어진다. 대화는 왼쪽 480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그
-//   오른쪽을 작은 카드와 같은 띄움 8까지 채운다. 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면
-//   되돌린다. 넓힌 것은 이 화면의 상태라 다른 Thread로 옮기면 작은 카드다. 카드를 닫으면 넓힌 것도 걷힌다.
+//   오른쪽을 작은 카드와 같은 띄움 8까지 채운다. 넓어지면 spec 패널이 접히고(오른쪽 자리), 넓어 있는 동안 사이드바를 접고(적지 않는다 —
+//   `showSidebar`) 작은 카드로 돌아오면 사이드바만 되돌린다. 넓힌 것도 오른쪽 자리의 값이라 작업공간 화면이 쥔다(restart 02a-9). 카드를
+//   닫으면 넓힌 것도 걷힌다. 탭 줄이 없는 채팅(이 화면)에는 넓힌 카드가 없다 — 작은 카드만 쓴다(구현 스펙 「02a — 작업공간 밖 채팅」).
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 들어서며 움직인다(`ArrivalScope` — Thread를 열 때 이미 있던 줄은
 //   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오른다.
 //   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리는 사이드바와 같은 패널 박자로 옮겨 간다(`duration-panel` · `ease-panel`).
@@ -350,8 +355,11 @@ export function ThreadScreen({ thread }: { thread: string }) {
   const [renaming, setRenaming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const name = view?.title || "채팅";
-  const card = useThreadCard(thread, view);
-  const { gone, cardWork } = card;
+  const { gone, cardWork, hasCard } = cardSeatOf(view);
+  // 오른쪽 자리(restart 02a-9) — 탭 줄이 없는 채팅은 그 채팅을 열쇠로 쥔다(`chatSeat`). 처음 열면 비어 있고 창 머리의 「요약 카드」가 연다.
+  // 작은 카드만 쓴다 — 작업공간 밖 채팅에는 넓힐 곳이 없고(구현 스펙 「02a — 작업공간 밖 채팅」), 보관된 작업공간의 카드는 보이기만 한다.
+  const [seat, move] = useRightSeat(chatSeat(thread), null);
+  const card = smallCard(rightShown(seat, false).card, move);
   // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Service가 있으면 「흐린 Service /」(03 §10 — 누르면 그 Service 상세).
   const { data: scope } = useReadingScope({ thread });
   const crumb = view ? headService(view.work, scope) : null;
@@ -374,7 +382,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
       label={name}
       lead={
         cardWork ? (
-          <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => card.setCardOpen(true)} />
+          <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => move({ kind: "show", place: "summary" })} />
         ) : crumb ? (
           <ServiceCrumb name={crumb.name} onOpen={() => void navigate({ to: "/services/$slug", params: { slug: crumb.slug } })} />
         ) : undefined
@@ -382,7 +390,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
       title={{ name, rename: renameName }}
       // ⋯는 제목 바로 뒤다(restart 02a-7 · 시안 MainLoose 창 머리) — 오른쪽 끝에는 요약 단추만 선다.
       menu={view ? <ThreadMenu key={thread} rename={renameName?.onStart ?? null} /> : undefined}
-      end={card.hasCard ? <SummaryToggle open={card.cardOpen} onToggle={card.toggle} /> : undefined}
+      end={hasCard ? <SummaryToggle open={card.open} onToggle={() => move({ kind: "toggle", place: "summary" })} /> : undefined}
     >
       <ThreadPane thread={thread} view={view} error={error} isPending={isPending} card={card} problem={problem} />
     </PlainFrame>
@@ -394,63 +402,117 @@ export function ThreadScreen({ thread }: { thread: string }) {
  * 머리 없이 본문만 선다: 머리 줄은 작업공간의 것이고, `PlainFrame`의 머리는 셸 머리 줄에 포털해 작업공간의 머리와 겹친다. 이름 바꾸기와
  * 「…」는 탭이 맡는다(02a-5).
  *
- * **요약 단추는 임시로 탭 본문 오른쪽 위에 선다**(02a-9가 창 머리로 옮긴다) — 열림은 채팅 화면과 같은 지역 상태다(`useThreadCard` —
- * 채팅마다 기억한다). 단추가 그 자리를 쓰므로 카드는 단추 아래에 선다.
+ * **오른쪽 자리는 작업공간 화면이 쥐어 건넨다**(restart 02a-9 — `card`, `useWorkRightPlace`) — 요약 단추도 작업공간 화면의 창 머리에 선다. 이
+ * 몸은 받은 대로 대화 폭과 카드 자리를 그린다. 02a-4의 임시 단추(탭 몸 오른쪽 위)는 걷었다.
  *
  * **숨은 채팅 탭은 내려간다**(restart 02a-6) — 작업공간 화면은 켜진 채팅 탭 하나만 꽂는다. 기록 구독과 조각 그리기가 함께 멈추고,
  * 기록 · 글 · 첨부 · 인용은 스토어에 있어 남는다. 굴림 자리는 탭이 쥔다 — 돌아오면 쥔 자리(`place`)에서 서고, 내려갈 때 그 자리를
  * 건넨다(`onLeave`).
  */
-export function WorkChat({ thread, place, onLeave }: { thread: string } & ChatPlace) {
+export function WorkChat({ thread, card, place, onLeave }: { thread: string; card: ChatCard } & ChatPlace) {
   const { data: view, error, isPending } = useThread(thread);
-  const card = useThreadCard(thread, view);
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <ThreadPane
-        thread={thread}
-        view={view}
-        error={error}
-        isPending={isPending}
-        card={card}
-        problem={null}
-        under
-        place={place}
-        onLeave={onLeave}
-      />
-      {card.hasCard && (
-        <div className="absolute top-2 right-2 z-20">
-          <SummaryToggle open={card.cardOpen} onToggle={card.toggle} />
-        </div>
-      )}
-    </div>
+    <ThreadPane
+      thread={thread}
+      view={view}
+      error={error}
+      isPending={isPending}
+      card={card}
+      problem={null}
+      place={place}
+      onLeave={onLeave}
+    />
   );
 }
 
 /**
- * 채팅의 **요약 카드 자리** — 열림(채팅마다 기억한다, S22)과 넓힌 카드가 연 것(v1 티켓 35). 채팅 화면과 작업공간의 채팅 탭이 함께 쓴다.
- * 02a-9가 이 값을 작업공간 화면으로 올린다.
+ * 채팅 본문이 받는 **오른쪽 자리**(restart 02a-9 · `right-place.ts`) — 요약 카드가 섰나, 넓힌 카드가 연 것, 그리고 넓히는 길들. 값의 주인은 부르는
+ * 쪽이다: 작업공간의 채팅 탭은 작업공간 화면(`useWorkRightPlace`), `/threads/:id`의 채팅은 채팅 화면(`smallCard`)이다.
  */
-function useThreadCard(thread: string, view: ThreadView | undefined) {
-  const work = view?.work ?? null;
-  // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 「보관됨」이며, 지워진 Work에는 카드가 없다.
-  const gone = view?.readOnly ?? null;
-  const cardWork = gone === "removed" ? null : work;
-  // 요약 카드가 서는 Thread(02 §7) — 읽은 Thread면 Work가 없어도 서고, 지워진 Work의 Thread에만 없다. 열림은 Thread마다다(S22).
-  const hasCard = view !== undefined && gone !== "removed";
-  const [cardOpen, setCardOpen] = useSummaryOpen(hasCard ? thread : null);
-  // 넓힌 카드가 연 것(v1 티켓 35) — 없으면 작은 카드다. 보관된 Work · Work 없는 Thread의 카드는 넓어지지 않는다.
-  const [opened, setOpened] = useState<Opened | null>(null);
-  const expanded = cardWork !== null && gone !== "archived" && cardOpen && opened !== null;
-  useFoldSidebar(expanded);
-  // 요약 고정 토글 — 닫으면 넓힌 것도 걷힌다.
-  const toggle = () => {
-    if (cardOpen) setOpened(null);
-    setCardOpen(!cardOpen);
-  };
-  return { gone, cardWork, hasCard, cardOpen, setCardOpen, opened, setOpened, expanded, toggle };
+export interface ChatCard {
+  /** 요약 카드가 서 있나 — 오른쪽 자리가 `summary`다. */
+  open: boolean;
+  /** 넓힌 카드가 연 것 — 넓힐 수 있는 자리에서 넓어져 있을 때만 있다. */
+  opened: Opened | null;
+  /** 대화 속 문서 카드의 자리(스토리 102) — 그 작업공간의 spec 폴더와 문서를 넓힌 카드에서 여는 길. 넓힐 수 없는 자리는 `null`이라 카드가 서지 않는다. */
+  docPlace: { specRoot: string; open: (path: string) => void } | null;
+  /** PR 카드의 「변경 사항 보기」(v1 티켓 36). */
+  onShowChanges: (pr: PrLine) => void;
+  /** 카드의 줄 · 트리 · 문서 링크가 파일을 열었다 — 카드가 넓어져(이미 넓으면 그대로) 그것을 본다. */
+  onOpen: (target: Opened) => void;
+  /** 넓힌 카드의 × — 작은 카드로 돌아온다. */
+  onClose: () => void;
 }
 
-type ThreadCard = ReturnType<typeof useThreadCard>;
+/**
+ * 작은 카드만 쓰는 자리의 오른쪽 자리 — `/threads/:id`의 채팅(작업공간 밖 · 보관된 작업공간)이다. 넓히는 길(PR의 「변경 사항 보기」 · 카드의 줄)은
+ * 작은 카드를 열 뿐이고 대화의 문서 카드는 서지 않는다 — 열 곳이 없다(구현 스펙 「02a — 작업공간 밖 채팅」).
+ */
+function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
+  const show = () => move({ kind: "show", place: "summary" });
+  return { open, opened: null, docPlace: null, onShowChanges: show, onOpen: show, onClose: () => move({ kind: "collapse" }) };
+}
+
+/**
+ * **작업공간 화면의 오른쪽 자리**(restart 02a-9 · 구현 스펙 「02a — 오른쪽 자리」) — 그 작업공간의 값(`workSeat`)과 그것을 읽는 것 한 묶음이다:
+ * spec 패널 열림 · 요약 카드 열림 · 넓힌 카드 · 넓은 동안 사이드바 접기, 그리고 채팅 탭 몸에 건넬 것(`card` — 대화의 문서 카드와 PR의 「변경
+ * 사항 보기」가 넓히는 길). 작업공간 화면이 부르고 채팅 탭 몸(`WorkChat`)은 받은 대로 그린다. 한때 이 묶음이 채팅 화면의 지역 상태였다 —
+ * spec 패널이 작업공간 화면에 있어 그 화면이 쥐어야 둘이 한 자리를 나눈다.
+ *
+ * - **처음 값은 spec 패널이다**(SummarySheet 표 첫 줄) — 분할인 채 들어오면 패널이 접혀 있다(`split` — 결정 88).
+ * - **넓힌 카드는 채팅이 본문에 서 있을 때만이다**(`chat`) — 셸 · 파일 탭 · 문서가 본문이면 카드가 없어 넓힌 것도 없고, 접었던 사이드바가
+ *   돌아온다. 값(`opened`)은 남는다 — 탭을 옮길 때의 규칙은 02a-10이 더한다.
+ */
+export function useWorkRightPlace(work: WorkView | null, { split, chat }: { split: boolean; chat: boolean }) {
+  const slug = work?.slug ?? null;
+  const [seat, move] = useRightSeat(slug === null ? null : workSeat(slug), split ? null : "spec");
+  const shown = rightShown(seat, chat);
+  useFoldSidebar(shown.opened !== null);
+  // 대화 속 문서 카드(스토리 102)가 여는 길 — 그 작업공간의 spec 폴더(절대 경로)를 알아야 그 턴이 쓴 문서를 가린다.
+  const { data: home } = useHomeDir();
+  const specRoot = work && home ? expandHome(work.specDir, home) : null;
+  const docPlace = useMemo(
+    () =>
+      specRoot === null
+        ? null
+        : { specRoot, open: (path: string) => move({ kind: "expand", target: { kind: "doc", path } }) },
+    [specRoot, move],
+  );
+  // PR 카드의 「변경 사항 보기」(v1 티켓 36) — 카드를 열고, 그 PR의 Project에서 바뀐 첫 파일을 넓힌 카드에 연다. 변경은 카드의 「변경 사항」과
+  // 같은 쿼리에서 읽는다(읽은 답이 있으면 다시 읽지 않는다).
+  const queryClient = useQueryClient();
+  const showChanges = useCallback(
+    (pr: PrLine) => {
+      if (slug === null) return;
+      move({ kind: "show", place: "summary" });
+      void queryClient
+        .ensureQueryData({ queryKey: workChangesKey(slug), queryFn: () => worksApi.changes(slug) })
+        .catch(() => undefined)
+        .then((changes) => move({ kind: "expand", target: changesOf(pr.project, changes) }));
+    },
+    [slug, queryClient, move],
+  );
+  const card: ChatCard = {
+    open: shown.card,
+    opened: shown.opened,
+    docPlace,
+    onShowChanges: showChanges,
+    onOpen: (target) => move({ kind: "expand", target }),
+    onClose: () => move({ kind: "collapse" }),
+  };
+  return { panelOpen: shown.panel, summaryOpen: shown.card, move, card };
+}
+
+/**
+ * 채팅의 요약 카드가 서는가와 그 카드의 갈래 — 읽기만 된 Thread(v1 티켓 38)는 이름을 바꾸지 못하고, 보관된 Work의 카드는 「보관됨」이며,
+ * 지워진 Work에는 카드가 없다. 읽은 Thread면 Work가 없어도 카드가 선다(02 §7).
+ */
+function cardSeatOf(view: ThreadView | undefined) {
+  const gone = view?.readOnly ?? null;
+  const cardWork = gone === "removed" ? null : (view?.work ?? null);
+  const hasCard = view !== undefined && gone !== "removed";
+  return { gone, cardWork, hasCard };
+}
 
 /**
  * 채팅 탭이 쥔 굴림 자리(restart 02a-6) — 작업공간의 채팅 탭만 건넨다. `/threads/:id`의 채팅은 탭이 없어 늘 바닥에서 연다.
@@ -464,7 +526,7 @@ interface ChatPlace {
 
 /**
  * 채팅의 본문 — 흐름 · 입력창과 요약 카드 자리다. 채팅 화면(`ThreadScreen`)은 `PlainFrame`의 본문 카드에, 작업공간의 채팅 탭(`WorkChat`)은
- * 작업공간 화면의 탭 본문 카드에 꽂는다. `under`면 카드가 탭 본문 오른쪽 위의 요약 단추 아래에 선다(임시 — 02a-9).
+ * 작업공간 화면의 탭 본문 카드에 꽂는다. 오른쪽 자리는 받은 것(`card`)이다 — 대화 폭과 카드 자리를 그 값대로 그린다.
  */
 function ThreadPane({
   thread,
@@ -473,7 +535,6 @@ function ThreadPane({
   isPending,
   card,
   problem,
-  under = false,
   place,
   onLeave,
 }: {
@@ -481,45 +542,15 @@ function ThreadPane({
   view: ThreadView | undefined;
   error: Error | null;
   isPending: boolean;
-  card: ThreadCard;
+  card: ChatCard;
   problem: string | null;
-  under?: boolean;
 } & ChatPlace) {
   const navigate = useNavigate();
-  const { gone, cardWork, hasCard, cardOpen, setCardOpen, opened, setOpened, expanded } = card;
-  // 대화 속 문서 카드(스토리 102)가 여는 길 — 이은 Work의 spec 폴더(절대 경로)를 알아야 그 턴이 쓴 문서를 가린다. 보관된 Work는 목록에
-  // 없어 카드가 서지 않는다.
-  const { data: works } = useWorks();
-  const { data: home } = useHomeDir();
-  const specDir = works?.find((one) => one.slug === cardWork)?.specDir ?? null;
-  const specRoot = specDir !== null && home ? expandHome(specDir, home) : null;
-  const docPlace = useMemo(
-    () =>
-      specRoot === null
-        ? null
-        : {
-            specRoot,
-            open: (path: string) => {
-              setCardOpen(true);
-              setOpened({ kind: "doc", path });
-            },
-          },
-    [specRoot, setCardOpen, setOpened],
-  );
-  // PR 카드의 「변경 사항 보기」(v1 티켓 36) — 카드를 열고, 그 PR의 Project에서 바뀐 첫 파일을 넓힌 카드에 연다. 변경은 카드의 「변경 사항」과
-  // 같은 쿼리에서 읽는다(읽은 답이 있으면 다시 읽지 않는다). 보관된 Work는 카드가 넓어지지 않아 카드만 열린다.
-  const queryClient = useQueryClient();
-  const showChanges = useCallback(
-    (pr: PrLine) => {
-      setCardOpen(true);
-      if (cardWork === null) return;
-      void queryClient
-        .ensureQueryData({ queryKey: workChangesKey(cardWork), queryFn: () => worksApi.changes(cardWork) })
-        .catch(() => undefined)
-        .then((changes) => setOpened(changesOf(pr.project, changes)));
-    },
-    [cardWork, queryClient, setCardOpen, setOpened],
-  );
+  const { gone, cardWork, hasCard } = cardSeatOf(view);
+  const cardOpen = hasCard && card.open;
+  // 넓힌 카드(v1 티켓 35) — 받은 것이 있고 넓힐 수 있는 카드(이은 Work가 살아 있다)일 때만이다. 보관된 Work · Work 없는 Thread의 카드는
+  // 넓어지지 않는다.
+  const expanded = cardOpen && card.opened !== null && cardWork !== null && gone !== "archived";
   if (!view) {
     return (
       <GuidePlace>
@@ -537,14 +568,14 @@ function ThreadPane({
         className={cn("flex min-h-0 flex-1 flex-col", PANEL_MOTION, "transition-[width] motion-reduce:transition-none")}
         style={{ width: expanded ? THREAD_BESIDE : "100%" }}
       >
-        <DocPlace.Provider value={docPlace}>
+        <DocPlace.Provider value={card.docPlace}>
           <ThreadBody
             key={thread}
             view={view}
             problem={problem}
-            beside={hasCard && cardOpen}
+            beside={cardOpen}
             toasts={!expanded}
-            onShowChanges={showChanges}
+            onShowChanges={card.onShowChanges}
             place={place}
             onLeave={onLeave}
           />
@@ -552,13 +583,11 @@ function ThreadPane({
       </div>
       {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
           넓어지면 자리가 왼쪽 480까지 자라 카드가 그것을 채운다. 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이 굴러야
-          한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). 작업공간의 채팅 탭에서는 요약 단추(28) 아래 8에서
-          선다(`under` — 임시, 02a-9). */}
-      {hasCard && cardOpen && (
+          한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). */}
+      {cardOpen && (
         <div
           className={cn(
-            "pointer-events-none absolute right-2 bottom-2 z-10 flex flex-col items-end",
-            under ? "top-11" : "top-2",
+            "pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end",
             PANEL_MOTION,
             "transition-[left] motion-reduce:transition-none",
           )}
@@ -575,9 +604,9 @@ function ThreadPane({
               slug={cardWork}
               // 「이 작업공간에서 새 채팅」 — 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8).
               onNewThread={() => void navigate(newChatDoor(cardWork))}
-              opened={expanded ? opened : null}
-              onOpen={setOpened}
-              onClose={() => setOpened(null)}
+              opened={expanded ? card.opened : null}
+              onOpen={card.onOpen}
+              onClose={card.onClose}
             />
           )}
         </div>
@@ -650,8 +679,9 @@ function Beside({ open, children }: { open: boolean; children: ReactNode }) {
 }
 
 /**
- * 카드가 넓은 동안 사이드바를 접는다(§15 배치 1) — 열려 있었을 때만 접고, 작은 카드로 돌아오거나 화면을 떠나면 되돌린다. 넓은 동안 사람이
- * 사이드바를 다시 열었으면 그대로다.
+ * 카드가 넓은 동안 사이드바를 접는다(§15 배치 1 · SummarySheet 표 「넓힌 카드」 · 「×」) — 열려 있었을 때만 접고, 작은 카드로 돌아오거나 넓힌
+ * 카드가 내려가면(채팅이 본문에서 내려감 · 다른 작업공간 · 화면을 떠남) 되돌린다. 넓은 동안 사람이 사이드바를 다시 열었으면 그대로다. 작업공간
+ * 화면의 오른쪽 자리가 부른다(`useWorkRightPlace` — restart 02a-9, 한때 채팅 화면의 것이었다).
  */
 function useFoldSidebar(expanded: boolean) {
   useEffect(() => {

@@ -29,7 +29,7 @@ interface PlainHeadProps {
   title?: { name: string; rename?: HeadRename };
   /** 이름 바로 뒤 — 그 이름의 ⋯(채팅 메뉴, restart 02a-7 · 시안 MainLoose `.ra-crumb` 뒤 `.ra-tbtn`). 이름과 틈 없이 붙는다. */
   menu?: ReactNode;
-  /** 머리 줄 오른쪽 끝 — Thread의 요약 고정 토글(02 §6). */
+  /** 머리 줄 오른쪽 끝 — Thread의 요약 단추(「요약 카드」 — 02 §6 · restart 02a-9). */
   end?: ReactNode;
 }
 

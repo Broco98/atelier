@@ -49,7 +49,7 @@ const frameHead = () =>
 /** Thread 화면의 머리. */
 const threadHead = () =>
   renderToStaticMarkup(
-    <PlainHead title={{ name: "구현" }} end={<button type="button">요약 고정</button>} />,
+    <PlainHead title={{ name: "구현" }} end={<button type="button">요약 카드</button>} />,
   );
 
 describe("머리 줄은 한 결이다", () => {
@@ -82,7 +82,7 @@ describe("머리 줄은 한 결이다", () => {
     expect(toggle, "패널 토글").not.toBe("");
     expect(classOf(toggle)).toContain("icon-button");
     expect(classOf(toggle)).not.toContain("icon-button-xs");
-    // 글리프는 Thread 단추처럼 16이다(「…」 · 요약 고정).
+    // 글리프는 Thread 단추처럼 16이다(「…」 · 요약 단추).
     expect(head).toMatch(/<svg[^>]*class="[^"]*lucide-panel-right[^"]*size-4/);
     const text = head.match(/<button[^>]*>폴더 열기<\/button>/)?.[0] ?? "";
     expect(classOf(text), "글자 단추").toContain("h-7");

@@ -1,4 +1,3 @@
-import { readStored, writeStored } from "@/lib/stored";
 import type { ReadingScope } from "@/features/services/scope";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { Opened } from "./expanded";
@@ -196,22 +195,6 @@ export function prRows(prs: readonly ProjectPr[], now: number): PrRow[] {
 
 /** Work의 PR 쿼리 열쇠 — 요약 카드가 열릴 때 · 열린 동안 60초마다 읽고, 엔진의 `pr` 줄이 그 Project의 줄을 고친다(v1 티켓 36). */
 export const workPrsKey = (slug: string) => ["work-card", slug, "prs"] as const;
-
-/** 요약 카드 열림을 적는 열쇠 — Thread마다 하나다(S22). v1은 Work마다였다(`work-card-open:<slug>`). */
-const openKey = (thread: string) => `summary-card-open:${thread}`;
-
-/**
- * 요약 카드가 열려 있나(S22 — 열고 닫은 상태는 Thread마다 이 컴퓨터의 로컬 저장에 둔다, Codex가 채팅마다 기억하듯). **적은 적이 없거나
- * 읽지 못하면 열린 것이다** — 처음 여는 Thread에서는 카드가 떠 있다.
- */
-export function readSummaryOpen(thread: string): boolean {
-  return readStored(openKey(thread)) !== "closed";
-}
-
-/** 요약 카드 열림을 적는다. 적지 못하면 이번 실행 동안만 기억한다(부르는 쪽의 상태). */
-export function writeSummaryOpen(thread: string, open: boolean): void {
-  writeStored(openKey(thread), open ? "open" : "closed");
-}
 
 /** 소스의 줄 하나 — 이 Thread의 Session이 읽는 spec 문서, 또는 Project(고치는 중 · 읽기만). */
 export type SourceRow = ({ kind: "doc" } & DocRow) | ({ kind: "project" } & ProjectRow);

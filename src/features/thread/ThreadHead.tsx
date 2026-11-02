@@ -9,14 +9,14 @@ import { useArchivedWork } from "./SummaryCard";
 // **Thread 화면의 머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · Diff-Frame 「머리 줄」 줄) — 화면은 이 조각들을 머리 줄
 // 화면 자리로 보낸다(`PlainFrame`의 `lead` · `end` — 포털, `ShellHead`). Codex 크롬 줄 그대로다.
 //
-//   │ [폴더 · Work 이름 ›](이은 Work만)  Thread 이름(14/500 · 그 자리에서 바꾼다) […] ············  [요약 고정]
+//   │ [폴더 · Work 이름 ›](이은 Work만)  Thread 이름(14/500 · 그 자리에서 바꾼다) […] ············  [요약 카드]
 //   │ [흐린 Service /](Work 없는 Thread에 Service가 있으면 — 03 §10)
 //   └ 셸 컨트롤 뒤 세로선(`ShellHead`)
 //
 // - **탭 줄이 없는 채팅의 머리다**(restart 02a-7 · 시안 MainLoose · Shell 「어디에 서나」) — 작업공간 밖 채팅과 읽기만 되는 채팅만 이 머리를
 //   쓴다. 작업공간의 채팅은 탭이 이름과 ⋯를 맡는다(02a-5).
-// - **「…」는 이름 바로 뒤다**(시안 `.ra-crumb` 뒤 `.ra-tbtn`) — 한때 오른쪽 끝 요약 고정 토글 앞이었다.
-// - **걷은 것**: 옛 Work 알약(브랜치) · v1 카드 토글(요약 고정 토글이 그
+// - **「…」는 이름 바로 뒤다**(시안 `.ra-crumb` 뒤 `.ra-tbtn`) — 한때 오른쪽 끝 요약 단추 앞이었다.
+// - **걷은 것**: 옛 Work 알약(브랜치) · v1 카드 토글(요약 단추가 그
 //   자리를 잇는다).
 
 /**
@@ -152,12 +152,14 @@ export const SummaryGlyph = createLucideIcon("summary", [
 ]);
 
 /**
- * 머리 줄 오른쪽 끝의 요약 고정 토글(02 §6 · 시안 Screen-Live `aria-label="요약 고정"`) — 28 · `radius-lg`, 글리프 16 `fg-titlebar`. 켜지면
+ * 머리 줄 오른쪽 끝의 요약 단추(02 §6 · 시안 Main · MainLoose `aria-label="요약 카드"` — restart 02a-9가 이름을 「요약 고정」에서 「요약 카드」로
+ * 바꿨다, SummarySheet 규격) — 28 · `radius-lg`, 글리프 16 `fg-titlebar`. 켜지면
  * 바탕이 #ebebec(`fill-toggle-on`)이고 글리프가 `fg`로 진해지며, 켜진 채 hover해도 면이 그대로다(시안 `sumBg` · `sumColor`). 이름은 할 일
  * 하나이고 켬/끔은 `aria-pressed`가 말한다.
  *
- * 요약 카드(02 §7 · `SummaryCard`)를 여닫는다 — Work 없는 Thread에도 선다. 첫 말 전의 새 Thread와 지워진 Work의 Thread에는 카드가
- * 없어 서지 않는다(부르는 쪽이 가린다 — S23).
+ * 요약 카드(02 §7 · `SummaryCard`)를 여닫는다 — 오른쪽 자리를 `summary`로 세우거나 걷는다(`right-place.ts`). 작업공간의 채팅 탭은 작업공간
+ * 화면의 창 머리에, 탭 줄이 없는 채팅(작업공간 밖 · 보관)은 채팅 화면의 창 머리에 선다. Work 없는 Thread에도 선다. 첫 말 전의 새 Thread와
+ * 지워진 Work의 Thread에는 카드가 없어 서지 않는다(부르는 쪽이 가린다 — S23).
  *
  * 맨 버튼이라 Tab 정류장임을 `tabIndex`로 명시한다(02 코드 리뷰 C1) — macOS WebKit의 Tab은 `tabindex` 없는 맨 버튼에 서지 않는다
  * (`@/lib/roving` 머리말). 「…」(메뉴 트리거)는 0을 스스로 단다.
@@ -165,7 +167,7 @@ export const SummaryGlyph = createLucideIcon("summary", [
 export function SummaryToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <Hint
-      text="요약 고정"
+      text="요약 카드"
       announce="name"
       type="button"
       aria-pressed={open}
