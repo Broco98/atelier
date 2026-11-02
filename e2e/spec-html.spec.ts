@@ -1,10 +1,17 @@
-import { expect, test } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls } from "./harness";
 
 const [work] = WORKS;
 const HTML_FILE = "목업/조각.html";
 const JSON_FILE = "메타.json";
+
+/**
+ * 넓힌 카드 목록의 그 문서 줄 — 작업공간의 문서는 넓힌 카드로 연다(restart 02a-12 · 02a-13 — 한때 문서 탭에 서서 spec 트리의 잎을 눌러 옮겼다).
+ * 넓힌 카드가 서면 spec 패널은 접히므로 옮길 문서는 카드 목록(요약의 소스)에서 고른다 — 소스가 셋을 넘으면 넷째부터 「모두 보기」 뒤라, 이
+ * 검사가 고르는 둘(`메타.json` · `목업/조각.html` — 트리 차례로 둘째 · 셋째)은 보인다.
+ */
+const 카드문서 = (page: Page, path: string) => page.locator(`section[data-expanded] button[data-doc="${path}"]`);
 
 // spec 트리에서 `.html`을 고르면 렌더된 페이지가 본문에 선다 — `srcdoc` 프레임 하나가
 // 그 통로다(결정 1).
@@ -79,7 +86,8 @@ test("`.html`은 껍데기를 쓴 프레임으로 서고, 그 안에서 스크�
 
   // 프레임은 **자기 안에서** 구른다(결정 9) — 바깥 스크롤 상자는 안 넘치므로 막대가
   // 한 개만 산다. 넘치면 같은 화면에 세로 막대가 둘 생긴다.
-  const outer = page.locator("main > div.scroll-quiet");
+  // 넓힌 카드의 문서 몸이 그 바깥 스크롤 상자다(문서 글 — `[data-doc-text]`, restart 02a-13 — 한때 문서 탭 본문의 `main > div.scroll-quiet`).
+  const outer = page.locator("section[data-expanded] [data-doc-text]");
   await expect(outer).toHaveCount(1);
   expect(await outer.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
 
@@ -90,7 +98,7 @@ test("`.html`은 껍데기를 쓴 프레임으로 서고, 그 안에서 스크�
 // 길이 사라진다. 그 옆에서 `.json`이 「나머지는 지금 그대로」를 받쳐 준다.
 test("`.html`은 토글이 안 잠기고, `.json`은 지금 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${work.slug}`);
+  await page.goto(`/works/${work.slug}?file=overview.md`);
 
   const doc = page.getByRole("button", { name: "문서로 보기" });
   const source = page.getByRole("button", { name: "원문 보기" });
@@ -101,8 +109,8 @@ test("`.html`은 토글이 안 잠기고, `.json`은 지금 그대로다", async
   await source.click();
   await expect(source).toHaveAttribute("aria-pressed", "true");
 
-  // 트리의 잎을 누른다 — 이름 앞의 `HTML`은 확장자 배지다(복사 버튼과 갈리려면 정확히 센다)
-  await page.getByRole("button", { name: "HTML 조각.html", exact: true }).click();
+  // 넓힌 카드 목록의 그 문서 줄을 누른다.
+  await 카드문서(page, HTML_FILE).click();
   await expect(frameEl).toHaveCount(0);
   await expect(page.getByText("껍데기 없는 아티팩트 조각")).toBeVisible();
 
@@ -115,7 +123,7 @@ test("`.html`은 토글이 안 잠기고, `.json`은 지금 그대로다", async
   await expect(page.getByText("껍데기 없는 아티팩트 조각")).toBeVisible();
 
   // 나머지 비-md는 지금과 똑같다 — 소스 고정, 두 칸 함께 잠김.
-  await page.getByRole("button", { name: `JSON ${JSON_FILE}`, exact: true }).click();
+  await 카드문서(page, JSON_FILE).click();
   await expect(page.getByText("소스 고정")).toBeVisible();
   await expect(doc).toBeDisabled();
   await expect(source).toBeDisabled();
@@ -180,8 +188,8 @@ test("프레임에 포커스가 있는 동안만 「단축키가 안 먹는다�
   await expect.poll(() => frame.evaluate(() => document.body.dataset.toggled ?? null)).toBe("1");
 
   // 프레임 밖을 한 번 클릭하면 돌아온다 — 카드가 적어 둔 그 길을 그대로 밟는다.
-  // (트리에서 **지금 보고 있는 그 파일**을 누른다: 화면을 안 바꾸면서 포커스만 나온다.)
-  await page.getByRole("button", { name: "HTML 조각.html", exact: true }).click();
+  // (넓힌 카드 목록에서 **지금 보고 있는 그 파일**을 누른다: 화면을 안 바꾸면서 포커스만 나온다.)
+  await 카드문서(page, HTML_FILE).click();
   await expect(hint).toHaveCount(0);
   await expect(frameEl).toBeVisible();
 

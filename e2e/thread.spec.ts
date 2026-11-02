@@ -53,7 +53,7 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null },
+    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null, quote: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   await expect(흐름(page).getByText(first.text, { exact: true })).toBeVisible();
@@ -108,8 +108,9 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   const 아래 = (target: typeof 첫줄) => target.evaluate((el) => el.getBoundingClientRect().bottom);
   await expect.poll(async () => Math.round((await 위(첫줄)) - (await 아래(둘째)))).toBe(14);
   expect(await 첫줄.locator("[data-glyph]").evaluate((el) => el.getBoundingClientRect().width)).toBe(14);
-  // 마지막 턴의 끝난 편집은 입력창 위 알약이 센다.
-  await expect(page.getByRole("group", { name: "1개 파일 변경됨", exact: true })).toBeVisible();
+  // 마지막 턴의 끝난 편집을 세는 입력창 위 알약은 작업공간 밖 채팅에는 서지 않는다(restart 02a-7 — 바뀐 파일은 작업공간의 것이다). 이 채팅은 첫
+  // 화면에서 작업공간 없이 보냈다.
+  await expect(page.getByRole("group", { name: "1개 파일 변경됨", exact: true })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

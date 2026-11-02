@@ -129,6 +129,8 @@ test("Runtime 칩이 모델 칩 앞에 서고, Codex를 고르면 고른 모델 
       effort: null,
       service: null,
       project: null,
+      // 첫 말에 붙인 인용 — 없으면 `null`이다(restart 02a-11 · 새 채팅 탭이 넓힌 카드의 문서에서 고른 글).
+      quote: null,
     },
   ]);
 

@@ -9,7 +9,6 @@ import {
   record,
   sentPayloads,
   seqOf,
-  specWrites,
   streamLines,
   summaryOf,
   titleThrough,
@@ -53,7 +52,8 @@ const 입력창 = (page: Page) => 입력칸(page).locator("xpath=ancestor::form[
 /** 요약 카드 — 작은 카드든 넓힌 카드든 영역 이름이 같다. */
 const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact: true });
 const 머리줄 = (page: Page) => page.locator('[data-slot="screen-head"]');
-const 요약토글 = (page: Page) => page.getByRole("button", { name: "요약 고정", exact: true });
+/** 요약 단추 — 이름이 「요약 고정」에서 「요약 카드」가 됐다(restart 02a-9). 작업공간 밖 채팅은 채팅 머리 오른쪽 끝, 작업공간의 채팅 탭은 창 머리에 선다. */
+const 요약토글 = (page: Page) => page.getByRole("button", { name: "요약 카드", exact: true });
 const Thread메뉴 = (page: Page) => page.getByRole("button", { name: "채팅 메뉴", exact: true });
 const 사이드바Thread = (page: Page, title: string) =>
   page.getByRole("region", { name: "채팅", exact: true }).getByRole("button").filter({ hasText: title });
@@ -74,7 +74,6 @@ const 모양 = (target: Locator, props: readonly string[]) =>
 const made = atHome(record("thread-work"));
 const MADE = lineOf(made, "work", "created").payload as { slug: string; title: string; branch: string; projects: string[] };
 const MADE_LAST = made[made.length - 1].seq;
-const MADE_DOCS = Object.keys(specWrites(made, MADE.slug));
 const linkedView: ThreadView = { ...FIXTURE_THREAD, title: titleThrough(made, MADE_LAST), work: MADE.slug, lastSeq: MADE_LAST };
 
 /** 그 Thread를 연다 — 목록 · 읽기 · 읽은 자리를 그 Thread로 답한다. 덮어쓸 답이 더 있으면 함께 준다. */
@@ -87,65 +86,60 @@ async function openThread(page: Page, view: ThreadView, lines: readonly RecordLi
     ...more,
   });
   await page.goto(`/threads/${view.id}`);
-  // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
-  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true })).toBeVisible({ timeout: 20_000 });
+  // 살아 있는 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭에 선다(restart 02a-4) — 탭 칸 이름도 그 채팅 이름(첫 말)일 수 있어 흐름의 글은
+  // 뒤쪽을 집는다. **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
+  if (view.work && !view.readOnly) await expect(page).toHaveURL(`/works/${view.work}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true }).last()).toBeVisible({ timeout: 20_000 });
 }
 
-test("머리 줄 — Work에 이은 Thread는 「폴더 · 작업공간 이름 ›」 뒤에 이름이 서서 그 자리에서 바뀌고, 오른쪽 끝 「…」 · 요약 고정 토글이 카드를 여닫으며, Work 이름이 카드를 연다", async ({
+// 머리 줄은 **탭 줄이 없는 채팅**의 것이다(restart 02a-7) — 작업공간 밖 채팅과 읽기만 되는 채팅. 작업공간에 이은 채팅은 그 작업공간 화면의
+// 채팅 탭에 서고(02a-4) 이름 · ⋯는 탭이 맡는다(02a-5). 한때 이 시험은 Work에 이은 Thread의 머리(「폴더 · 작업공간 이름 ›」 · 오른쪽 끝 「…」 ·
+// 요약 고정 토글)를 쟀다 — 그 머리가 없어져, 작업공간 밖 Thread로 남은 것(이름 · 제자리 바꾸기 · 이름 바로 뒤 「…」 · 오른쪽 끝 요약 단추)을
+// 잰다. 「Work 이름이 카드를 연다」는 읽기만 되는 Thread(보관된 작업공간)의 머리가 들고 `thread-archived`가 잰다.
+test("머리 줄 — 작업공간 밖 Thread는 이름이 서서 그 자리에서 바뀌고, 이름 바로 뒤 「…」, 오른쪽 끝 요약 단추가 카드를 여닫는다", async ({
   page,
 }) => {
-  await openThread(page, linkedView, made, { list_works: [...WORKS, workView(MADE, { docs: MADE_DOCS })] });
+  await openThread(page, looseA, twoTurns);
 
-  // 이름 앞의 Work — 폴더 14 · Work 이름 14/400 #898a8b(`fg-titlebar`), 그 뒤 8에 「›」(그림이라 이름에 들지 않는다), 다시 8에 Thread
   // 이름 14/500(02 §6 · 시안 `.tb-c`).
-  const work = page.getByRole("button", { name: `작업공간 열기: ${MADE.title}`, exact: true });
-  const workName = work.getByText(MADE.title, { exact: true });
-  const crumb = 머리줄(page).getByText("›", { exact: true });
-  const name = 머리줄(page).getByText(linkedView.title, { exact: true });
-  await expect(work).toBeVisible();
-  await expect(crumb).toHaveAttribute("aria-hidden", "true");
-  expect(await 모양(workName, ["font-size", "font-weight", "color"])).toEqual({
-    "font-size": "14px",
-    "font-weight": "400",
-    color: "rgb(137, 138, 139)",
-  });
+  const name = 머리줄(page).getByText(looseA.title, { exact: true });
+  await expect(name).toBeVisible();
+  await expect(page.getByRole("button", { name: /^작업공간 열기: / })).toHaveCount(0);
   expect(await 모양(name, ["font-size", "font-weight"])).toEqual({ "font-size": "14px", "font-weight": "500" });
-  const [workBox, crumbBox, nameBox] = [await 상자(work), await 상자(crumb), await 상자(name)];
-  expect(crumbBox.x - workBox.right).toBeCloseTo(8, 0);
-  expect(nameBox.x - crumbBox.right).toBeCloseTo(8, 0);
 
-  // 오른쪽 끝 — 「…」와 요약 고정 토글이 28 · 사이 2 · 창 오른쪽 끝 8에 선다. 카드가 열려 있으니 토글은 켜졌다(#ebebec · `aria-pressed`).
-  const menuBox = await 상자(Thread메뉴(page));
-  const toggleBox = await 상자(요약토글(page));
+  // 「…」는 이름 바로 뒤(틈 0 — 시안 `.ra-crumb` 뒤 `.ra-tbtn`, restart 02a-7)이고, 오른쪽 끝에는 요약 단추만 28 · 창 오른쪽 끝 8에 선다. 오른쪽
+  // 자리는 처음엔 비어 있어(02a-9 — `/threads/<id>`의 처음 값) 단추가 꺼져 있다.
+  const [nameBox, menuBox, toggleBox] = [await 상자(name), await 상자(Thread메뉴(page)), await 상자(요약토글(page))];
   expect([menuBox.width, menuBox.height, toggleBox.width, toggleBox.height]).toEqual([28, 28, 28, 28]);
-  expect(toggleBox.x - menuBox.right).toBeCloseTo(2, 0);
+  expect(menuBox.x - nameBox.right).toBeCloseTo(0, 0);
   expect(1440 - toggleBox.right).toBeCloseTo(8, 0);
+  await expect(카드(page)).toHaveCount(0);
+  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
+
+  // 단추가 카드를 연다 — 켜지면 면이 #ebebec(`fill-toggle-on`)다. 다시 누르면 닫히고 면이 빠진다(손을 치운 뒤, 색 전이가 끝나면).
+  await 요약토글(page).click();
   await expect(카드(page)).toBeVisible();
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
-  expect(await 모양(요약토글(page), ["background-color"])).toEqual({ "background-color": "rgb(235, 235, 236)" });
-
-  // 토글이 카드를 닫고(면이 빠진다 — 손을 치운 뒤, 색 전이가 끝나면), 머리 줄의 Work 이름이 다시 연다(S13).
+  // 면은 색 전이로 바뀐다 — 다 바뀔 때까지 읽는다.
+  await expect.poll(async () => (await 모양(요약토글(page), ["background-color"]))["background-color"]).toBe("rgb(235, 235, 236)");
   await 요약토글(page).click();
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
   await expect(카드(page)).toHaveCount(0);
   await page.mouse.move(720, 450);
   await expect.poll(async () => (await 모양(요약토글(page), ["background-color"]))["background-color"]).toBe("rgba(0, 0, 0, 0)");
-  await work.click();
-  await expect(카드(page)).toBeVisible();
-  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
 
   // 제자리 바꾸기 — 이름을 두 번 누르면 그 자리가 입력칸이 되고, Enter가 새 이름을 보낸다. 입력칸이 걷히면 포커스는 이름으로 돌아온다.
   const renamed = "환불 버그 고친 이야기";
-  await replaceAnswer(page, "thread_rename", { ...summaryOf(linkedView), title: renamed });
+  await replaceAnswer(page, "thread_rename", { ...summaryOf(looseA), title: renamed });
   const 이름칸 = 머리줄(page).getByRole("textbox", { name: "채팅 이름", exact: true });
   await name.dblclick();
   await expect(이름칸).toBeFocused();
-  await expect(이름칸).toHaveValue(linkedView.title);
+  await expect(이름칸).toHaveValue(looseA.title);
   await 이름칸.fill(renamed);
   await 이름칸.press("Enter");
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_rename", "thread")).map(({ args }) => args))
-    .toEqual([{ thread: linkedView.id, title: renamed }]);
+    .toEqual([{ thread: looseA.id, title: renamed }]);
   const shown = 머리줄(page).getByText(renamed, { exact: true });
   await expect(shown).toBeFocused();
 
@@ -228,6 +222,8 @@ test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차
     list_work_changes: PR_CHANGES,
     reading_scope: answerByArg("thread", { [prView.id]: PR_SCOPE }),
   });
+  // 작업공간의 채팅 탭이다(restart 02a-4). 오른쪽 자리는 처음엔 spec 패널이라(02a-9) 창 머리의 「요약 카드」로 연다.
+  await 요약토글(page).click();
   const card = 카드(page);
   await expect(card).toBeVisible();
 
@@ -264,8 +260,10 @@ test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차
   const 가운데 = (box: Box) => box.x + box.width / 2;
   const main = await 상자(흐름(page));
   const cardBox = await 상자(card);
-  // 카드는 판(본문) 오른쪽 위에 위 · 오른쪽 8 띄워 300 폭으로 선다(Screen-Live `top: 8px; right: 8px`).
-  expect([cardBox.y - main.y, main.right - cardBox.right, cardBox.width]).toEqual([8, 8, 300]);
+  // 카드는 판(본문) 오른쪽 위에 위 · 오른쪽 8 띄워 300 폭으로 선다(Screen-Live `top: 8px; right: 8px`). 작업공간의 채팅 탭이라 판의 위는 본문 카드
+  // 머리(탭 줄) 아래다(restart 02a-4).
+  const 판위 = (await 상자(page.locator("[data-tab-row]"))).bottom;
+  expect([cardBox.y - 판위, main.right - cardBox.right, cardBox.width]).toEqual([8, 8, 300]);
   await expect.poll(async () => Math.round(가운데(await 상자(입력창(page))))).toBe(Math.round((main.x + 16 + cardBox.x - 16) / 2));
   expect((await 상자(입력창(page))).width).toBe(737);
   await 요약토글(page).click();
@@ -314,7 +312,9 @@ const EMPTY_SCOPE: ReadingScope = {
   registered: PROJECTS.length,
 };
 
-test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과물 · 소스(읽는 범위의 Project, 「읽기만」)만 서며, 열림은 Thread마다 기억한다(다시 켜도)", async ({
+// 열림은 이제 오른쪽 자리의 값이다(restart 02a-9) — 채팅마다 하나이고(`chatSeat`), 처음엔 비어 있으며, 앱이 도는 동안 메모리에만 산다. 한때 Thread마다
+// 이 컴퓨터에 적었고(02 S22) 처음엔 열려 있었다.
+test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과물 · 소스(읽는 범위의 Project, 「읽기만」)만 서며, 열림은 채팅마다이고 다시 켜면 닫혀 있다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -336,11 +336,14 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(요약토글(page)).toHaveCount(0);
   await expect(Thread메뉴(page)).toHaveCount(0);
 
-  // Work 없는 Thread — 머리 · 변경 사항 없이 결과물 · 소스만이다. 소스는 읽는 범위의 Project(Service가 없으면 등록된 전부 — 03 §7)이고 보이기만
-  // 한다(S20).
+  // Work 없는 Thread — 처음엔 닫혀 있다. 열면 머리 · 변경 사항 없이 결과물 · 소스만이다. 소스는 읽는 범위의 Project(Service가 없으면 등록된 전부
+  // — 03 §7)이고 보이기만 한다(S20).
   await 사이드바Thread(page, looseA.title).click();
   await expect(page).toHaveURL(`/threads/${looseA.id}`);
   const card = 카드(page);
+  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
+  await expect(card).toHaveCount(0);
+  await 요약토글(page).click();
   await expect(card).toBeVisible();
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
   await expect(card.locator("[data-changes]")).toHaveCount(0);
@@ -351,26 +354,25 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(card.locator("[data-project]")).toHaveText([/^billing\s*읽기만$/, /^ledger\s*읽기만$/]);
   await expect(card.getByRole("button")).toHaveCount(0);
 
-  // 열림은 Thread마다다(S22) — 첫째에서 닫고 둘째로 가면 둘째는 열려 있고, 첫째로 돌아오면 닫혀 있다.
-  await 요약토글(page).click();
-  await expect(card).toHaveCount(0);
+  // 열림은 채팅마다다 — 첫째에서 연 채 둘째로 가면 둘째는 제 처음 값(닫힘)이고, 둘째를 열고 첫째로 돌아오면 첫째는 열린 채다.
   await 사이드바Thread(page, looseB.title).click();
   await expect(page).toHaveURL(`/threads/${looseB.id}`);
+  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
+  await expect(card).toHaveCount(0);
+  await 요약토글(page).click();
   await expect(card).toBeVisible();
   // 둘째는 빈 Service로 읽어 읽는 Project가 없다 — 소스 칸 없이 결과물만 선다.
   await expect(card.getByRole("region", { name: "소스", exact: true })).toHaveCount(0);
   await 사이드바Thread(page, looseA.title).click();
   await expect(page).toHaveURL(`/threads/${looseA.id}`);
-  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
-  await expect(card).toHaveCount(0);
+  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
+  await expect(card).toBeVisible();
 
-  // 다시 켜도 그대로다 — 이 컴퓨터에 적어 두었다.
+  // 다시 켜면 처음 값이다 — 값은 메모리에만 산다(이 컴퓨터에 적지 않는다).
   await page.reload();
   await expect(흐름(page).getByText("hello from turn", { exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "false");
   await expect(card).toHaveCount(0);
-  await 사이드바Thread(page, looseB.title).click();
-  await expect(card).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

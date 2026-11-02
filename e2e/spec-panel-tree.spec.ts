@@ -5,14 +5,15 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 주소로간다 
 const [pinnedWork, , multiWork] = WORKS;
 
 /**
- * work를 옮길 때 나가도 되는 명령 — **어느 것도 spec 트리를 답하지 않는다.** 여는 문서의 본문을
- * 읽고(`read_spec_file`), 최근에 연 work을 적는다(`touch_recent_work`). 이벤트 구독(`plugin:`)은
- * 화면이 다시 설 때마다 오가는 배관이라 세지 않는다.
+ * work를 옮길 때 나가도 되는 명령 — **어느 것도 spec 트리를 답하지 않는다.** 최근에 연 work을 적고(`touch_recent_work`), 작업공간 화면이
+ * 서는 채팅 탭(restart 02a-13 — `?tab=chat`)이 그 work의 대화 묻기 수준(`thread_work_mode`)과 읽는 자리(`reading_scope`)를 묻는다. 한때
+ * 화면이 서면 본문 탭에 기본 문서가 서서 그 본문을 읽었다(`read_spec_file`). 이벤트 구독(`plugin:`)은 화면이 다시 설 때마다 오가는
+ * 배관이라 세지 않는다.
  *
  * 이 표에 무언가를 더해야 한다면, 그것이 트리를 따로 묻는 명령이 아닌지 먼저 본다. 트리는 work
  * 응답(`list_works`·`get_work`·`move_work`)에만 실린다(구현 스펙 3절).
  */
-const SWITCH_COMMANDS = ["read_spec_file", "touch_recent_work"];
+const SWITCH_COMMANDS = ["touch_recent_work", "thread_work_mode", "reading_scope"];
 
 // spec 레이아웃 티켓 05 — **캐시의 주인은 work 목록 자신이다**(구현 스펙 3절). spec 트리는 work와
 // 함께 목록의 답으로 도착하므로, work를 옮겨도 트리를 묻는 호출이 따로 나가지 않는다. 그래서 옮긴
@@ -43,8 +44,8 @@ test("work를 옮겨 다니는 동안 spec 트리를 따로 묻지 않는다 —
     .slice(settled)
     .map((call) => call.split(" ")[0])
     .filter((command) => !command.startsWith("plugin:"));
-  // 옮겼다는 증거 — 두 work의 기본 문서가 모두 읽혔다. 이것이 없으면 아래 거름이 빈 기록에서 초록이다.
-  expect(sent).toContain("read_spec_file");
+  // 옮겼다는 증거 — 두 번 옮겨 두 번 적었다. 이것이 없으면 아래 거름이 빈 기록에서 초록이다.
+  expect(sent.filter((command) => command === "touch_recent_work")).toHaveLength(2);
   expect(sent.filter((command) => !SWITCH_COMMANDS.includes(command))).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

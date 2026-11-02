@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { FIXTURE_SHELL_NAME, MAIN_HEADER, PINNED_HEADER, WORKS } from "./fixtures";
+import { ARCHIVE, FIXTURE_SHELL_NAME, MAIN_HEADER, PINNED_HEADER, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callsSinceRelease,
@@ -30,8 +30,9 @@ import {
   토큰색,
   툴팁,
   팔레트,
-  사람메뉴항목,
-  사람줄,
+  설정줄,
+  위칸줄,
+  새채팅탭으로비킨다,
   행버튼,
   작업화면으로,
   Work줄이가는곳,
@@ -427,8 +428,7 @@ test("도는 명령이 있어도 work 줄에는 셸 수도 로고도 없고 한 
   await 카드의셸(1);
 
   // 셸을 하나 더 열면 카드의 수가 는다 — 줄은 그대로 제목뿐이다.
-  await page.locator('[data-tab="new"]').click();
-  await awaitSpawned(page, 2);
+  await openShell(page);
   await expect(row).toHaveText(plainWork.title);
   await 카드의셸(2);
 
@@ -553,8 +553,8 @@ test("호버 카드의 셸 수는 카드 면에서 대비 4.5를 넘는다 — �
     await expect(값).toHaveText("1개");
     return 값;
   };
-  /** 팔레트가 바뀌었는지 보는 자리 — 사이드바가 선 흰 판의 면이다(카드와 같은 팔레트 블록이 칠한다). */
-  const 면 = () => page.locator('[data-slot="panel"]').evaluate((el) => getComputedStyle(el).backgroundColor);
+  /** 팔레트가 바뀌었는지 보는 자리 — 작업 패널 카드의 면(`surface`)이다(호버 카드와 같은 팔레트 블록이 칠한다 — 한때 흰 판의 면). */
+  const 면 = () => page.locator('aside#work-panel [data-slot="card"]').evaluate((el) => getComputedStyle(el).backgroundColor);
 
   const 라이트 = await 셸수();
   const 라이트면 = await 면();
@@ -580,17 +580,14 @@ test("호버 카드의 셸 수는 카드 면에서 대비 4.5를 넘는다 — �
 // 실제로 칠해지는 것, 스피너가 실제로 도는 것. 마크업 seam은 「클래스가 붙었다」까지만 본다.
 
 /**
- * 본문을 문서로 옮겨 **그 셸을 안 보는 상태로** 만든다. 셸은 그대로 살아 있고 칸도 켜진 채다.
+ * 본문을 새 채팅 탭으로 옮겨 **그 셸을 안 보는 상태로** 만든다. 셸은 그대로 살아 있고 칸도 켜진 채다.
  *
  * **안 본 완료를 세우려면 이 줄이 필요하다**(#205 · 결정 7). 그 셸을 보고 있는 동안 온 완료는 그
  * 순간 「봤다」가 되어 화면에 안 선다 — 사람이 이미 보고 있으니 그것이 맞다. 그래서 「안 본
- * 완료」를 재는 검사는 **안 보는 자리에서** 재야 하고, 그 자리가 이 앱에서는 문서다.
+ * 완료」를 재는 검사는 **안 보는 자리에서** 재야 하고, 그 자리가 새 채팅 탭이다(한때 spec 탭 — restart 02a-13이 걷었다).
  * 기다림은 이 줄과 무관하다(「봤다」로 안 꺼진다).
  */
-const 셸에서눈을뗀다 = async (page: Page) => {
-  await page.locator('[data-tab="spec"]').click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
-};
+const 셸에서눈을뗀다 = 새채팅탭으로비킨다;
 
 /**
  * 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Elicitation`(사람에게 묻는 것)이 그 길이다. 한때 `Stop`이었는데
@@ -891,7 +888,8 @@ const 부르게한다 = (page: Page, ptyId: number) =>
 /**
  * 셸 넷이 함께 부르는 work 화면을 세운다 — 띠가 ⌄로 접히는 가장 작은 수(`BAND_LIMIT` + 1)다.
  *
- * **포인터를 안 쓴다.** 칸은 ⌘T로 연다. 포커스로 뜨는 툴팁을 재는 검사가 이것을 딛는데,
+ * **포인터를 안 쓴다.** 칸은 탭 줄 `+`의 「새 탭」 메뉴를 키보드로 열어 연다 — 한때 ⌘T였는데 작업공간의 ⌘T는 이제 새 채팅 탭을
+ * 연다(restart 02a-8). 포커스로 뜨는 툴팁을 재는 검사가 이것을 딛는데,
  * Base UI는 macOS WebKit에서 「키보드로 옮긴 포커스인가」를 마지막 포인터·키 입력으로
  * 가른다 — 앞서 `pointerdown`이 한 번이라도 나면 `focus()`에 툴팁이 안 뜬다.
  */
@@ -901,7 +899,16 @@ const 넷이부르게한다 = async (page: Page) => {
   await 부르게한다(page, 1);
   // 칸을 연 순서가 곧 pty 번호다(`openShell`의 머리말) — `markAttention`이 그 pty가 앉기를 기다린다.
   for (const ptyId of [2, 3, 4]) {
-    await page.keyboard.press("Meta+t");
+    // 메뉴는 맨 윗줄 「새 채팅」에 포커스를 두고 열린다 — ↓ 한 번이 「새 셸」(프로젝트 0·1개) 또는 「모든 프로젝트」다.
+    // 포커스가 앉은 것을 보고 다음 키를 누른다 — 메뉴가 늦게 서면 ↓가 헛돌아 Enter가 「새 채팅」을 고른다.
+    const menu = page.getByRole("menu");
+    await page.locator('[data-tab="new"]').focus();
+    await page.keyboard.press("Enter");
+    await expect(menu.getByRole("menuitem", { name: "새 채팅", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem", { name: /^(새 셸|모든 프로젝트)/ })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(menu).toHaveCount(0);
     await 부르게한다(page, ptyId);
   }
   await expect(띠(page).locator("[data-band-count]")).toHaveText("4");
@@ -971,15 +978,15 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 ⌄로 펼치고 
   await expect(더보기).toHaveCount(0);
   expect(await 저장된것()).toBe(펼치기전);
 
-  // **펼쳐도 바닥의 사람 줄이 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거 — 옛 바닥 Settings 줄의 자리다, v1 티켓 07).
+  // **펼쳐도 맨 아래 설정 줄이 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거 — 옛 바닥 Settings 줄 · 사람 줄의 자리다, restart 02a-3).
   // 낮은 창에서만 나는 일이라 여기서 창을 낮춘다: 띠 상자에 세로 한도와 자기 스크롤이
   // 없으면, 형제가 전부 `shrink-0`이고 목록 묶음만 `flex-1 min-h-0`이라 목록이 0으로 무너진 뒤
-  // 사람 줄이 `aside`의 `overflow-hidden` 밖으로 잘린다.
-  await page.setViewportSize({ width: 1100, height: 300 });
-  const settings = 사람줄(page);
+  // 설정 줄이 `aside`의 `overflow-hidden` 밖으로 잘린다. 위 칸이 다섯 줄 늘어(02a-3) 창을 그만큼(32 × 5) 높였다.
+  await page.setViewportSize({ width: 1100, height: 460 });
+  const settings = 설정줄(page);
   await expect(settings).toBeVisible();
   const 바닥 = (await settings.boundingBox())!;
-  expect(바닥.y + 바닥.height).toBeLessThanOrEqual(300);
+  expect(바닥.y + 바닥.height).toBeLessThanOrEqual(460);
 
   // ⌃를 누르면 셋으로 돌아가고 ⌄가 다시 선다. ⌃는 굴러가는 띠 상자 안이라 낮은 창에서는
   // 굴러 내려가 있다 — `click`이 그 자리까지 굴려 누른다.
@@ -1085,10 +1092,9 @@ test("포인터 없이 ⌄에 포커스하면 툴팁이 뜨고, Enter로 펼친�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **줄을 누르면 그 work의 터미널로 가고 그 셸 탭이 켜진다**(결정 13의 넷째). spec을 보고
-// 있었으면 터미널로 밀어내고, 분할 중이면 분할은 그대로 두고 탭만 바꾼다 — 사람이 안 시킨
-// 레이아웃 변경(분할 자동 열기)은 기각됐다.
-test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도, 분할 중이어도", async ({ page }) => {
+// **줄을 누르면 그 work의 터미널로 가고 그 셸 탭이 켜진다**(결정 13의 넷째). 다른 탭(새 채팅 탭)을 보고
+// 있었으면 터미널로 밀어낸다. 한때 분할 중이면 분할은 그대로 두고 탭만 바꾸는 갈래도 쟀다 — restart 02a-13이 분할을 걷었다.
+test("띠 줄을 누르면 그 셸 탭이 켜진다 — 새 채팅 탭을 보고 있어도", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
@@ -1107,25 +1113,12 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
   await lit(0).click();
   await expect(lit(0)).toHaveAttribute("aria-pressed", "true");
 
-  // spec으로 옮긴다 — 주소에서 `tab`이 빠지는 것이 이 앱의 규칙이다(결정 14).
-  await page.locator('[data-tab="spec"]').click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
+  // 새 채팅 탭으로 옮긴다 — 주소가 `tab=chat`이 된다(restart 02a-8).
+  await 새채팅탭으로비킨다(page);
 
   await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
-  // **spec을 밀어낸다.**
+  // **새 채팅 탭을 밀어낸다.**
   await expect(page).toHaveURL(/tab=terminal/);
-  await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
-
-  // 분할을 켜고 첫 칸으로 되돌린 뒤 다시 누른다.
-  const 분할 = page.getByRole("button", { name: "분할", exact: true });
-  await 분할.click();
-  await expect(page).toHaveURL(/split=/);
-  await lit(0).click();
-  await expect(lit(0)).toHaveAttribute("aria-pressed", "true");
-
-  await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
-  // **분할이 그대로다** — 열은 둘 그대로이고 바뀐 것은 터미널 열의 탭뿐이다.
-  await expect(page).toHaveURL(/split=/);
   await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -1135,7 +1128,7 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
 // 「보고 있는 그 work」이라 셸로 가는 길(`useGoToShell`)의 **한쪽 갈래만** 지난다 — 그런데 이 띠가 존재하는
 // 이유의 절반이 반대쪽이다(스토리 36·43: 지금 안 보고 있는 work으로 건너뛴다).
 //
-// 그 갈래에서 주소를 짓는 모양이 다르다: 같은 work이면 보던 문서·분할을 지키는 **함수형**에
+// 그 갈래에서 주소를 짓는 모양이 다르다: 같은 work이면 보던 문서를 지키는 **함수형**에
 // `replace`이고, 다른 work이면 그 work의 마지막 화면을 **빈 주소 위에** 얹는다
 // (`recallSearch`). 함수형을 양쪽에 쓰는 뮤테이션은 떠나던 work의 `file`을 남의 work 주소에
 // 딸려 보내고(`viewSearch` 머리말이 막으려는 그 사고), `replace`를 양쪽에 쓰는 뮤테이션은
@@ -1151,13 +1144,15 @@ test("다른 work의 띠 줄을 누르면 그 화면으로 건너뛰고, 보던 
 
   // **그냥 일**에 셸을 하나 세워 부르게 한다.
   await 작업화면으로(page, plainWork);
-  await page.locator('[data-tab="new"]').click();
-  await awaitSpawned(page, 1);
+  await openShell(page);
   await 기다리게한다(page, "커밋할까요?");
 
   // 다시 **고정된 일**의 문서로 돌아온다 — 이 화면이 「떠나는 주소」다.
   await 작업화면으로(page, pinnedWork);
   await expect(page).toHaveURL(/file=/);
+  // 문서(`?file=`)는 넓힌 카드로 열려 사이드바를 접는다(restart 02a-13) — 띠는 사이드바 안에 사니 ⌘B로 다시 편다.
+  await expect(page.locator("section[data-expanded]")).toBeVisible();
+  await page.keyboard.press("Meta+b");
 
   await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
 
@@ -1213,9 +1208,10 @@ test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 �
 // 그 사실은 목록이 실제로 넘칠 때만 보이므로 창을 낮춘다.
 test("스크롤로 밀려난 work의 셸도 띠에서 보인다", async ({ page }) => {
   await installFixtureBackend(page);
-  // nav가 한 줄(32px + 줄 간격 2px) 늘어(`Processes`, 프로세스 티켓 26) 그만큼 높였다 — 320에서는 목록과 띠가 함께 눌려 띠의
-  // 줄이 목록 머리 아래로 삐져나왔다. 이 검사가 재는 것은 넘치는 목록 위의 띠이지 띠가 눌리는 높이가 아니다.
-  await page.setViewportSize({ width: 1100, height: 354 });
+  // nav가 늘 때마다 그만큼 높였다 — 한 줄(`Processes`, 프로세스 티켓 26)에 354, 위 칸 「가는 곳」이 일곱 줄인 restart 02a-3에 500이다.
+  // 높으면 행이 목록 안에 들어와 「밀려났다」가 안 서고(514에서 행 위 460 · 목록 아래 468), 낮으면 목록과 띠가 함께 눌려 띠의 줄이 목록 머리
+  // 아래로 삐져나온다. 이 검사가 재는 것은 넘치는 목록 위의 띠이지 띠가 눌리는 높이가 아니다.
+  await page.setViewportSize({ width: 1100, height: 500 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await 기다리게한다(page, "커밋할까요?");
@@ -1391,8 +1387,9 @@ test("사이드바를 좁히면 제목이 잘리고 레인과 줄 끝 표시는 
   const 셸행이름 = `${plainWork.title} — 내 차례`;
   const 앞 = { 셸행: await 잰다(plainWork, 셸행이름), 빈행: await 잰다(pinnedWork, pinnedWork.title) };
   const 표시앞 = await 폭(표시칸(page, plainWork.slug));
-  // 레인은 16px 한 칸이다(Codex 사이드바의 아이콘 칸 — v1 티켓 46) — 이 줄이 없으면 아래 「안 줄었다」가 「원래 0이다」로도 초록이 된다.
-  expect(앞.셸행.레인).toBe(16);
+  // 레인은 글리프 15 한 칸이다(시안 `.ra-sr-row > .ic` — restart 02a-3, 한때 Codex 사이드바의 아이콘 칸 16) — 이 줄이 없으면 아래 「안
+  // 줄었다」가 「원래 0이다」로도 초록이 된다.
+  expect(앞.셸행.레인).toBe(15);
   expect(표시앞).toBeGreaterThan(0);
 
   await 좁힌다(page, 40);
@@ -1582,23 +1579,21 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
 });
 
 // 결정 4 — **최상위 셸의 `Terminal` 줄도 같은 어휘를 쓴다.** work 행처럼 셸 수(`⌨ 1`)만 서고, 최상위 셸에서
-// claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13 — 같은 `ShellMeta`라 함께 빠졌다). 그 줄은 한때 사이드바 nav에 섰고, 지금은
-// 사람 메뉴의 `Terminal` 항목이다(v1 티켓 07 · S27) — 메뉴는 목록과 한 컬럼이 아니라 구획 헤더의 개수와 x를 맞대던 자리는 없어졌다.
+// claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13 — 같은 `ShellMeta`라 함께 빠졌다). 그 줄은 한때 사이드바 nav에 섰다가 사람 메뉴의
+// `Terminal` 항목이 됐고(v1 티켓 07 · S27), 지금은 다시 사이드바 위 칸의 줄이다(restart 02a-3).
 //
 // **이 층에서만 보인다** — `Sidebar.tsx`는 `terminal-store`를 물어 정적 마크업 seam이 닿지
 // 않고(Sidebar.test.tsx 머리말), 최상위 셸은 이 화면의 진입 이펙트(`ensureShell`)를 태워야
 // 생긴다.
-test("최상위 셸에서 claude가 돌아도 사람 메뉴의 `Terminal`에는 셸 수만 선다", async ({ page }) => {
+test("최상위 셸에서 claude가 돌아도 위 칸의 `Terminal`에는 셸 수만 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
 
-  // 표식은 안 단다(결정 14) — 메뉴 항목은 **접근성 이름**으로 집는다. 이름 뒤에 셸 수 무리가 함께 선다.
-  const terminal = () => 사람메뉴항목(page).filter({ hasText: /^Terminal/ });
+  // 표식은 안 단다(결정 14) — 줄은 **접근성 이름**으로 집는다. 이름 뒤에 셸 수 무리가 함께 선다.
+  const terminal = () => 위칸줄(page, "Terminal");
   // 셸 하나가 이미 떠 있으므로(`ensureShell`) 그 자리에는 셸 수 무리가 서 있다.
-  await 사람줄(page).click();
   await expect(terminal()).toContainText("1");
   await expect(terminal().locator('[role="img"]')).toHaveCount(0);
-  await page.keyboard.press("Escape");
 
   await markRunning(page, "claude");
   // **로고가 안 선다.** 앵커는 셸 탭이다 — 같은 셸의 칸에는 마크가 섰다(`markRunning`이 그것을
@@ -1616,12 +1611,10 @@ test("최상위 셸에서 claude가 돌아도 사람 메뉴의 `Terminal`에는 
     payload: { message: "커밋할까요?" },
   });
   await expect(띠(page)).toHaveCount(1);
-  await 사람줄(page).click();
   await expect(terminal()).toContainText("1");
   await expect(terminal().locator('[role="img"]')).toHaveCount(0);
   await expect(terminal()).not.toContainText("커밋할까요?");
   await expect(terminal().locator("span.tabular-nums")).toHaveCount(1);
-  await page.keyboard.press("Escape");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -1647,7 +1640,7 @@ test("호버 카드는 행 바로 옆에 서서 사이드바 오른쪽 끝 위�
 
   const rowBox = (await row.boundingBox())!;
   const cardBox = (await card.boundingBox())!;
-  const aside = (await page.locator("aside").boundingBox())!;
+  const aside = (await page.locator("aside").first().boundingBox())!;
 
   // **행에서 4px이다.** 사이드바 끝에서 재던 값은 눈에 19px 더 벌어져 보였다 — 거터 8px과
   // 늘 예약된 스크롤바 11px이 행과 사이드바 끝 사이에 있었기 때문이다.
@@ -1939,86 +1932,91 @@ test("한 work에서 두 셸이 부르면 카드의 말 · 행 설명이 같은 
 // ─────────────────────────────────────────────────────────────────────────────
 // codex-ds 티켓 19 — **사이드바가 Codex 모양을 입는다**(codex-ds 스펙 §5 · DS `SidebarRow` · `AttentionBand`). 사이드바는 Codex 대화
 // 사이드바의 옅은 면(`surface-sidebar`)이고(v1 티켓 46 — 한때 창 바탕 `surface-shell`에 붙어 면이 없었다), 거기서 흰 것은 알림 띠
-// 하나다. 칠해진 값을 토큰과 맞대고(값을 검사에 손으로 적지 않는다), 못박은 수(행 30 · 반경 10 · 400 · 아이콘 16 · 띠 줄 30 — 46이
-// Codex 사이드바를 재어 행 32 · 500 · 아이콘 17에서 옮겼다)는 따로 센다 — 토큰 값이 바뀌는 날 견줌이 함께 따라가 초록이 되지 않게.
+// 하나다. 칠해진 값을 토큰과 맞대고(값을 검사에 손으로 적지 않는다), 못박은 수(줄 30 · 반경 4 · 13/18 400 · 글리프 15 · 띠 줄 30 —
+// restart 02a-3이 시안 값으로 옮겼다. 한때 46이 Codex 사이드바를 재어 반경 10 · 14/20 · 아이콘 16이었다)는 따로 센다 — 토큰 값이 바뀌는
+// 날 견줌이 함께 따라가 초록이 되지 않게.
 
 /** 행의 면이 그 색에 닿을 때까지 기다린다 — 행은 `transition-colors`라 도중에 읽으면 두 면 사이의 값이다. */
 const 면이된다 = (row: Locator, color: string) =>
   expect.poll(async () => (await 칠한값(row, "background-color"))[0]).toBe(color);
 
-// **고른 행과 지나는 행이 같은 투명 면 `fill-nav-selected`이고, 고른 행은 글자가 `fg`로 한 단 짙다**(02 구현 스펙 §4 · 티켓 05 — Codex
-// 사이드바 줄의 hover = 고른 줄 = .053, `index.css` 「상태 농도」). 쉬는 줄의 글자는 `fg-sidebar`다. 한때(v1 티켓 46) 고른 행은 불투명한
-// `fill-selected`, 지나는 행은 `fill-soft`로 갈렸다 — 사이드바가 흰 판 위에 서면서(02 티켓 02) Codex의 한 면이 됐다. 고른 행은 올려도
-// 그 면이다. work 행도 같은 면이다 — nav와 한 컬럼에 세로로 붙어 서는 행이라 고름이 같은 무게로 읽혀야 한다. 사이드바 밖(흰 판 안
-// 작업 패널)의 고른 행은 그대로 불투명한 `fill-selected`다.
-test("nav 행은 30 · radius-row · 400 · 아이콘 16이고, 고른 행 · 지나는 행은 fill-nav-selected 면이며 고른 행만 글자가 fg다 — work 행도 같다", async ({
+// **고른 줄은 `fill-hover` 면에 `fg` 글자, 지나는 줄은 그보다 옅은 `fill-soft` 면이다**(restart 02a-3 · 시안 Shell · Main `.ra-sr-row` ·
+// `.ra-sr-row:hover` · `.ra-sr-row.on`). 쉬는 줄의 글자는 `fg-sidebar`이고, 라이트에서는 그것이 `fg`와 같은 색이라(02a-1) 고른 줄은 면으로만
+// 갈린다. 줄은 30(`size-row-nav`) · 둥글기 4(`radius-ctl`) · 글자 13/18 400 · 글리프 15 `fg-secondary`다. work 줄도 같은 면 · 모양이다 —
+// nav와 한 컬럼에 세로로 붙어 서는 줄이라 고름이 같은 무게로 읽혀야 한다. 사이드바 밖(카드 안 목록)의 고른 줄은 그대로 불투명한
+// `fill-selected`다. 한때(02 티켓 05 – 02a-2) 고른 줄과 지나는 줄이 같은 투명 `fill-nav-selected`였고 줄은 14/20 · 아이콘 16 · `radius-row`였다.
+test("nav 줄은 30 · radius-ctl · 13/18 400 · 글리프 15 fg-secondary이고, 고른 줄은 fill-hover · fg, 지나는 줄은 fill-soft다 — work 줄도 같다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto("/");
 
-  const [면, 진한글자, 쉬는글자] = [
-    await 토큰색(page, "--fill-nav-selected"),
+  const [고른면, 지나는면, 진한글자, 쉬는글자, 글리프색] = [
+    await 토큰색(page, "--fill-hover"),
+    await 토큰색(page, "--fill-soft"),
     await 토큰색(page, "--fg"),
     await 토큰색(page, "--fg-sidebar"),
+    await 토큰색(page, "--fg-secondary"),
   ];
-  expect(진한글자, "fg와 fg-sidebar가 같은 색이다").not.toBe(쉬는글자);
-  /** 행의 글자색이 그 색에 닿을 때까지 기다린다 — 이름 버튼이 그 색을 물려받는다. */
+  // 앵커: 두 면이 다르다 — 같으면 아래 「고른 줄 · 지나는 줄」이 갈리지 않아도 초록이다.
+  expect(고른면, "fill-hover와 fill-soft가 같은 색이다").not.toBe(지나는면);
+  /** 줄의 글자색이 그 색에 닿을 때까지 기다린다 — 이름 버튼이 그 색을 물려받는다. */
   const 글자가된다 = (row: Locator, color: string) =>
     expect.poll(async () => (await 칠한값(row, "color"))[0]).toBe(color);
 
-  // 배경은 이름 버튼이 아니라 바깥 상자(행)가 든다(`SidebarItem`). 지금 화면이 새 Thread라 그 행이 고른 행이다 — 위 줄은 「새
-  // Thread」 · 「내 차례」 둘이다(v1 티켓 07 · 02 티켓 04, 지금 화면들은 사람 메뉴로 갔다).
+  // 배경은 이름 버튼이 아니라 바깥 상자(줄)가 든다(`SidebarItem`). 지금 화면이 새 채팅이라 그 줄이 고른 줄이다 — 위 칸은 「새 채팅」 ·
+  // 「내 차례」 뒤에 지금 화면 다섯이다(02a-3).
   const navButton = (page: Page, label: "새 채팅" | "내 차례") =>
-    page.locator("aside nav").getByRole("button", { name: label, exact: true });
+    page.getByRole("navigation", { name: "가는 곳", exact: true }).getByRole("button", { name: label, exact: true });
   const 고른nav = navButton(page, "새 채팅").locator("xpath=..");
   await expect(고른nav).toHaveClass(/selected-row/);
-  await 면이된다(고른nav, 면);
+  await 면이된다(고른nav, 고른면);
   await 글자가된다(고른nav, 진한글자);
-  // 둥글기는 Work · Thread 줄과 한 벌인 `radius-row`다(02 구현 스펙 §4 · 코드 리뷰 S2 — superellipse 12.5, WebKit에서는 10). 한때 `radius-lg`였다.
-  expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — 토큰").toEqual([
+  expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 줄 — 토큰").toEqual([
     await 토큰값(page, "height", "--size-row-nav"),
-    await 토큰값(page, "border-top-left-radius", "--radius-row"),
+    await 토큰값(page, "border-top-left-radius", "--radius-ctl"),
   ]);
-  expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — 못박은 수").toEqual(["30px", "10px"]);
-  // 글자는 work 행과 같은 `text-sm`(14/20 400)이다 — Codex 사이드바는 줄마다 보통 굵기이고 고른 줄은 면으로만 드러난다(v1 티켓 46 —
-  // 한때 nav만 `nav-row` 500이었다).
+  expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 줄 — 못박은 수").toEqual(["30px", "4px"]);
   expect(await 칠한값(navButton(page, "새 채팅"), "font-size", "line-height", "font-weight"), "nav 글자").toEqual([
-    "14px",
-    "20px",
+    "13px",
+    "18px",
     "400",
   ]);
-  const 아이콘 = (await navButton(page, "새 채팅").locator("svg").boundingBox())!;
-  expect([아이콘.width, 아이콘.height], "nav 아이콘").toEqual([16, 16]);
+  const 글리프 = navButton(page, "새 채팅").locator("svg");
+  const 아이콘 = (await 글리프.boundingBox())!;
+  expect([아이콘.width, 아이콘.height], "nav 글리프").toEqual([15, 15]);
+  expect(await 칠한값(글리프, "color"), "nav 글리프 색 — 고른 줄에서도").toEqual([글리프색]);
 
-  // 고른 행은 올려도 그 면이다. 지나는 행은 쉴 때 면이 없다가(앵커) 올리면 같은 면이 서고, 글자는 쉬는 글자 그대로다.
+  // 고른 줄은 올려도 그 면이다. 지나는 줄은 쉴 때 면이 없다가(앵커) 올리면 옅은 면이 서고, 글자는 쉬는 글자 그대로다.
   await 고른nav.hover();
-  await 면이된다(고른nav, 면);
+  await 면이된다(고른nav, 고른면);
   const 지나는nav = navButton(page, "내 차례").locator("xpath=..");
   await expect(지나는nav).not.toHaveClass(/selected-row/);
   await 글자가된다(지나는nav, 쉬는글자);
-  expect(await 칠한값(지나는nav, "background-color")).not.toEqual([면]);
+  expect(await 칠한값(지나는nav, "background-color")).not.toEqual([지나는면]);
   await 지나는nav.hover();
-  await 면이된다(지나는nav, 면);
+  await 면이된다(지나는nav, 지나는면);
   await 글자가된다(지나는nav, 쉬는글자);
 
-  // work 행 — 그 work로 들어가면 그 행이 고른 행이다. 높이는 nav 행과 같은 토큰이다. spec이 있는 work로 들어간다(아래 트리).
+  // work 줄 — 그 work로 들어가면 그 줄이 고른 줄이다. 높이 · 둥글기는 nav 줄과 같은 토큰이다.
   await 작업화면으로(page, pinnedWork);
   const 고른work = workRow(page, pinnedWork.slug);
   await expect(고른work).toHaveClass(/selected-row/);
-  await 면이된다(고른work, 면);
+  await 면이된다(고른work, 고른면);
   await 글자가된다(고른work, 진한글자);
-  expect(await 칠한값(고른work, "height", "border-top-left-radius"), "work 행 — nav 행과 같은 토큰").toEqual([
+  expect(await 칠한값(고른work, "height", "border-top-left-radius"), "work 줄 — nav 줄과 같은 토큰").toEqual([
     await 토큰값(page, "height", "--size-row-nav"),
-    await 토큰값(page, "border-top-left-radius", "--radius-row"),
+    await 토큰값(page, "border-top-left-radius", "--radius-ctl"),
   ]);
   const 지나는work = workRow(page, plainWork.slug);
   await 지나는work.hover();
-  await 면이된다(지나는work, 면);
+  await 면이된다(지나는work, 지나는면);
   await 글자가된다(지나는work, 쉬는글자);
 
-  // **흰 판 안 작업 패널의 고른 행은 불투명한 `fill-selected`다**(DS `.at-tree-row.is-on`) — 사이드바 안의 고른 줄만 투명 면으로
-  // 갈린다(`index.css`의 `selected-row` 사이드바 갈래). 작업 패널(둘째 `aside`)의 spec 트리에서 지금 연 문서의 행이다.
+  // **사이드바 밖 카드 안 목록의 고른 줄은 불투명한 `fill-selected`다**(DS `.at-tree-row.is-on`) — 사이드바 안의 고른 줄만 면 알파로
+  // 갈린다(`index.css`의 `selected-row` 사이드바 갈래). Archive spec 목록 패널(둘째 `aside`)의 트리에서 지금 연 문서의 줄이다 — 작업 패널의
+  // 트리는 문서를 넓힌 카드로 열어 고른 줄이 없다(restart 02a-12).
+  await page.goto(`/archive/${ARCHIVE[0].slug}`);
   const 고른트리 = page.locator("aside").nth(1).locator(".selected-row");
   await expect(고른트리).toHaveCount(1);
   await 면이된다(고른트리, await 토큰색(page, "--fill-selected"));

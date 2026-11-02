@@ -108,10 +108,19 @@ const scopeAsks = (page: Page) => ipcArgs(page, "reading_scope", "service");
 /** 씨앗을 실은 첫 화면 주소. */
 const at = (search: Record<string, string>) => `/?${new URLSearchParams(search)}`;
 
-/** 첫 말을 보낸다 — 첫 말을 받은 Thread 화면이 선다. */
+/**
+ * 첫 말을 보낸다 — 첫 말을 받은 Thread 화면이 선다. 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭이다(`/works/<slug>?tab=chat&thread=<id>`
+ * · 본문 카드 이름 「채팅」 — restart 02a-4). 작업공간 밖 Thread는 `/threads/<id>`에 그 이름의 본문으로 선다.
+ */
 async function sendFirst(page: Page, text: string, to: ThreadView) {
   await 입력칸(page).fill(text);
   await 입력칸(page).press("Enter");
+  if (to.work) {
+    await expect(page).toHaveURL(`/works/${to.work}?tab=chat&thread=${to.id}`);
+    await expect(page.getByRole("main", { name: "채팅", exact: true })).toBeVisible();
+    await expect(page.locator('[data-tab="chat"]')).toContainText(to.title);
+    return;
+  }
   await expect(page).toHaveURL(`/threads/${to.id}`);
   await expect(page.getByRole("main", { name: to.title, exact: true })).toBeVisible();
 }
@@ -276,7 +285,7 @@ test("범위 칩 — 메뉴에서 고른 Service는 흰 칩 + ×가 되어 범�
   await 입력칸(page).press("Enter");
   await expect(page).toHaveURL(`/threads/${FIXTURE_THREAD.id}`);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: { slug: SETTLEMENT.slug }, project: null },
+    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: { slug: SETTLEMENT.slug }, project: null, quote: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -307,7 +316,7 @@ test("범위 메뉴 — Project를 고르면 앞의 Service가 빠지고 칩 · 
 
   await sendFirst(page, first.text, started);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: API_SERVER },
+    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: API_SERVER, quote: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -365,8 +374,14 @@ test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 
   await withThreads(page, [inWork, loose, serviced], linesThrough(twoTurns, FIRST_SENT), {
     reading_scope: answerByArg("thread", { [inWork.id]: SCOPES.payments, [serviced.id]: SCOPES.payments }, { otherwise: SCOPES.all }),
   });
+  // 작업공간에 이은 Thread는 `/threads/<id>`로 열어도 그 작업공간 화면의 채팅 탭으로 옮겨 선다(restart 02a-4 — 본문 카드 이름 「채팅」).
   const 열린다 = async (view: ThreadView) => {
     await page.goto(`/threads/${view.id}`);
+    if (view.work) {
+      await expect(page).toHaveURL(`/works/${view.work}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+      await expect(page.getByRole("main", { name: "채팅", exact: true })).toBeVisible();
+      return;
+    }
     await expect(page.getByRole("main", { name: view.title, exact: true })).toBeVisible({ timeout: 20_000 });
   };
   /** 범위는 대화로 바꾼다 — 그 Thread에 Service가 있어도 칩도 범위 줄도 서지 않는다. */
@@ -398,7 +413,8 @@ test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 
   await expect(잠긴칩(page)).toHaveText("작업공간 없이 대화");
   await 범위가없다();
 
-  // 이은 Work의 잠긴 칩을 누르면 그 Work 화면이다(S3).
+  // 이은 Work의 잠긴 칩을 누르면 그 Work 화면이다(S3). 그 채팅은 이미 그 작업공간 화면의 채팅 탭에 서 있어(restart 02a-4) 주소는 그 작업공간에
+  // 머문다 — 다른 화면으로 새지 않는 것만 남는다.
   await 열린다(inWork);
   await 잠긴칩(page).click();
   await expect(page).toHaveURL(new RegExp(`/works/${REFUND.slug}`));
@@ -476,17 +492,21 @@ test("씨앗 — 주소의 `?new=` · `?work=` · `?service=` · `?say=`가 처�
   await expect(잠긴칩(page)).toHaveCount(0);
   await expect(범위줄(page)).toHaveText("읽는 Project가 없어요 — Service에 Project를 넣어 주세요");
 
-  // Work와 Service를 함께(`?work=&service=`) — 그 Work의 Service를 바꾼 것으로 쥔다(▾). 보내면 그 Service가 첫 말과 함께 그 Work로 간다.
+  // Work와 Service를 함께(`?work=&service=`) — 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8). **범위 씨앗은 따라가지 않는다** — 작업공간의 범위는 그
+  // 작업공간의 것이라 칩은 그 Work의 지금 Service(▾)다(`routes/index.tsx`의 `WorkSeed`). 한때 그 Work의 Service를 씨앗으로 바꾼 것으로 쥐고 첫 말과
+  // 함께 보냈다. 보내면 고르지 않은 범위(`null`)로 그 Work에 간다.
   await openHome(page, at({ work: REFUND.slug, service: TOOLS.slug }));
+  await expect(page).toHaveURL(`/works/${REFUND.slug}?tab=chat`);
   await expect(잠긴칩(page)).toHaveText(REFUND.title);
-  await expect(이름칩(page, TOOLS.name)).toBeVisible();
+  await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
+  await expect(이름칩(page, TOOLS.name)).toHaveCount(0);
   await expect(빼기(page)).toHaveCount(0);
   expect(await ipcCallArgs(page, "thread_start", "text")).toEqual([]);
   await 입력칸(page).fill("배포 전에 볼 것 정리해 줘");
   await 입력칸(page).press("Enter");
-  await expect(page).toHaveURL(`/threads/${linked.id}`);
+  await expect(page).toHaveURL(`/works/${REFUND.slug}?tab=chat&thread=${linked.id}`);
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => [args.link, args.service])).toEqual([
-    [{ kind: "work", slug: REFUND.slug }, { slug: TOOLS.slug }],
+    [{ kind: "work", slug: REFUND.slug }, null],
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -508,7 +528,7 @@ test("씨앗 — `?project=`가 범위 칩에 그 Project를 고르고, `?new=wo
   await expect(이름칩(page, API_SERVER)).toBeVisible();
   await sendFirst(page, first.text, started);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: first.text, attachments: [], link: { kind: "new-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: API_SERVER },
+    { text: first.text, attachments: [], link: { kind: "new-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: API_SERVER, quote: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

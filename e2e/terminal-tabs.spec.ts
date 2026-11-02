@@ -18,6 +18,9 @@ import {
   토큰색,
   unknownIpcCalls,
   writeShell,
+  그림자,
+  새셸을누른다,
+  새채팅탭으로비킨다,
   파일탭주소,
   주소로간다,
 } from "./harness";
@@ -42,20 +45,19 @@ test("⌘1이 탭 줄에 보이는 첫 칸을 고른다", async ({ page }) => {
   // 들어오면 셸 하나가 뜬다(`ensureShell`) — 그 칸이 곧 탭 줄의 첫 칸이다.
   const tabs = page.locator('[data-tab="shell"]');
   await expect(tabs).toHaveCount(1);
-  // **이 화면에는 `spec` 칸이 없다**(결정 8). 그래서 ⌘1부터가 셸이고, 화면마다 갈리는 것이
-  // `firstKey` 하나라는 성질이 여기서 실물로 선다.
+  // **이 화면에는 `spec` 칸이 없다**(결정 8 — 이제 작업공간 화면에도 없다, restart 02a-13). 그래서 ⌘1부터가 셸이다.
   await expect(page.locator('[data-tab="spec"]')).toHaveCount(0);
 
   // 탭 줄의 `+`로 한 칸 더 연다. **표식으로 집는다** — 한때 「셸 열기」 버튼이 이 화면에
   // 둘이었고(사이드바 가지에도 하나), 이름으로 집던 검사가 판 04가 그 가지를 걷는 날
   // 엉뚱한 자리에서 깨질 뻔했다. 표식은 그 왕복을 그대로 견뎠다.
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs).toHaveCount(2);
   // 새로 연 칸이 켜진 칸이다 — 여기가 안 서면 아래 ⌘1은 「원래 첫 칸이 켜져 있어서」 초록이다.
   const lit = (at: number) => tabs.nth(at).locator("button[aria-pressed]");
   await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
 
-  // ⌘1이 **첫 칸**으로 돌아온다. work 화면이라면 그 자리가 `spec`이라 셸이 안 바뀐다.
+  // ⌘1이 **첫 칸**으로 돌아온다(작업공간 화면도 같다 — 한때 그 자리가 `spec`이었다, restart 02a-13).
   await page.keyboard.press("Meta+1");
   await expect(lit(0)).toHaveAttribute("aria-pressed", "true");
   await expect(lit(1)).toHaveAttribute("aria-pressed", "false");
@@ -63,32 +65,32 @@ test("⌘1이 탭 줄에 보이는 첫 칸을 고른다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ─── codex-ds 티켓 12: 탭 줄이 **본문 카드의 머리**다(codex-ds 스펙 §4 「탭 줄」 · DS `TabRow`) ───
+// ─── codex-ds 티켓 12 · restart 02a-5: 탭 줄이 **본문 카드의 머리**다(codex-ds 스펙 §4 「탭 줄」 · 시안 Main `.ra-tabs`) ───
 //
-// 한때 창 맨 위 줄(`<header>` — 지금의 머리 줄)에 서던 줄이 그 탭이 보여 줄 카드 안 맨 위로 내려왔다. 문서 카드 · 터미널 카드 · 분할의
-// 터미널 열 · `/terminal`의 카드가 같은 머리를 쓴다 — 높이는 `size-toolbar`(46)이고 아래에 0.5px `border-heavy` 선이 서며, 켜진
-// 탭은 28 높이의 옅은 면(`fill-hover`)이다. 머리 줄에는 탭이 하나도 없다.
+// 한때 창 맨 위 줄(`<header>` — 지금의 머리 줄)에 서던 줄이 그 탭이 보여 줄 카드 안 맨 위로 내려왔다. 작업공간 화면의 본문 카드 ·
+// `/terminal`의 카드가 같은 머리를 쓴다 — 높이는 `size-tab-row`(40)이고 아래에 0.5px `border` 선이 서며, 켜진 탭은 28 높이 · 둥글기
+// `radius-ctl`(4)의 `fill-selected` 면에 0.5 링(`shadow-hairline`)이다(02a-5 — 한때 46 · `border-heavy` · `fill-hover` · `radius-lg`). 머리
+// 줄에는 탭이 하나도 없다.
 //
-// 줄은 `data-tab-strip`으로 집는다(codex-ds 스펙 §11) — 그 상자를 든 머리가 탭 줄이다. 카드는 머리의 부모이고 카드 표식
-// (`data-slot="card"`)을 든다. 분할이면 그 카드가 터미널 열이고, 아니면 본문 카드(`<main>`) 자신이다.
+// 줄은 `data-tab-strip`으로 집는다(codex-ds 스펙 §11) — 그 상자를 든 머리가 탭 줄이다. 카드는 머리의 부모(본문 카드 `<main>`)이고 카드
+// 표식(`data-slot="card"`)을 든다. 한때 분할의 터미널 열도 같은 머리를 썼다 — restart 02a-13이 분할을 걷었다.
 const CARD_HEADS = [
-  { name: "work 화면 터미널", url: `/works/${plainWork.slug}?tab=terminal`, column: false },
-  { name: "work 화면 문서", url: `/works/${plainWork.slug}`, column: false },
-  { name: "work 화면 분할", url: `/works/${plainWork.slug}?split=lr`, column: true },
-  { name: "`/terminal`", url: "/terminal", column: false },
+  { name: "work 화면 터미널", url: `/works/${plainWork.slug}?tab=terminal` },
+  { name: "work 화면 새 채팅", url: `/works/${plainWork.slug}` },
+  { name: "`/terminal`", url: "/terminal" },
 ] as const;
 
 for (const screen of CARD_HEADS) {
-  test(`${screen.name}: 탭 줄이 본문 카드 안 맨 위의 46 줄이고 아래에 0.5px 선이 선다`, async ({ page }) => {
+  test(`${screen.name}: 탭 줄이 본문 카드 안 맨 위의 40 줄이고 아래에 0.5px 선이 선다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(screen.url);
     const strip = page.locator("[data-tab-strip]");
     await expect(strip).toHaveCount(1);
-    // 셸 칸이 하나는 서야 「켜진 탭」을 잰다 — 문서 본문에서는 `spec` 칸이 켜진 탭이다.
+    // 셸 칸이 하나는 서야 「켜진 탭」을 잰다 — 새 채팅 본문에서는 새 채팅 탭이 켜진 탭이다(restart 02a-8).
     if (screen.url.includes("tab=terminal") || screen.url === "/terminal") {
       await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
     }
-    await expect(page.locator('[data-tab][aria-pressed="true"], [data-tab] [aria-pressed="true"]').first()).toBeVisible();
+    await expect(page.locator('[data-tab] [aria-pressed="true"]').first()).toBeVisible();
 
     const 줄 = await strip.evaluate((el) => {
       const row = el.parentElement!;
@@ -96,40 +98,44 @@ for (const screen of CARD_HEADS) {
       const box = row.getBoundingClientRect();
       const edge = card.getBoundingClientRect();
       const line = getComputedStyle(row, "::after");
-      const on = row.querySelector<HTMLElement>('[data-tab="spec"][aria-pressed="true"], [data-tab="shell"]:has([aria-pressed="true"])')!;
+      const on = row.querySelector<HTMLElement>('[data-tab]:has(> [aria-pressed="true"]), [data-tab]:has([aria-pressed="true"])')!;
       return {
         카드: card.getAttribute("data-slot"),
         본문: card.tagName === "MAIN",
-        열: row.getAttribute("data-column"),
         위: box.top - edge.top,
         왼쪽: box.left - edge.left,
         오른쪽: edge.right - box.right,
         높이: box.height,
         안쪽: getComputedStyle(row).paddingLeft,
         선: { 높이: line.height, 아래: line.bottom, 색: line.backgroundColor },
-        켜진탭: { 높이: on.getBoundingClientRect().height, 면: getComputedStyle(on).backgroundColor, 반경: getComputedStyle(on).borderTopLeftRadius },
+        켜진탭: {
+          높이: on.getBoundingClientRect().height,
+          면: getComputedStyle(on).backgroundColor,
+          반경: getComputedStyle(on).borderTopLeftRadius,
+          링: getComputedStyle(on).boxShadow,
+        },
         머리줄탭: document.querySelectorAll("header [data-tab]").length,
       };
     });
     const at = `${screen.name} ${JSON.stringify(줄)}`;
-    // 줄의 부모가 카드다 — 분할이면 터미널 열의 카드이고, 아니면 본문 카드(`<main>`)다.
+    // 줄의 부모가 본문 카드(`<main>`)다.
     expect(줄.카드, at).toBe("card");
-    expect(줄.본문, at).toBe(!screen.column);
-    expect(줄.열, at).toBe(screen.column ? "terminal" : null);
+    expect(줄.본문, at).toBe(true);
     // 카드 안 맨 위에서 카드 폭 그대로 선다.
     expect([줄.위, 줄.왼쪽, 줄.오른쪽], at).toEqual([0, 0, 0]);
-    // 높이는 토큰에서 읽고(`size-toolbar`), DS가 못박은 수(46)도 따로 센다 — 토큰이 바뀌는 날 견줌이 함께 흘러가지 않게.
-    expect(`${줄.높이}px`, at).toBe(await 토큰값(page, "height", "--size-toolbar"));
-    expect(줄.높이, at).toBe(46);
+    // 높이는 토큰에서 읽고(`size-tab-row`), 시안이 못박은 수(40)도 따로 센다 — 토큰이 바뀌는 날 견줌이 함께 흘러가지 않게.
+    expect(`${줄.높이}px`, at).toBe(await 토큰값(page, "height", "--size-tab-row"));
+    expect(줄.높이, at).toBe(40);
     // 안쪽 8 — DS `.at-toolbar`.
     expect(줄.안쪽, at).toBe("8px");
-    // 아래 0.5px 선은 `border-heavy` 면이고 줄 바닥에 붙는다(줄 높이 안이다).
-    expect(줄.선, at).toEqual({ 높이: "0.5px", 아래: "0px", 색: await 토큰색(page, "--border-heavy") });
-    // 켜진 탭 — 28 높이 · `radius-lg` · 옅은 면 `fill-hover`(DS `.at-tab.is-on`).
-    expect(줄.켜진탭, at).toEqual({
+    // 아래 0.5px 선은 `border` 면이고 줄 바닥에 붙는다(줄 높이 안이다).
+    expect(줄.선, at).toEqual({ 높이: "0.5px", 아래: "0px", 색: await 토큰색(page, "--border") });
+    // 켜진 탭 — 28 높이 · `radius-ctl` · `fill-selected` 면 + 0.5 링(시안 `.ra-tab.on`).
+    expect({ ...줄.켜진탭, 링: 그림자(줄.켜진탭.링) }, at).toEqual({
       높이: 28,
-      면: await 토큰색(page, "--fill-hover"),
-      반경: await 토큰값(page, "border-top-left-radius", "--radius-lg"),
+      면: await 토큰색(page, "--fill-selected"),
+      반경: await 토큰값(page, "border-top-left-radius", "--radius-ctl"),
+      링: await 토큰값(page, "box-shadow", "--shadow-hairline"),
     });
     // 머리 줄에는 탭이 없다.
     expect(줄.머리줄탭, at).toBe(0);
@@ -137,21 +143,23 @@ for (const screen of CARD_HEADS) {
   });
 }
 
-/** 탭 칸 하나의 글자색과 그 칸 글리프의 색. 셸 칸은 이름 글자를 읽는다 — 넓은 칸에는 글리프가 없다(결정 27). */
-const 칸색 = (page: Page, kind: "spec" | "shell") =>
-  page.locator(`[data-tab="${kind}"]`).first().evaluate((cell, which) => {
-    const 글자 = which === "spec" ? cell : cell.querySelector("button[aria-pressed] span:not([role])")!;
+/** 셸 칸 하나(`at`번째)의 이름 글자색과 그 칸 글리프(맨 앞 `svg` — 셸 글리프)의 색. */
+const 칸색 = (page: Page, at: number) =>
+  page.locator('[data-tab="shell"]').nth(at).evaluate((cell) => {
+    const 글자 = cell.querySelector("button[aria-pressed] span:not([role])")!;
     const 글리프 = cell.querySelector("svg");
     return { 글자: getComputedStyle(글자).color, 글리프: 글리프 && getComputedStyle(글리프).color };
-  }, kind);
+  });
 
-// **글자색도 DS `.at-tab`이다**(codex-ds 결정 27 — Codex가 바탕이고, 사용자가 탭 글자색을 따로 부탁하지 않았다). 꺼진 칸은
-// `fg-secondary`, 켜진 칸과 가리킨 칸은 `fg`이고, 칸의 글리프는 한 단 흐리다(꺼짐 `fg-tertiary` · 켜짐 `fg-secondary`). 한때 글자가
-// 켜짐과 무관하게 `fg`였다(ui-refresh 결정 18의 값 — codex-ds 결정 3이 대체했다).
-test("켜진 탭 글자는 fg, 꺼진 탭은 fg-secondary이고 가리키면 fg다 — 글리프는 한 단 흐리다", async ({ page }) => {
+// **글자색은 시안 `.ra-tab`이다**(restart 02a-5). 꺼진 칸은 `fg-tertiary`, 가리킨 칸은 `fg-secondary`, 켜진 칸은 `fg`이고, 칸의 글리프는
+// 켜짐과 무관하게 `fg-tertiary`다. 셸 칸의 글리프(`SquareTerminal`)는 넓은 칸에도 늘 선다. 한때(codex-ds 결정 27) 꺼짐 `fg-secondary` ·
+// 가리킴 `fg` · 글리프는 한 단 흐렸고(꺼짐 `fg-tertiary` · 켜짐 `fg-secondary`), 넓은 셸 칸에는 글리프가 없었다. 셸 둘로 잰다 — 한때
+// 꺼진 칸은 spec 칸이었다(02a-13이 걷었다).
+test("켜진 탭 글자는 fg, 꺼진 탭은 fg-tertiary이고 가리키면 fg-secondary다 — 글리프는 늘 fg-tertiary다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await openShell(page);
   const [fg, secondary, tertiary] = [
     await 토큰색(page, "--fg"),
     await 토큰색(page, "--fg-secondary"),
@@ -160,31 +168,38 @@ test("켜진 탭 글자는 fg, 꺼진 탭은 fg-secondary이고 가리키면 fg�
   // 앵커: 세 단이 서로 다르다 — 같으면 아래 견줌이 무엇을 재는지 흐려진다.
   expect(new Set([fg, secondary, tertiary]).size).toBe(3);
 
-  // 터미널 본문 — 셸 칸이 켜졌고 `spec` 칸이 꺼졌다. 칸에 `transition-colors`가 걸려 있어 폴링으로 견준다.
-  await expect.poll(() => 칸색(page, "spec")).toEqual({ 글자: secondary, 글리프: tertiary });
-  await expect.poll(async () => (await 칸색(page, "shell")).글자).toBe(fg);
-
-  // 꺼진 칸을 가리키면 글자가 `fg`다(DS `.at-tab:hover`).
-  await page.locator('[data-tab="spec"]').hover();
-  await expect.poll(async () => (await 칸색(page, "spec")).글자).toBe(fg);
-
-  // 문서 본문 — 켜짐이 `spec` 칸으로 옮겨 간다. 포인터를 줄 밖으로 빼 hover가 견줌에 끼지 않게 한다.
-  await page.locator('[data-tab="spec"]').click();
+  // 새로 연 둘째 칸이 켜졌고 첫 칸이 꺼졌다. 칸에 `transition-colors`가 걸려 있어 폴링으로 견준다. 포인터를 줄 밖으로 빼 둔다.
   await page.mouse.move(0, 400);
-  await expect.poll(() => 칸색(page, "spec")).toEqual({ 글자: fg, 글리프: secondary });
-  await expect.poll(async () => (await 칸색(page, "shell")).글자).toBe(secondary);
+  await expect.poll(() => 칸색(page, 0)).toEqual({ 글자: tertiary, 글리프: tertiary });
+  await expect.poll(() => 칸색(page, 1)).toEqual({ 글자: fg, 글리프: tertiary });
+
+  // 꺼진 칸을 가리키면 글자가 `fg-secondary`다(시안 `.ra-tab:hover`). 글리프는 그대로다.
+  await page.locator('[data-tab="shell"]').first().hover();
+  await expect.poll(() => 칸색(page, 0)).toEqual({ 글자: secondary, 글리프: tertiary });
+
+  // 첫 칸을 켜면 켜짐이 옮겨 간다.
+  await page.locator('[data-tab="shell"]').first().locator("button[aria-pressed]").click();
+  await page.mouse.move(0, 400);
+  await expect.poll(() => 칸색(page, 0)).toEqual({ 글자: fg, 글리프: tertiary });
+  await expect.poll(() => 칸색(page, 1)).toEqual({ 글자: tertiary, 글리프: tertiary });
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **문서 ↔ 터미널을 오가도 본문 카드와 그 머리의 탭 줄이 그대로다**(`Frame`의 `Card` — 흰 카드와 터미널 카드가 한 컴포넌트다).
-// 둘이 다른 컴포넌트이거나 카드에 `key`가 붙으면 오갈 때마다 카드와 줄이 새로 서서, 방금 누른 `spec` 칸의 포커스와 줄의 가로
-// 스크롤을 잃는다 — 화면으로는 「눌렀더니 포커스가 사라졌다 · 줄이 맨 앞으로 튀었다」로만 보인다. 요소 자신이 같은지를 재고(새로
-// 서면 붙여 둔 표지가 사라진다), 사람이 겪는 두 결과(포커스 · 스크롤)를 함께 잰다.
-test("문서 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 서지 않는다 — 누른 칸의 포커스와 줄의 스크롤이 남는다", async ({ page }) => {
+// **새 채팅 ↔ 터미널을 오가도 본문 카드와 그 머리의 탭 줄이 그대로다**(`Frame`의 `Card` — 흰 카드와 터미널 카드가 한 컴포넌트다).
+// 둘이 다른 컴포넌트이거나 카드에 `key`가 붙으면 오갈 때마다 카드와 줄이 새로 서서, 방금 누른 칸의 포커스와 줄의 가로 스크롤을
+// 잃는다 — 화면으로는 「눌렀더니 포커스가 사라졌다 · 줄이 맨 앞으로 튀었다」로만 보인다. 요소 자신이 같은지를 재고(새로 서면 붙여 둔
+// 표지가 사라진다), 사람이 겪는 두 결과(포커스 · 스크롤)를 함께 잰다. 한때 터미널의 맞은편은 spec 칸의 문서였다(restart 02a-13이 걷었다 —
+// 이제 셸 아닌 본문은 새 채팅 탭이다).
+test("새 채팅 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 서지 않는다 — 누른 칸의 포커스와 줄의 스크롤이 남는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await fillToCap(page);
+  // 새 채팅 탭 하나를 묶음 끝에 세우고 터미널로 돌아온다 — 맞은편 본문이다.
+  await 새채팅탭으로비킨다(page);
+  const chatTab = page.locator('[data-tab="new-chat"] button[aria-pressed]');
+  await page.locator('[data-tab="shell"]').first().locator("button[aria-pressed]").click();
+  await expect(page.locator('main[data-tone="terminal"]')).toHaveCount(1);
   await settleStrip(page);
 
   // 표지를 붙인다 — 요소가 새로 서면 표지가 없는 새 요소가 그 자리에 선다.
@@ -200,7 +215,7 @@ test("문서 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 서�
     (row.parentElement as Element & { 표지?: true }).표지 = true;
   });
 
-  // 줄이 스크롤한다 — 900px 창에서 여덟 칸은 상자에 다 안 든다. 맨 끝으로 굴려 둔다.
+  // 줄이 스크롤한다 — 900px 창에서 아홉 칸은 상자에 다 안 든다. 맨 끝으로 굴려 둔다.
   const strip = page.locator("[data-tab-strip]");
   const scrolled = await strip.evaluate((el) => {
     el.scrollLeft = el.scrollWidth;
@@ -209,19 +224,26 @@ test("문서 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 서�
   // 앵커: 정말 굴렀다 — 0이면 아래 「스크롤이 남는다」가 「원래 0이라서」 초록이다.
   expect(scrolled).toBeGreaterThan(0);
 
-  // 터미널 → 문서. 키보드로 누른 `spec` 칸이 포커스를 쥔 채이고, 카드와 줄은 그 요소 그대로다. 키보드로 누르는 것은 WebKit이
+  // 터미널 → 새 채팅. 키보드로 누른 새 채팅 칸이 포커스를 쥔 채이고, 카드와 줄은 그 요소 그대로다. 키보드로 누르는 것은 WebKit이
   // 마우스로 누른 버튼에 포커스를 안 주어서다(macOS 관례) — 포커스를 잃는 사람은 키보드로 다니는 사람이다.
-  const specTab = page.locator('[data-tab="spec"]');
-  await specTab.focus();
+  await chatTab.focus();
   await page.keyboard.press("Enter");
-  await expect(specTab).toHaveAttribute("aria-pressed", "true");
+  await expect(chatTab).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('main[data-tone="terminal"]')).toHaveCount(0);
-  await expect(specTab).toBeFocused();
+  await expect(chatTab).toBeFocused();
   expect(await 표지()).toEqual({ 줄: true, 카드: true });
-  expect(await strip.evaluate((el) => el.scrollLeft)).toBe(scrolled);
+  // 줄이 맨 앞으로 튀지 않았다 — 끝에 선 켜진 칸이 상자 안에 보인다. 값 그대로를 견주지 않는다: 칸이 글 폭이라(restart 02a-5) 켜짐이 옮겨 가면
+  // 칸 폭이 바뀌어 끝까지 굴린 스크롤의 최댓값이 함께 바뀐다(한때 맞은편이 줄 밖의 spec 칸이라 값이 그대로였다).
+  expect(await strip.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  const 칸안 = await chatTab.evaluate((button) => {
+    const box = button.closest("[data-tab-strip]")!.getBoundingClientRect();
+    const own = button.getBoundingClientRect();
+    return own.left >= box.left - 0.5 && own.right <= box.right + 0.5;
+  });
+  expect(칸안).toBe(true);
 
-  // 문서 → 터미널(⌘9 — 여덟째 셸). 돌아와도 같은 카드 · 같은 줄이다.
-  await page.keyboard.press("Meta+9");
+  // 새 채팅 → 터미널(⌘8 — 여덟째 셸). 돌아와도 같은 카드 · 같은 줄이다.
+  await page.keyboard.press("Meta+8");
   await expect(page.locator('[data-tab="shell"]').last().locator("button[aria-pressed]")).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -237,11 +259,10 @@ test("문서 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 서�
 // (`ShellTabs.test.tsx`), 이 판의 물음은 전부 실측이다: 한 줄로 남았나 · 넘쳤나 · 칸이
 // 고르게 줄었나 · 로고가 남았나 · `+`가 줄 안에 남았나 · 머리 줄의 할 일이 안 밀리고 안 눌렸나.
 //
-// **work 화면에서 잰다.** `/terminal`에는 `spec` 칸이 없어(결정 8) 거기서는 이 줄이 가장 붐비는
-// 모습을 못 만든다 — 줄 자체는 두 화면이 같은 것을 쓰므로 붐비는 쪽에서 재는 것이 둘 다를 잰다.
-// 줄 끝 조작(`data-tab-actions`)은 분할의 터미널 열에만 서고(그 열을 닫는 `×`), 그 줄은
-// `tab-row-floor.spec.ts`의 분할 검사가 잰다. 상태 · ⋯ · 분할은 머리 줄 오른쪽 끝(`data-head-actions`)에
-// 서고, 줄과 같은 순간에 잰다(`rowOf`의 `workActions`) — 줄이 바닥에 닿는 폭이 곧 그 조작이 밀릴 수 있는 폭이다.
+// **work 화면에서 잰다.** 본문 카드 옆에 작업 패널 · 레일 카드가 서서 줄이 받는 폭이 가장 좁다 — 줄 자체는 두 화면이 같은 것을
+// 쓰므로 붐비는 쪽에서 재는 것이 둘 다를 잰다. 줄 끝 조작(`data-tab-actions`)은 한때 분할의 터미널 열에만 섰다(restart 02a-13이 걷었다).
+// 상태 · ⋯ · 요약 카드 · 패널 토글은 머리 줄 오른쪽 끝(`data-head-actions`)에 서고, 줄과 같은 순간에 잰다(`rowOf`의 `workActions`) — 줄이
+// 바닥에 닿는 폭이 곧 그 조작이 밀릴 수 있는 폭이다.
 
 /** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
 const SHELL_NAME = FIXTURE_SHELL_NAME;
@@ -296,8 +317,8 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
 
   // 1280은 실물 기본 창, 900은 **창이 작아질 수 있는 끝**(tauri.conf의 `minWidth`), 1120은 그 사이다.
   //
-  // **줄이 받는 폭은 창 폭이 아니다.** 줄을 머리에 인 본문 카드의 폭이라 창에서 사이드바 · 열린 작업 패널을 뺀 나머지다
-  // (codex-ds 스펙 §4 — 레일 열(`spec` · `files`)도 선다). 1280에서는 여덟 칸이 이름을 숨긴 폭으로 다 들어가고, 1120 · 900에서는 어떤 최소 폭으로도
+  // **줄이 받는 폭은 창 폭이 아니다.** 줄을 머리에 인 본문 카드의 폭이라 창에서 사이드바 · 열린 작업 패널 · 레일과 그 틈을 뺀
+  // 나머지다(restart 02a-2 · 02a-14). 1280에서는 여덟 칸이 이름을 숨긴 폭으로 다 들어가고, 1120 · 900에서는 어떤 최소 폭으로도
   // 안 들어간다 — 결정 20이 「그 아래는 스크롤」로 답한 자리다. 줄이 더 좁아지면 패널이 제 최소 폭까지, 그다음 사이드바가
   // 자리를 내주고 줄은 칸 하나가 보이는 데서 멈춘다(`panel-layout`의 `TAB_ROW_CARD` · `TAB_ROW_COLUMN` · `tab-row-floor`).
   for (const width of [1280, 1120, 900]) {
@@ -313,8 +334,8 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     rows[width] = row;
     console.log(at, JSON.stringify(row));
 
-    // 한 줄이다 — 넘겨 접히면 높이가 늘어난다(카드 머리 `size-toolbar` 46).
-    expect(row.height, at).toBe(46);
+    // 한 줄이다 — 넘겨 접히면 높이가 늘어난다(카드 머리 `size-tab-row` 40 — restart 02a-5).
+    expect(row.height, at).toBe(40);
     // **줄은 넘치지 않는다.** 넘치는 몫은 셸 칸 상자가 받는다(결정 20) — 이 값이
     // 0보다 크면 줄 끝의 `+`가 카드 모서리 밖으로 밀려난 그림이다(고치기 전 900px에서 380이었다).
     expect(row.spill, at).toBeLessThanOrEqual(0);
@@ -325,16 +346,21 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     expect(Math.max(...row.tabs) - Math.min(...row.tabs), at).toBeLessThanOrEqual(1);
     expect(row.tabs, at).toHaveLength(MAX_SHELLS);
 
-    // **로고는 끝까지 남는다** — 이 판이 사려는 것이 「무엇이 도나」다. 세 폭 모두 칸이
-    // 이름을 숨기는 폭(88px 이하)이라 이름이 숨었고, 그때 서는 것이 이 글리프다(결정 27) — 넓은 폭에서는
-    // 이름이 그 몫을 하므로 안 선다.
-    expect(row.mark, at).not.toBeNull();
-    // 글리프 하나의 규격이다(`size-3.5`). 한때 여기 스피너가 나란히 서서 30px이었다.
-    expect(row.mark!.width, at).toBe(14);
-    // 남아 있기만 하면 안 된다 — 제 칸을 넘어 옆 칸 위에 그려지면 그것도 잘린 것이다.
-    expect(row.mark!.over, at).toBeLessThanOrEqual(0);
+    // **로고는 끝까지 남는다** — 이 판이 사려는 것이 「무엇이 도나」다. 칸이 이름을 숨기는 폭(55px 아래 — restart 02a-5, 한때 88px
+    // 이하)이면 이름이 숨고, 그때 서는 것이 이 글리프다(결정 27) — 넓은 폭에서는 이름이 그 몫을 하므로 안 선다. 칸이 글 폭이라(02a-5) 1280에서는
+    // 여덟도 이름이 서는 폭(짧은 이름 — 67 언저리)으로 다 든다 — 거기서는 이름이 서고 로고가 글리프를 대신하지 않는다.
+    if (width === 1280) {
+      expect(Math.min(...row.tabs), at).toBeGreaterThanOrEqual(55);
+    } else {
+      expect(Math.max(...row.tabs), at).toBeLessThan(55);
+      expect(row.mark, at).not.toBeNull();
+      // 글리프 하나의 규격이다(`size-3.5`). 한때 여기 스피너가 나란히 서서 30px이었다.
+      expect(row.mark!.width, at).toBe(14);
+      // 남아 있기만 하면 안 된다 — 제 칸을 넘어 옆 칸 위에 그려지면 그것도 잘린 것이다.
+      expect(row.mark!.over, at).toBeLessThanOrEqual(0);
+    }
 
-    // 단일 뷰의 줄에는 줄 끝 조작이 없다 — 상태 · ⋯ · 분할은 머리 줄에 선다(`WorksPage`).
+    // 줄에는 줄 끝 조작이 없다 — 상태 · ⋯ · 요약 카드 · 패널 토글은 머리 줄에 선다(`WorksPage`).
     expect(row.actions, at).toBeNull();
     // **그 머리 줄 할 일은 고정된 채다**(결정 10) — 밀려나지도 좁아지지도 않는다. 탭 줄이 바닥에 닿는 폭이 곧 본문 열이 넓어지는
     // 폭이라, 줄을 지키다 조작을 창 밖으로 밀면 여기서 잡힌다(조작이 탭 줄 끝에 서던 때 900px에서 380 밀렸다).
@@ -391,7 +417,7 @@ for (const at of ["900px", "칸 하나 폭 상자"] as const) {
     const last = tabs.nth(MAX_SHELLS - 1);
 
     // **상자가 칸 하나를 담을 폭이어야 아래 「안」이 뜻을 갖는다.** 0px 상자에서는 어떤 칸도
-    // 안에 온전히 못 들어가 ⌘9 뒤의 단언이 뜻 없이 깨지거나, 느슨한 판정이면 뜻 없이 선다.
+    // 안에 온전히 못 들어가 ⌘8 뒤의 단언이 뜻 없이 깨지거나, 느슨한 판정이면 뜻 없이 선다.
     const cellWidth = (await last.boundingBox())!.width;
     expect((await strip.boundingBox())!.width).toBeGreaterThanOrEqual(cellWidth - 0.5);
 
@@ -401,13 +427,13 @@ for (const at of ["900px", "칸 하나 폭 상자"] as const) {
       return cell.x >= box.x - 1 && cell.x + cell.width <= box.x + box.width + 1;
     };
 
-    // ⌘2가 첫 셸이다(⌘1은 spec — 결정 78·79). 줄이 맨 앞으로 돌아가면 마지막 칸은 밖이다.
+    // ⌘1이 첫 셸이다(restart 02a-13 — 한때 ⌘1은 spec 칸이었다). 줄이 맨 앞으로 돌아가면 마지막 칸은 밖이다.
     // **이 단언이 없으면 아래가 「원래 보이고 있어서」 초록이 된다.**
-    await page.keyboard.press("Meta+2");
+    await page.keyboard.press("Meta+1");
     await expect.poll(inside).toBe(false);
 
-    // ⌘9가 여덟째 셸이다. 고른 칸이 상자 안으로 들어오고, 그 칸이 켜진 칸이다.
-    await page.keyboard.press("Meta+9");
+    // ⌘8이 여덟째 셸이다. 고른 칸이 상자 안으로 들어오고, 그 칸이 켜진 칸이다.
+    await page.keyboard.press("Meta+8");
     await expect.poll(inside).toBe(true);
     await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
 
@@ -448,13 +474,13 @@ test("셸과 파일 탭이 섞여 넘친 줄에서도 ⌘숫자 · ⌃Tab으로 
     return own.x >= box.x - 1 && own.x + own.width <= box.x + box.width + 1;
   };
 
-  // ⌘2가 첫 셸이다 — 줄이 맨 앞으로 가고 마지막 파일 탭은 밖이다. 이것이 없으면 아래가 「원래 보이고 있어서」 초록이다.
-  await page.keyboard.press("Meta+2");
+  // ⌘1이 첫 셸이다(restart 02a-13) — 줄이 맨 앞으로 가고 마지막 파일 탭은 밖이다. 이것이 없으면 아래가 「원래 보이고 있어서」 초록이다.
+  await page.keyboard.press("Meta+1");
   await expect.poll(inside(first)).toBe(true);
   await expect.poll(inside(last)).toBe(false);
 
-  // ⌘9가 여덟째 칸 — 끝쪽 파일 탭이다. 그 칸이 상자 안으로 오고 켜지며, 본문이 그 파일이다.
-  await page.keyboard.press("Meta+9");
+  // ⌘8이 여덟째 칸 — 끝쪽 파일 탭이다. 그 칸이 상자 안으로 오고 켜지며, 본문이 그 파일이다.
+  await page.keyboard.press("Meta+8");
   await expect.poll(inside(last)).toBe(true);
   await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("main", { name: "billing/f.ts", exact: true })).toBeVisible();
@@ -480,10 +506,9 @@ test("셸과 파일 탭이 섞여 넘친 줄에서도 ⌘숫자 · ⌃Tab으로 
 // 수 있고, `+`가 줄 안에 있다.
 //
 // 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 두
-// 화면 모두를 본다. 가장 좁은 줄은 work 화면의 것이다 — 줄을 머리에 인 본문 카드 옆에 작업 패널 카드가 서서 그만큼 줄이 받는
-// 폭이 준다(codex-ds 스펙 §4 — 칸이 `spec` · `files` 둘이라 레일 열도 서서 그 폭까지 준다, codex-ds 결정 25). 배치는 셋이다 — 패널을 연
-// 채(줄이 가장 좁다), 접은 채, 그리고 ⌘B로 사이드바를 접은 채(머리 줄의 왼쪽 여백이 신호등 자리만큼 넓어지는 `inset` 갈래다 —
-// 줄은 카드 안이라 그 여백을 안 받고 카드와 함께 창 왼쪽 틈까지 넓어진다). `/terminal`에는 작업 패널이 없어 패널 갈래가 하나다.
+// 화면 모두를 본다. 가장 좁은 줄은 work 화면의 것이다 — 줄을 머리에 인 본문 카드 옆에 작업 패널 카드와 레일 카드가 서서 그만큼 줄이
+// 받는 폭이 준다(restart 02a-14). 배치는 셋이다 — 패널을 연 채(줄이 가장 좁다), 접은 채, 그리고 ⌘B로 사이드바를 접은 채(사이드바
+// 상자가 틈 8로 남고 카드가 창 왼쪽 8까지 넓어진다 — 02a-2). `/terminal`에는 작업 패널이 없어 패널 갈래가 하나다.
 const SCREENS = [
   { name: "work 화면", url: `/works/${plainWork.slug}?tab=terminal`, panel: true },
   { name: "`/terminal`", url: "/terminal", panel: false },
@@ -512,7 +537,8 @@ for (const screen of SCREENS) {
         if (layout === "사이드바 접힘") {
           await page.keyboard.press("Meta+b");
           await expect(page.getByRole("button", { name: "사이드바 토글", exact: true })).toHaveAttribute("aria-expanded", "false");
-          await expect.poll(() => page.locator("aside[data-sidebar]").evaluate((el) => el.getBoundingClientRect().width)).toBe(0);
+          // 접힌 사이드바 상자는 틈 8로 남는다(restart 02a-2 — 한때 0).
+          await expect.poll(() => page.locator("aside[data-sidebar]").evaluate((el) => el.getBoundingClientRect().width)).toBe(8);
         }
         await settleStrip(page);
 
@@ -531,7 +557,7 @@ for (const screen of SCREENS) {
         expect(plus.edgeHit, `${at} — \`+\`의 왼쪽 끝`).toBe(true);
         expect(row.pageSpill, at).toBeLessThanOrEqual(0);
 
-        // 머리 줄의 할 일(상태 · ⋯ · 분할 · 패널 토글)도 화면 자리 안 · 창 안이고 제 폭 그대로다(결정 10) — 칸을 보이게 하려고 조작을
+        // 머리 줄의 할 일(상태 · ⋯ · 요약 카드 · 패널 토글)도 화면 자리 안 · 창 안이고 제 폭 그대로다(결정 10) — 칸을 보이게 하려고 조작을
         // 밀거나 누르면 안 된다. 머리 줄은 판 위 창 전폭의 줄이라 탭 줄과 자리를 다투지 않는다(02 티켓 02). `/terminal`의 머리 줄은
         // 이름만 들고 할 일 묶음이 없다.
         if (screen.panel) {
@@ -567,16 +593,15 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const tabs = page.locator('[data-tab="shell"]');
-  const plus = page.locator('[data-tab="new"]');
   const name = tabs.first().getByText(SHELL_NAME, { exact: true });
   const LONG = "칸 하나로는 다 못 담는 아주 긴 셸 이름 — 끝이 말줄임으로 접힌다";
   const long = tabs.nth(1).getByText(LONG, { exact: true });
 
   await expect(tabs).toHaveCount(1);
-  // **`+`를 연달아 누른다** — 사람이 그렇게 연다. 첫 칸이 떼어진 채 글꼴이 와도 그 셸은 뜨고
+  // **`+`(「새 탭」 메뉴의 셸 줄 — restart 02a-8)를 연달아 누른다** — 사람이 그렇게 연다. 첫 칸이 떼어진 채 글꼴이 와도 그 셸은 뜨고
   // 이름이 앉는다(`terminal-store`의 `loadFont`).
-  await plus.click();
-  await plus.click();
+  await 새셸을누른다(page);
+  await 새셸을누른다(page);
   await expect(tabs).toHaveCount(3);
   await awaitSpawned(page, 3);
   await writeShell(page, `\x1b]0;${LONG}\x07`, 2);
@@ -607,8 +632,12 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   expect(Math.min(...room.tabs)).toBeGreaterThan(44);
 
   await fillToCap(page);
-  // 여덟이면 칸이 최소 폭이라 이름이 자리를 비운다. **요소는 남는다** — `sr-only`라서
+  // 여덟을 좁은 창(900 — 앱 창의 최소 폭)에 세우면 칸이 이름을 숨기는 폭(55 아래 — restart 02a-5)이라 이름이 자리를 비운다. 칸이 글 폭이 되어
+  // (02a-5) 1280에서는 여덟도 이름이 서는 폭(짧은 이름 「zsh」 — 67 언저리)으로 다 든다 — 그래서 창을 좁혀 민다. **요소는 남는다** — `sr-only`라서
   // 스크린리더에는 그대로 불린다(이름 버튼의 접근성 이름이 이 글자 하나다).
+  await page.setViewportSize({ width: 900, height: 800 });
+  await settleStrip(page);
+  expect(Math.max(...(await rowOf(page)).tabs)).toBeLessThan(55);
   expect((await name.boundingBox())!.width).toBeLessThanOrEqual(1);
   await expect(name).toHaveCount(1);
 
@@ -733,9 +762,11 @@ test("부르는 칸만 물들고, 색이 부름의 무리 토큰(wait-soft · ne
   await expect
     .poll(() => 칸배경(page, 1), { message: "안 부르는 칸이 물들어 있다" })
     .toBe(안물듦);
-  // 안 부르는 꺼진 칸의 이름은 `fg-secondary`다(DS `.at-tab`) — 아래 안 본 완료가 견줄 색이다.
-  const 꺼진칸 = await 토큰색(page, "--fg-secondary");
-  await expect.poll(() => 이름색(page, 1), { message: "꺼진 칸의 이름이 fg-secondary가 아니다" }).toBe(꺼진칸);
+  // 안 부르는 꺼진 칸의 이름은 `fg-tertiary`다(시안 `.ra-tab` — restart 02a-5, 한때 `fg-secondary`) — 아래 안 본 완료가 견줄 색이다. 포인터를 칸
+  // 밖으로 치워 둔다 — 가리키면 `fg-secondary`다.
+  await page.mouse.move(0, 400);
+  const 꺼진칸 = await 토큰색(page, "--fg-tertiary");
+  await expect.poll(() => 이름색(page, 1), { message: "꺼진 칸의 이름이 fg-tertiary가 아니다" }).toBe(꺼진칸);
 
   await markAttention(
     page,
@@ -759,7 +790,7 @@ test("부르는 칸만 물들고, 색이 부름의 무리 토큰(wait-soft · ne
   await expect
     .poll(() => 칸배경(page, 1), { message: "둘째 칸이 안 본 완료로 안 물들었다" })
     .toBe(안본완료);
-  // **안 본 완료의 이름은 무채색이다**(DS `.at-tab` — 색 글자는 기다림뿐) — 안 부르는 꺼진 칸과 같은 `fg-secondary`다. 파란
+  // **안 본 완료의 이름은 무채색이다**(DS `.at-tab` — 색 글자는 기다림뿐) — 안 부르는 꺼진 칸과 같은 `fg-tertiary`다. 파란
   // 잉크(`accent-solid`)는 물든 칸 위 2.7:1(다크 2.5:1)이라 글자로 못 읽혔다 — 안 본 완료는 칸의 채움이 말한다.
   await expect.poll(() => 이름색(page, 1), { message: "안 본 완료 칸의 이름이 꺼진 칸의 색이 아니다" }).toBe(꺼진칸);
 
@@ -821,43 +852,26 @@ test("안 본 완료 칸을 켜면 물들임이 꺼지고, 기다리는 칸을 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **「봤다」는 그 셸을 **보고 있을 때**만이다**(결정 7). 칸이 켜져 있어도 본문이 문서면 사람은
-// 그 셸을 안 보고 있다 — 켜진 칸(`activeByOwner`)은 그 화면의 **기억**이라 spec을 읽는 동안에도
-// 남아 있어서, 그것만 보고 「봤다」를 세우면 문서를 읽는 내내 완료가 조용히 지워진다.
-//
-// 분할이 그 반대쪽이다: 열 둘 중 하나가 터미널이면 그 셸은 **보고 있는 것**이다.
-test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진다", async ({ page }) => {
+// **「봤다」는 그 셸을 **보고 있을 때**만이다**(결정 7). 칸이 켜져 있어도 본문이 다른 탭(새 채팅 탭)이면 사람은 그 셸을 안 보고
+// 있다 — 켜진 칸(`activeByOwner`)은 그 화면의 **기억**이라 다른 탭을 보는 동안에도 남아 있어서, 그것만 보고 「봤다」를 세우면 그동안
+// 완료가 조용히 지워진다. 한때 다른 쪽은 spec 칸의 문서였고, 분할로 문서와 셸을 함께 보면 꺼지는 것도 쟀다 — restart 02a-13이 spec 칸과
+// 분할을 걷었다(그 셸 탭으로 돌아오면 꺼지는 것은 위 「안 본 완료 칸을 켜면 …」이 잰다).
+test("새 채팅 탭을 보는 동안엔 켜진 칸의 안 본 완료가 안 꺼진다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
 
-  const tabs = page.locator('[data-tab="shell"]');
   const 안본완료 = await 토큰색(page, "--new-soft");
   const 끝난다 = () =>
     markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
 
-  // 문서로 옮긴다 — 칸은 그대로 켜져 있고 본문만 바뀐다(주소에서 `tab`이 빠진다, 결정 14).
-  await page.locator('[data-tab="spec"]').click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
+  // 새 채팅 탭으로 옮긴다 — 셸 칸은 그대로 켜져 있고 본문만 바뀐다(주소가 `tab=chat`이 된다).
+  await 새채팅탭으로비킨다(page);
   await 끝난다();
   // **안 꺼진다.** 켜진 칸이라는 이유로 지워지면 여기가 안 본 완료의 채움이 아니다.
   await expect
-    .poll(() => 칸배경(page, 0), { message: "문서를 읽는 중인데 안 본 완료가 안 섰다" })
+    .poll(() => 칸배경(page, 0), { message: "새 채팅 탭을 보는 중인데 안 본 완료가 안 섰다" })
     .toBe(안본완료);
-
-  // 분할을 켠다 — 열 하나가 터미널이라 그 셸은 보고 있는 것이다(결정 7).
-  await page.getByRole("button", { name: "분할", exact: true }).click();
-  await expect(page).toHaveURL(/split=/);
-  await expect
-    .poll(() => 칸배경(page, 0), { message: "분할로 보고 있는데 안 본 완료가 안 꺼졌다" })
-    .not.toBe(안본완료);
-
-  // 그리고 분할 중에 온 완료도 곧바로 봤다다 — 스토리 58이 알림 쪽에서 같은 말을 한다.
-  await 끝난다();
-  await expect(tabs.nth(0).locator("button[aria-pressed]")).not.toHaveAttribute(
-    "aria-label",
-    /확인할 것$/,
-  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -952,7 +966,7 @@ for (const [where, url] of [
 
     const tabs = page.locator('[data-tab="shell"]');
     await expect(tabs).toHaveCount(1);
-    await page.locator('[data-tab="new"]').click();
+    await 새셸을누른다(page);
     await expect(tabs).toHaveCount(2);
 
     await releaseFonts();

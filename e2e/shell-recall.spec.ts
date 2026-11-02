@@ -8,7 +8,7 @@ import {
   fireEvent,
   installFixtureBackend,
   markAttention,
-  사람메뉴로간다,
+  가는곳으로간다,
   openShell,
   sentNotifications,
   stubNotifications,
@@ -83,7 +83,7 @@ async function settle(page: Page): Promise<void> {
 
 /** 떠 있는 work 화면을 떠나 최상위 터미널로 간다 — 그 첫 셸(pty `n`)이 spawn 답을 받고 포커스를 쥘 때까지. */
 async function 터미널로(page: Page, n: number): Promise<void> {
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(n);
   await awaitSpawned(page, 1);

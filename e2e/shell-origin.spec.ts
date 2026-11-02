@@ -7,14 +7,16 @@ import {
   readIpcRecord,
   spawnedCwds,
   unknownIpcCalls,
+  새셸을누른다,
   셸입력,
 } from "./harness";
 
-// 티켓 08(#221) — **⌘T가 언제나 「모든 프로젝트」에 연다**(UI개선 결정 17~19·30, UI개선 스펙 §7).
+// 티켓 08(#221) — **새 셸의 기본 자리는 언제나 「모든 프로젝트」다**(UI개선 결정 17~19·30, UI개선 스펙 §7). 작업공간 화면에서 그
+// 기본 자리로 여는 길은 이제 탭 줄 `+`의 「새 탭」 메뉴의 첫 셸 줄이다(「모든 프로젝트」 · 하나면 「새 셸」 — restart 02a-8). 작업공간 화면의
+// ⌘T는 셸 안에서도 밖에서도 새 채팅 탭을 연다 — 한때 ⌘T가 그 기본 자리로 셸을 열었다. `/terminal`의 ⌘T는 그대로 셸이다(아래 마지막 검사).
 //
-// **이 층에서만 보인다.** 자리 함수는 L2가 값으로 재지만(`shell-registry.test.ts`), ⌘T가 그
-// 함수에 닿는 길은 둘이고 둘 다 이벤트가 있어야 돈다: 셸 밖에서는 창 keydown 리스너가, 셸
-// 안에서는 xterm의 키 핸들러가 받는다. 셸 안 ⌘T는 요청만 보내고 **화면이** 자리를 정하는데,
+// **이 층에서만 보인다.** 자리 함수는 L2가 값으로 재지만(`shell-registry.test.ts`), ⌘T가 닿는 길은 둘이고 둘 다 이벤트가 있어야
+// 돈다: 셸 밖에서는 창 keydown 리스너가, 셸 안에서는 xterm의 키 핸들러가 받는다. 셸 안 ⌘T는 요청만 보내고 **화면이** 할 일을 정하는데,
 // 그 사슬이 이어졌는지는 진짜 xterm에 포커스를 두고 키를 눌러야만 드러난다.
 //
 // 재는 것은 `pty_spawn`에 실린 **cwd**다 — 픽스처의 답은 자리와 무관해서(그것이 실물 그대로다)
@@ -51,13 +53,16 @@ test("멀티 프로젝트 work의 터미널에 들어가면 셸이 저절로 안
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("셸 포커스 없이 ⌘T → 「모든 프로젝트」에서 뜨고, 탭에 프로젝트 앞말이 없다", async ({ page }) => {
+/** 새 채팅 탭들(restart 02a-8 — 작업공간 화면의 ⌘T가 연다). */
+const newChats = (page: Page) => page.locator('[data-tab="new-chat"]');
+
+test("`+` → 「모든 프로젝트」에서 뜨고, 탭에 프로젝트 앞말이 없다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="new"]')).toBeVisible();
   await expect(shells(page)).toHaveCount(0);
 
-  await page.keyboard.press("Meta+t");
+  await 새셸을누른다(page);
 
   await expect(shells(page)).toHaveCount(1);
   await awaitSpawned(page, 1);
@@ -70,15 +75,16 @@ test("셸 포커스 없이 ⌘T → 「모든 프로젝트」에서 뜨고, 탭�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// UI개선 결정 19. 옛 규칙은 셸 안 ⌘T가 **그 셸이 뜬 자리**로 열었다 — 진입 셸이 없으니 이 검사의 첫
-// 셸은 메뉴로 고른 프로젝트 셸이고, 옛 규칙이면 둘째 cwd가 그 워크트리가 되어 여기가 문다.
-test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝트」에서 뜬다", async ({ page }) => {
+// UI개선 결정 19. 옛 규칙은 셸 안 ⌘T가 **그 셸이 뜬 자리**로 열었다 — 진입 셸이 없으니 이 검사의 첫 셸은 메뉴로 고른 프로젝트 셸이다.
+// 그 셸 안의 ⌘T는 이제 새 채팅 탭을 열고 셸을 안 연다(restart 02a-8). 그 뒤 `+`의 기본 줄이 그 셸의 자리가 아니라 「모든 프로젝트」다 —
+// 옛 규칙이면 둘째 cwd가 그 워크트리가 되어 여기가 문다.
+test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T는 새 채팅 탭을 열고, 그 뒤 `+`는 「모든 프로젝트」에서 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
   const [first] = multiWork.worktrees;
 
   await page.locator('[data-tab="new"]').click();
-  await page.locator("[data-popover]").getByRole("menuitem", { name: first.project, exact: true }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: first.project, exact: true }).click();
   await expect(shells(page)).toHaveCount(1);
   await expect(shells(page).locator("button[aria-label$=' 닫기']")).toHaveAttribute(
     "aria-label",
@@ -87,8 +93,14 @@ test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝�
   expect(await spawnedCwds(page)).toEqual([first.path]);
 
   await focusShell(page);
+  const chats = await newChats(page).count();
   await page.keyboard.press("Meta+t");
+  // **셸 안 ⌘T가 새 채팅 탭이다** — 셸은 하나 그대로이고 아무 데서도 안 떴다.
+  await expect(newChats(page)).toHaveCount(chats + 1);
+  await expect(page).toHaveURL(/tab=chat/);
+  await expect(shells(page)).toHaveCount(1);
 
+  await 새셸을누른다(page);
   await expect(shells(page)).toHaveCount(2);
   await awaitSpawned(page, 2);
   // **정확히 둘이다** — 셸 안 요청과 창 리스너가 함께 열면 셋이 된다(결정 93의 `stopPropagation`).
@@ -96,10 +108,9 @@ test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 0·1개 work은 **지금과 같다**(UI개선 스펙 §11). ⌘T가 닿는 길이 둘이라 둘 다 잰다 — 진입 셸에
-// 포커스를 둔 채 한 번(요청 길), 포커스를 걷고 한 번(창 리스너 — 옛 `workShellOrigin(…, null)`
-// 자리에 기본 자리 함수가 들어간 곳이다).
-test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다 — 셸 안에서도, 밖에서도", async ({ page }) => {
+// 0·1개 work은 기본 자리가 그 워크트리다(UI개선 스펙 §11) — `+`의 「새 셸」이 거기서 연다. ⌘T가 닿는 길이 둘이라 둘 다 잰다 — 진입 셸에
+// 포커스를 둔 채 한 번(요청 길), 포커스를 걷고 한 번(창 리스너). 둘 다 새 채팅 탭을 열고 셸을 안 연다(restart 02a-8).
+test("프로젝트가 하나인 work에서 `+`의 「새 셸」은 그 워크트리에서 뜨고, ⌘T는 셸 안에서도 밖에서도 새 채팅 탭이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${singleWork.slug}?tab=terminal`);
   const [only] = singleWork.worktrees;
@@ -107,18 +118,21 @@ test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다
   expect(await spawnedCwds(page)).toEqual([only.path]);
 
   await focusShell(page);
+  const chats = await newChats(page).count();
   await page.keyboard.press("Meta+t");
+  await expect(newChats(page)).toHaveCount(chats + 1);
 
+  // 포커스를 걷는다 — **정말 걷혔는지** 확인해야 아래 ⌘T가 창 리스너 길을 잰다. 셸 칸은 새 채팅 탭 뒤로 물러나 입력 칸이 안 붙어 있을 수
+  // 있어, 셸 입력 칸이 아니라 포커스가 문서 몸에 있는지를 본다.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await page.keyboard.press("Meta+t");
+  await expect(newChats(page)).toHaveCount(chats + 2);
+  expect(await spawnedCwds(page), "⌘T로는 셸이 안 떴다").toEqual([only.path]);
+
+  await 새셸을누른다(page);
   await awaitSpawned(page, 2);
   expect(await spawnedCwds(page)).toEqual([only.path, only.path]);
-
-  // 포커스를 걷는다 — **정말 걷혔는지** 확인해야 아래 ⌘T가 창 리스너 길을 잰다.
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await expect(셸입력(page)).not.toBeFocused();
-  await page.keyboard.press("Meta+t");
-
-  await awaitSpawned(page, 3);
-  expect(await spawnedCwds(page)).toEqual([only.path, only.path, only.path]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

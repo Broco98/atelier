@@ -8,11 +8,12 @@ import {
   unknownIpcCalls,
   workRow,
   띠,
-  사람줄,
+  설정줄,
   줄표시,
   첫글자,
   토큰값,
 } from "./harness";
+import { settle } from "./tab-row";
 
 // codex-ds 티켓 25 — **화면의 여백이 세 줄에 맞는다**(스펙 §4 「여백」 · DS README 「간격 · 반경 · 크기」 · DS `AppShell`). 틈 8(`space-2`)은
 // 창 끝 · 카드 사이 · 카드 끝에서 행까지이고, 행 글자 16(`space-4` = 틈 8 + 행 안쪽 8)은 사이드바 행 · 소제목 · 카드 머리 제목 · 탭
@@ -42,7 +43,7 @@ async function 상자(target: Locator) {
 /** 그 안 첫 아이콘(svg)의 상자. */
 const 아이콘 = (scope: Locator) => 상자(scope.locator("svg").first());
 
-test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 사람 줄의 행 글자가 사이드바 끝에서 16이고, 수 · 표시의 오른쪽 끝은 행 끝에서 8이다", async ({
+test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 맨 아래 설정 줄의 행 글자가 사이드바 끝에서 16이고, 수 · 표시의 오른쪽 끝은 행 끝에서 8이다", async ({
   page,
 }) => {
   // work 행의 레인 위에 그 Work의 Thread를 펴는 ▸가 겹쳐 선다(v1 티켓 37 · 46) — 이은 Thread가 있어야 선다. 고정된 일에 Thread 하나를
@@ -70,20 +71,20 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
   // 앵커: 두 토큰을 실제로 읽었고 DS 값이다 — 틈 8 + 행 안쪽 8이 행 글자 16이다.
   expect([틈, 행글자]).toEqual([8, 16]);
   const sidebar = await 상자(page.locator("aside").first());
-  // 사이드바는 판 밖 크롬 위, 창 왼쪽 끝 + 5에 선다(03 구현 스펙 §3 · 시안 `.body`의 왼 5 — 상자는 `frame-sidebar.spec`이 잰다). 한때 흰
-  // 판 안 왼끝에 붙었고(02 티켓 02), 그보다 앞에는 바탕에 붙어 창 끝이 곧 사이드바 끝이었다. 행 글자 16은 그 끝에서 잰다.
-  expect(sidebar.x, "사이드바가 창 왼쪽 끝 + 5에 선다").toBe(5);
+  // 사이드바는 카드 밖 크롬 위, 창 왼쪽 끝 0에 서고 안쪽 좌우가 8이다(restart 02a-2 — 상자는 `frame-sidebar.spec`이 잰다). 한때 창 왼쪽
+  // 끝 + 5(03 구현 스펙 §3)였고, 그보다 앞에는 흰 판 안 왼끝에 붙었다(02 티켓 02). 행 글자 16은 그 끝에서 잰다.
+  expect(sidebar.x, "사이드바가 창 왼쪽 끝 0에 선다").toBe(0);
 
   const 자리: [string, Promise<number>][] = [
-    // nav의 첫 항목은 「새 채팅」이다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
-    ["nav 아이콘", 아이콘(page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true })).then((box) => box.x)],
+    // 위 칸(「가는 곳」)의 첫 줄은 「새 채팅」이다 — 그 뒤에 「내 차례」와 지금 화면 다섯이 선다(restart 02a-3).
+    ["nav 아이콘", 아이콘(page.getByRole("navigation", { name: "가는 곳", exact: true }).getByRole("button", { name: "새 채팅", exact: true })).then((box) => box.x)],
     ["알림 띠 머리 글자", 첫글자(띠(page)).then((box) => box.x)],
     ["알림 띠 줄의 점 레인", 상자(띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림` }).locator("span").first()).then((box) => box.x)],
     ["구획 소제목 글자", 첫글자(page.locator("aside [data-section]").first()).then((box) => box.x)],
     // 레인(늘 폴더 — 02 티켓 05)이 행 맨 앞이다 — Codex 사이드바의 폴더 아이콘 칸(16)이다(v1 티켓 46). 한때 그 앞에 ▸의 제 칸이 섰다.
     ["work 행의 레인", 상자(workRow(page, pinnedWork.slug).locator("[data-lane]")).then((box) => box.x)],
-    // 바닥은 사람 줄이다(옛 Settings 줄의 자리) — 얼굴 글자 원이 행 글자 자리에 선다.
-    ["바닥 사람 줄의 얼굴", 상자(사람줄(page).locator("span").first()).then((box) => box.x)],
+    // 맨 아래는 「설정」 줄이다(restart 02a-3 — 한때 사람 줄의 얼굴 원이 이 자리에 섰다). 글리프가 행 글자 자리에 선다.
+    ["맨 아래 설정 줄의 글리프", 아이콘(설정줄(page)).then((box) => box.x)],
   ];
   for (const [이름, x] of 자리) expect((await x) - sidebar.x, `${이름} — 사이드바 끝 + 16`).toBe(행글자);
   // ▸는 레인 가운데에 겹쳐 선다 — 가리키면 레인이 비키고 그 자리에 ▸가 선다(v1 티켓 46). 쉴 때는 투명해도 자리는 그대로다.
@@ -104,31 +105,31 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소제목은 nav 끝 줄에서 42 · 첫 행까지 34 · 앞 구획의 끝 행에서 54다(가운데끼리)", async ({
+test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소제목은 nav 끝 줄에서 42 · 첫 행까지 32 · 앞 구획의 끝 행에서 42다(가운데끼리)", async ({
   page,
 }) => {
-  // 사이드바의 세로는 Codex 대화 사이드바를 잰 값이다(v1 티켓 46 · 시안-비교/46/차이.md — 줄 30 · 줄 사이 1). 소제목(구획 머리 30
-  // 가운데의 라벨)은 nav 끝 줄 가운데에서 42 아래에 서고, 그 가운데에서 첫 행 가운데까지 34, 앞 구획의 끝 행 가운데에서 다음 소제목
-  // 가운데까지 54다. 띠(`.at-band`)의 위 바깥 8은 DS 값 그대로라 띠가 서면 nav 끝 + 8에 서고, 소제목은 nav 끝 줄 대신 띠 끝에서 27
+  // 사이드바의 세로는 restart 시안 값이다(02a-3 · 시안 `.ra-sr-label`의 위 10 + 줄 사이 2 · 머리 30 · 줄 30 — 한때 Codex 대화 사이드바를
+  // 잰 값 34 · 54 · 줄 사이 1이었다). 소제목(구획 머리 30 가운데의 라벨)은 nav 끝 줄 가운데에서 42 아래에 서고, 그 가운데에서 첫 행
+  // 가운데까지 32, 앞 구획의 끝 행 가운데에서 다음 소제목 가운데까지 42다. 띠(`.at-band`)의 위 바깥 8은 DS 값 그대로라 띠가 서면 nav 끝 + 8에 서고, 소제목은 nav 끝 줄 대신 띠 끝에서 27
   // (42 − 줄 절반 15) 아래다. 가운데끼리 재는 것은 Codex 그림을 그렇게 쟀기 때문이다 — 글자 줄 높이가 갈려도 눈에 보이는 사이가 같다.
   // 한때 DS 기둥의 값(소제목 글자 줄이 앞 것 끝 + 14 · 첫 행까지 8)이었다.
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  const nav = page.locator("aside nav").first();
+  const nav = page.getByRole("navigation", { name: "가는 곳", exact: true });
   const [고정머리, 작업머리] = [page.locator('aside [data-drop-head="pinned"]'), page.locator('aside [data-drop-head="works"]')];
   const 가운데 = async (target: Locator) => {
     const box = await 상자(target);
     return box.y + box.height / 2;
   };
   const 소제목 = (head: Locator) => 가운데(head.locator("span").first());
-  const nav끝줄 = nav.getByRole("button", { name: "내 차례", exact: true });
+  const nav끝줄 = nav.getByRole("button", { name: /^Archive/ });
   const 고정행 = workRow(page, pinnedWork.slug);
   await expect(작업머리).toBeVisible();
   // 앵커: 고정 구획이 서 있다 — 그 머리가 목록의 첫 머리이고 그 아래 첫 행이 고정 work이다.
   await expect(고정머리).toBeVisible();
 
-  // 띠가 없으면 소제목은 nav 바로 다음이다. nav의 끝 줄은 「내 차례」다.
+  // 띠가 없으면 소제목은 nav 바로 다음이다. nav의 끝 줄은 지금 화면 다섯의 끝 「Archive」다(02a-3 — 한때 「내 차례」).
   expect((await 소제목(고정머리)) - (await 가운데(nav끝줄)), "고정 소제목 — nav 끝 줄에서 42").toBe(42);
 
   await markAttention(page, { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "커밋할까요?" } });
@@ -136,23 +137,27 @@ test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소�
   const band = await 상자(띠(page));
   expect(band.y - (await 상자(nav)).bottom, "띠 — nav 끝 + 8").toBe(8);
   expect((await 소제목(고정머리)) - band.bottom, "고정 소제목 — 띠 끝에서 27").toBe(27);
-  expect((await 가운데(고정행)) - (await 소제목(고정머리)), "고정 소제목 → 첫 행 34").toBe(34);
-  expect((await 소제목(작업머리)) - (await 가운데(고정행)), "작업 소제목 — 앞 구획의 끝 행에서 54").toBe(54);
+  expect((await 가운데(고정행)) - (await 소제목(고정머리)), "고정 소제목 → 첫 행 32").toBe(32);
+  expect((await 소제목(작업머리)) - (await 가운데(고정행)), "작업 소제목 — 앞 구획의 끝 행에서 42").toBe(42);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 test("작업 화면: 탭 아이콘 · 패널 머리 제목 · 패널 트리 행이 카드 끝에서 16이다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${pinnedWork.slug}?file=overview.md`);
-  await expect(page.getByRole("heading", { name: "개요" })).toBeVisible();
+  // 채팅이 없는 작업공간은 새 채팅 탭으로 선다(restart 02a-8). 탭 줄 맨 앞이 그 탭이다 — 한때 맨 앞은 spec 칸이었다(02a-13이 걷었다).
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const card = page.getByRole("main", { name: "새 채팅", exact: true });
+  await expect(card).toBeVisible();
   const 행글자 = await 간격(page, 4);
 
-  const card = page.getByRole("main", { name: "문서", exact: true });
-  const tab = await 아이콘(card.locator('[data-tab="spec"]'));
-  expect(tab.x - (await 상자(card)).x, "spec 탭 아이콘 — 카드 + 16").toBe(행글자);
+  const tab = await 아이콘(card.locator('[data-tab="new-chat"]'));
+  expect(tab.x - (await 상자(card)).x, "새 채팅 탭 아이콘 — 카드 + 16").toBe(행글자);
 
   // 작업 패널 카드 — 둘째 `aside` 안의 카드다. 머리 제목과 트리의 첫 행 글리프가 같은 세로줄이다(DS `.at-panel-head .title` · `.at-tree-row`).
   const panel = page.locator("aside").nth(1).locator('[data-slot="card"]');
+  await expect(panel).toBeVisible();
+  // 패널 상자는 폭 0에서 자라 선다(02a-14) — 다 자란 뒤에 잰다.
+  await settle(page, async () => (await 상자(panel)).x);
   const panelBox = await 상자(panel);
   const title = await 첫글자(panel.locator('[data-slot="card-head"]'));
   expect(title.x - panelBox.x, "패널 머리 제목 — 카드 + 16").toBe(행글자);
@@ -174,7 +179,8 @@ test("터미널: 셸 화면이 카드 끝에서 16에 서서 탭 아이콘과 �
   const host = await 상자(page.locator("[data-shell-host]"));
   expect(screen.x - card.x, "셸 화면 — 카드 + 16").toBe(행글자);
   expect(screen.y - host.y, "셸 화면 — 집 위 16").toBe(행글자);
-  const tab = await 아이콘(page.locator('main [data-tab="spec"]'));
+  // 탭 줄 맨 앞은 셸 칸이다(restart 02a-13 — 한때 spec 칸). 셸 칸의 글리프는 넓은 칸에도 늘 선다(02a-5).
+  const tab = await 아이콘(page.locator('main [data-tab="shell"]').first());
   expect(screen.x, "셸 화면 x = 탭 아이콘 x").toBe(tab.x);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

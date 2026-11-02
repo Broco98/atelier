@@ -436,12 +436,12 @@ const 이름틀 = (page: Page) => page.getByRole("textbox", { name: "이름 틀"
 const 도구 = (page: Page, name: string) =>
   page.getByRole("toolbar", { name: "항목 편집" }).getByRole("button", { name, exact: true });
 /**
- * 탭을 끌 때 본문에 서는 분할 겹판(`WorksPage`) — 편집기 항목을 끌 때는 서면 안 된다.
+ * 한때 탭을 끌 때 본문에 서던 분할 겹판(`WorksPage`) — 편집기 항목을 끌 때는 서면 안 되었다. restart 02a-13이 분할과 함께 겹판
+ * (`[data-drop-half]`)을 걷어 이제 앱 어디에도 이 표식이 없다 — 아래 0은 「걷힌 것이 되살아나지 않았다」만 말한다.
  *
  * **이 주소에서는 이 셈이 빨개질 수 없다.** 편집기 주소(`/settings/spec-layout/edit`)에는 `WorksPage`가 올라와 있지
  * 않고, 설정에서는 사이드바도 작업 목록 대신 설정 nav를 그린다 — 겹판이 설 자리가 없으니 0은 구조에서 나온다.
- * 편집기 끌기가 탭 끌기로 읽히는 퇴행을 잡는 것은 L2의 탭 끌기 판정(`src/lib/pointer-drag.test.ts`의 「탭 끌기
- * 판정」)과 `tabDragOf`의 반환 타입(`DragSource | null`)이다. 이 셈을 믿고 그쪽을 느슨하게 하지 않는다.
+ * 한때 편집기 끌기가 탭 끌기로 읽히는 퇴행은 L2의 탭 끌기 판정과 `tabDragOf`의 반환 타입이 잡았다 — 둘 다 분할과 함께 걷혔다.
  */
 const 탭겹판 = (page: Page) => page.locator("[data-drop-half]");
 

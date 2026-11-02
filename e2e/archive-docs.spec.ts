@@ -12,7 +12,7 @@ import {
   화면머리,
   시계를세운다,
   토큰색,
-  흰판안,
+  카드자리끝,
 } from "./harness";
 
 const [shipped, bare] = ARCHIVE;
@@ -359,8 +359,9 @@ test("목록 행은 펼치지 않는 두 줄 행이고, 고른 아카이브의 �
   // 목록 칸에는 문서 줄이 없다.
   await expect(목록(page).getByRole("button", { name: "MD record.md", exact: true })).toHaveCount(0);
 
-  // 문서 트리는 spec 목록 패널 — 사이드바 다음 둘째 `aside` — 안이다. 머리는 「spec」과 spec 폴더 열기다.
-  await expect(page.locator("aside")).toHaveCount(2);
+  // 문서 트리는 spec 목록 패널 — 사이드바 다음 둘째 `aside` — 안이다. 머리는 「spec」과 spec 폴더 열기다. 셋째 `aside`는 작업공간 도구
+  // 기둥의 접힌 spec 패널 상자다(restart 02a-14 — 작업공간 밖에서도 폭 0 · `aria-hidden`으로 DOM에 선다).
+  await expect(page.locator("aside")).toHaveCount(3);
   expect(await 패널(page).evaluate((el) => el.closest("aside") === document.querySelectorAll("aside")[1])).toBe(true);
   const head = 패널(page).locator('[data-slot="card-head"]');
   await expect(head.getByText("spec", { exact: true })).toBeVisible();
@@ -405,9 +406,9 @@ test("보고 있는 아카이브의 행을 다시 눌러도 보던 문서가 그
 
 // **⌘Enter와 머리 줄의 spec 목록 토글이 패널을 여닫는다**(codex-ds 결정 32 — 「⌘Enter는 그 화면의 오른쪽 패널」, 스토리 56 · 57). 토글은
 // 머리 줄 오른쪽 끝, 세로선 너머다(⋯ | spec 목록 토글). 이름이 누르면 일어날 일을 말하고 `aria-expanded` · `aria-controls`가 패널을
-// 가리킨다. 닫힌 패널은 폭이 0으로 접혀(작업 패널과 같은 칸) 문서 | 목록 칸이 흰 판 오른쪽 끝까지 넓어진다(02 티켓 03 — 한때 창 오른쪽
+// 가리킨다. 닫힌 패널은 폭이 0으로 접혀(작업 패널과 같은 칸) 문서 | 목록 칸이 카드 자리 오른쪽 끝까지 넓어진다(02 티켓 03 — 한때 창 오른쪽
 // 틈 앞까지였다). 찾기 칸에서의 ⌘Enter는 입력칸의 몫이라 패널을 안 건드린다(작업 화면과 한 판정).
-test("⌘Enter와 머리 줄의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 문서 | 목록 칸이 흰 판 오른쪽 끝까지 넓어진다", async ({
+test("⌘Enter와 머리 줄의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 문서 | 목록 칸이 카드 자리 오른쪽 끝까지 넓어진다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -425,8 +426,8 @@ test("⌘Enter와 머리 줄의 spec 목록 토글이 spec 목록 패널을 여�
   const line = await head.getByRole("separator").boundingBox();
   expect((await close.boundingBox())!.x, "토글은 세로선 너머").toBeGreaterThan(line!.x);
 
-  // 칸이 넓어지는 끝은 흰 판의 안쪽 오른쪽 끝이다(창 끝에서 5.5 — 판의 띄움 5와 테두리 0.5).
-  const 판끝 = (await 흰판안(page)).right;
+  // 칸이 넓어지는 끝은 카드 자리의 오른쪽 끝이다(창 끝에서 8 — restart 02a-2. 한때 흰 판의 안쪽 끝, 창 끝에서 5.5였다).
+  const 판끝 = (await 카드자리끝(page)).right;
   const cardRight = async () => (await card.boundingBox())!.x + (await card.boundingBox())!.width;
   const asideWidth = async () => (await aside.boundingBox())!.width;
   expect(await cardRight(), "열린 동안은 패널이 곁에 선다").toBeLessThan(판끝 - 200);

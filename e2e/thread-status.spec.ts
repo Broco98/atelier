@@ -15,7 +15,8 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 // 꺼진 꼴. 제목은 기록에서 읽는다.
 //
 // **상태는 줄 오른쪽 끝의 표시 하나다**(02 티켓 05 · 구현 스펙 §4 · S11 — `StatusMark`). 내 차례는 「내 차례」 알약, 작업 중은 스피너(그림
-// 이름 「작업 중」), 실패는 「실패」 글자(사이드바의 유일한 빨강), 새 결과는 파란 점(그림 이름 「새 결과」)이고 중단은 표시가 없다. 한때
+// 이름 「작업 중」), 실패는 「실패」 글자(`--warning` — 시안 Shell의 사이드바에는 빨강이 없다, restart 02a-3 · 한때 사이드바의 유일한 빨강
+// `--danger`), 새 결과는 파란 점(그림 이름 「새 결과」)이고 중단은 표시가 없다. 한때
 // 줄이 두 줄이었다 — 둘째 줄이 기다리는 것(「승인 · 고칠 파일」) · 실패의 까닭 · 「중단했습니다」를 들었고 새 결과는 제목이 굵었다. 그
 // 말들은 Thread 화면이 든다(02 구현 스펙 §4 「둘째 줄을 걷었다」).
 
@@ -68,8 +69,8 @@ test("사이드바 Thread 줄이 내 차례 · 작업 중 · 새 결과 · 실�
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
-  // 앱을 켠 자리 — 도는 턴은 작업 중(끝의 스피너), 사람이 멈춘 턴은 중단(표시 없음), 앱이 꺼지며 끊긴 턴은 실패다. 빨강은 「실패」
-  // 글자에만 선다(구현 스펙 §17 — `color-guard`가 소스를 잰다). 줄은 제목 한 줄이다 — 표시 말고는 제목뿐이다.
+  // 앱을 켠 자리 — 도는 턴은 작업 중(끝의 스피너), 사람이 멈춘 턴은 중단(표시 없음), 앱이 꺼지며 끊긴 턴은 실패다. 「실패」 글자는
+  // `--warning`이다(restart 02a-3 — 한때 `--danger`). 줄은 제목 한 줄이다 — 표시 말고는 제목뿐이다.
   await expect(줄(page, asking)).toHaveAttribute("data-status", "working");
   await expect(표시(page, asking)).toHaveAttribute("data-mark", "working");
   await expect(줄(page, asking).getByRole("img", { name: "작업 중", exact: true })).toBeVisible();
@@ -79,7 +80,7 @@ test("사이드바 Thread 줄이 내 차례 · 작업 중 · 새 결과 · 실�
   await expect(줄(page, cut)).toHaveAttribute("data-status", "failed");
   await expect(표시(page, cut)).toHaveAttribute("data-mark", "failed");
   await expect(줄(page, cut)).toHaveText(`${cut.title}실패`);
-  expect((await 칠한값(줄(page, cut).getByText("실패", { exact: true }), "color"))[0]).toBe(await 토큰색(page, "--danger"));
+  expect((await 칠한값(줄(page, cut).getByText("실패", { exact: true }), "color"))[0]).toBe(await 토큰색(page, "--warning"));
 
   // 물음 줄 — 내 차례다. 끝의 표시가 「내 차례」 알약으로 바뀐다(줄은 자리를 지키고 표시만 바뀐다).
   await streamLines(page, asking.id, [ASKED]);

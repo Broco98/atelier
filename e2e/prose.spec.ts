@@ -40,7 +40,8 @@ const 문서 = [
 
 test("문서 본문의 코드 블록 · 인라인 코드 · 콜아웃 · 인용 · 가름선이 DS Prose 값이다", async ({ page }) => {
   await installFixtureBackend(page, { read_spec_file: 문서 });
-  await page.goto(`/works/${pinnedWork.slug}`);
+  // 문서는 넓힌 카드로 연다(restart 02a-13 — 한때 작업 화면이 서면 본문 탭에 기본 문서가 섰다).
+  await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent("overview.md")}`);
   await expect(page.getByRole("heading", { level: 1, name: "본문 블록" })).toBeVisible();
 
   // 코드 블록 — r20 · 코드 면 · 안쪽 1px `border-light` 링.

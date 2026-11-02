@@ -3,8 +3,8 @@ import { join } from "node:path";
 import type { LayoutPreview } from "@/features/spec-layout/types";
 import type { WorkView } from "@/features/works/types";
 import type { Page } from "./evidence";
-import { askBackend, callCount, installRealBackend, unknownIpcCalls, 사람메뉴로간다 } from "./harness";
-import { expect, seedLayout, seedWork, test } from "./l4";
+import { askBackend, callCount, installRealBackend, unknownIpcCalls, 가는곳으로간다 } from "./harness";
+import { expect, seedLayout, seedWork, test, 패널트리 } from "./l4";
 
 // spec 레이아웃 티켓 11 — **편집기가 다리로 레이아웃을 진짜로 쓰고, 다시 부른 work 목록의 spec 트리가 그
 // 레이아웃을 따른다.**
@@ -31,15 +31,16 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   const folder = join(home, "layouts", "atelier");
   await installRealBackend(page, sandbox);
 
-  // 폴더가 없으니 내장본이다 — `overview.md`가 맨 앞 항목이라 기본 문서다.
+  // 폴더가 없으니 내장본이다 — `overview.md`가 맨 앞 항목이라 기본 문서다. 화면은 패널 트리의 차례로 본다(작업공간을 열어도 기본
+  // 문서를 열지 않는다 — restart 02a-13. 한때 본문에 선 기본 문서의 글을 보았다).
   await page.goto("/works/첫째");
-  await expect(page.getByText("첫째 작업의 개요다.")).toBeVisible();
+  await expect.poll(() => 패널트리(page)).toEqual(["overview.md", "plan.md"]);
   const [before] = (await askBackend(page, "list_works", {})) as WorkView[];
   expect(before.specTree.defaultDoc).toBe("overview.md");
 
   // 앱 안에서 설정으로 간다 — 새로 읽으면 캐시가 사라져 무효화를 잴 수 없다.
   const aside = page.locator("aside");
-  await 사람메뉴로간다(page, "Settings");
+  await 가는곳으로간다(page, "Settings");
   await aside.getByRole("button", { name: "spec 레이아웃", exact: true }).click();
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout/edit");
@@ -75,10 +76,10 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   const 행 = page.locator("main li").filter({ has: page.getByText("Atelier", { exact: true }) });
   await expect(행).toContainText(`${folder}/ 폴더가 내장본을 가리고 있어요`);
 
-  // 돌아간 work 화면은 그 목록의 트리를 따른다 — `plan.md`가 기본 문서다.
+  // 돌아간 work 화면은 그 목록의 트리를 따른다 — `plan.md`가 맨 앞이다(기본 문서). 작업공간 주소는 채팅 탭을 단다(restart 02a-13).
   await aside.getByRole("button", { name: "앱으로 돌아가기", exact: true }).click();
-  await expect(page).toHaveURL(`/works/${encodeURIComponent("첫째")}`);
-  await expect(page.getByText("계획의 본문이다.")).toBeVisible();
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/works/${encodeURIComponent("첫째")}`);
+  await expect.poll(() => 패널트리(page)).toEqual(["plan.md", "overview.md"]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

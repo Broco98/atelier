@@ -379,7 +379,7 @@ test("사이드바 행에서 F2를 누르면 그 행의 이름이 입력칸이 �
   await expect(input).toHaveValue(pinnedWork.title);
   // 입력칸을 눌러도 행이 열리지 않는다.
   await input.click();
-  await expect(page).toHaveURL(`/works/${plainWork.slug}`);
+  await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=chat`);
 
   await input.fill("행에서 바꾼 이름");
   await input.press("Enter");
@@ -387,7 +387,7 @@ test("사이드바 행에서 F2를 누르면 그 행의 이름이 입력칸이 �
   await expect(input).toHaveCount(0);
   await expect.poll(() => 작업이름저장(page)).toEqual([{ slug: pinnedWork.slug, title: "행에서 바꾼 이름" }]);
   await expect(행버튼(page, pinnedWork.title)).toBeFocused();
-  await expect(page).toHaveURL(`/works/${plainWork.slug}`);
+  await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=chat`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -426,7 +426,7 @@ test("사이드바 행을 고치다 다른 곳을 누르면 그 행의 work 이�
 
   await expect(input).toHaveCount(0);
   await expect.poll(() => 작업이름저장(page)).toEqual([{ slug: pinnedWork.slug, title: "다른 곳을 눌러 바꾼 이름" }]);
-  await expect(page).toHaveURL(`/works/${plainWork.slug}`);
+  await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=chat`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -524,7 +524,7 @@ test("알림 띠 줄의 메뉴 「이름 바꾸기」는 그 work의 사이드�
   await input.press("Enter");
 
   await expect.poll(() => 작업이름저장(page)).toEqual([{ slug: plainWork.slug, title: "띠에서 바꾼 이름" }]);
-  await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
+  await expect(page).toHaveURL(`/works/${pinnedWork.slug}?tab=chat`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
