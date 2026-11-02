@@ -29,10 +29,19 @@ export function formatMemory(bytes: number | null): string {
 }
 
 /**
- * CPU% — 반올림한 정수 %다. 한 코어를 다 쓰면 100이고 여러 코어를 쓰면 넘는다(백엔드가 활성 상태 보기의 「% CPU」와 같은 눈금으로
- * 준다). 두 표본의 차이라 **첫 표본은 없다** — 「—」로 선다(S37).
+ * CPU% — **소수 한 자리 %다**(S37 · restart 03-5). 백엔드가 **맥 전체를 100으로** 준다 — 코어 열 개인 맥에서 한 코어를 다 쓰는 프로세스는
+ * 10이다(활성 상태 보기의 「% CPU」는 이 값 × 코어 수). 줄과 합계가 이 글자다. 두 표본의 차이라 **첫 표본은 없다** — 「—」로 선다.
  */
 export function formatCpu(percent: number | null): string {
+  if (percent === null) return NOT_READ;
+  return `${percent.toFixed(1)}%`;
+}
+
+/**
+ * 머리 숫자의 CPU% — **정수로 반올림한다**(restart 03-5 · 시안 ProcessSheet 「합이 맞는다」 — 머리 숫자는 합계를 정수로 반올림한 값).
+ * 눈금은 `formatCpu`와 같다(맥 전체 = 100). 못 쟀으면 「—」다.
+ */
+export function formatHeadCpu(percent: number | null): string {
   if (percent === null) return NOT_READ;
   return `${Math.round(percent)}%`;
 }

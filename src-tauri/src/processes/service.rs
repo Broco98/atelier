@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 
 use super::cleanup_log::{self, Event};
 use super::instances::Record;
-use super::metrics::{self, CpuMeter, Measured};
+use super::machine;
+use super::metrics::{self, CpuMeter};
 use super::screen::{self, PoolShell, ScreenSnapshot};
 use super::snapshot::{self, EnvScope};
 use super::summary::{self, Background, Body, Point, Summary, WebContentAnswer};
@@ -39,20 +40,26 @@ pub trait ShellListing: Send + Sync {
 /// 자리(`Background`). 앱에 하나다.
 pub struct ProcessService {
     pool: Arc<dyn ShellListing>,
-    /// `Processes` 화면 스냅샷의 앞 표본 — CPU%를 두 표본의 차이로 짓는다(프로세스 스펙 S37 · 티켓 28). 화면이 2초마다 부르는
-    /// `screen`만 쓴다. 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU, 티켓 30)는 제 것을 따로 쥔다(`Background`) — 한 앞 표본을 나눠
-    /// 쓰면 두 박자가 섞인다.
+    /// `Processes` 화면 스냅샷의 앞 표본 — 프로세스마다와 맥 전체의 CPU%를 두 표본의 차이로 짓는다(프로세스 스펙 S37 · 티켓 28 ·
+    /// restart 03-5). 화면이 2초마다 부르는 `screen`만 쓴다. 박자가 다른 읽기(배경 표본 — 요약 · 추이, 티켓 30)는 제 것을 따로 쥔다
+    /// (`Background`) — 한 앞 표본을 나눠 쓰면 두 박자가 섞인다.
     screen_cpu: Mutex<CpuMeter>,
-    /// 배경 표본의 자리(티켓 29 · 30) — 마지막 요약(nav 메타가 10초마다 묻는다), 합계의 1시간 고리(추이), 배경의 CPU 미터, 웹뷰에게
-    /// WebContent를 묻는 자리. 앱은 setup에서 묻는 함수와 표본 스레드를 건다. 안 걸면(검사의 서비스) 요약을 물을 때 그 자리에서 한
+    /// 배경 표본의 자리(티켓 29 · 30) — 마지막 요약(nav 메타가 10초마다 묻는다), CPU의 1시간 고리(추이 — 맥 전체 · 아틀리에), 배경의
+    /// CPU 미터, 웹뷰에게 WebContent를 묻는 자리. 앱은 setup에서 묻는 함수와 표본 스레드를 건다. 안 걸면(검사의 서비스) 요약을 물을 때 그 자리에서 한
     /// 장을 모으고, 웹뷰는 모른다(「웹뷰 제외」).
     background: Background,
 }
 
 impl ProcessService {
-    /// 풀 하나를 보는 서비스. 앞 표본 둘과 배경 자리는 빈 채로 선다.
+    /// 풀 하나를 보는 서비스. 앞 표본 둘과 배경 자리는 빈 채로 선다. **코어 수를 여기서 한 번 읽는다**(`machine::cores` — 앱은 빌더
+    /// 앞에서 이 서비스를 세운다, `lib.rs`) — 두 미터가 프로세스의 CPU%를 맥 전체 눈금으로 옮기는 분모다(restart 03-5).
     pub fn new(pool: Arc<impl ShellListing + 'static>) -> Self {
-        ProcessService { pool, screen_cpu: Mutex::default(), background: Background::default() }
+        let cores = machine::cores();
+        ProcessService {
+            pool,
+            screen_cpu: Mutex::new(CpuMeter::new(metrics::STALE, cores)),
+            background: Background::new(cores),
+        }
     }
 
     /// 화면 스냅샷의 앞 표본. 잠금이 오염됐으면 안을 꺼내 이어 간다 — 잃어도 CPU 칸이 한 박자 「—」일 뿐이다.
@@ -77,6 +84,10 @@ impl ProcessService {
     /// 화면은 보는 동안 이 머리와 출처 불명을 본 것으로 앉힌다: 요약은 최대 20초 늦어 그것으로만 앉히면 화면에서 본 것이 떠난 뒤에
     /// 점을 켠다.
     ///
+    /// **머리 값도 이 표본에서 짓는다**(restart 03-5 「한 표본」) — 맥 전체(`machine::read`)를 프로세스의 지표 바로 뒤에 읽어 같은 미터에
+    /// 넣고, 아틀리에 합계를 같은 지표로 짓는다. 그래서 앱 본체(Rust · WebContent)도 읽는다 — WebContent는 배경 표본처럼 웹뷰에게
+    /// 묻는다(메인 스레드로 가는 물음이라 풀 잠금 밖이다).
+    ///
     /// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
     pub fn screen(&self) -> ScreenSnapshot {
         let snapshot = snapshot::take(EnvScope::All);
@@ -92,14 +103,15 @@ impl ProcessService {
             exceptions: &exceptions,
             occasion: Occasion::Normal,
         });
-        let readings = metrics::read(screen::targets(&verdict, &listed));
-        let cpu = self.screen_cpu().sample(Instant::now(), readings.cpu_ns());
-        let measured = Measured { readings: readings.by_id, cpu };
+        let asked = self.background.web_content.identity(snapshot::identity_of);
+        let body = Body { rust: snapshot::identity_of(std::process::id()), web_content: asked.id };
+        let readings = metrics::read(screen::targets(&verdict, &listed, &body));
+        let measured = self.screen_cpu().measure(Instant::now(), readings, machine::read());
         // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
         let instances = screen::instances(&verdict, &records, |generation| self.pool.record().file(generation));
         // `●`를 켜는 기록의 머리 — 요약을 모으는 자리와 같은 곳에서 고른다(`gather`). 화면이 보는 동안 본 것으로 앉힌다(티켓 29).
         let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
-        ScreenSnapshot::of(&verdict, listed, &measured, instances, head)
+        ScreenSnapshot::of(&verdict, listed, &body, &measured, instances, head)
     }
 
     /// **요약 한 장을 모은다**(`gather`) — 요약 IPC가 마지막 장이 없을 때 그 자리에서 부른다(`summary`). 배경 표본은 그 장을 미룰지도
@@ -118,7 +130,8 @@ impl ProcessService {
     ///
     /// **앱 본체는 Rust 본체와 웹뷰의 WebContent다**(S39 · 티켓 30). WebContent의 pid는 웹뷰에게 묻는다 — 메인 스레드로 가는
     /// 물음이라 풀 잠금 밖이다(`summary::WebContent`, 묻는 함수는 setup이 건다). **CPU%는 배경 표본의 앞 표본과 견준다**
-    /// (`Background`의 미터) — 화면의 앞 표본(`screen_cpu`)을 나눠 쓰면 2초와 10초 박자가 섞인다.
+    /// (`Background`의 미터) — 화면의 앞 표본(`screen_cpu`)을 나눠 쓰면 2초와 10초 박자가 섞인다. 맥 전체(`machine::read`)도 지표 바로
+    /// 뒤에 읽어 같은 미터에 넣는다 — 추이의 맥 전체 CPU다(restart 03-5).
     ///
     /// `●`를 켜는 기록의 머리는 정리 기록 파일에서 고른다(`cleanup_log::look_head`). 아무것도 안 끝낸다.
     ///
@@ -142,8 +155,7 @@ impl ProcessService {
         let asked = self.background.web_content.identity(snapshot::identity_of);
         let body = Body { rust: snapshot::identity_of(std::process::id()), web_content: asked.id };
         let readings = metrics::read(summary::targets(&verdict, &shells, &body));
-        let cpu = self.background.cpu(Instant::now(), readings.cpu_ns());
-        let measured = Measured { readings: readings.by_id, cpu };
+        let measured = self.background.measure(Instant::now(), readings, machine::read());
         let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
         (Summary::of(&verdict, &shells, &body, &measured, head), asked.unheard)
     }
@@ -159,8 +171,8 @@ impl ProcessService {
         self.background.latest().unwrap_or_else(|| self.background.fill_in(self.summarize(), clock::now_ms()))
     }
 
-    /// 추이 IPC의 답(`processes_trend`) — 배경 표본이 든 합계의 1시간치, 오래된 것부터(프로세스 결정 10 · 티켓 30). 표를 찍지 않는다 —
-    /// 고리를 복사할 뿐이다.
+    /// 추이 IPC의 답(`processes_trend`) — 배경 표본이 든 맥 전체 CPU와 아틀리에 CPU의 1시간치, 오래된 것부터(프로세스 결정 10 · 티켓 30 ·
+    /// restart 03-5). 표를 찍지 않는다 — 고리를 복사할 뿐이다.
     pub fn trend(&self) -> Vec<Point> {
         self.background.trend()
     }
@@ -245,6 +257,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::processes::machine::Machine;
+    use crate::processes::summary::Totals;
 
     /// 셸 없는 풀 — 판정의 셸도 화면의 셸도 없고, 기록만 쥔다. 연 적 없는 기록은 아무 파일도 안 쓴다.
     #[derive(Default)]
@@ -298,8 +312,8 @@ mod tests {
         assert!(listed < records, "기록({records})을 셸 목록({listed})보다 먼저 읽는다");
         assert!(body.contains("shells: &live,"), "판정에 풀이 준 셸 목록을 안 넘긴다");
         assert!(
-            body.contains("ScreenSnapshot::of(&verdict, listed, &measured, instances, head)"),
-            "판정 결과와 풀의 셸 목록과 지표와 다른 인스턴스의 실행들과 기록의 머리를 그대로 싣지 않는다"
+            body.contains("ScreenSnapshot::of(&verdict, listed, &body, &measured, instances, head)"),
+            "판정 결과와 풀의 셸 목록과 앱 본체와 지표와 다른 인스턴스의 실행들과 기록의 머리를 그대로 싣지 않는다"
         );
         assert!(
             body.contains("let head = cleanup_log::look_head(&self.pool.record().cleanup_events());"),
@@ -318,17 +332,25 @@ mod tests {
     ///
     /// CPU%는 이 자리가 쥔 앞 표본과 견준다(`CpuMeter`) — 부를 때마다 새로 세우면 늘 첫 표본이라 CPU 칸이 영영 「—」다. 실행으로는
     /// 장면 `Ask`가 잰다(macOS — 한 서비스로 두 번 찍으면 둘째에 셸의 CPU%가 선다).
+    ///
+    /// **머리 값도 같은 표본이다**(restart 03-5) — 맥 전체를 지표와 같은 미터 물음 하나에 넣고(`measure(…, machine::read())`), 앱 본체는
+    /// 지표를 읽기 전에 서야 아틀리에 합계에 든다. 웹뷰에게 WebContent를 묻는 것은 풀 잠금 밖이다(메인 스레드로 가는 물음).
     #[test]
     fn the_screen_measures_what_the_verdict_picked_outside_the_pool_lock() {
         let body = method_body("pub fn screen(");
         let judged = body.find("verdict::judge(").expect("판정한다");
-        let read = body.find("metrics::read(screen::targets(&verdict, &listed))").expect("판정이 고른 것만 지표를 읽는다");
+        let read = body.find("metrics::read(screen::targets(&verdict, &listed, &body))").expect("판정이 고른 것과 앱 본체만 지표를 읽는다");
         let listed = body.find("self.pool.listing()").expect("풀의 셸 목록을 받는다");
         assert!(listed < read && judged < read, "지표를 판정({judged})이나 풀의 셸 목록({listed}) 전에 읽는다 — {read}");
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
-        let sampled = body.find("self.screen_cpu()").expect("이 자리가 쥔 앞 표본과 견준다");
+        let asked = body.find("self.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
+        assert!(listed < asked && asked < read, "WebContent를 셸 목록({listed}) 앞이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
+        let sampled = body.find("self.screen_cpu().measure(Instant::now(), readings, machine::read())").expect(
+            "이 자리가 쥔 앞 표본과 견주고, 맥 전체를 같은 표본으로 넣는다",
+        );
         assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
-        assert!(!body.contains("CpuMeter::default()"), "부를 때마다 앞 표본을 새로 세운다 — CPU%가 늘 첫 표본이다");
+        assert_eq!(body.matches("machine::read(").count(), 1, "맥 전체를 두 번 읽는다 — 머리와 줄이 다른 표본이 된다");
+        assert!(!body.contains("CpuMeter::"), "부를 때마다 앞 표본을 새로 세운다 — CPU%가 늘 첫 표본이다");
     }
 
     /// **배경 표본은 화면 스냅샷과 같은 순서로 모은다**(티켓 29 · 프로세스 스펙 S52 · S38). 표를 한 장 찍고(env 전부 — 출처 불명은
@@ -359,7 +381,9 @@ mod tests {
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
         let asked = body.find("self.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
         assert!(listed < asked && asked < read, "WebContent를 셸 목록({listed}) 앞이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
-        let sampled = body.find("self.background.cpu(").expect("배경의 미터로 CPU%를 짓는다");
+        let sampled = body.find("self.background.measure(Instant::now(), readings, machine::read())").expect(
+            "배경의 미터로 CPU%를 짓고, 맥 전체를 같은 표본으로 넣는다",
+        );
         assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
         assert!(
             body.contains("cleanup_log::look_head(&self.pool.record().cleanup_events())"),
@@ -377,10 +401,8 @@ mod tests {
     fn the_summary_answers_the_last_background_sample() {
         let kept_service = service();
         let kept = Summary {
-            total: Some(1),
-            cpu: None,
-            app: Some(1),
-            webview_excluded: true,
+            atelier: Totals { total: Some(1), cpu: None, app: Some(1), webview_excluded: true },
+            mac: None,
             unknown: vec![],
             record_head: Some(9),
         };
@@ -391,6 +413,50 @@ mod tests {
         let first = fresh.summary();
         assert_eq!(fresh.background.latest(), Some(first.clone()), "그 자리에서 모은 장을 안 앉혔다");
         assert_eq!(first.record_head, None, "연 적 없는 기록에서 머리를 골랐다 — 검사의 풀이 진짜 정리 기록을 읽는다");
+    }
+
+    /// **화면 스냅샷 한 장이 머리 값을 제 표본에서 싣는다**(restart 03-5 「한 표본」 · 스토리 122 · 129). 잰 시각은 찍은 그 순간이다.
+    /// macOS에서는 맥 전체가 서고 — 첫 장은 CPU가 없고(두 번 재야 안다) 그 뒤 장에서 0~100이다. 메모리와 코어 수는 첫 장부터 선다.
+    /// 아틀리에 합계도 같은 장의 지표로 선다: 셸 없는 풀이라 합계가 곧 앱 본체(이 검사 프로세스)다. macOS 밖은 맥 전체가 없다(「측정
+    /// 안 됨」) — 화면 스냅샷은 그래도 선다.
+    ///
+    /// 커널은 CPU tick을 몰아서 더해(`machine`의 실물 검사) 짧게 잇달아 찍으면 tick이 안 흘러 맥 전체 CPU가 없을 수 있다 — CPU가 설
+    /// 때까지 0.2초마다 다시 찍는다(3초).
+    ///
+    /// 이 맥의 표를 여러 번 찍고 판정한다(읽기만 한다 — 아무것도 안 끝낸다).
+    #[test]
+    fn the_screen_carries_the_mac_and_the_atelier_from_its_own_sample() {
+        let service = service();
+        let before = clock::now_ms();
+        let first = service.screen();
+        let mut second = service.screen();
+        for _ in 0..15 {
+            if second.mac.is_none_or(|mac| mac.cpu.is_some()) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            second = service.screen();
+        }
+        let after = clock::now_ms();
+
+        assert!(
+            before <= first.measured_at && first.measured_at <= second.measured_at && second.measured_at <= after,
+            "잰 시각이 찍은 순간이 아니다 — {before} ≤ {} ≤ {} ≤ {after}",
+            first.measured_at,
+            second.measured_at
+        );
+        if cfg!(target_os = "macos") {
+            let opened = first.mac.expect("맥 전체를 못 읽었다");
+            assert_eq!(opened.cpu, None, "첫 장에 맥 전체 CPU가 섰다 — 두 번 재야 안다");
+            assert!(opened.memory.is_some_and(|memory| memory > 0), "첫 장에 맥 전체 메모리가 없다");
+            let mac = second.mac.expect("맥 전체를 못 읽었다");
+            assert!(mac.cpu.is_some_and(|cpu| (0.0..=100.0).contains(&cpu)), "둘째 장의 맥 전체 CPU가 0~100이 아니다 — {:?}", mac.cpu);
+            assert_eq!(mac.cores, machine::cores(), "코어 수가 앱이 읽은 수가 아니다");
+            assert!(second.atelier.total.is_some(), "아틀리에 합계를 같은 장에서 못 지었다 — 앱 본체를 안 읽었다");
+            assert_eq!(second.atelier.total, second.atelier.app, "셸 없는 풀의 아틀리에 합계가 앱 본체가 아니다");
+        } else {
+            assert_eq!(second.mac, None, "macOS 밖에서 맥 전체가 섰다");
+        }
     }
 
     /// 웹뷰의 답을 차례로 주는 가짜 물음 — 차례가 다 떨어지면 「늦음」이다(메인 스레드가 끝내 안 답한다).
@@ -437,7 +503,7 @@ mod tests {
         }
         assert_eq!(never.background.latest(), None, "상한 전에 앉혔다");
         assert_eq!(never.sample_once(&mut held), summary::EVERY, "상한 뒤에도 미룬다 — 웹뷰가 끝내 답을 안 하면 요약이 빈다");
-        assert!(never.background.latest().is_some_and(|kept| kept.webview_excluded), "상한 뒤에 「웹뷰 제외」 장을 안 앉혔다");
+        assert!(never.background.latest().is_some_and(|kept| kept.atelier.webview_excluded), "상한 뒤에 「웹뷰 제외」 장을 안 앉혔다");
         assert_eq!(never.sample_once(&mut held), summary::EVERY, "한 번 앉힌 뒤에 다시 미뤘다");
 
         // 미루는 동안의 요약 IPC — 그 자리에서 모은 장을 돌려주고 앉힌다. 그 장이 웹뷰의 첫 답을 받았으니 다음 표본은 곧바로 앉는다.
@@ -556,7 +622,7 @@ mod tests {
             "요약 IPC가 모으는 사이 표본이 웹뷰의 답을 받아 제 장을 앉히지 않았다 — 이 검사가 재는 차례가 없다"
         );
         let kept = service.background.latest().expect("장이 앉았다");
-        assert!(!kept.webview_excluded, "요약 IPC의 「웹뷰 제외」 장이 그사이 표본이 앉힌 웹뷰를 센 장을 덮었다");
+        assert!(!kept.atelier.webview_excluded, "요약 IPC의 「웹뷰 제외」 장이 그사이 표본이 앉힌 웹뷰를 센 장을 덮었다");
         assert_eq!(answered, kept, "요약 IPC가 앉은 장과 다른 장을 돌려줬다");
         drop(stand_in);
     }
@@ -567,17 +633,18 @@ mod tests {
     fn the_trend_answers_the_background_ring() {
         let service = service();
         assert_eq!(service.trend(), vec![], "빈 서비스의 추이가 빈 목록이 아니다");
-        let kept = |total: u64| Summary {
-            total: Some(total),
-            cpu: None,
-            app: None,
-            webview_excluded: true,
+        let kept = |atelier: f64, mac: f64| Summary {
+            atelier: Totals { total: Some(1), cpu: Some(atelier), app: None, webview_excluded: true },
+            mac: Some(Machine { cpu: Some(mac), memory: None, cores: 10 }),
             unknown: vec![],
             record_head: None,
         };
-        service.background.keep(kept(3), 7_000);
-        service.background.keep(kept(5), 17_000);
-        assert_eq!(service.trend(), vec![Point { at: 7_000, total: 3 }, Point { at: 17_000, total: 5 }]);
+        service.background.keep(kept(3.0, 30.0), 7_000);
+        service.background.keep(kept(5.0, 50.0), 17_000);
+        assert_eq!(
+            service.trend(),
+            vec![Point { at: 7_000, mac: 30.0, atelier: 3.0 }, Point { at: 17_000, mac: 50.0, atelier: 5.0 }]
+        );
         let body = method_body("pub fn trend(");
         assert!(
             !body.contains("summarize(") && !body.contains("gather(") && !body.contains("snapshot::take("),
@@ -643,7 +710,7 @@ mod tests {
 
         use crate::processes::testkit::{key, Kid};
 
-        assert!(service().summarize().webview_excluded, "묻는 함수가 없는데 웹뷰를 셌다");
+        assert!(service().summarize().atelier.webview_excluded, "묻는 함수가 없는데 웹뷰를 셌다");
 
         let stand_in = Kid::spawn("sleep", &key(50));
         let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
@@ -655,15 +722,15 @@ mod tests {
             pid => WebContentAnswer::Answered(Some(pid)),
         });
         let counted = service.summarize();
-        assert!(!counted.webview_excluded, "웹뷰가 이름 댄 WebContent를 앱 본체에 안 셌다");
-        assert!(counted.app.is_some_and(|app| counted.total.is_some_and(|total| total >= app)), "앱 본체가 합계에 안 들었다");
+        assert!(!counted.atelier.webview_excluded, "웹뷰가 이름 댄 WebContent를 앱 본체에 안 셌다");
+        assert!(counted.atelier.app.is_some_and(|app| counted.atelier.total.is_some_and(|total| total >= app)), "앱 본체가 합계에 안 들었다");
 
         answer.store(0, Ordering::Relaxed);
-        assert!(!service.summarize().webview_excluded, "답이 늦자 마지막으로 안 WebContent를 버렸다");
+        assert!(!service.summarize().atelier.webview_excluded, "답이 늦자 마지막으로 안 WebContent를 버렸다");
 
         drop(stand_in);
         answer.store(pid, Ordering::Relaxed);
-        assert!(service.summarize().webview_excluded, "끝난 WebContent를 셌다");
+        assert!(service.summarize().atelier.webview_excluded, "끝난 WebContent를 셌다");
     }
 
     /// **늦은 첫 답 뒤에 처음 앉힌 장은 웹뷰를 셌다**(티켓 30 · S39) — 앱이 막 떴을 때 nav와 요약 카드가 「웹뷰 제외」 장을 다음
@@ -683,7 +750,7 @@ mod tests {
             service.sample_once(&mut held);
         }
         let kept = service.background.latest().expect("첫 장을 앉혔다");
-        assert!(!kept.webview_excluded, "처음 앉힌 장이 「웹뷰 제외」다 — 늦은 첫 답의 장을 앉혔다");
+        assert!(!kept.atelier.webview_excluded, "처음 앉힌 장이 「웹뷰 제외」다 — 늦은 첫 답의 장을 앉혔다");
         drop(stand_in);
     }
 

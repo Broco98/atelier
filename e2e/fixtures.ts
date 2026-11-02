@@ -715,6 +715,8 @@ export const PROCESS_SUMMARY: ProcessSummary = {
   cpu: 42,
   app: 639_631_360,
   webviewExcluded: false,
+  // 맥 전체(restart 03-5) — 코어 열 개인 맥의 18.4%, 메모리 16GB다. nav 메타는 읽지 않는다(추이의 한 선이다).
+  mac: { cpu: 18.4, memory: 17_179_869_184, cores: 10 },
   unknown: [],
   recordHead: null,
 };

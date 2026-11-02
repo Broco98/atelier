@@ -46,10 +46,10 @@ const 스냅샷 = snapshotFixture({
   pool: [1, 2, 99].map((pty) => poolShell(pty, shellKeyOf(pty), Date.now())),
 });
 
-/** 지난 1시간 안에 고르게 선 합계 `count`점 — 마지막 점이 지금이다. */
+/** 지난 1시간 안에 고르게 선 CPU `count`점(맥 전체 · 아틀리에 — restart 03-5) — 마지막 점이 지금이다. */
 function 점들(count: number): TrendPoint[] {
   const now = Date.now();
-  return Array.from({ length: count }, (_, at) => ({ at: now - (count - 1 - at) * 60_000, total: (2_000 + at * 100) * 1024 * 1024 }));
+  return Array.from({ length: count }, (_, at) => ({ at: now - (count - 1 - at) * 60_000, mac: 20 + at, atelier: 2 + at / 10 }));
 }
 
 /**
@@ -136,10 +136,10 @@ test("추이의 점 수만큼 스파크라인이 선다", async ({ page }) => {
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
   await expect.poll(() => 그린점(page)).toBe(7);
-  // 접근성 이름은 처음과 끝의 합계다 — 선의 모양은 눈의 것이다.
+  // 접근성 이름은 처음과 끝의 맥 전체 CPU다 — 선의 모양은 눈의 것이다.
   await expect(추이(page)).toHaveAttribute(
     "aria-label",
-    `지난 1시간 합계 추이, ${formatMemory(seven[0].total)}에서 ${formatMemory(seven[6].total)}`,
+    `지난 1시간 맥 전체 CPU 추이, ${formatCpu(seven[0].mac)}에서 ${formatCpu(seven[6].mac)}`,
   );
   await 시계를세운다(page);
 

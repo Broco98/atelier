@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { NO_SHELLS, ownerOf } from "@/features/terminal/shell-registry";
 import type { Shell, ShellsState } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
-import { TREND_SPAN_MS, appBodyNote, cardCounts, sparkline, trendLabel } from "./summary-card";
-import { formatMemory } from "./metrics";
-import { poolShell, processRow, snapshotFixture } from "./process-fixture";
+import { TREND_SPAN_MS, appBodyNote, cardCounts, cardFigures, sparkline, trendLabel } from "./summary-card";
+import { NOT_READ } from "./metrics";
+import { macOf, poolShell, processRow, snapshotFixture } from "./process-fixture";
 import type { ProcessGroups, ProcessRow, TrendPoint } from "./types";
 
 // 프로세스 티켓 30 — **요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」). 카드는 새 박자를 걸지 않고
@@ -107,10 +107,67 @@ describe("요약 카드의 수", () => {
   });
 });
 
+describe("요약 카드의 머리 값 — 한 표본(restart 03-5)", () => {
+  const GiB = 1024 * 1024 * 1024;
+  const MiB = 1024 * 1024;
+  const 잰장 = snapshotFixture({
+    mac: macOf(37.5, 12 * GiB, 10),
+    atelier: { total: 1.5 * GiB, cpu: 3.25, app: 610 * MiB, webviewExcluded: false },
+  });
+
+  // **머리는 맥 전체 CPU다**(스토리 122) — 정수로 반올림한다. 아래 줄이 그 눈금(맥 전체 · 코어 수)을 말한다. 아틀리에 CPU와 메모리
+  // 카드도 **같은 스냅샷**에서 읽는다 — 10초 요약을 섞으면 머리와 줄이 다른 표본이 된다. 아틀리에 CPU는 줄과 같은 소수 한 자리다.
+  it("머리 · 아틀리에 CPU · 메모리 카드가 한 스냅샷에서 선다", () => {
+    expect(cardFigures(잰장)).toEqual({
+      cpu: "38%",
+      cpuNote: "맥 전체 · 코어 10개",
+      atelierCpu: "3.3%",
+      memory: "1.5GB",
+      app: "610MB",
+      webviewExcluded: false,
+    });
+  });
+
+  // **첫 표본은 CPU를 모른다** — 두 표본의 차이라 두 번 재야 안다(시안 「첫 표본」). 메모리는 첫 장부터 선다.
+  it("첫 표본의 CPU는 「—」이고 무엇을 기다리는지 말한다", () => {
+    const first = snapshotFixture({
+      mac: macOf(null, 12 * GiB),
+      atelier: { total: 1.5 * GiB, cpu: null, app: 610 * MiB, webviewExcluded: false },
+    });
+    const figures = cardFigures(first);
+    expect([figures.cpu, figures.cpuNote, figures.atelierCpu, figures.memory]).toEqual([
+      NOT_READ,
+      "두 번 재야 알 수 있어요",
+      NOT_READ,
+      "1.5GB",
+    ]);
+  });
+
+  // **macOS 밖은 맥 전체를 재지 않는다**(스펙 「Out of Scope」) — 숫자 대신 「측정 안 됨」으로 말하고, 깨지지 않는다.
+  it("맥 전체가 없으면(macOS 밖) 「측정 안 됨」이다", () => {
+    const figures = cardFigures(snapshotFixture());
+    expect([figures.cpu, figures.cpuNote, figures.memory]).toEqual([NOT_READ, "측정 안 됨", NOT_READ]);
+  });
+
+  // 첫 스냅샷 전에는 아무것도 모른다 — 10초 요약으로 메우지 않는다(같은 표본이 아니다).
+  it("첫 스냅샷 전에는 재는 중이다", () => {
+    expect(cardFigures(undefined)).toEqual({
+      cpu: NOT_READ,
+      cpuNote: "재는 중",
+      atelierCpu: NOT_READ,
+      memory: NOT_READ,
+      app: NOT_READ,
+      webviewExcluded: false,
+    });
+  });
+});
+
 describe("지난 1시간 스파크라인", () => {
-  const 점 = (minutesBeforeEnd: number, total: number, end = 10_000_000): TrendPoint => ({
+  // 점의 값은 맥 전체 CPU다 — 아틀리에 CPU는 그 4분의 1로 둔다(선은 맥 전체 하나만 그린다. 두 선은 03-11).
+  const 점 = (minutesBeforeEnd: number, mac: number, end = 10_000_000): TrendPoint => ({
     at: end - minutesBeforeEnd * 60_000,
-    total,
+    mac,
+    atelier: mac / 4,
   });
   const box = { width: 120, height: 20, inset: 2 };
 
@@ -136,7 +193,7 @@ describe("지난 1시간 스파크라인", () => {
 
   // 1시간보다 오래된 점은 안 그린다 — 맥이 잠든 사이 고리가 1시간보다 넓어질 수 있다.
   it("마지막 점보다 1시간 넘게 앞선 점은 뺀다", () => {
-    const line = sparkline([{ at: 10_000_000 - TREND_SPAN_MS - 1, total: 50 }, 점(60, 100), 점(0, 100)], box);
+    const line = sparkline([{ at: 10_000_000 - TREND_SPAN_MS - 1, mac: 50, atelier: 5 }, 점(60, 100), 점(0, 100)], box);
     expect(line).toHaveLength(2);
   });
 
@@ -146,14 +203,11 @@ describe("지난 1시간 스파크라인", () => {
   });
 
   // **접근성 이름은 선이 그린 점의 처음과 끝이다** — 귀에 남는 「얼마에서 얼마로」가 눈의 선과 같은 구간이어야 한다. 1시간보다 오래된
-  // 점(맥이 잠든 사이 고리가 넓어졌다)은 선에 없으니 이름에도 없다.
-  it("추이의 이름은 그린 점의 처음과 끝 합계다 — 1시간보다 오래된 점은 안 든다", () => {
-    const stale = { at: 10_000_000 - TREND_SPAN_MS - 1, total: 50 * 1024 * 1024 };
-    const drawn = [점(60, 100 * 1024 * 1024), 점(0, 300 * 1024 * 1024)];
-    expect(trendLabel([stale, ...drawn])).toBe(
-      `지난 1시간 합계 추이, ${formatMemory(drawn[0].total)}에서 ${formatMemory(drawn[1].total)}`,
-    );
-    expect(trendLabel([])).toBe("지난 1시간 합계 추이, 아직 없음");
+  // 점(맥이 잠든 사이 고리가 넓어졌다)은 선에 없으니 이름에도 없다. 선은 맥 전체 CPU다(restart 03-5 — 한때 메모리 합계였다).
+  it("추이의 이름은 그린 점의 처음과 끝 맥 전체 CPU다 — 1시간보다 오래된 점은 안 든다", () => {
+    const stale = { at: 10_000_000 - TREND_SPAN_MS - 1, mac: 5, atelier: 1 };
+    expect(trendLabel([stale, 점(60, 12.34), 점(0, 30)])).toBe("지난 1시간 맥 전체 CPU 추이, 12.3%에서 30.0%");
+    expect(trendLabel([])).toBe("지난 1시간 맥 전체 CPU 추이, 아직 없음");
   });
 });
 

@@ -2,25 +2,27 @@ import { useStore } from "@tanstack/react-store";
 import { CircleAlert, Cpu, MemoryStick, SquareTerminal, type LucideIcon } from "lucide-react";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { cn } from "@/lib/utils";
-import { useProcessTrend, useSummaryCache } from "./hooks";
-import { NOT_READ, formatCpu, formatMemory } from "./metrics";
-import { WEBVIEW_EXCLUDED, appBodyNote, cardCounts, sparkline, trendLabel, type SparkBox } from "./summary-card";
+import { useProcessTrend } from "./hooks";
+import { NOT_READ } from "./metrics";
+import { WEBVIEW_EXCLUDED, appBodyNote, cardCounts, cardFigures, sparkline, trendLabel, type SparkBox } from "./summary-card";
 import type { ProcessSnapshot, TrendPoint } from "./types";
 
 /**
- * **`Processes` 맨 위 요약 카드**(프로세스 결정 10 · 티켓 30) — 합계와 지난 1시간 추이, CPU, 셸 수 · 도는 중 · 주인 잃은 셸 · 확정 고아 ·
- * 출처 불명, 앱 본체.
+ * **`Processes` 맨 위 요약 카드**(프로세스 결정 10 · 티켓 30 · restart 03-5) — 맥 전체 CPU와 지난 1시간 추이, 아틀리에 CPU, 메모리 합계 ·
+ * 앱 본체, 셸 수 · 도는 중 · 주인 잃은 셸 · 확정 고아 · 출처 불명.
  *
- * **타일 넷이다**(DS `ProcessTree` · `.at-tiles` · `.at-tile`, codex-ds 티켓 22): 메모리 합계 · CPU · 셸 · 고아. 같은 폭의 칸 다섯에
- * 10씩 떨어져 한 줄로 서고, 메모리 합계가 두 칸을 차지한다(그 오른쪽이 추이). 타일마다 이름 줄 → 큰 수 → 아래 줄이고, 옅은 면
- * (`surface-under`) · `radius-xl` · 0.5px `border` 안쪽 링 · 안쪽 14 · 16이다. 수를 무엇으로 세는지는 그대로다.
+ * **타일 넷이다**(DS `ProcessTree` · `.at-tiles` · `.at-tile`, codex-ds 티켓 22): CPU · 메모리 합계 · 셸 · 고아. 같은 폭의 칸 다섯에
+ * 10씩 떨어져 한 줄로 서고, CPU가 두 칸을 차지한다(그 오른쪽이 추이 — restart 03-5: 추이의 점이 CPU라 한때의 메모리 합계 타일에서
+ * 옮겼다). 타일마다 이름 줄 → 큰 수 → 아래 줄이고, 옅은 면(`surface-under`) · `radius-xl` · 0.5px `border` 안쪽 링 · 안쪽 14 · 16이다.
+ * 시안의 마감(두 선 · 0~100 축 · 쌓인 막대)은 03-11이다.
  *
- * **새 박자를 걸지 않는다.** 화면이 이미 받는 스냅샷(부모가 넘긴다), nav 메타가 10초마다 가져오는 요약의 캐시, 스토어에서 읽는다 —
- * 어느 수를 어디서 읽는지는 `cardCounts`의 머리말. 추이만 따로 묻는데, 요약이 올 때마다 한 번이다(`useProcessTrend`).
+ * **새 박자를 걸지 않는다.** 화면이 이미 받는 스냅샷(부모가 넘긴다)과 스토어에서 읽는다 — **머리와 메모리 카드는 줄과 같은 2초
+ * 스냅샷이다**(restart 03-5 「한 표본」 — `cardFigures`). 어느 수를 어디서 읽는지는 `summary-card.ts`의 머리말. 추이만 따로 묻는데,
+ * 요약이 올 때마다 한 번이다(`useProcessTrend`).
  */
 export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | undefined }) {
-  const { data: summary } = useSummaryCache();
   const { data: trend } = useProcessTrend();
+  const figures = cardFigures(snapshot);
   const counts = cardCounts(useStore(terminalStore, (state) => state), snapshot);
   // 못 센 수(스냅샷 전)는 「—」다 — 「0」이면 모르는 것을 없다고 한다.
   const countOrDash = (count: number | null) => (count === null ? NOT_READ : String(count));
@@ -29,26 +31,34 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
 
   return (
     <section aria-label="요약" className="grid grid-cols-5 gap-2.5">
-      {/* 넓은 타일 — 이름 줄 밑에서 왼쪽이 큰 수 · 아래 줄, 오른쪽이 추이다(DS 미리보기의 메모리 합계 타일 — 둘 사이 16). */}
+      {/* 넓은 타일 — 이름 줄 밑에서 왼쪽이 큰 수 · 아래 줄, 오른쪽이 추이다(DS 미리보기의 넓은 타일 — 둘 사이 16). 큰 수는 맥 전체
+          CPU(정수)이고 아래 줄이 그 눈금 — 또는 왜 숫자가 없는지(첫 표본 · macOS 밖) — 와 아틀리에 CPU다(restart 03-5). */}
       <div className={cn(TILE, "col-span-2")}>
-        <TileName icon={MemoryStick}>메모리 합계</TileName>
+        <TileName icon={Cpu}>CPU</TileName>
         <div className="flex min-w-0 flex-1 items-end gap-4">
           <div className="flex shrink-0 flex-col gap-1">
-            <Figure data-figure="total" text={formatMemory(summary?.total ?? null)} />
-            {/* 앱 본체 — Rust 본체 + 웹뷰(WebContent). GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 —
-                누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로 세우면 포커스와 역할이 새로 생긴다(`sidebar-active-band` S29와 같은 까닭). */}
-            <p data-figure="app" title={summary ? appBodyNote(summary.webviewExcluded) : undefined} className={TILE_NOTE}>
-              앱 본체 <span className="tabular-nums">{formatMemory(summary?.app ?? null)}</span>
-              {summary?.webviewExcluded && <span className="ml-1.5">({WEBVIEW_EXCLUDED})</span>}
+            <Figure data-figure="cpu" text={figures.cpu} />
+            <p className={TILE_NOTE}>
+              <span data-figure="cpu-note">{figures.cpuNote}</span>
+              <Dot />
+              <span data-figure="atelier-cpu">
+                아틀리에 <span className="tabular-nums">{figures.atelierCpu}</span>
+              </span>
             </p>
           </div>
           <Trend points={trend ?? []} />
         </div>
       </div>
-      {/* CPU는 아래 줄이 없다 — 10초 요약의 값이라 「지금」이라 적으면 2초 화면과 섞여 읽힌다(판 06 문구 표 R3). */}
+      {/* 메모리 합계 — 아틀리에 전체, 줄과 같은 2초 스냅샷이다(restart 03-5). 아래 줄이 앱 본체 — Rust 본체 + 웹뷰(WebContent).
+          GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 — 누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로
+          세우면 포커스와 역할이 새로 생긴다(`sidebar-active-band` S29와 같은 까닭). */}
       <div className={TILE}>
-        <TileName icon={Cpu}>CPU</TileName>
-        <Figure data-figure="cpu" text={formatCpu(summary?.cpu ?? null)} />
+        <TileName icon={MemoryStick}>메모리 합계</TileName>
+        <Figure data-figure="total" text={figures.memory} />
+        <p data-figure="app" title={snapshot ? appBodyNote(figures.webviewExcluded) : undefined} className={TILE_NOTE}>
+          앱 본체 <span className="tabular-nums">{figures.app}</span>
+          {figures.webviewExcluded && <span className="ml-1.5">({WEBVIEW_EXCLUDED})</span>}
+        </p>
       </div>
       {/* 셸 수는 풀의 셸이다(화면 밖 셸까지) — 세는 말 「셸 N개」(CONTEXT 「셸」)가 이름 줄과 큰 수로 갈려 선다. 아래 줄의 두 수는
           스토어의 것이다. 가운뎃점은 눈의 것이라 읽지 않는다. */}
@@ -79,7 +89,7 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
 
 /**
  * 타일 하나 — DS `.at-tile`: 옅은 면 · `radius-xl` · 0.5px `border` 안쪽 링 · 안쪽 14 · 16, 이름 줄 · 큰 수 · 아래 줄 사이 4. 넓은
- * 타일(메모리 합계)은 이름 줄 밑을 가로로 갈라 오른쪽에 추이를 둔다.
+ * 타일(CPU — restart 03-5, 한때 메모리 합계)은 이름 줄 밑을 가로로 갈라 오른쪽에 추이를 둔다.
  */
 const TILE = "flex min-w-0 flex-col gap-1 rounded-xl bg-surface-under px-4 py-3.5 inset-ring-[0.5px] inset-ring-border";
 
@@ -103,8 +113,8 @@ function Dot() {
 
 /**
  * 타일의 큰 수 — 숫자는 `heading-lg`, 단위(`GB` · `%` · `개`)는 14 · 500 `fg-secondary`다(DS `.at-tile .v`). **글자는 이어 붙는다**:
- * 요소의 글자가 표기 함수의 결과(`formatMemory` · `formatCpu`) 그대로라, nav 옆 숫자와 같은 글자를 L3가 이 요소에서 읽는다. 못 읽은
- * 값(「—」)은 단위가 없다.
+ * 요소의 글자가 표기 함수의 결과(`formatMemory` · `formatHeadCpu`) 그대로라, 스냅샷의 값을 같은 함수로 적은 글자를 L3가 이 요소에서
+ * 읽는다. 못 읽은 값(「—」)은 단위가 없다.
  */
 function Figure({ text, ...rest }: { text: string; "data-figure"?: string }) {
   const [, value = text, unit = ""] = /^(.*\d)(\D*)$/.exec(text) ?? [];
@@ -123,8 +133,8 @@ function Figure({ text, ...rest }: { text: string; "data-figure"?: string }) {
 const BOX: SparkBox = { width: 400, height: 48, inset: 1.5 };
 
 /**
- * 지난 1시간 합계(`sparkline` — 가로는 시각, 세로는 0부터) — 넓은 타일의 오른쪽 칸을 채운다. 선은 `accent-solid`이고 그 밑을
- * `accent-soft`로 채운다(DS 미리보기의 메모리 합계 추이). 바닥(0)은 1시간 폭 전체에 긋는다 — 앱을 켠 지 얼마 안 되어 선이 오른쪽에만
+ * 지난 1시간 맥 전체 CPU(`sparkline` — 가로는 시각, 세로는 0부터) — 넓은 타일의 오른쪽 칸을 채운다. 선은 `accent-solid`이고 그 밑을
+ * `accent-soft`로 채운다(DS 미리보기의 넓은 타일 추이). 아틀리에 CPU의 둘째 선과 0~100 고정 축은 03-11이다. 바닥(0)은 1시간 폭 전체에 긋는다 — 앱을 켠 지 얼마 안 되어 선이 오른쪽에만
  * 있을 때, 그 선이 1시간 중 얼마인지를 읽게 한다. 채움이 불투명한 면이라 바닥을 채움 위에 긋는다. 축 양끝이 「지난 1시간」 ·
  * 「지금」이다(판 06 문구 표 R2).
  *

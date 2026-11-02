@@ -26,8 +26,11 @@
 //! - 지표(`metrics`)는 부작용 층이다(티켓 28). 판정이 고른 프로세스만 메모리(`phys_footprint`) · CPU 시간 · LISTEN 포트를 읽고,
 //!   두 표본의 차이로 CPU%를 짓는 계산(순수)을 함께 든다. 수집처럼 macOS에서만 읽고 다른 OS는 빈 값이다.
 //! - 요약(`summary`)은 nav 메타가 10초마다 묻는 값이다(티켓 29) — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id.
-//!   요약 카드(티켓 30)가 읽는 CPU와 앱 본체(Rust + 웹뷰의 WebContent), 합계의 1시간 고리(추이)도 여기 산다. 화면이 닫혀 있어도
-//!   배경 표본이 모은다. 값과 그 값을 쥐는 자리만 짓는다 — 웹뷰에게 묻는 FFI는 앱 층(`webview.rs`)이 건다.
+//!   요약 카드(티켓 30)가 읽는 CPU와 앱 본체(Rust + 웹뷰의 WebContent), CPU의 1시간 고리(추이 — 맥 전체 · 아틀리에)도 여기 산다. 화면이
+//!   닫혀 있어도 배경 표본이 모은다. 값과 그 값을 쥐는 자리만 짓는다 — 웹뷰에게 묻는 FFI는 앱 층(`webview.rs`)이 건다.
+//! - 맥 전체(`machine`)는 부작용 층이다(restart 03-5). 이 맥 한 대의 CPU tick과 메모리, 코어 수를 읽는다 — 화면의 분모가 맥 전체(100)다.
+//!   지표처럼 macOS에서만 읽고 다른 OS는 없음이다(화면의 「측정 안 됨」). CPU%는 프로세스의 CPU 시간과 같은 미터가 같은 앞 표본과
+//!   견준다(`metrics::CpuMeter`).
 //!
 //! - 셸 키(`shell_key`)는 셸 키 `<세대>-<PTY 번호>`를 짓고 읽는 규칙 한 벌이다 — 판정 · 화면 · 훅 상태 파일(`shells`)이 모두 이
 //!   규칙으로 가른다. 이 실행의 세대(`shell_key::generation`)도 여기 산다. 시계(`clock`)는 이 앱이 적는 시각의 벽시계 하나다.
@@ -51,6 +54,7 @@ pub(crate) mod clock;
 pub(crate) mod ending;
 pub(crate) mod exceptions;
 pub(crate) mod instances;
+pub(crate) mod machine;
 pub(crate) mod metrics;
 pub(crate) mod procargs;
 pub(crate) mod screen;

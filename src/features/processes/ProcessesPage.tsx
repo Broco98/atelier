@@ -22,7 +22,7 @@ import { StatusIcon } from "@/features/works/status";
 import { askThenEnd } from "./actions";
 import CleanupLogSection from "./CleanupLogSection";
 import { OPEN_AT_FIRST, foldKey, liveFoldKeys, type Folds, type RowFold, type SectionId } from "./folds";
-import { useCleanupLog, useProcessSnapshot, useSummaryCache } from "./hooks";
+import { useCleanupLog, useProcessSnapshot } from "./hooks";
 import { openProcessesScreen, useSeeWhileLooking } from "./looked";
 import { lookSourceOf, lookablesOf, ownerlessShellKeys } from "./needs-look";
 import { endAsk, straysOf } from "./process-groups";
@@ -128,8 +128,9 @@ function ProcessesPage() {
   // **경과의 지금은 스냅샷이 도착한 때다**(`dataUpdatedAt`). 박자(2초)마다 새 값이라 경과가 그만큼씩 늙는다 — 따로 시계를 켜지
   // 않는다. 박자가 멎으면(창이 가려짐) 경과도 멎는데, 그동안은 아무도 안 본다.
   const now = dataUpdatedAt;
-  // 요약 합계 — 작업 줄 막대의 분모다. nav 메타의 10초 요약의 캐시를 읽기만 한다(새 박자를 걸지 않는다 — `useSummaryCache`).
-  const total = useSummaryCache().data?.total;
+  // 아틀리에 합계 — 작업 줄 막대의 분모다. **줄과 같은 2초 스냅샷의 것이다**(restart 03-5 「한 표본」 — 한때 nav 메타의 10초 요약을
+  // 읽었다). 첫 스냅샷 전에는 없다.
+  const total = snapshot?.atelier.total;
 
   return (
     // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 화면 이름과 쪽 동작은 머리 줄에 선다(codex-ds 스펙 §7 · 스토리 59).
