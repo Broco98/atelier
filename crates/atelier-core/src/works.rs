@@ -469,6 +469,20 @@ pub struct WorkPlaces {
     pub worktrees: Vec<PathBuf>,
 }
 
+impl WorkPlaces {
+    /// Work에 이은 Thread의 작업 폴더(v1 구현 스펙 S11 — Session의 cwd). worktree가 선 Project가 없으면 spec 폴더, 하나면 그 worktree,
+    /// 여럿이면 `trees/`다. 엔진의 Session 자리와 「@」 언급의 상대 경로(`mention.rs`)가 같은 이것을 읽는다 — 갈리면 상대 경로가 Runtime이
+    /// 여는 자리에서 어긋난다. 그때 디스크를 본다.
+    pub fn cwd(&self) -> PathBuf {
+        let trees: Vec<&PathBuf> = self.worktrees.iter().filter(|tree| tree.is_dir()).collect();
+        match trees.as_slice() {
+            [] => self.spec.clone(),
+            [tree] => (*tree).clone(),
+            _ => self.trees.clone(),
+        }
+    }
+}
+
 /// 읽은 work의 자리들. 파일을 읽거나 폴더를 만들지 않는다.
 pub fn work_places(works_root: &Path, work: &Work) -> WorkPlaces {
     let dir = works_root.join(&work.slug);

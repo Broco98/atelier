@@ -5,7 +5,8 @@ import { CODEX_DEFAULT_MODE, EFFORTS, type ChoiceOption } from "./chips";
 import ThreadComposer, { type ThreadComposerProps } from "./ThreadComposer";
 import type { Attachment } from "./types";
 import { setAttachments } from "./attachments";
-import { setDraft } from "./thread-store";
+import { mentionKey, type MentionPlace } from "./mentions";
+import { addMention, setDraft } from "./thread-store";
 
 // 입력창(02 티켓 10 · 03 구현 스펙 §5 · §6 · 캔버스 v52 F4-KitComposer · v35 Diff-Chat · Screen-Live) — 정적 마크업으로 사람이 보는 것을 잰다:
 // 트레이가 어디에 서는지(첫 화면은 상자 아래, Thread 화면은 상자 위)와 그 Work 칩(첫 말 전은 고르는 칩, 뒤는 잠긴 칩), 입력창 안의 것(`+` ·
@@ -16,13 +17,24 @@ const none = () => {};
 const quiet = async () => {};
 
 let drafts = 0;
-/** 입력창의 정적 마크업 — `draft`는 입력칸에 이미 쓴 글이다. */
-const composer = (over: Partial<ThreadComposerProps> = {}, draft = "", attached: Attachment[] = []) => {
+/**
+ * 입력창의 정적 마크업 — `draft`는 입력칸에 이미 쓴 글이다(커서는 글 끝). `places`는 「@」 언급의 찾기 명령이 이미 준 답이고(`mentions`의 자리),
+ * `mentioned`는 메뉴로 넣어 둔 언급이다.
+ */
+const composer = (
+  over: Partial<ThreadComposerProps> = {},
+  draft = "",
+  attached: Attachment[] = [],
+  { places, mentioned = [] }: { places?: MentionPlace[]; mentioned?: string[] } = {},
+) => {
   const draftKey = `composer-test-${(drafts += 1)}`;
   setDraft(draftKey, draft);
   setAttachments(draftKey, attached);
+  mentioned.forEach((mention) => addMention(draftKey, mention));
+  const client = new QueryClient();
+  if (places && over.mentions) client.setQueryData(mentionKey(over.mentions), places);
   return renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <ThreadComposer
         draftKey={draftKey}
         mode={{ kind: "ask", level: "always", onLevel: none }}
@@ -89,13 +101,68 @@ describe("입력창 안(03 §6)", () => {
     expect(names).not.toContain("Agent 부르기");
   });
 
-  // 입력창의 메뉴는 「/」 명령 메뉴 하나뿐이고 쓴 글만 보고 선다 — 그래서 정적 마크업으로 사람이 친 글을 그대로 잰다. 첫 칸은 이 그물이
-  // 메뉴를 실제로 보는지다.
-  it("`@`를 쳐도 메뉴가 서지 않는다 — 말의 처음 · 가운데 · 이름을 이어 친 뒤 모두", () => {
+  // 「@」는 파일 언급이다(restart 02b-3) — Agent를 부르는 메뉴(01a-2가 지웠다)는 돌아오지 않는다. 찾을 자리가 없는 입력창에는 「@」 메뉴도 없다.
+  it("찾을 자리를 주지 않은 입력창은 `@`를 쳐도 메뉴가 서지 않는다", () => {
     expect(composer({}, "/")).toContain('role="listbox"');
-    for (const draft of ["@", "이거 @", "@rev", "@reviewer 봐 줘"]) {
+    for (const draft of ["@", "이거 @", "@rev"]) {
       expect(composer({}, draft), draft).not.toContain('role="listbox"');
     }
+  });
+});
+
+// Composer 「「@」 언급」 — 입력창 위 8에 같은 폭으로 「파일」 메뉴가 서고, 찾은 파일이 글리프와 경로로 한 줄씩 선다. 포커스는 입력칸에 남는다(켜진
+// 줄은 `aria-activedescendant`). 메뉴는 쓴 글(커서 앞 낱말)과 찾기 명령의 답만 보고 서므로 정적 마크업으로 잰다 — 키 입력은 L3다.
+describe("「@」 언급 메뉴", () => {
+  const WHERE = { work: "refund" };
+  const PLACES: MentionPlace[] = [
+    { name: null, root: "", files: ["README.md", "src-tauri/src/watcher.rs", "src/features/works/watcher.test.ts"] },
+    { name: "api-server", root: "/repos/api-server/", files: ["src/lib.rs"] },
+  ];
+  const menuOf = (markup: string) => /<div[^>]*role="listbox"[^>]*aria-label="파일"[^>]*>.*?<\/div><\/form>/s.exec(markup)?.[0] ?? null;
+  const rowsOf = (markup: string) =>
+    [...(menuOf(markup) ?? "").matchAll(/<div[^>]*role="option"[^>]*aria-selected="(true|false)"[^>]*>(.*?)<\/div>/gs)].map(({ 1: on, 2: row }) => ({
+      on: on === "true",
+      text: row.replace(/<[^>]*>/g, ""),
+    }));
+
+  it("`@`로 시작한 낱말이면 「파일」 메뉴가 서고 찾은 파일이 선다 — 첫 줄이 켜져 있다", () => {
+    const markup = composer({ mentions: WHERE }, "@wat", [], { places: PLACES });
+    expect(menuOf(markup)).toContain(">파일<");
+    expect(rowsOf(markup)).toEqual([
+      { on: true, text: "src-tauri/src/watcher.rs" },
+      { on: false, text: "src/features/works/watcher.test.ts" },
+    ]);
+    expect(markup).toMatch(/<textarea[^>]*aria-activedescendant="[^"]+-0"/);
+  });
+
+  it("말 가운데의 `@`도 찾고, 작업 폴더 밖의 파일은 줄 끝에 자리 이름이 선다", () => {
+    expect(rowsOf(composer({ mentions: WHERE }, "이것도 봐 줘 @lib", [], { places: PLACES }))).toEqual([{ on: true, text: "src/lib.rsapi-server" }]);
+  });
+
+  it("찾은 파일이 없거나 · 아직 답이 없거나 · 낱말을 띄어 쓴 뒤 · 메일 주소면 서지 않는다", () => {
+    expect(menuOf(composer({ mentions: WHERE }, "@없는파일", [], { places: PLACES }))).toBeNull();
+    expect(menuOf(composer({ mentions: WHERE }, "@wat"))).toBeNull();
+    expect(menuOf(composer({ mentions: WHERE }, "@wat ", [], { places: PLACES }))).toBeNull();
+    expect(menuOf(composer({ mentions: WHERE }, "me@wat", [], { places: PLACES }))).toBeNull();
+  });
+});
+
+// Composer 「첨부 · 언급」 `.ra-mention` — 메뉴로 넣은 언급은 파란 면에 링크 색이다. 입력칸은 글자를 그리지 않고(caret만) 그 밑의 칠 층이 같은 자리에
+// 글을 그린다. 언급이 없으면 칠 층이 없고 입력칸이 글을 그린다.
+describe("언급 칠", () => {
+  const paintOf = (markup: string) => /<div[^>]*data-slot="mention-paint"[^>]*>(.*?)<\/div>/s.exec(markup)?.[1] ?? null;
+
+  it("넣은 언급이 칠을 입고 나머지 글은 그대로 선다", () => {
+    const markup = composer({}, "@src/watcher.rs 이 파일에서 재시도 간격도 같이 봐 줘", [], { mentioned: ["@src/watcher.rs"] });
+    const paint = paintOf(markup);
+    expect(paint).toMatch(/<span[^>]*data-mention=""[^>]*>@src\/watcher\.rs<\/span> 이 파일에서 재시도 간격도 같이 봐 줘/);
+    expect(markup).toMatch(/<textarea[^>]*class="[^"]*text-transparent/);
+  });
+
+  it("찾는 중인 `@wat`은 칠하지 않고 칠 층도 없다", () => {
+    const markup = composer({}, "@wat", [], { mentioned: ["@src/watcher.rs"] });
+    expect(paintOf(markup)).toBeNull();
+    expect(markup).not.toMatch(/<textarea[^>]*class="[^"]*text-transparent/);
   });
 });
 

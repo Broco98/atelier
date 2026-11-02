@@ -219,8 +219,9 @@ fn sort_entries(entries: &mut [WorktreeEntry]) {
 }
 
 /// `git ls-files -z`의 경로들. 읽기 전용 관례대로 `--no-optional-locks`를 하위 명령 앞에 둔다(`git.rs`의 상태 읽기와 같다).
-/// `-z`라 따옴표 치기가 없고(한글 이름 그대로) 끝의 NUL이 빈 조각으로 남지 않게 거른다.
-fn ls_files(dir: &Path, args: &[&str]) -> std::result::Result<Vec<String>, String> {
+/// `-z`라 따옴표 치기가 없고(한글 이름 그대로) 끝의 NUL이 빈 조각으로 남지 않게 거른다. 「@」 언급의 파일 찾기(`mention.rs`)도 이것을
+/// 부른다.
+pub(crate) fn ls_files(dir: &Path, args: &[&str]) -> std::result::Result<Vec<String>, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)

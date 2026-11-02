@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,10 +20,12 @@ import {
   type RuntimeChoice,
 } from "./ComposerChips";
 import { runtimeNameOf } from "./runtime";
-import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
+import SlashMenu, { commandText, matchCommands, MentionMenu, optionId, slashQuery } from "./SlashMenu";
+import { insertMention, matchMentions, mentionFiles, mentionQuery, paintMentions, useMentionFiles, type MentionFile, type PaintedPart } from "./mentions";
 import { sendDraft } from "./send-draft";
 import { DraftQuoteChip } from "./QuoteChip";
-import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
+import { addMention, setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
+import type { ScopeOf } from "@/features/services/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import type { Attachment } from "./types";
 
@@ -44,6 +46,10 @@ import type { Attachment } from "./types";
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 같은 폭으로 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/plan`은 물어보는 정도를 「계획」으로
 //   바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이
 //   된다. `/plan` · `/policy`는 물어보는 정도 칩이 설 때만 선다 — Codex 채팅에서는 Codex의 `/plan`이 그 이름으로 선다(`threadCommands`).
+// - **「@」로 시작한 낱말이면 파일 메뉴**가 같은 자리에 선다(restart 02b-3 · Composer 「「@」 언급」 — `mentions.ts`). 찾는 자리는 부르는 쪽이 준
+//   채팅 · 새 채팅의 범위(`mentions`)이고, 고르면 그 낱말이 `@경로`가 되어 언급 칠(파란 면 · 링크 색 — `.ra-mention`)을 입는다. 입력칸은
+//   textarea라 칠을 그 밑의 층(`MentionPaint`)이 같은 자리에 그리고, 언급이 선 동안 입력칸은 글자를 그리지 않는다(caret만). 보내는 글은 입력칸
+//   그대로다.
 // - **칩의 메뉴는 입력창 위 8에 선다**(Composer `.ra-menu{bottom:calc(100% + 8px)}`) — 모드 메뉴는 상자 왼쪽 8, Runtime · 모델 메뉴는 오른쪽 8에
 //   맞춘다. 그래서 메뉴의 닻은 칩이 아니라 상자(`box`)다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
@@ -80,6 +86,11 @@ export interface ThreadComposerProps {
   model: ModelChoice | null;
   /** Runtime이 보낸 「/」 명령 — 화면 명령(`/new`) 뒤에 붙는다. */
   commands: readonly CommandOption[];
+  /**
+   * 「@」 언급이 파일을 찾는 자리(restart 02b-3) — 채팅이면 그 채팅(`{ thread }`), 새 채팅이면 입력창이 쥔 Work · Service · Project다(읽는 범위와 같은
+   * 인자). 없으면 「@」 메뉴가 서지 않는다.
+   */
+  mentions?: ScopeOf;
   running: boolean;
   /** 보내는 중이라 입력을 받지 않는다(새 Thread의 첫 말 — Session이 열릴 때까지). */
   busy?: boolean;
@@ -124,6 +135,7 @@ function ThreadComposer({
   mode,
   model,
   commands,
+  mentions,
   running,
   busy = false,
   checking = false,
@@ -154,10 +166,35 @@ function ThreadComposer({
   const modeKind = mode?.kind ?? null;
   const all = useMemo(() => slashCommands(commands, threadCommands(modeKind && { kind: modeKind })), [commands, modeKind]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
-  const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
-  const active = pointer.query === query ? Math.min(pointer.at, Math.max(items.length - 1, 0)) : 0;
-  const setActive = (at: number) => setPointer({ query, at });
-  const menuOpen = items.length > 0 && dismissed !== draft;
+  // 「@」 언급 — 커서 앞 낱말로 찾는다. 커서를 모르면(그리기 전 · 바깥이 채운 글) 글 끝이다. 찾기 명령은 메뉴가 열릴 때만 읽는다.
+  const [caret, setCaret] = useState<number | null>(null);
+  const placing = useRef<number | null>(null);
+  const mention = mentions ? mentionQuery(draft, caret === null ? draft.length : Math.min(caret, draft.length)) : null;
+  const { data: places } = useMentionFiles(mentions, mention !== null);
+  const files = useMemo(() => (places ? mentionFiles(places) : []), [places]);
+  const typed = mention?.query ?? null;
+  const found = useMemo(() => (typed === null ? [] : matchMentions(files, typed)), [files, typed]);
+  // 메뉴는 하나다 — 「/」 명령이 먼저다(「/」로 시작한 글에는 말머리의 `@`가 없다).
+  const menu = items.length > 0 ? "slash" : found.length > 0 ? "mention" : null;
+  const count = menu === "slash" ? items.length : found.length;
+  const menuKey = menu === "slash" ? `/${query}` : menu === "mention" ? `@${mention?.at}:${mention?.query}` : null;
+  const [pointer, setPointer] = useState<{ key: string | null; at: number }>({ key: null, at: 0 });
+  const active = pointer.key === menuKey ? Math.min(pointer.at, Math.max(count - 1, 0)) : 0;
+  const setActive = (at: number) => setPointer({ key: menuKey, at });
+  const menuOpen = menu !== null && dismissed !== draft;
+  // 넣은 언급의 칠 — 메뉴로 넣은 것만 칠한다(찾는 중인 `@wat`은 아니다).
+  const mentioned = useStore(threadUiStore, (state) => state.mentions[draftKey] ?? NO_MENTIONS);
+  const parts = useMemo(() => paintMentions(draft, mentioned), [draft, mentioned]);
+  const painted = parts.some((part) => part.mention);
+  const pickFile = (file: MentionFile) => {
+    if (mention === null) return;
+    const next = insertMention(draft, mention, file.path);
+    setDraft(draftKey, next.draft);
+    addMention(draftKey, next.mention);
+    placing.current = next.caret;
+    setCaret(next.caret);
+    field.current?.focus();
+  };
 
   // 물어보는 정도 · 모델 메뉴의 열림 — 칩을 누르거나 `/policy` · `/model`이 연다.
   const [asking, setAsking] = useState(false);
@@ -226,6 +263,13 @@ function ThreadComposer({
     }
     el.style.height = `${next}px`;
   }, [draft, carded]);
+  // 고른 파일을 넣은 뒤 커서를 그 언급 뒤 빈칸 다음에 둔다 — 넣은 글이 입력칸에 선 다음이다.
+  useLayoutEffect(() => {
+    const at = placing.current;
+    if (at === null) return;
+    placing.current = null;
+    field.current?.setSelectionRange(at, at);
+  }, [draft]);
   useLayoutEffect(() => {
     if (!filled) return;
     takeFill();
@@ -281,12 +325,14 @@ function ThreadComposer({
             send();
           }}
         >
-          {menuOpen && (
+          {menuOpen && menu === "slash" && (
             <SlashMenu id={menuId} items={items} active={active} onPick={pickCommand} onPoint={setActive} runtime={runtimeName} />
           )}
+          {menuOpen && menu === "mention" && <MentionMenu id={menuId} files={found} active={active} onPick={pickFile} onPoint={setActive} />}
           {quote && <DraftQuoteChip quote={quote} onDrop={() => setQuote(draftKey, null)} />}
           {attachments.length > 0 && <ComposerAttachmentChips draftKey={draftKey} attachments={attachments} />}
           <div className="relative flex">
+            {painted && <MentionPaint parts={parts} field={field} />}
             <textarea
               ref={field}
               aria-label="보낼 말"
@@ -302,7 +348,14 @@ function ThreadComposer({
                       ? PLACEHOLDER.running
                       : (placeholder ?? PLACEHOLDER.idle)
               }
-              onChange={(event) => setDraft(draftKey, event.target.value)}
+              onChange={(event) => {
+                setDraft(draftKey, event.target.value);
+                setCaret(event.target.selectionStart);
+                // Esc로 걷은 메뉴는 글을 고치면 다시 선다 — 지웠다 같은 글자로 되돌려도 그렇다.
+                setDismissed(null);
+              }}
+              // 커서가 옮겨 가면(화살표 · 누르기) 찾는 낱말도 옮겨 간다.
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
               aria-controls={menuOpen ? menuId : undefined}
               aria-autocomplete={menuOpen ? "list" : undefined}
               aria-activedescendant={menuOpen ? optionId(menuId, active) : undefined}
@@ -312,12 +365,13 @@ function ThreadComposer({
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
                     const step = event.key === "ArrowDown" ? 1 : -1;
-                    setActive((active + step + items.length) % items.length);
+                    setActive((active + step + count) % count);
                     return;
                   }
                   if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
                     event.preventDefault();
-                    pickCommand(items[active]);
+                    if (menu === "slash") pickCommand(items[active]);
+                    else pickFile(found[active]);
                     return;
                   }
                   if (event.key === "Escape") {
@@ -337,8 +391,11 @@ function ThreadComposer({
                 send();
               }}
               // 글은 상자 끝에서 12(안쪽 8 + 4), 칸은 최소 44 · 14 / 22.75(Composer `.ra-field`)다. 줄 수가 바뀌면 높이가 패널 박자로 옮겨 간다
-              // (Motion 「입력창 높이」 — 44 → 최대 204, 220ms).
-              className="relative min-h-11 w-full resize-none overflow-y-auto bg-transparent px-1 text-chat-body tracking-[-0.15px] text-fg outline-none transition-[height] duration-panel ease-panel placeholder:text-fg-placeholder scroll-quiet motion-reduce:transition-none"
+              // (Motion 「입력창 높이」 — 44 → 최대 204, 220ms). 언급이 서 있으면 글자는 밑의 칠 층이 그리고 입력칸은 caret만 그린다.
+              className={cn(
+                "relative min-h-11 w-full resize-none overflow-y-auto bg-transparent px-1 text-chat-body tracking-[-0.15px] text-fg outline-none transition-[height] duration-panel ease-panel placeholder:text-fg-placeholder scroll-quiet motion-reduce:transition-none",
+                painted && "text-transparent caret-fg",
+              )}
             />
           </div>
           <div className="flex min-w-0 items-center gap-0.5">
@@ -384,6 +441,46 @@ function Tray({ children }: { children: ReactNode }) {
       className="mx-3.5 -mt-3.5 flex min-w-0 items-center gap-0.5 rounded-b-tray bg-surface-tray px-2 pt-5 pb-1.5 text-chat-meta text-fg-secondary"
     >
       {children}
+    </div>
+  );
+}
+
+const NO_MENTIONS: readonly string[] = [];
+
+/**
+ * 언급 칠 층(Composer 「첨부 · 언급」 `.ra-mention`) — 입력칸(textarea)은 글 안에 칠을 넣지 못해, 그 밑에 같은 글을 같은 자리(안쪽 · 글꼴 · 줄 ·
+ * 줄바꿈)에 그리고 언급만 파란 면(`accent-soft`) · 링크 색으로 칠한다. 면은 좌우 4 · 위아래 1 넓지만 글자 자리를 밀지 않는다(바깥 −4) — 입력칸의
+ * caret과 고르기가 이 층의 글자와 한 자리에 선다. 입력칸이 구르면 같이 구른다. 누름은 받지 않는다.
+ */
+function MentionPaint({ parts, field }: { parts: readonly PaintedPart[]; field: RefObject<HTMLTextAreaElement | null> }) {
+  const layer = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = field.current;
+    const paint = layer.current;
+    if (!el || !paint) return;
+    const follow = () => {
+      paint.scrollTop = el.scrollTop;
+    };
+    follow();
+    el.addEventListener("scroll", follow);
+    return () => el.removeEventListener("scroll", follow);
+  });
+  return (
+    <div
+      ref={layer}
+      aria-hidden
+      data-slot="mention-paint"
+      className="pointer-events-none absolute inset-0 overflow-hidden px-1 text-chat-body tracking-[-0.15px] break-words whitespace-pre-wrap text-fg"
+    >
+      {parts.map((part, at) =>
+        part.mention ? (
+          <span key={at} data-mention="" className="-mx-1 rounded-xs bg-accent-soft px-1 py-px text-link box-decoration-clone">
+            {part.text}
+          </span>
+        ) : (
+          part.text
+        ),
+      )}
     </div>
   );
 }
