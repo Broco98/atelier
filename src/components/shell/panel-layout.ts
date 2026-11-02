@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, type CSSProperties, type RefObject } from "react";
 
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
 // 패널(사이드바 · 오른쪽 패널 — spec 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `SIDEBAR_MOTION` · `foldingInnerClass` · `clippingInnerClass`)과 접힐 때의
@@ -96,6 +96,14 @@ export function cardGapPx(from: HTMLElement): number {
  * **동작 줄이기면 곧바로 바뀐다**(시안 `.ra-panelwrap { transition: none }`) — 사이드바와 같은 갈래다.
  */
 export const PANEL_MOTION = "duration-panel-open ease-spring motion-reduce:transition-none";
+
+/**
+ * **움직이지 않고 서는 그림**의 인라인 모양(restart 02a-15c) — 트랜지션을 클래스보다 앞서 끈다. 작업공간 도구 기둥(spec 패널 상자 · 레일)이
+ * 처음 그려지는 동안만 쓴다(`WorkTools`): 앱을 작업공간에서 켜면 기둥이 접힌 채 마운트되고 같은 커밋의 레이아웃 이펙트가 값을 적는데, 그 사이
+ * 브라우저가 접힌 모양을 셈해 두면 그리기 전에도 폭 트랜지션이 걸려 기둥이 0에서 자랐다. 클래스(박자)는 그대로 두고 이 한 겹만 얹는다 —
+ * 다음 그림부터는 그 박자로 움직인다.
+ */
+export const STILL: CSSProperties = { transition: "none" };
 
 /**
  * **사이드바 열고 닫기의 박자** — Codex spring {duration .3, bounce .1}을 CSS `linear()`로 옮긴 곡선(`ease-spring` — Motion 보드

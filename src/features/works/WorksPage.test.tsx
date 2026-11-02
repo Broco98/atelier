@@ -1942,8 +1942,18 @@ describe("셸 안 ⌘T의 요청은 그 셸의 화면에만 간다", () => {
 // 「묶음 → 주소」가 따라간다. 옛 갈래(분할째로 걷고 문서로 간다 — restart 02a-13이 분할을 걷었다)가 남으면 새 칸과 문서가 한 틱에 겹친다.
 it("묶음의 마지막 칸이 닫히면 새 채팅 탭을 세우고, 본문은 묶음 → 주소가 옮긴다", () => {
   const page = source("WorksPage.tsx");
-  expect(page).toContain("if (emptied && tabOwner !== null) openNewChat(tabOwner);");
+  expect(page).toContain("if (emptied && !left && tabOwner !== null) openNewChat(tabOwner);");
   expect(page).not.toContain('changeSplit(null, "spec");');
+});
+
+// **떠난 작업공간의 묶음은 다시 채우지 않는다**(restart 02a-15c · 구현 스펙 「작업공간이 바뀌는 순간」). UI 아카이브 · 삭제의 회수(`closeShellsOf`)는
+// 화면이 목록에서 그 작업공간을 잃기 전에 묶음을 통째로 걷는다. 그것을 「마지막 칸이 닫혔다」로 읽어 새 채팅 탭을 세우면 「묶음 → 주소」가 켜진
+// 채팅 탭(`thread`)을 주소에서 걷어, 목록이 그 작업공간을 잃는 순간 다른 작업공간으로 넘어갔다(L3 `thread-archived`) — 그 채팅의
+// `/threads/:id`로 가야 한다. 화면은 회수의 알림(`onWorkReclaimed` — terminal-store.test.ts)으로 안다. 이펙트라 렌더로 안 보여 배선을 읽는다.
+it("회수가 걷은 묶음은 마지막 칸이 닫힌 것으로 세지 않는다 — 그 작업공간이 떠났다", () => {
+  const page = source("WorksPage.tsx");
+  expect(page).toContain("onWorkReclaimed(");
+  expect(page).toContain("const left = tabOwner !== null && reclaimed.current === tabOwner;");
 });
 
 // 고른 항목이 하나도 없을 때의 본문. 목록을 비우고 `selectedSlug`를 `null`로 두면 그 화면이

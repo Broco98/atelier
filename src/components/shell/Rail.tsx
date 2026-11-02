@@ -1,6 +1,7 @@
 import { createLucideIcon } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { STILL } from "./panel-layout";
 
 /**
  * spec 칸의 아이콘 — 둥근 문서 한 장(restart 02a-14 · 스토리 81 · 시안 Shell 「spec 아이콘」의 적용안 `ic-docs` — 위 짧은 줄, 둥근 모서리
@@ -42,6 +43,8 @@ export interface RailProps {
   onPick: () => void;
   /** 칸이 여닫는 패널의 id(`aria-controls`). */
   controls: string;
+  /** 이번 그림은 움직이지 않고 선다 — 카드와 켜짐 면의 트랜지션을 끈다(`STILL` — 작업공간 도구 기둥이 처음 그려질 때, restart 02a-15c). */
+  still?: boolean;
 }
 
 /**
@@ -72,13 +75,14 @@ export interface RailProps {
  * **`aside`도 `nav`도 아니다**(시안 Shell 「규칙」). `aside`는 사이드바와 오른쪽 패널뿐이고 `nav`는 사이드바 버튼을 집는 고리다. 패널
  * 토글은 레일이 아니라 머리 줄 오른쪽 끝에 선다(`PanelToggle`).
  */
-function Rail({ shown, open, onPick, controls }: RailProps) {
+function Rail({ shown, open, onPick, controls, still = false }: RailProps) {
   return (
     <div
       role="group"
       aria-label="레일"
       data-show={shown}
       inert={!shown}
+      style={still ? STILL : undefined}
       className={cn(
         "relative flex shrink-0 flex-col items-center rounded-rail bg-surface py-0.5 motion-reduce:transition-none",
         shown
@@ -89,6 +93,7 @@ function Rail({ shown, open, onPick, controls }: RailProps) {
       <span
         aria-hidden
         data-rail-on={open}
+        style={still ? STILL : undefined}
         className={cn(
           "pointer-events-none absolute top-0.5 left-0.5 size-7 rounded-ctl bg-tool-rail-on transition-opacity motion-reduce:transition-none",
           open ? "opacity-100" : "opacity-0",
