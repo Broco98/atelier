@@ -141,7 +141,10 @@ mod tests {
             id: "20261023-100000".into(),
             title: "장바구니".into(),
             created_at: "2026-10-23T10:00:00.000+09:00".into(),
+            last_at: "2026-10-23T10:04:12.345+09:00".into(),
             work: Some("cart".into()),
+            service: None,
+            project: Some("web-app".into()),
             last_read: 7,
             read_only: Some(atelier_core::WorkGone::Archived),
             broken: None,
@@ -151,7 +154,8 @@ mod tests {
             (
                 "thread:list",
                 json!({"id": "20261023-100000", "title": "장바구니", "createdAt": "2026-10-23T10:00:00.000+09:00",
-                       "work": "cart", "lastRead": 7, "readOnly": "archived", "broken": null})
+                       "lastAt": "2026-10-23T10:04:12.345+09:00", "work": "cart", "service": null, "project": "web-app",
+                       "lastRead": 7, "readOnly": "archived", "broken": null})
             )
         );
         let engine = HostEvent::Engine(atelier_acp::EngineState {

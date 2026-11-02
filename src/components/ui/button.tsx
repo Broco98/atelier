@@ -38,6 +38,9 @@ const buttonVariants = cva(
         xs: "h-6.5 gap-1.5 rounded-md px-2.25 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         // Codex 기본 — 카드 밖에 홀로 서는 큰 버튼(DS `.at-btn`). 둥근 것은 이 단뿐이다(codex-ds 스펙 §2 「반경」).
         lg: "h-9 gap-1.5 rounded-full px-3.5 text-sm has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
+        // 목록 화면의 주 단추(restart 03-1 · 보드 PlaceSheet 「주 단추」 `.pl-btn` — 34 · 완전히 둥글게 · 좌 11 · 우 14 · 13 · + 15). 머리의 「Project 추가」와
+        // 빈 목록의 할 일이 같은 단추다(`PlaceAdd`).
+        place: "h-8.5 gap-1.5 rounded-full pr-3.5 pl-2.75 text-chat-meta [&_svg:not([class*='size-'])]:size-3.75",
         icon: "icon-button",
         "icon-sm": "icon-button icon-button-sm",
         "icon-xs": "icon-button icon-button-xs [&_svg:not([class*='size-'])]:size-3",

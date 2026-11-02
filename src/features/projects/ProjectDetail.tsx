@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { GitBranch, Pencil, TriangleAlert } from "lucide-react";
-import { DescriptionSection, DetailPanel, HeadCrumb } from "@/components/catalog/DetailParts";
+import { DescriptionSection, DetailPanel } from "@/components/catalog/DetailParts";
 import { navItem } from "@/components/shell/nav-items";
-import { PlainFrame } from "@/components/shell/PlainFrame";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { InlineRename } from "@/components/ui/inline-rename";
@@ -22,28 +21,26 @@ import type { ProjectView } from "./types";
 // 고치는 일(제목 · 설명 · 기준 브랜치)은 모두 core 고치기 하나다(`update_project`). 이름을 바꿔도 slug(파일 이름) · 경로는 그대로이고, 기준
 // 브랜치는 그 저장소의 로컬 · 원격 목록에서만 고른다(core가 목록에 없는 값을 거절한다). 경로는 폴더를 찾을 수 없을 때의 「재설정」으로만
 // 바뀐다.
+//
+// **틀은 `/projects`의 것이다**(restart 03-1 — `ProjectsPlace`) — 머리 줄 「Projects / 이름」과 본문 카드는 목록과 한 자리를 번갈아 쓰는 틀이 그리고,
+// 여기는 상세의 판만 그린다. 목록은 그 틀 안에 마운트된 채 숨어 있다 — 돌아가면 찾는 글 · 정렬 · 스크롤이 그대로다.
 
 export default function ProjectDetail({ slug }: { slug: string }) {
   const { data: projects = [], isPending, isFetching } = useProjects();
   const project = projects.find((one) => one.slug === slug) ?? null;
   const label = navItem("projects").label;
   const navigate = useNavigate();
-  const goList = (replace = false) => void navigate({ to: "/projects", replace });
 
   // 보던 Project가 목록에서 빠졌다(다른 창 · 바깥에서 제거) — 목록으로 간다. 빈 상세가 남으면 뒤로가기 한 번이 아무 일도 하지 않으니
   // 이 칸을 갈아 쓴다(replace).
   const gone = !isPending && !isFetching && project === null;
   useEffect(() => {
-    if (gone) goList(true);
-    // goList는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다
+    if (gone) void navigate({ to: "/projects", replace: true });
+    // navigate는 의존성에 넣지 않는다 — 라우터가 고정해 준다
   }, [gone]);
 
-  return (
-    <PlainFrame label={`${label} 상세`} lead={<HeadCrumb label={label} onOpen={() => goList()} />} title={project ? { name: project.name } : undefined}>
-      {/* 토스트는 본문 왼쪽 아래다(`DetailPanel` — Service 상세와 같다). */}
-      <DetailPanel back={{ to: "/projects", label }}>{project && <ProjectBody key={project.slug} project={project} />}</DetailPanel>
-    </PlainFrame>
-  );
+  // 토스트는 본문 왼쪽 아래다(`DetailPanel` — Service 상세와 같다).
+  return <DetailPanel back={{ to: "/projects", label }}>{project && <ProjectBody key={project.slug} project={project} />}</DetailPanel>;
 }
 
 function ProjectBody({ project }: { project: ProjectView }) {

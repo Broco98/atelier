@@ -131,7 +131,16 @@ export interface ThreadSummary {
   id: string;
   title: string;
   createdAt: string;
+  /**
+   * 기록의 마지막 줄 시각(restart 03-1) — 목록의 「최근 활동」이 이것에서 선다. 엔진은 줄마다 요약을 다시 알리지 않으므로 화면이 기록 줄
+   * 이벤트의 시각을 앉힌다(`followRecordLine`). 기록을 못 읽으면 만든 시각이고, 깨진 Thread는 빈 글이다.
+   */
+  lastAt: string;
   work: string | null;
+  /** 그 채팅의 Service 범위 — Work 밖 채팅만 든다(Work에 이은 채팅은 Work의 Service를 따른다). */
+  service: string | null;
+  /** 그 채팅의 Project 범위 — Work 밖 채팅만 들고 Service와 함께 서지 않는다. */
+  project: string | null;
   /** 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」를 가른다(v1 티켓 41). 깨진 Thread는 0이다. */
   lastRead: number;
   /** 이은 Work가 보관됐거나 지워졌으면 그 까닭(v1 티켓 38) — 사이드바에서 빠지고 ⌘K로 찾는다(S43). */

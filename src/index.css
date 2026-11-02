@@ -387,6 +387,7 @@
     --transition-duration-rise: var(--duration-rise);
     --transition-duration-bar: var(--duration-bar);
     --transition-duration-beat: var(--duration-beat);
+    --transition-duration-place: var(--duration-place);
     /* **모델 피커가 커지며 뜬다**(`animate-menu-enter` — 02 구현 스펙 §12 · Codex 모델 피커 .32s · cubic-bezier(.23,1,.32,1) · 30ms ·
        .98 → 1 · 아래 2에서 — restart Motion 「메뉴가 열린다」가 더한 2다, 02b-2). 앱의 다른 메뉴 · 팝오버 · 툴팁 · 다이얼로그는 움직이지 않는다 — 한 프레임에 서고 곧바로 걷힌다(Codex, 02 티켓 12가 그
        움직임과 닫힘의 `animate-menu-exit`를 걷었다). tw-animate의 `animate-in`을 쓰지 않는다 — 그 키프레임(`enter`)은 늘
@@ -655,7 +656,9 @@
                           `useShellOpen`이 읽는다 — 접힘 자체는 `unfold`다
      요약 카드가 열릴 때(`summary-in`)는 `panel`(220) · `ease-enter-snappy`, 카드가 넓어질 때 보기가 옅음에서 서는 것(`view-in`)은
      `panel-open` · `ease-panel`이다(SummarySheet 움직임 · Motion 「요약 카드가 열린다」 · 보드 `.ra-vw` — 02b-8).
-     Motion 보드의 「목록에서 상세로」 240ms는 보드가 토큰 이름 없이 적은 값이라 여기 두지 않는다. */
+       place      240ms  목록에서 상세로(상세가 오른쪽 10에서) · 상세에서 목록으로(목록이 왼쪽 10에서) 옅음을 벗으며 선다 — 곡선
+                          `ease-enter-snappy`(Motion 「목록에서 상세로」 · PlaceSheet 「움직임과 조작」 · 03-1). 보드가 토큰 이름 없이 적은 값이라 한때 두지
+                          않았다 — 거는 자리가 서며 이름을 세웠다(`place-in` · `place-back`) */
 @theme static {
     --duration-basic: 150ms;
     --duration-relaxed: 300ms;
@@ -683,6 +686,7 @@
     --duration-beat: 700ms;
     --duration-writing: 1600ms;
     --duration-skeleton: 1400ms;
+    --duration-place: 240ms;
 
     --stagger-wave: 100ms;
     --delay-think: 600ms;
@@ -2350,6 +2354,28 @@ body[data-palette-open] [data-scrollbar] {
     animation: view-in var(--duration-panel-open) var(--ease-panel) both;
 }
 
+/* **목록에서 상세로 · 상세에서 목록으로**(Motion 「목록에서 상세로」 · PlaceSheet 「움직임과 조작」 · 보드 `place-in` · `place-back` — restart 03-1) —
+   상세가 오른쪽 10에서, 돌아온 목록이 왼쪽 10에서 옅음을 벗으며 선다. 나가는 쪽은 곧바로 걷힌다. 거는 자리는 공용 목록 틀이다(`PlaceStage`) —
+   목록은 언마운트하지 않아 찾는 글 · 정렬 · 스크롤이 그대로다. */
+@keyframes place-in {
+    from {
+        opacity: 0;
+        transform: translateX(10px);
+    }
+}
+@keyframes place-back {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+}
+@utility place-in {
+    animation: place-in var(--duration-place) var(--ease-enter-snappy) both;
+}
+@utility place-back {
+    animation: place-back var(--duration-place) var(--ease-enter-snappy) both;
+}
+
 /* **회전**(보드 「회전」 0.9s · 일정 · 반복) — Thread 줄의 「작업 중」 스피너(DS `Spinner`의 호)가 모션 보드의 박자로 돈다. `Spinner`를 감싼
    상자에 단다. 앱의 다른 스피너(터미널 레인 · 불러오는 중)는 Tailwind `animate-spin`의 1초 그대로다 — 「1초에 한 바퀴」는 그 자리의
    결정이다(sidebar-active-band 결정 4). 동작 줄이기에서는 `Spinner`가 호 대신 원을 세운다(`components/ui/spinner.tsx`). 키프레임 `spin`은
@@ -2452,6 +2478,11 @@ body[data-palette-open] [data-scrollbar] {
         transition: none;
     }
 
+    /* 목록 열 머리의 정렬 화살표(restart 03-1 · 시안 PlaceSheet 「정렬」 — 동작 줄이기면 곧바로)는 돌지 않고 바로 바뀐다. */
+    [data-sort-arrow] {
+        transition: none;
+    }
+
     /* Processes의 막대 · 쌓인 막대는 폭이 곧바로 바뀌고, 표본 점은 번지지 않는다(시안 ProcessSheet 「보기와 움직임」 — 줄이면 곧바로 · 없음). */
     [data-cpu-bar] {
         transition: none;
@@ -2491,6 +2522,8 @@ body[data-palette-open] [data-scrollbar] {
     .writing-pulse,
     .summary-in,
     .view-in,
+    .place-in,
+    .place-back,
     .typing-dots > i,
     .spin-thread [data-slot="spinner-arc"],
     .skeleton-sweep {

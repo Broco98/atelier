@@ -191,8 +191,9 @@ pub(super) struct Threads {
     sessions: Mutex<HashMap<String, Session>>,
     /// 연 기록 — Thread마다 하나다. Session들의 쓰는 손이 쥐고, 다 놓으면 닫힌다.
     logs: Mutex<HashMap<String, Weak<ThreadLog>>>,
-    /// 모든 `thread.json`의 색인 — 처음 쓸 때 한 번 읽고, 엔진이 쓸 때마다 고친다(S7).
-    index: Mutex<Option<ThreadIndex>>,
+    /// 모든 `thread.json`의 색인 — 처음 쓸 때 한 번 읽고, 엔진이 쓸 때마다 고친다(S7). 기록이 줄을 적을 때도 그 손이 마지막 줄 시각을
+    /// 고치므로 함께 쥔다([`ConversationHost::record_emit`]).
+    index: Arc<Mutex<Option<ThreadIndex>>>,
     /// `thread.json`을 읽고 고쳐 쓰는 사이를 잠근다.
     files: Mutex<()>,
     /// Work마다의 쓰기 자리(v1 티켓 18) — Session들의 쓰기 자리 손이 함께 쥔다.
@@ -456,7 +457,7 @@ impl ConversationHost {
         self.with_index(|_| ())?;
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Session, session_payload(SessionState::Spawning))
             .map_err(|error| HostError::Record(format!("채팅을 세우지 못했습니다: {error}")))?;
-        let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));
+        let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, self.record_emit()));
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
         log.written(created.first.clone());
         self.announce_thread(&created.id, &created.file)?;
@@ -1211,7 +1212,7 @@ impl ConversationHost {
             return Ok(log);
         }
         let opened = atelier_core::open_thread_log(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
-        let log = Arc::new(ThreadLog::new(&self.data_root, thread, opened, Arc::clone(&self.emit)));
+        let log = Arc::new(ThreadLog::new(&self.data_root, thread, opened, self.record_emit()));
         logs.retain(|_, held| held.strong_count() > 0);
         logs.insert(thread.to_owned(), Arc::downgrade(&log));
         Ok(log)
@@ -1341,6 +1342,24 @@ impl ConversationHost {
             (self.emit)(HostEvent::ThreadList(summary));
         }
         Ok(())
+    }
+
+    /// Thread 기록이 내보내는 손 — 기록 줄을 내보내기 전에 색인의 마지막 줄 시각을 그 줄의 것으로 둔다(restart 03-1). 목록 요약 이벤트는 다시
+    /// 내지 않는다 — 화면은 기록 줄 이벤트로 같은 시각을 안다. 그래도 그 뒤에 나가는 요약(읽은 자리 · 이름 · 범위)은 지금 시각을 싣는다.
+    ///
+    /// 기록의 잠금을 쥔 채 불린다 — 색인 잠금은 그 안에서 잠깐만 쥔다. 색인을 쥔 자리는 기록을 잠그지 않으므로 차례가 엇갈리지 않는다. 색인을
+    /// 아직 읽지 않았으면 그대로 둔다 — 처음 읽을 때 기록 끝에서 읽는다.
+    fn record_emit(&self) -> Arc<super::Emit> {
+        let index = Arc::clone(&self.threads.index);
+        let emit = Arc::clone(&self.emit);
+        Arc::new(move |event: HostEvent| {
+            if let HostEvent::ThreadRecord { thread, line } = &event {
+                if let Some(index) = index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_mut() {
+                    index.note_line(thread, &line.at);
+                }
+            }
+            emit(event);
+        })
     }
 
     /// 색인 — 처음 쓸 때 모든 `thread.json`을 한 번 읽는다(S7).

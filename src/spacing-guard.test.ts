@@ -350,6 +350,11 @@ describe("눈금의 사분 단", () => {
       why: "줄 안의 버튼(`xs`) — 좌우 안쪽 9(DS `.at-btn.xs`)",
     },
     {
+      file: "src/components/ui/button.tsx",
+      className: "pl-2.75",
+      why: "목록 화면의 주 단추(`place`) — + 글리프 쪽 안쪽 11(보드 PlaceSheet `.pl-btn.main` — restart 03-1)",
+    },
+    {
       file: "src/components/ui/dropdown-menu.tsx",
       className: "py-1.75",
       why: "두 줄 메뉴 항목(`note`) — 위아래 안쪽 7(DS `.at-mi.tall`)",

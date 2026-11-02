@@ -29,5 +29,6 @@
   "entryDown": { "code": "ArrowDown", "mods": ["alt"], "glyph": "⌥↓", "aria": "Alt+ArrowDown", "menu": null },
   "entryOutdent": { "code": "ArrowLeft", "mods": ["alt"], "glyph": "⌥←", "aria": "Alt+ArrowLeft", "menu": null },
   "entryIndent": { "code": "ArrowRight", "mods": ["alt"], "glyph": "⌥→", "aria": "Alt+ArrowRight", "menu": null },
-  "dismiss": { "code": "Escape", "mods": [], "glyph": "Esc", "aria": "Escape", "menu": null }
+  "dismiss": { "code": "Escape", "mods": [], "glyph": "Esc", "aria": "Escape", "menu": null },
+  "find": { "code": "KeyF", "mods": ["meta"], "glyph": "⌘F", "aria": "Meta+F", "menu": null }
 }

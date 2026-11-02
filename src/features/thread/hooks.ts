@@ -139,7 +139,8 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
     const at = list.findIndex((one) => one.id === summary.id);
     if (at < 0) return [summary, ...list];
     const next = [...list];
-    next[at] = summary;
+    // 마지막 줄 시각은 뒤로 가지 않는다 — 기록 줄 이벤트가 먼저 앉힌 시각을, 그 줄보다 앞서 지은 요약(읽은 자리의 답)이 덮지 않게.
+    next[at] = { ...summary, lastAt: laterAt(list[at].lastAt, summary.lastAt) };
     return next;
   });
   queryClient.setQueryData<ThreadView>(threadKey(summary.id), (view) =>
@@ -196,6 +197,7 @@ export function receiveChunk(queryClient: QueryClient, { thread, chunk }: Thread
  *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
+  noteLastAt(queryClient, thread, line.at);
   // 읽는 범위가 바뀐 줄(03 §7) — Service 줄 · Work 연결과 worktree 생성(`work`) · Work 밖 Project 카드의 「읽기만 하기」(`question`). 범위는 Thread
   // 파일과 Work의 worktree로 세므로 다음에 그릴 때 다시 읽는다.
   if (line.kind === "service" || line.kind === "work" || line.kind === "question") {
@@ -217,6 +219,33 @@ export function followRecordLine(queryClient: QueryClient, thread: string, line:
       prs?.map((one) => (one.project === found.project ? { ...found, kind: "found" } : one)),
     );
   }
+}
+
+/** 둘 가운데 늦은 시각 — 읽지 못하는 쪽(깨진 Thread의 빈 글)은 지지 않는다. */
+function laterAt(held: string, came: string): string {
+  const [a, b] = [Date.parse(held), Date.parse(came)];
+  if (Number.isNaN(b)) return Number.isNaN(a) ? came : held;
+  return !Number.isNaN(a) && a > b ? held : came;
+}
+
+/** 목록 요약의 마지막 줄 시각이 따라가는 눈금 — 「최근 활동」이 분까지 말한다(`place-when.ts`). */
+const LAST_AT_STEP = 60_000;
+
+/**
+ * 기록 줄 하나의 시각을 그 채팅의 목록 요약에 앉힌다(restart 03-1 — 「최근 활동」). 엔진은 줄마다 요약을 다시 알리지 않는다. **눈금(1분)을 넘어 늦을
+ * 때만 갈아 끼운다** — 목록을 읽는 자리(사이드바 · 작업공간 화면 · 채팅 화면)가 턴의 줄마다 다시 그려지지 않게. 엔진의 색인은 줄마다 따라가므로 다음
+ * 요약(읽은 자리의 답 · 이름)이 정확한 시각을 싣는다(`putSummary`).
+ */
+function noteLastAt(queryClient: QueryClient, thread: string, at: string): void {
+  queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
+    const index = list?.findIndex((one) => one.id === thread) ?? -1;
+    if (!list || index < 0) return list;
+    const held = Date.parse(list[index].lastAt);
+    if (!Number.isNaN(held) && !(Date.parse(at) - held >= LAST_AT_STEP)) return list;
+    const next = [...list];
+    next[index] = { ...list[index], lastAt: at };
+    return next;
+  });
 }
 
 /** 그 Thread의 대기 줄 — 이벤트가 왔으면 그 값, 아니면 열 때 읽은 값이다. */

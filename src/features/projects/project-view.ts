@@ -7,26 +7,21 @@ import type { GitInfo, ProjectView } from "./types";
 /** 목록 줄 ⋯의 항목이 하는 일 — Finder에서 열기 · 경로 복사 · 제거…(제거 창 — 확인 창과 다른 따로 선 창이다, 03 결정 11). */
 export type RowAct = "open-folder" | "copy-path" | "remove";
 
-/** ⋯ 메뉴의 한 줄 — `apart`면 앞에 구분선이 선다, `danger`면 빨강이다(시안 `.pi.red`). */
+/** ⋯ 메뉴의 한 줄. */
 export interface RowMenuItem {
   act: RowAct;
   label: string;
-  danger: boolean;
-  apart: boolean;
 }
 
 /**
- * 목록 줄의 ⋯(스토리 96 · 102) — 「Finder에서 열기 · 경로 복사 · 제거…」. 제거는 메뉴 안에만 있어 실수로 누르지 않는다. 폴더를 찾을 수 없는
- * Project는 「제거…」만 남는다 — 없는 폴더를 Finder에서 열려 하지 않는다(경로를 고치는 길은 줄 끝의 「재설정」이다).
+ * 목록 줄의 ⋯(스토리 96 · 102 · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.projects`) — 「Finder에서 열기 · 경로 복사 · 제거…」. 세 줄이 같은 줄이다 —
+ * 한때(캔버스 F1-Projects) 제거가 선 아래 빨강이었다. 제거는 메뉴 안에만 있고 창이 한 번 더 묻는다. 폴더를 찾을 수 없는 Project는 「제거…」만
+ * 남는다 — 없는 폴더를 Finder에서 열려 하지 않는다(경로를 고치는 길은 줄 끝의 「재설정」이다).
  */
 export function rowMenu(project: ProjectView): RowMenuItem[] {
-  const remove = { act: "remove", label: "제거…", danger: true } as const;
-  if (project.missing) return [{ ...remove, apart: false }];
-  return [
-    { act: "open-folder", label: "Finder에서 열기", danger: false, apart: false },
-    { act: "copy-path", label: "경로 복사", danger: false, apart: false },
-    { ...remove, apart: true },
-  ];
+  const remove = { act: "remove", label: "제거…" } as const;
+  if (project.missing) return [remove];
+  return [{ act: "open-folder", label: "Finder에서 열기" }, { act: "copy-path", label: "경로 복사" }, remove];
 }
 
 /** 찾기(시안 「Project 찾기」) — 이름 · slug · 경로 가운데 하나라도 그 글을 품으면 남는다(대소문자 무시). 빈 찾기는 모두다. */

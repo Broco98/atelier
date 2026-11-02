@@ -60,6 +60,8 @@ const CARD_WIDTH = {
   // `note`의 바닥(300) · 끝(창 안)은 그대로 두고 폭만 박는다.
   "note-fold": "w-77 min-w-75 max-w-(--available-width)",
   "note-wide": "w-85",
+  // 목록 줄의 ⋯(restart 03-1 · 보드 PlaceSheet 「⋯ 메뉴」 `.pl-menu` — 208). 줄 아래에서 줄 오른쪽 끝에 맞춰 선다(`PlaceRowMenu`).
+  place: "w-52",
   // 입력창 칩의 메뉴(restart 02b-2 · 시안 Composer `.ra-menu`) — 모드 · 모델은 280, Runtime · 범위는 320이다. 두 줄 줄의 설명이 이 폭에서
   // 낱말 단위로 접혀 다 선다(Codex가 보낸 모드 설명).
   prompt: "w-70",

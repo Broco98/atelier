@@ -28,16 +28,17 @@ const project = (over: Partial<ProjectView> = {}): ProjectView => ({
 const PLAYGROUND = project({ slug: "playground", name: "playground", path: "~/MyProjects/playground", git: null, missing: true });
 
 describe("목록 줄의 ⋯", () => {
-  it("보통 줄은 Finder에서 열기 · 경로 복사 · 제거…이고, 제거는 선 아래 빨강이다", () => {
+  // 보드 PlaceSheet 「⋯ 메뉴」 칸 · Places `MENUS.projects` — 세 줄이 같은 줄이다(선 · 빨강 없음). 제거는 창이 한 번 더 묻는다(`useProjectRemoval`).
+  it("보통 줄은 Finder에서 열기 · 경로 복사 · 제거…이고, 세 줄이 같은 줄이다", () => {
     expect(rowMenu(project())).toEqual([
-      { act: "open-folder", label: "Finder에서 열기", danger: false, apart: false },
-      { act: "copy-path", label: "경로 복사", danger: false, apart: false },
-      { act: "remove", label: "제거…", danger: true, apart: true },
+      { act: "open-folder", label: "Finder에서 열기" },
+      { act: "copy-path", label: "경로 복사" },
+      { act: "remove", label: "제거…" },
     ]);
   });
 
   it("폴더를 찾을 수 없는 줄은 제거…만 남는다 — 없는 폴더를 Finder에서 열려 하지 않는다", () => {
-    expect(rowMenu(PLAYGROUND)).toEqual([{ act: "remove", label: "제거…", danger: true, apart: false }]);
+    expect(rowMenu(PLAYGROUND)).toEqual([{ act: "remove", label: "제거…" }]);
   });
 });
 
