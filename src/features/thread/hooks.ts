@@ -10,6 +10,7 @@ import { isObject } from "./json";
 import { prLineOf } from "./pr";
 import {
   addChunk,
+  discardFlow,
   finishFlow,
   linesOf,
   mergeLines,
@@ -180,9 +181,10 @@ export function receiveRecordLine(queryClient: QueryClient, thread: string, line
 
 /**
  * 흐르는 글 이벤트 하나. 앞 글이 빠져 잇지 못하면 Thread를 다시 읽는다 — 진행 글은 받은 글 전부라 뒤의 조각이 다시 이어진다. 조각마다 빠진 것을
- * 보므로 도는 읽기는 끊지 않는다.
+ * 보므로 도는 읽기는 끊지 않는다. 버린 흐름의 조각은 그 흐름의 글을 지운다.
  */
 export function receiveChunk(queryClient: QueryClient, { thread, chunk }: ThreadChunkEvent): void {
+  if (chunk.discarded) return discardFlow(thread, chunk.stream);
   if (!addChunk(thread, chunk)) void queryClient.invalidateQueries({ queryKey: threadKey(thread) }, { cancelRefetch: false });
 }
 

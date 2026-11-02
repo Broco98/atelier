@@ -28,6 +28,10 @@ pub struct FlowChunk {
     /// 이 조각의 글이 흐름의 글 안에서 서는 자리 — 화면이 글을 다루는 단위인 UTF-16 코드 단위로 센다.
     pub offset: usize,
     pub text: String,
+    /// 버린 흐름(restart 01b-10) — claude가 끊긴 메시지를 처음부터 다시 받아 이 흐름은 기록 줄이 되지 않는다. 화면은 그 흐름의 글을 지운다.
+    /// 글은 비어 있다.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub discarded: bool,
 }
 
 /// `session/update` 원문이 쌓을 조각인가 — 답이나 생각의 글 조각이다. 글이 아닌 내용은 조각이 아닌 `update`로 다룬다.
@@ -36,6 +40,16 @@ pub(super) fn is_chunk(raw: &Value) -> bool {
     matches!(update["sessionUpdate"].as_str(), Some("agent_message_chunk" | "agent_thought_chunk"))
         && update["content"]["type"] == "text"
         && update["content"]["text"].is_string()
+}
+
+/// `session/update` 원문이 끝나지 않은 메시지를 버리라는 변환기의 표지면 그 메시지의 id(restart 01b-10) — claude가 끊긴 메시지를 처음부터
+/// 다시 받는다. 기록할 줄이 아니다.
+pub(super) fn discarded(raw: &Value) -> Option<&str> {
+    let update = &raw["update"];
+    if update["sessionUpdate"] != "session_info_update" {
+        return None;
+    }
+    update["_meta"]["atelier"]["discardMessage"].as_str()
 }
 
 /// Session 하나의 쌓는 자리 — 지금 흐름 하나와 마지막으로 매긴 번호. 되살린 Session은 같은 자리를 이어 쓰고, 앱을 다시 켜면 1부터다.
@@ -74,6 +88,13 @@ impl Chunks {
     pub(super) fn take(&mut self) -> Option<Value> {
         self.flowing.take().map(Flow::into_line)
     }
+
+    /// 지금 흐름이 그 메시지의 것이면 쌓인 글을 기록 줄로 쓰지 않고 버린다 — 화면이 그 흐름을 지울 조각을 돌려준다. 이미 기록 줄이 된
+    /// 흐름은 그대로다.
+    pub(super) fn discard(&mut self, message: &str) -> Option<FlowChunk> {
+        let flow = self.flowing.take_if(|flow| flow.first["update"]["messageId"] == message)?;
+        Some(FlowChunk { offset: 0, text: String::new(), discarded: true, ..flow.chunk_from(flow.text.len()) })
+    }
 }
 
 /// 합치는 중인 글 하나.
@@ -100,7 +121,7 @@ impl Flow {
     fn chunk_from(&self, from: usize) -> FlowChunk {
         let (before, text) = self.text.split_at(from);
         let kind = if self.first["update"]["sessionUpdate"] == "agent_thought_chunk" { FlowKind::Thought } else { FlowKind::Message };
-        FlowChunk { stream: self.number, kind, offset: before.encode_utf16().count(), text: text.to_owned() }
+        FlowChunk { stream: self.number, kind, offset: before.encode_utf16().count(), text: text.to_owned(), discarded: false }
     }
 
     /// 같은 메시지, 같은 종류의 조각인가. 메시지 id가 없는 조각끼리도 같다 — 접기가 그렇게 잇는다(`fold.ts`의 `appendChunk`).

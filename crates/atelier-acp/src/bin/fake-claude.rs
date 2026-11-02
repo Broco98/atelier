@@ -357,6 +357,7 @@ impl Fake {
                 sent += 1;
             }
             emit(&claude_replay::load_finished(session, &id, &pieces.concat()));
+            emit(&claude_replay::load_ended(session, &id));
             count += 1;
         }
         emit(&result);

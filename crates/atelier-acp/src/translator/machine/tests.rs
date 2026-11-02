@@ -1026,6 +1026,51 @@ fn 답이_흐르는_도중에_멈춘_턴은_받은_글이_한_번만_찍히고_�
     assert_eq!(answers_of(&bench.turn_updates(next)), ["resumed"]);
 }
 
+// ── 다시 부른 메시지(restart 01b-10) ─────────────────────────────────────────────────
+
+/// `stream-retry`가 다시 받은 답 — 끊긴 메시지는 이 글의 앞 두 문장까지 흘렀다.
+const RETRIED: &str = "첫째 문장이 흐른다. 둘째 문장이 흐른다. 셋째 문장이 온전히 끝난다.";
+
+/// 낸 답 조각과 버리라는 표지 — (무엇, 메시지 id), 낸 차례대로. 같은 메시지의 잇단 조각은 하나로 센다.
+fn retry_steps(updates: &[Value]) -> Vec<(&'static str, String)> {
+    let mut steps: Vec<(&'static str, String)> = Vec::new();
+    for update in updates {
+        let step = match (update["sessionUpdate"].as_str(), update["_meta"]["atelier"]["discardMessage"].as_str()) {
+            (Some("session_info_update"), Some(message)) => ("버림", message.to_owned()),
+            (Some("agent_message_chunk"), _) => ("조각", update["messageId"].as_str().unwrap().to_owned()),
+            _ => continue,
+        };
+        if steps.last() != Some(&step) {
+            steps.push(step);
+        }
+    }
+    steps
+}
+
+#[test]
+fn 끊긴_메시지를_claude가_다시_받으면_그_메시지를_버리라는_표지가_다시_받은_글보다_먼저_나간다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-retry"));
+
+    let dropped = bench.prompt("DROP stream");
+    let overloaded = bench.prompt("OVERLOAD stream");
+    let ok = bench.prompt("Reply with one word: ok");
+
+    let step = |what, message: &str| (what, message.to_owned());
+    assert_eq!(
+        retry_steps(&bench.turn_updates(dropped)),
+        [step("조각", "msg_stub_1"), step("버림", "msg_stub_1"), step("조각", "msg_stub_2")],
+        "`api_retry` 뒤에 새 메시지를 처음부터 다시 흘렸다"
+    );
+    assert_eq!(
+        retry_steps(&bench.turn_updates(overloaded)),
+        [step("조각", "msg_stub_3"), step("버림", "msg_stub_3"), step("조각", "msg_stub_4")],
+        "`api_retry` 없이 스트리밍하지 않고 다시 받았다"
+    );
+    assert_eq!(answers_of(&bench.turn_updates(overloaded)).last().map(String::as_str), Some(RETRIED), "조각 없이 온 글은 완성 글 그대로다");
+    assert_eq!(retry_steps(&bench.turn_updates(ok)), [step("조각", "msg_stub_5")], "끝난 메시지는 버리지 않는다");
+    assert!(bench.stderr().is_empty(), "다시 받은 글의 합은 완성 글과 같다: {:?}", bench.stderr());
+}
+
 /// 글에서 계정 정보처럼 보이는 것들.
 fn account_traces(text: &str) -> Vec<String> {
     let mut traces = Vec::new();

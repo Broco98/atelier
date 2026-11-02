@@ -307,6 +307,7 @@ async function measure() {
     idle: report.idle,
     stream: report.stream,
     flowUpdates: report.flowUpdates,
+    chunks: report.chunks,
     foldMs: report.foldMs,
     wordsLeft: report.wordsLeft,
     away: report.away,
@@ -326,6 +327,7 @@ function say(result) {
   console.log(`부하 ${load.seconds}초, 조각 간격 ${load.gapMs}ms, 메시지 길이 ${load.messageMs ?? "턴 전체"}: 보낸 조각 ${load.sent?.chunks}, 메시지 ${load.sent?.messages}, 실제 초당 ${load.rate}조각, 화면 갱신 ${result.flowUpdates}번`);
   console.log(`기준선 최대 ${idle.maxGap.toFixed(1)}ms, 보통 ${idle.medianGap.toFixed(1)}ms, ${LIMIT_MS}ms 넘음 ${idle.overLimit}번 (프레임 ${idle.frames})`);
   console.log(`부하 중 최대 ${stream.maxGap.toFixed(1)}ms, 보통 ${stream.medianGap.toFixed(1)}ms, ${LIMIT_MS}ms 넘음 ${stream.overLimit}번 (프레임 ${stream.frames})`);
+  console.log(`조각 이벤트 ${result.chunks.events}개, 차례가 어긋난 것 ${result.chunks.outOfOrder}개`);
   console.log(`기록 전체를 한 번 접는 데 ${result.foldMs.toFixed(1)}ms`);
   console.log(`긴 간격: ${stream.worst.slice(0, 6).map(({ gap, note }) => `${gap.toFixed(0)}ms@${note?.chars ?? 0}자/${note?.lines ?? 0}줄`).join(", ")}`);
   if (machine) console.log(`기계: 코어 ${machine.cores}, load1 ${machine.load1.min.toFixed(1)}~${machine.load1.max.toFixed(1)}, CPU 합 최대 ${machine.cpuMax}%, 빌드 표본 ${machine.buildingSamples}/${machine.samples}, 많이 먹은 것 ${machine.busiest.join(", ")}`);
@@ -341,6 +343,6 @@ if (options["check-bundle"]) {
   say(result);
   if (options.out) writeFileSync(options.out, `${JSON.stringify(result, null, 2)}\n`);
   if (!options.keep) rmSync(result.root, { recursive: true, force: true });
-  const valid = result.away.length === 0 && result.owner.settingsSame && result.owner.threadsSame;
+  const valid = result.away.length === 0 && result.chunks.outOfOrder === 0 && result.owner.settingsSame && result.owner.threadsSame;
   process.exit(valid && result.stream.maxGap <= LIMIT_MS ? 0 : 1);
 }

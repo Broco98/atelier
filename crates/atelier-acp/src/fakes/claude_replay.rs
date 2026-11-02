@@ -82,6 +82,10 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   `<synthetic>` 줄과 `result{subtype: "success", is_error: true}`가 잇는다.
 /// - `2.1.316/stream-limits` — 거절 · 길이 제한 · 턴 한도로 끝난 세 턴(restart 티켓 01b-5). 같은 가짜 API에 앱에 없는 `--max-turns 1`로 떴다.
 ///   claude는 거절을 한 번, 길이 제한을 세 번 스스로 다시 묻고 나서 끝낸다.
+/// - `2.1.316/stream-retry` — 답이 흐르는 도중에 끊긴 메시지를 claude가 스스로 다시 받은 두 턴과 뒤이은 턴(restart 티켓 01b-10). 같은 가짜
+///   API(몰이의 `stub_retry.py`)가 한 번씩만 끊는다. 첫 턴은 소켓이 닫혀 `system/api_retry` 뒤에 새 메시지를 처음부터 다시 흘리고, 둘째 턴은
+///   `overloaded_error`를 받고 `api_retry` 없이 스트리밍하지 않는 요청으로 다시 받아 조각 없는 완성 줄 하나가 온다. 끊긴 메시지에는
+///   `message_delta`도 완성 줄도 없다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -109,6 +113,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.316/stream-compact-empty", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact-empty.jsonl")),
     ("2.1.316/stream-failed", include_str!("../../tests/fixtures/claude-2.1.316/stream-failed.jsonl")),
     ("2.1.316/stream-limits", include_str!("../../tests/fixtures/claude-2.1.316/stream-limits.jsonl")),
+    ("2.1.316/stream-retry", include_str!("../../tests/fixtures/claude-2.1.316/stream-retry.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
@@ -613,6 +618,15 @@ pub fn load_finished(session_id: &str, message_id: &str, text: &str) -> Value {
         "message": {"model": "claude-opus-5-5", "id": message_id, "type": "message", "role": "assistant",
                     "content": [{"type": "text", "text": text}]},
         "parent_tool_use_id": null, "session_id": session_id,
+    })
+}
+
+/// 부하 턴 메시지의 끝 — 진짜 claude는 완성 줄 뒤에 `message_delta`로 메시지를 끝낸다. 이것이 없는 메시지는 끊긴 메시지다(restart 01b-10).
+pub fn load_ended(session_id: &str, message_id: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}},
+        "session_id": session_id, "parent_tool_use_id": null, "api_message_id": message_id,
     })
 }
 

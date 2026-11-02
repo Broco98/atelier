@@ -80,6 +80,12 @@ export function finishFlow(thread: string, line: RecordLine): void {
   threadFlowStore.setState(({ [thread]: _done, ...rest }) => rest);
 }
 
+/** 엔진이 버린 흐름이면 흐르는 글을 지운다 — 그 글은 기록 줄이 되지 않는다(restart 01b-10). */
+export function discardFlow(thread: string, stream: number): void {
+  if (threadFlowStore.state[thread]?.stream !== stream) return;
+  threadFlowStore.setState(({ [thread]: _gone, ...rest }) => rest);
+}
+
 /**
  * 열 때 읽은 진행 글을 흐르는 글에 잇는다 — 기록을 합친 뒤에 부른다. 읽는 사이 그 흐름이 기록 줄이 됐으면 버린다. 그 줄은 늘 읽은 `lastSeq` 뒤에
  * 선다 — 번호는 앱을 다시 켜면 1부터라 그 앞의 줄과 겹칠 수 있다.

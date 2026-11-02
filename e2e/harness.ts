@@ -631,6 +631,25 @@ export async function fireEvent(
   payload: unknown,
   times = 1,
 ): Promise<void> {
+  const handler = await eventHandler(page, event);
+  await page.evaluate(
+    ({ handler, event, payload, times }: { handler: number; event: string; payload: unknown; times: number }) => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+      }).__TAURI_INTERNALS__;
+      for (let n = 0; n < times; n += 1) {
+        internals.runCallback(handler, { event, id: 0, payload });
+      }
+    },
+    { handler, event, payload, times },
+  );
+}
+
+/**
+ * 그 이벤트의 마지막 구독이 받는 콜백 번호 — `fireEvent`가 쏘는 자리다. 구독이 붙을 때까지 기다리고 끝내 없으면 던진다. 쏠 때마다 IPC 기록을 다시 읽지
+ * 않고 페이지 안에서 박자대로 쏘는 시험이 읽는다(`thread-frames`).
+ */
+export async function eventHandler(page: Page, event: string): Promise<number> {
   const handler = await awaitIpcMatch(
     page,
     (calls) => {
@@ -641,17 +660,7 @@ export async function fireEvent(
     },
     `${event} 구독`,
   );
-  await page.evaluate(
-    ({ handler, event, payload, times }: { handler: number; event: string; payload: unknown; times: number }) => {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-      }).__TAURI_INTERNALS__;
-      for (let n = 0; n < times; n += 1) {
-        internals.runCallback(handler, { event, id: 0, payload });
-      }
-    },
-    { handler: Number(handler), event, payload, times },
-  );
+  return Number(handler);
 }
 
 /**

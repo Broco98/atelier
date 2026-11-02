@@ -33,7 +33,7 @@ pub use thread::{
     DocWriting, ProjectAddChoice, ProjectChoice, QuestionReply, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
 };
 pub use chunks::{FlowChunk, FlowKind};
-use chunks::{is_chunk, Chunks};
+use chunks::{discarded, is_chunk, Chunks};
 use thread::VanishWatch;
 use turn_order::{Draft, Preamble, Seat, TurnHands, TurnOrder};
 
@@ -334,6 +334,15 @@ impl Conv {
         }
     }
 
+    /// 변환기가 버리라고 한 메시지의 쌓인 글을 버리고 화면에 그 흐름을 지우는 조각을 보낸다 — claude가 그 메시지를 처음부터 다시 받는다
+    /// (restart 01b-10). 내는 동안 잠금을 쥔다 — 다음 흐름의 조각이 앞서지 않게.
+    fn discard(&self, raw: &Value) {
+        let mut chunks = self.lock_chunks();
+        if let Some(chunk) = discarded(raw).and_then(|message| chunks.discard(message)) {
+            self.recorder.chunk(chunk);
+        }
+    }
+
     /// 런타임이 넘긴 것을 기록에 적는 sink.
     fn sink(self: &Arc<Self>) -> Sink {
         let conv = Arc::clone(self);
@@ -346,11 +355,16 @@ impl Conv {
             RuntimeEvent::Stderr(_) | RuntimeEvent::AuthStatus(_) => {}
             // 죽음은 수신 루프 밖에서 온다 — 죽었다고 적은 뒤에 비워야 그사이 쌓인 글이 남지 않는다.
             RuntimeEvent::Died(_) => {}
-            RuntimeEvent::Update(raw) if is_chunk(raw) => {}
+            // 버리라는 표지는 쌓인 글을 쓰지 않고 버린다.
+            RuntimeEvent::Update(raw) if is_chunk(raw) || discarded(raw).is_some() => {}
             _ => self.spill(),
         }
         let written = match event {
             RuntimeEvent::Update(raw) if is_chunk(&raw) => self.chunk(raw),
+            RuntimeEvent::Update(raw) if discarded(&raw).is_some() => {
+                self.discard(&raw);
+                Ok(())
+            }
             RuntimeEvent::Update(raw) => match OutOfTurn::of(&raw) {
                 Some(OutOfTurn::Started) => {
                     let written = self.recorder.update(raw);

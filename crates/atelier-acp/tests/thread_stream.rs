@@ -205,6 +205,52 @@ fn 한_메시지의_생각과_글은_종류마다_한_줄이고_생각이_먼저
 }
 
 #[test]
+fn claude가_끊긴_메시지를_다시_받아도_기록에는_다시_받은_글만_남는다() {
+    let sandbox = Sandbox::new();
+    let (host, thread) = thread_on(&sandbox, "2.1.316/stream-retry");
+
+    let record = run_turns(&sandbox, &host, &thread, 3);
+
+    // 녹음의 완성 줄이 다시 받은 메시지의 것뿐이다 — 끊긴 메시지의 글은 기록에 없다.
+    assert_eq!(skeleton(&record), recorded("stream-retry"), "기록:\n{}", common::lines_text(&record));
+    let marks: Vec<&Value> = record.iter().filter(|line| !line["payload"]["update"]["_meta"]["atelier"]["discardMessage"].is_null()).collect();
+    assert!(marks.is_empty(), "버리라는 표지는 기록하지 않는다: {marks:?}");
+    host.shut_down();
+}
+
+#[test]
+fn claude가_끊긴_메시지를_다시_받으면_화면에_그_흐름을_지우는_조각이_다음_흐름보다_먼저_나간다() {
+    let sandbox = Sandbox::new();
+    let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.316/stream-retry")]);
+    let (host, events) = sandbox.host_with_events(shell);
+    let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+
+    run_turns(&sandbox, &host, &thread, 3);
+
+    // 흐름마다 처음 나간 차례와 끝 — 끊긴 메시지(1 · 3)는 지우는 조각으로 끝나고 기록 줄이 되지 않는다.
+    let mut flows: Vec<(u64, &'static str)> = Vec::new();
+    for event in events.all() {
+        let (stream, what) = match event {
+            HostEvent::ThreadChunk { thread: id, chunk } if id == thread => (chunk.stream, if chunk.discarded { "지움" } else { "조각" }),
+            HostEvent::ThreadRecord { thread: id, line } if id == thread => {
+                let line = serde_json::to_value(line).unwrap();
+                let Some(stream) = line["payload"]["update"]["_meta"]["atelier"]["stream"].as_u64() else { continue };
+                (stream, "기록")
+            }
+            _ => continue,
+        };
+        match flows.last_mut() {
+            Some(last) if last.0 == stream => last.1 = what,
+            _ => flows.push((stream, what)),
+        }
+    }
+    assert_eq!(flows, [(1, "지움"), (2, "기록"), (3, "지움"), (4, "기록"), (5, "기록")]);
+    let gone: Vec<FlowChunk> = events.thread_chunks(&thread).into_iter().filter(|chunk| chunk.discarded).collect();
+    assert!(gone.iter().all(|chunk| chunk.text.is_empty() && chunk.offset == 0), "지우는 조각에는 글이 없다: {gone:?}");
+    host.shut_down();
+}
+
+#[test]
 fn 조각이_권한_줄보다_앞서_기록된다() {
     let sandbox = Sandbox::new();
     let (host, thread) = thread_on_agent(&sandbox, "streams-then-asks");
@@ -397,7 +443,7 @@ fn 글이_빈_생각도_흐름이_열렸다고_한_번_나간다() {
         }
     });
 
-    assert_eq!(chunks, [FlowChunk { stream: 1, kind: FlowKind::Thought, offset: 0, text: String::new() }]);
+    assert_eq!(chunks, [FlowChunk { stream: 1, kind: FlowKind::Thought, offset: 0, text: String::new(), discarded: false }]);
     assert_eq!(host.thread(&thread).unwrap().flowing, Some(chunks[0].clone()));
     host.shut_down();
 }
@@ -427,7 +473,7 @@ fn 진행_중인_글은_오프셋_0의_조각으로_읽히고_기록_줄이_서�
     wait_received(&sandbox, &thread);
 
     // 화면에 나가기 전이든 뒤든 받은 글 전부다 — 새로 그린 화면은 이것에 다음 조각을 잇는다.
-    let whole = Some(FlowChunk { stream: 1, kind: FlowKind::Message, offset: 0, text: "흐르던 답".to_owned() });
+    let whole = Some(FlowChunk { stream: 1, kind: FlowKind::Message, offset: 0, text: "흐르던 답".to_owned(), discarded: false });
     assert_eq!(host.thread(&thread).unwrap().flowing, whole);
     wait_chunks(&events, &thread, "흐르던 답");
     assert_eq!(host.thread(&thread).unwrap().flowing, whole);

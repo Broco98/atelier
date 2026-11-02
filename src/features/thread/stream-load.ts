@@ -1,6 +1,6 @@
 import { frameGapReport, recordFrames, type FrameGapReport } from "@/lib/frame-gaps";
 import { router } from "@/router";
-import { threadApi } from "./api";
+import { onThreadChunk, threadApi } from "./api";
 import { foldThread } from "./fold";
 import { linesOf, threadFlowStore, threadRecordStore } from "./thread-store";
 
@@ -36,6 +36,8 @@ interface Report {
   stream: FrameGapReport<FrameNote>;
   /** 화면이 받은 흐르는 글 갱신 수. */
   flowUpdates: number;
+  /** 받은 조각 이벤트 수 · 그 가운데 앞 조각의 끝에서 잇지 못한 수 — Tauri `emit`의 차례가 뒤집히면 0이 아니다. */
+  chunks: { events: number; outOfOrder: number };
   /** 끝난 기록 전체를 접는 한 번의 밀리초 — 50번의 평균이다. */
   foldMs: number;
   turns: number;
@@ -93,6 +95,15 @@ async function measure(plan: Plan): Promise<Report> {
   const flow = threadFlowStore.subscribe(() => {
     flowUpdates += 1;
   });
+  const chunks = { events: 0, outOfOrder: 0 };
+  const flowEnds = new Map<number, number>();
+  const stopChunks = await onThreadChunk(({ thread: from, chunk }) => {
+    // 버린 흐름의 조각은 글을 잇지 않고 지운다 — 차례를 재지 않는다.
+    if (from !== thread || chunk.discarded) return;
+    chunks.events += 1;
+    if (chunk.offset !== (flowEnds.get(chunk.stream) ?? 0)) chunks.outOfOrder += 1;
+    flowEnds.set(chunk.stream, chunk.offset + chunk.text.length);
+  });
   // 개발판 react-dom은 렌더마다 `performance.measure`를 남기고 지우지 않는다. 항목이 바뀐 props를 안고 쌓여 WKWebView가 2분에 1GB를 넘기고 메모리 압력 처리로 멎는다.
   // 배포 빌드에 없는 값이라 재는 동안 비운다.
   const clearing = window.setInterval(() => performance.clearMeasures(), 1000);
@@ -112,6 +123,7 @@ async function measure(plan: Plan): Promise<Report> {
   frames.stop();
   window.clearInterval(clearing);
   flow.unsubscribe();
+  stopChunks();
   stopWatching();
   const stamps = frames.stamps();
   const notes = frames.notes();
@@ -127,6 +139,7 @@ async function measure(plan: Plan): Promise<Report> {
     idle: frameGapReport(stamps.slice(0, split), LIMIT_MS, noted(0)),
     stream: frameGapReport(stamps.slice(split), LIMIT_MS, noted(split)),
     flowUpdates,
+    chunks,
     foldMs,
     turns: foldThread(lines()).turns.length,
     lines: { before: before.length, after: lines().length },

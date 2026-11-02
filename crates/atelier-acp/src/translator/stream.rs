@@ -8,6 +8,10 @@
 //!   `agent_thought_chunk`. 같은 글이 그 블록의 `assistant` 줄로 다시 오므로, 조각을 낸 메시지와 블록 종류를 기억해 그 완성 글을
 //!   내지 않는다. 조각이 없던 블록(`<synthetic>` · 옛 녹음)은 완성 글을 그대로 낸다. 완성 줄은 그 블록의 조각이 다 지난 뒤 오고
 //!   (2.1.316 실측), 멈춘 턴의 완성 줄은 그때까지 낸 글이다. 합이 어긋나면 변환기의 stderr로 경고 줄을 남긴다 — 호스트가 기록한다.
+//! - 다시 받은 메시지(restart 01b-10) — 조각을 낸 메시지는 `message_delta`가 와야 끝난다. 끝나지 않은 메시지를 두고 claude가 다시 부르면
+//!   (`system/api_retry`) · 다른 메시지가 오면(`api_retry` 없이 스트리밍하지 않고 다시 받은 완성 줄, 2.1.316 실측) 처음부터 다시 받은
+//!   것이다 — 그 메시지를 버리라는 표지(`session_info_update`의 `_meta.atelier.discardMessage`)를 낸다. 호스트가 쌓은 글을 버린다. 턴이
+//!   끝나면 놓는다 — 실패한 턴의 받은 글은 남는다.
 //! - `user`의 `tool_result` → `tool_call_update`. `is_error`가 `true`일 때만 실패다 — 키가 없으면 성공이다.
 //! - 대화 정리(restart 01b-4) — `system`의 `status: "compacting"` → Codex와 같은 모양의 `tool_call`(`Compact conversation`, `think`).
 //!   `status: null`이나 `compact_boundary`가 그 줄의 `tool_call_update`다. 화면은 이 제목으로 줄을 가려 작업 로그에 넣지 않는다(`fold.ts`).
@@ -46,6 +50,8 @@ pub(super) struct Stream {
     warnings: Vec<String>,
     /// 끝을 알리지 않은 대화 정리 줄의 id.
     compacting: Option<String>,
+    /// 조각을 낸 채 끝나지 않은 메시지의 id — `message_delta`가 오지 않았다.
+    open: Option<String>,
 }
 
 impl Stream {
@@ -53,7 +59,7 @@ impl Stream {
     /// [`prompt_response`]가 맡는다.
     pub(super) fn updates(&mut self, line: &Value) -> Vec<Value> {
         if line["type"] == "stream_event" {
-            return self.piece(line).into_iter().collect();
+            return self.stream_event(line);
         }
         if let Some(parent) = line["parent_tool_use_id"].as_str() {
             return self.relay(parent, line).into_iter().collect();
@@ -61,6 +67,7 @@ impl Stream {
         match line["type"].as_str() {
             Some("assistant") => self.assistant(line),
             Some("user") => self.user(line),
+            Some("system") if line["subtype"] == "api_retry" => self.discard().into_iter().collect(),
             Some("system") if line["subtype"].as_str().is_some_and(|subtype| subtype.starts_with("task_")) => {
                 line["tool_use_id"].as_str().and_then(|tool| self.relay(tool, line)).into_iter().collect()
             }
@@ -96,31 +103,64 @@ impl Stream {
     /// 턴이 끝났다 — 끝 신호를 받지 못한 정리 줄을 놓는다. 화면은 턴이 끝나면 그 줄을 닫힌 것으로 본다(`fold.ts`).
     pub(super) fn turn_ended(&mut self) {
         self.compacting = None;
+        self.open = None;
     }
 
     fn assistant(&mut self, line: &Value) -> Vec<Value> {
         let message = &line["message"];
+        let mut updates = Vec::new();
         if let Some(model) = message["model"].as_str().filter(|model| *model != "<synthetic>") {
             self.model = Some(model.to_owned());
+            updates.extend(self.replacing(&message["id"]));
         }
         let message_id = &message["id"];
         let blocks = message["content"].as_array().into_iter().flatten();
-        blocks
-            .filter_map(|block| match block["type"].as_str() {
-                Some("text") => self.finished(MESSAGE, message_id, &block["text"]),
-                Some("thinking") => self.finished(THOUGHT, message_id, &block["thinking"]),
-                Some("tool_use") => Some(self.tool_call(block)),
-                _ => None,
-            })
-            .collect()
+        updates.extend(blocks.filter_map(|block| match block["type"].as_str() {
+            Some("text") => self.finished(MESSAGE, message_id, &block["text"]),
+            Some("thinking") => self.finished(THOUGHT, message_id, &block["thinking"]),
+            Some("tool_use") => Some(self.tool_call(block)),
+            _ => None,
+        }));
+        updates
+    }
+
+    /// 대화의 `stream_event` — 글 조각이면 조각을 내고, 그 메시지를 끝나지 않은 메시지로 쥔다. `message_delta`가 그 메시지를 끝낸다.
+    /// 서브에이전트의 것(`parent_tool_use_id`)은 버린다 — 대화의 글이 아니고, 완성 줄이 도구 줄의 `_meta`로 실린다.
+    fn stream_event(&mut self, line: &Value) -> Vec<Value> {
+        if !line["parent_tool_use_id"].is_null() {
+            return Vec::new();
+        }
+        let message = &line["api_message_id"];
+        if line["event"]["type"] == "message_delta" {
+            if self.open.as_deref() == message.as_str() {
+                self.open = None;
+            }
+            return Vec::new();
+        }
+        let Some(piece) = self.piece(line) else { return Vec::new() };
+        let mut updates: Vec<Value> = self.replacing(message).into_iter().collect();
+        self.open = message.as_str().map(str::to_owned);
+        updates.push(piece);
+        updates
+    }
+
+    /// 끝나지 않은 메시지를 두고 다른 메시지가 왔다 — 그 메시지를 버리라는 표지.
+    fn replacing(&mut self, message: &Value) -> Option<Value> {
+        if self.open.as_deref().is_none_or(|open| Some(open) == message.as_str()) {
+            return None;
+        }
+        self.discard()
+    }
+
+    /// 끝나지 않은 메시지를 버리라는 표지 — claude가 처음부터 다시 받는다. 그 메시지의 조각으로 낸 글도 잊는다.
+    fn discard(&mut self) -> Option<Value> {
+        let message = self.open.take()?;
+        self.sent.retain(|(id, _), _| *id != message);
+        Some(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"discardMessage": message}}}))
     }
 
     /// `stream_event`의 글 조각 → ACP 조각. 메시지 id는 조각마다 실려 온다(`api_message_id`). 글이 빈 조각은 내지 않는다.
-    /// 서브에이전트의 조각(`parent_tool_use_id`)은 버린다 — 대화의 글이 아니고, 완성 줄이 도구 줄의 `_meta`로 실린다.
     fn piece(&mut self, line: &Value) -> Option<Value> {
-        if !line["parent_tool_use_id"].is_null() {
-            return None;
-        }
         let delta = &line["event"]["delta"];
         let (kind, text) = match delta["type"].as_str()? {
             "text_delta" => (MESSAGE, &delta["text"]),

@@ -127,6 +127,32 @@ describe("같은 흐름의 기록 줄이 오면", () => {
   });
 });
 
+describe("엔진이 흐름을 버리면", () => {
+  // claude가 끊긴 메시지를 처음부터 다시 받는다(restart 01b-10) — 그 흐름은 기록 줄이 되지 않는다.
+  const discarded = (stream: number): FlowChunk => ({ ...chunk(0, "", stream), discarded: true });
+
+  it("흐르던 그 글이 지워지고 다시 받은 글이 처음부터 흐른다", () => {
+    const thread = fresh();
+    const client = new QueryClient();
+    receiveChunk(client, { thread, chunk: chunk(0, "끊긴 답") });
+
+    receiveChunk(client, { thread, chunk: discarded(7) });
+    expect(flowing(thread)).toBeUndefined();
+
+    receiveChunk(client, { thread, chunk: chunk(0, "다시 받은 답", 8) });
+    expect(flowing(thread)).toBe("다시 받은 답");
+  });
+
+  it("다른 흐름을 버리면 흐르는 글은 그대로다", () => {
+    const thread = fresh();
+    receiveChunk(new QueryClient(), { thread, chunk: chunk(0, "흐르던 답", 8) });
+
+    receiveChunk(new QueryClient(), { thread, chunk: discarded(7) });
+
+    expect(flowing(thread)).toBe("흐르던 답");
+  });
+});
+
 describe("화면을 새로 그리면", () => {
   it("열 때 읽은 진행 글에 다음 조각이 이어 붙는다", async () => {
     const client = new QueryClient();

@@ -342,6 +342,7 @@ const TurnView = memo(function TurnView({ turn, runtime, open, waiting, compacti
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다.
   const kept = turn.end ? turn.entries.filter((entry, at) => keptFolded(entry) && (at < from ? !unfolded : !isToolChoice(entry))) : [];
+  const keptRows = kept.map((entry) => <EntryView key={entry.key} entry={entry} />);
   return (
     <>
       {turn.sent !== null && (
@@ -358,39 +359,36 @@ const TurnView = memo(function TurnView({ turn, runtime, open, waiting, compacti
         // 도는 턴과 끝난 턴은 같은 상자이고 답은 같은 칸(`Entries`)에 선다 — 턴이 끝나도 그려 둔 답이 그대로 남는다.
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
           {turn.end ? (
-            <>
-              {stopped ? (
-                // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
-                <>
-                  <OpenedLog entries={before} open={unfolded} />
-                  {final.map((entry) => (
-                    <div key={entry.key} className="w-full text-fg-secondary">
-                      <EntryView entry={entry} />
-                    </div>
-                  ))}
-                  <StopLine text={headline(turn.end)} open={unfolded} onToggle={onToggle} />
-                </>
-              ) : (
-                line && (
+            stopped ? (
+              <OpenedLog entries={before} open={unfolded} />
+            ) : (
+              <>
+                {line && (
                   <>
                     <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key}>
                       {line.text}
                     </WorkDivider>
                     {line.unfolds && <OpenedLog entries={before} open={unfolded} />}
                   </>
-                )
-              )}
-              {kept.map((entry) => (
-                <EntryView key={entry.key} entry={entry} />
-              ))}
-            </>
+                )}
+                {keptRows}
+              </>
+            )
           ) : (
             (lastWork(turn.entries) || flow) && <RunningHead turn={turn} waiting={waiting} />
           )}
           <Entries
-            entries={turn.end ? (stopped ? [] : final) : turn.entries.filter(shownEntry)}
+            entries={turn.end ? final : turn.entries.filter(shownEntry)}
+            muted={stopped}
             tail={flow === "message" && stream !== null ? <MessageView key={flowKey(stream)} /> : flow === "thought" ? <FlowingThought key="thought" /> : null}
           />
+          {turn.end && stopped && (
+            // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다. 답은 도는 턴과 같은 칸이라 긴 답을 다시 그리지 않는다.
+            <>
+              <StopLine text={headline(turn.end)} open={unfolded} onToggle={onToggle} />
+              {keptRows}
+            </>
+          )}
           {turn.end ? (
             <>
               <CreatedDocs turn={turn} name={runtime} />
@@ -429,7 +427,7 @@ function sameTurnView(a: TurnViewProps, b: TurnViewProps): boolean {
 const flowKey = (stream: number) => `flow-${stream}`;
 
 /** 답 글 — `text`가 없으면 지금 흐르는 글이고 그 글을 구독한다. 조각을 구독하는 부품은 이것 하나다. 꼬리 모양은 02b-1이 맞춘다. */
-function MessageView({ text }: { text?: string }) {
+function MessageView({ text, muted = false }: { text?: string; muted?: boolean }) {
   const thread = useContext(FlowThread);
   const flowing = useStore(threadFlowStore, (state) => (text === undefined ? state[thread]?.text : undefined));
   const follow = useContext(FollowTail);
@@ -438,7 +436,7 @@ function MessageView({ text }: { text?: string }) {
   }, [follow, flowing]);
   const shown = text ?? flowing;
   if (!shown) return null;
-  return <ThreadMarkdown text={shown} streaming={text === undefined} className="w-full" />;
+  return <ThreadMarkdown text={shown} streaming={text === undefined} className={cn("w-full", muted && "text-fg-secondary")} />;
 }
 
 /** 흐르는 생각 — 글이 빈 생각은 그리지 않는다. */
@@ -478,7 +476,7 @@ function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) 
 /**
  * 턴의 줄들 — 잇따른 도구 줄은 작업 로그의 한 묶음이다(줄 사이 틈 없이, 묶음 줄 포함). 흐르는 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
  */
-function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: ReactNode }) {
+function Entries({ entries, tail = null, muted = false }: { entries: readonly Entry[]; tail?: ReactNode; muted?: boolean }) {
   const runs: Entry[][] = [];
   for (const entry of entries) {
     const last = runs[runs.length - 1];
@@ -494,7 +492,14 @@ function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: R
         </div>
       );
     }
-    if (first.kind === "message") return <MessageView key={first.stream === undefined ? first.key : flowKey(first.stream)} text={first.text} />;
+    if (first.kind === "message") return <MessageView key={first.stream === undefined ? first.key : flowKey(first.stream)} text={first.text} muted={muted} />;
+    if (muted) {
+      return (
+        <div key={first.key} className="w-full text-fg-secondary">
+          <EntryView entry={first} />
+        </div>
+      );
+    }
     return <EntryView key={first.key} entry={first} />;
   });
   return <>{tail === null ? rows : [...rows, tail]}</>;

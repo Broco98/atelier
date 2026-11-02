@@ -246,6 +246,8 @@ export interface FlowChunk {
   /** 이 조각의 글이 흐름의 글 안에서 서는 자리 — JS 문자열 그대로의 UTF-16 단위다. */
   offset: number;
   text: string;
+  /** 버린 흐름 — claude가 끊긴 메시지를 처음부터 다시 받아 이 흐름은 기록 줄이 되지 않는다(restart 01b-10). 글은 비어 있다. */
+  discarded?: true;
 }
 
 /** 흐르는 글 이벤트(`thread:chunk`)가 싣는 것. */

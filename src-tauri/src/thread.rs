@@ -103,7 +103,13 @@ mod tests {
     /// **흐르는 글의 조각은 Thread와 흐름 번호 · 종류 · 오프셋 · 글을 싣는다**(스펙 「01b — 스트리밍」). 화면이 번호로 지우고 오프셋으로 잇는다.
     #[test]
     fn a_flow_chunk_event_carries_the_thread_and_the_chunk() {
-        let chunk = atelier_acp::FlowChunk { stream: 3, kind: atelier_acp::FlowKind::Thought, offset: 12, text: "살펴본다".into() };
+        let chunk = atelier_acp::FlowChunk {
+            stream: 3,
+            kind: atelier_acp::FlowKind::Thought,
+            offset: 12,
+            text: "살펴본다".into(),
+            discarded: false,
+        };
         assert_eq!(
             wire(&HostEvent::ThreadChunk { thread: "20261023-100000".into(), chunk }),
             (
