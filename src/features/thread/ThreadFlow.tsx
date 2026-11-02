@@ -62,7 +62,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 작업공간 … 을 만들고 이 채팅에 연결함」이다.
 // - **흐르는 답은 조각이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming` — 끝 240px이 옅다). 답을 기다리는 동안은 「생각 중」에
-//   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12).
+//   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12). 대화를 정리하는 동안은 같은 자리의 「대화를 정리하는 중」이다
+//   (01b-4 · Tools 보드 — 정리 신호가 오는 동안만, `compacting`). 정리 줄은 작업 로그에 서지 않는다.
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
 // - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
@@ -130,6 +131,7 @@ function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
             open={expanded[turnKey(thread, turn.key)] === true}
             onToggle={() => toggleTurn(turnKey(thread, turn.key))}
             waiting={turn.end === null ? waitingFor(model) : null}
+            compacting={turn.end === null && model.compacting}
             last={turn === last}
             onRetry={onRetry}
             lead={model.system
@@ -220,6 +222,7 @@ function TurnView({
   open,
   onToggle,
   waiting,
+  compacting,
   last,
   onRetry,
   lead,
@@ -230,6 +233,8 @@ function TurnView({
   onToggle: () => void;
   /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
   waiting: string | null;
+  /** 이 턴이 대화를 정리하는 중인가 — 「생각 중」 자리에 「대화를 정리하는 중」이 선다. */
+  compacting: boolean;
   last: boolean;
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
   /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, 답의 줄 앞이다(화면 2 보드). */
@@ -242,8 +247,8 @@ function TurnView({
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isToolChoice(entry)) : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 「생각 중」은 아직 서지 않는다.
-  const waitingFirst = !turn.end && turn.entries.length === 0;
-  const thinking = !turn.end && lastEntry?.kind === "thought";
+  const waitingFirst = !turn.end && turn.entries.length === 0 && !compacting;
+  const thinking = !turn.end && !compacting && lastEntry?.kind === "thought";
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
@@ -297,6 +302,7 @@ function TurnView({
               {turn.entries.length > 0 && <RunningHead turn={turn} waiting={waiting} />}
               <Entries entries={before} streaming />
               {thinking && <p className="think-shimmer text-sm">생각 중</p>}
+              {compacting && <p className="think-shimmer text-sm">대화를 정리하는 중</p>}
             </>
           )}
           {kept.map((entry) => (

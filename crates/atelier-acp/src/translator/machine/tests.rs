@@ -1026,7 +1026,143 @@ fn 새_시험_자료에_계정_정보가_없다() {
         assert_eq!(account_traces(&text), Vec::<String>::new(), "{path:?}");
         assert_eq!(account_traces(&joined_pieces(&text)), Vec::<String>::new(), "{path:?}의 이은 조각");
     }
-    assert!(files >= 8, "되감는 네 원문과 넣은 줄 넷: {files}");
+    assert!(files >= 12, "되감는 여섯 원문과 넣은 줄 여섯: {files}");
+}
+
+// ── 대화 정리(restart 01b-4) ────────────────────────────────────────────────────────
+
+/// 첫 정리 줄의 `update`들 — 도구 줄과 그 줄의 끝을 낸 차례대로.
+fn compact_lines(updates: &[Value]) -> Vec<Value> {
+    let id = updates.iter().find(|update| update["title"] == "Compact conversation").map(|call| call["toolCallId"].clone());
+    updates.iter().filter(|update| Some(&update["toolCallId"]) == id.as_ref()).cloned().collect()
+}
+
+/// 첫 정리 줄의 꼴 — (`sessionUpdate`, `status`), 낸 차례대로.
+fn compact_shape(updates: &[Value]) -> Vec<(String, String)> {
+    let shape = |line: &Value| (line["sessionUpdate"].as_str().unwrap().to_owned(), line["status"].as_str().unwrap().to_owned());
+    compact_lines(updates).iter().map(shape).collect()
+}
+
+fn started() -> (String, String) {
+    ("tool_call".to_owned(), "in_progress".to_owned())
+}
+
+fn ended(status: &str) -> (String, String) {
+    ("tool_call_update".to_owned(), status.to_owned())
+}
+
+/// 정리가 도는 세션 — 첫 턴을 마친 뒤 `status: "compacting"`까지 받았다.
+fn compacting_bench() -> Bench {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-compact"));
+    bench.prompt("Remember the word lantern. Reply with one word: ok");
+    bench.prompt("Say one short sentence about lanterns.");
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "compacting", "uuid": "c1"}));
+    bench
+}
+
+#[test]
+fn compact_턴은_codex와_같은_모양의_도구_줄로_옮겨지고_끝_신호가_둘이어도_한_번_닫힌다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-compact"));
+    bench.prompt("Remember the word lantern. Reply with one word: ok");
+    bench.prompt("Say one short sentence about lanterns.");
+
+    let compact = bench.prompt("/compact");
+
+    let updates = bench.turn_updates(compact);
+    assert_eq!(updates.len(), 2, "정리의 턴에는 도구 줄과 그 끝만 선다: {updates:#?}");
+    let id = updates[0]["toolCallId"].clone();
+    assert_eq!(
+        updates[0],
+        json!({"sessionUpdate": "tool_call", "toolCallId": id, "title": "Compact conversation", "kind": "think", "status": "in_progress"})
+    );
+    assert_eq!(updates[1], json!({"sessionUpdate": "tool_call_update", "toolCallId": id, "status": "completed"}));
+
+    assert_eq!(bench.result(compact)["stopReason"], "end_turn");
+    let next = bench.prompt("Which word did I ask you to remember? Reply with that one word.");
+    assert_eq!(answers_of(&bench.turn_updates(next)).concat(), "lantern", "정리한 뒤에도 대화가 이어진다");
+}
+
+#[test]
+fn 압축이_만든_user_줄은_대화가_되지_않는다() {
+    let name = "2.1.316/stream-compact";
+    let lines = recorded(name);
+    let made = |flag: &str| lines.iter().find(|line| line["type"] == "user" && line[flag] == true).expect("녹음의 압축이 만든 줄");
+    let summary = made("isSynthetic")["message"]["content"].as_str().unwrap();
+    let echo = made("isReplay")["message"]["content"].as_str().unwrap();
+    assert!(summary.contains("Summary:"), "요약문 줄이다: {summary}");
+    assert!(echo.contains("local-command-stdout"), "내장 명령의 메아리 줄이다: {echo}");
+
+    let mut bench = Bench::open(Claude::replaying(name));
+    bench.prompt("Remember the word lantern. Reply with one word: ok");
+    bench.prompt("Say one short sentence about lanterns.");
+    let compact = bench.prompt("/compact");
+
+    assert_eq!(answers_of(&bench.turn_updates(compact)), Vec::<String>::new(), "요약문도 메아리도 답이 아니다");
+    assert!(bench.replied(compact), "그 턴은 끝났다");
+    let text = bench.text();
+    assert!(!text.contains("Primary Request"), "요약문이 나가지 않았다");
+    assert!(!text.contains("local-command-stdout"), "메아리가 나가지 않았다");
+}
+
+#[test]
+fn 정리가_실패하면_줄이_failed로_닫히고_까닭은_답으로_선다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-compact-empty"));
+
+    let compact = bench.prompt("/compact");
+
+    let updates = bench.turn_updates(compact);
+    assert_eq!(compact_shape(&updates), [started(), ended("failed")], "{updates:#?}");
+    assert_eq!(answers_of(&updates), ["Not enough messages to compact."], "<synthetic> 답이 까닭을 말한다");
+
+    let next = bench.prompt("Reply with one word: ok");
+    assert_eq!(answers_of(&bench.turn_updates(next)), ["ok"]);
+}
+
+#[test]
+fn 정리의_끝은_compact_boundary만_와도_닫힌다() {
+    let mut bench = compacting_bench();
+
+    bench.claude_says(json!({"type": "system", "subtype": "compact_boundary", "compact_metadata": {"trigger": "auto"}}));
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": null, "compact_result": "success"}));
+
+    assert_eq!(compact_shape(&bench.updates()), [started(), ended("completed")], "경계가 끝이고 뒤따른 신호는 줄을 내지 않는다");
+}
+
+#[test]
+fn 모드_메아리의_status_null은_정리를_끝내지_않는다() {
+    let mut bench = compacting_bench();
+
+    // `set_permission_mode` 뒤의 `system/status`도 `status: null`이다(실측 A7).
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": null, "permissionMode": "plan"}));
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "requesting"}));
+
+    assert_eq!(compact_shape(&bench.updates()), [started()], "정리는 아직 돈다");
+}
+
+#[test]
+fn 정리가_도는_동안_compacting이_다시_와도_줄은_하나다() {
+    let mut bench = compacting_bench();
+
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "compacting", "uuid": "c2"}));
+
+    assert_eq!(compact_shape(&bench.updates()), [started()]);
+}
+
+#[test]
+fn 끝_신호_없이_턴이_끝나면_다음_정리는_새_줄이다() {
+    let mut bench = compacting_bench();
+
+    bench.claude_says(json!({"type": "result", "subtype": "success", "result": ""}));
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "compacting", "uuid": "c2"}));
+
+    let calls: Vec<Value> = bench
+        .updates()
+        .into_iter()
+        .filter(|update| update["title"] == "Compact conversation")
+        .map(|call| call["toolCallId"].clone())
+        .collect();
+    assert_eq!(calls.len(), 2, "끝나지 않은 줄을 쥐고 있지 않는다: {calls:?}");
+    assert_ne!(calls[0], calls[1], "줄마다 id가 다르다");
 }
 
 // ── 턴 ──────────────────────────────────────────────────────────────────────────────

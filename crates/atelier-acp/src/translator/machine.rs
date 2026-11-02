@@ -9,6 +9,7 @@
 //! 제어(three-axes 티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
 //! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
 //! 질문(`AskUserQuestion` → 물음을 실은 요청, v1 티켓 26), 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
+//! `system/status`는 대화 정리의 줄이기도 하다(restart 01b-4, 몸은 [`super::stream`]).
 //! 되살리기(three-axes 티켓 16) — `session/resume` · `session/load`를 둘 다 `claude … --resume <세션 id>`로 연다(워크플로 S19).
 //! 백그라운드(16, S4) · 미로그인(16, S3)은 턴의 갈래([`Turn`])에 있다.
 //!
@@ -537,6 +538,8 @@ impl Machine {
             self.changed(&line["response"]);
         } else if line["type"] == "system" && line["subtype"] == "status" {
             self.mode_changed(&line);
+            let updates = self.stream.updates(&line);
+            self.forward(updates);
         } else if line["type"] == "control_request" && line["request"]["subtype"] == "can_use_tool" {
             self.ask_permission(&line);
         } else if line["type"] == "control_cancel_request" {
@@ -821,6 +824,7 @@ impl Machine {
     ///   끝 알림(`session_info_update`)을 낸다. 몸은 `session/prompt`의 답과 같은 꼴이다. 그 턴 뒤로 미뤄 둔 말이 있으면 이제 넣는다.
     fn turn_ended(&mut self, result: &Value) {
         let Some(session_id) = self.session_id() else { return };
+        self.stream.turn_ended();
         if let Some(usage) = self.stream.usage(result) {
             self.send(session_update(&session_id, usage));
         }

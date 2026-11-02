@@ -43,6 +43,9 @@ import { particle } from "@/lib/particle";
 // - **Agent의 질문은 질문 줄이다**(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — `question` 줄(`card: question`)이 오면 승인 ·
 //   Work 만들기 카드와 같은 물음 차례(`asks`)에 질문으로 서고, 그 질문을 낸 도구 줄 자리를 질문 줄이 대신한다. 답하면 그 자리에
 //   답한 카드가 남고, 거둬지면 아무것도 남지 않는다.
+// - **대화 정리는 도구 줄로 오지만 일이 아니다**(01b-4 · 스토리 51 · 52) — 두 Runtime이 같은 줄(`Compact conversation`, `think`)로 알린다. 제목으로 가려
+//   작업 로그에 넣지 않고, 턴이 열려 있고 줄이 끝나지 않은 동안만 정리 중이다(`compacting`). `Guardian Review`도 `think`라 종류로는 가리지 않고,
+//   서브에이전트의 설명이 같은 글일 수 있어 `toolNameOf`로 읽는다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -327,6 +330,8 @@ export interface ThreadModel {
   running: boolean;
   /** Session을 띄우거나 되살리는 중인가 — 띄우는 중 줄 뒤로 열림 · 죽음 · 닫힘 · 로그인 필요가 아직 오지 않았다. */
   connecting: boolean;
+  /** 대화를 정리하는 중인가 — 도는 턴에 끝나지 않은 정리 줄이 있다. 턴이 끝나면 끝나지 않은 줄도 닫힌 것이다. */
+  compacting: boolean;
   notices: Notice[];
   system: SystemLine[];
   /** PR 카드(v1 티켓 36) — 줄이 온 차례다. */
@@ -502,6 +507,9 @@ const TOOL_SEARCH = "ToolSearch";
  */
 const PLAN_FILE = /\/\.claude\/plans\/[^/]+\.md$/;
 
+/** 대화 정리 줄의 이름 — Codex가 주고 Claude 변환기가 같은 모양으로 옮긴다(`translator/stream.rs`). */
+const COMPACT = "Compact conversation";
+
 /**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 Thread가 「떠 있는 Session이 없다」고 말할 때의 마지막 seq다 — 그 seq까지의 줄을
  * 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
@@ -534,6 +542,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
+  // 끝나지 않은 대화 정리 줄 id들 — 도는 턴의 것이다.
+  const compacts = new Set<string>();
   const start = (
     key: string,
     sent: string | null,
@@ -559,6 +569,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const close = (turn: Turn) => {
     if (open === turn) open = null;
     closedLast.delete(turn);
+    compacts.clear();
   };
   let connecting = false;
   const notices: Notice[] = [];
@@ -624,6 +635,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (kind === "tool_call_update") {
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다 — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
+          if (id && statusDone(update.status)) compacts.delete(id);
           if (id && (planReviews.has(id) || absorbed.has(id) || questionTools.has(id))) break;
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
@@ -661,6 +673,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           break;
         }
         const turn: Turn = open ?? start(`o${line.seq}`, null, line.at);
+        if (kind === "tool_call" && toolNameOf(update) === COMPACT) {
+          absorbed.add(called);
+          if (!statusDone(update.status)) compacts.add(called);
+          break;
+        }
         if (turn.answeredAt === null) turn.answeredAt = line.at;
         closedLast.delete(turn);
         if (kind === "plan_update") {
@@ -979,6 +996,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     turns,
     running: open !== null,
     connecting,
+    compacting: compacts.size > 0,
     notices,
     system,
     prs,
@@ -991,11 +1009,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
 /**
  * 「답하는 중」 줄을 세우나(캔버스 Messages 보드 「답하는 중」) — 턴이 도는데 아직 아무 줄도 오지 않았다(보낸 말 바로 뒤). 턴이 답 · 생각 · 도구
  * 줄을 흘리고 있으면 그 턴의 머리줄이 이미 말하므로 서지 않는다. 승인을 기다릴 때도 서지 않는다 — 답하는 것이 아니라 사람을 기다리고, 입력창
- * 자리의 카드가 말한다(v1 티켓 25). 줄의 글은 Runtime 이름 하나다(`ThreadFlow`).
+ * 자리의 카드가 말한다(v1 티켓 25). 대화를 정리하는 동안도 서지 않는다 — 「대화를 정리하는 중」이 말한다. 줄의 글은 Runtime 이름 하나다(`ThreadFlow`).
  */
 export function answeringLine(model: ThreadModel): boolean {
   const last = model.turns[model.turns.length - 1];
-  return model.running && last?.entries.length === 0 && model.asks.length === 0;
+  return model.running && last?.entries.length === 0 && model.asks.length === 0 && !model.compacting;
 }
 
 /** 앱을 다시 켜기 전에 끊긴 턴의 끝 까닭 — 앱이 꺼지면 Session도 함께 꺼진다. */
@@ -1174,8 +1192,11 @@ function grantedOf(value: unknown): DecisionEntry["granted"] {
   return rules.length === 0 ? null : { rules, work: text(value.work) };
 }
 
-/** 도구 줄이 끝났나 — ACP 도구 상태 넷 가운데 `completed` · `failed`가 끝이다. */
-export const toolDone = (tool: ToolEntry): boolean => tool.call.status === "completed" || tool.call.status === "failed";
+/** ACP 도구 상태 넷 가운데 끝인가 — `completed` · `failed`다. */
+const statusDone = (status: unknown): boolean => status === "completed" || status === "failed";
+
+/** 도구 줄이 끝났나. */
+export const toolDone = (tool: ToolEntry): boolean => statusDone(tool.call.status);
 
 /** 도구 호출에 update를 덮어 합친다 — 칸은 뒤의 것이 이기고, `_meta`만 한 겹 안쪽까지 합친다. */
 function mergeCall(call: Json, update: Json): Json {

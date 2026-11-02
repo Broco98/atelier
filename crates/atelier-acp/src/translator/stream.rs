@@ -9,9 +9,11 @@
 //!   내지 않는다. 조각이 없던 블록(`<synthetic>` · 옛 녹음)은 완성 글을 그대로 낸다. 완성 줄은 그 블록의 조각이 다 지난 뒤 오고
 //!   (2.1.316 실측), 멈춘 턴의 완성 줄은 그때까지 낸 글이다. 합이 어긋나면 변환기의 stderr로 경고 줄을 남긴다 — 호스트가 기록한다.
 //! - `user`의 `tool_result` → `tool_call_update`. `is_error`가 `true`일 때만 실패다 — 키가 없으면 성공이다.
-//! - 옮기지 않는 것: 모델이 `Skill`을 부를 때 생기는 `isSynthetic` 글(사람의 말이 아니다, 실측 함정 34) · `isReplay` 글(사람이
-//!   보낸 말의 메아리 — 호스트가 이미 `sent`로 적었다) · 훅 · `thinking_tokens` · `rate_limit_event` · 글 조각이 아닌 `stream_event`
-//!   · 글이 빈 조각 · 서브에이전트의 조각(`parent_tool_use_id`).
+//! - 대화 정리(restart 01b-4) — `system`의 `status: "compacting"` → Codex와 같은 모양의 `tool_call`(`Compact conversation`, `think`).
+//!   `status: null`이나 `compact_boundary`가 그 줄의 `tool_call_update`다. 화면은 이 제목으로 줄을 가려 작업 로그에 넣지 않는다(`fold.ts`).
+//! - 옮기지 않는 것: 모델이 `Skill`을 부를 때 · 압축이 요약문을 넣을 때 생기는 `isSynthetic` 글(사람의 말이 아니다, 실측 함정 34) ·
+//!   `isReplay` 글(사람이 보낸 말의 메아리 — 호스트가 이미 `sent`로 적었다. 압축의 `local-command-stdout`도 이 꼴이다) · 훅 ·
+//!   `thinking_tokens` · `rate_limit_event` · 글 조각이 아닌 `stream_event` · 글이 빈 조각 · 서브에이전트의 조각(`parent_tool_use_id`).
 //! - **서브에이전트**(`Agent`, 워크플로 함정 10) — 그 안에서 일어난 일(`parent_tool_use_id`가 붙은 줄)과 `task_*` 이벤트는
 //!   대화의 흐름이 아니라 그 도구 줄의 `_meta`로 싣는다. 서브에이전트의 글이 대화의 답으로 섞이지 않고, 기록에는 평가의
 //!   재료로 남는다(three-axes 결정 18). 화면은 이 원문에서 안쪽 도구를 모두 쥐어 그린다(`subagent.ts` — 표를 바꾸면 그쪽도 바꾼다).
@@ -27,6 +29,9 @@ const USED: [&str; 4] = ["input_tokens", "output_tokens", "cache_read_input_toke
 const MESSAGE: &str = "agent_message_chunk";
 const THOUGHT: &str = "agent_thought_chunk";
 
+/// 대화 정리 줄의 제목 — Codex가 주는 이름이다(`spec/research/runtime-실측.md`). 화면이 이 제목으로 줄을 가린다(`fold.ts`).
+const COMPACT_TITLE: &str = "Compact conversation";
+
 /// 한 대화의 stream-json을 옮기는 상태 — 낸 도구 호출을 기억해 그 결과와 서브에이전트 자료를 같은 줄에 잇는다.
 #[derive(Default)]
 pub(super) struct Stream {
@@ -38,6 +43,8 @@ pub(super) struct Stream {
     sent: HashMap<(String, &'static str), String>,
     /// 호스트의 기록으로 보낼 경고 줄 — 변환기의 stderr로 낸다. `stderr` 줄은 화면에 서므로 사람이 읽을 글로 쓴다.
     warnings: Vec<String>,
+    /// 끝을 알리지 않은 대화 정리 줄의 id.
+    compacting: Option<String>,
 }
 
 impl Stream {
@@ -56,8 +63,38 @@ impl Stream {
             Some("system") if line["subtype"].as_str().is_some_and(|subtype| subtype.starts_with("task_")) => {
                 line["tool_use_id"].as_str().and_then(|tool| self.relay(tool, line)).into_iter().collect()
             }
+            Some("system") if matches!(line["subtype"].as_str(), Some("status" | "compact_boundary")) => {
+                self.compaction(line).into_iter().collect()
+            }
             _ => Vec::new(),
         }
+    }
+
+    /// `system`의 `status` · `compact_boundary` → 대화 정리 줄. 2.1.316 실측의 차례는 `compacting` → `status: null{compact_result}` →
+    /// `compact_boundary`이고 끝 신호는 먼저 온 쪽이 닫는다. 경계는 정리가 끝난 자리라 `compact_result` 없이 `completed`다.
+    /// `status: null`은 모드 메아리(`permissionMode`)로도 오는데 그것은 정리의 끝이 아니다.
+    fn compaction(&mut self, line: &Value) -> Option<Value> {
+        if line["status"] == "compacting" {
+            if self.compacting.is_some() {
+                return None;
+            }
+            let id = format!("compact-{}", line["uuid"].as_str().unwrap_or_default());
+            self.compacting = Some(id.clone());
+            let call = json!({"sessionUpdate": "tool_call", "toolCallId": id, "title": COMPACT_TITLE, "kind": "think", "status": "in_progress"});
+            return Some(call);
+        }
+        let boundary = line["subtype"] == "compact_boundary";
+        if !boundary && !(line["status"].is_null() && line["permissionMode"].is_null()) {
+            return None;
+        }
+        let id = self.compacting.take()?;
+        let status = if boundary || line["compact_result"] == "success" { "completed" } else { "failed" };
+        Some(json!({"sessionUpdate": "tool_call_update", "toolCallId": id, "status": status}))
+    }
+
+    /// 턴이 끝났다 — 끝 신호를 받지 못한 정리 줄을 놓는다. 화면은 턴이 끝나면 그 줄을 닫힌 것으로 본다(`fold.ts`).
+    pub(super) fn turn_ended(&mut self) {
+        self.compacting = None;
     }
 
     fn assistant(&mut self, line: &Value) -> Vec<Value> {

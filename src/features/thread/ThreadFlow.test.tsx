@@ -206,3 +206,58 @@ describe("체크리스트의 자리", () => {
     expect(flow(lines.filter((line) => line.seq !== 3))).not.toContain(LIST);
   });
 });
+
+// 「대화를 정리하는 중」(01b-4 · 스토리 51 · 캔버스 Tools 보드 「생각 중 · 대화 정리 중」) — 정리 신호가 오는 동안만 「생각 중」 자리에 선다. 바탕은 엔진이
+// `/compact` 녹음으로 쓴 기록이다 — seq 19가 정리의 시작, 20이 그 끝이다. 모양은 02b-4가 맞춘다.
+describe("대화 정리 안내", () => {
+  const WORDS = "대화를 정리하는 중";
+  const lines = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-compact.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  const through = (seq: number) => lines.filter((line) => line.seq <= seq);
+  const flow = (rows: readonly RecordLine[]) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" onRetry={() => {}} />);
+  const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
+  const update = (seq: number, body: Record<string, unknown>): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "update",
+    payload: { sessionId: "s", update: body },
+  });
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "말" } };
+  const compacting = (seq: number) =>
+    update(seq, { sessionUpdate: "tool_call", toolCallId: "compact", title: "Compact conversation", kind: "think", status: "in_progress" });
+
+  it("정리하는 동안 서고, 「답하는 중」은 서지 않는다", () => {
+    const markup = flow(through(19));
+    expect(markup).toContain(`<p class="think-shimmer text-sm">${WORDS}</p>`);
+    expect(markup).not.toContain("data-answering");
+  });
+
+  it("정리가 끝나면 걷히고, 답을 기다리면 「답하는 중」이 다시 선다", () => {
+    const markup = flow(through(20));
+    expect(markup).not.toContain(WORDS);
+    expect(markup).toContain("data-answering");
+    expect(flow(lines)).not.toContain(WORDS);
+  });
+
+  it("일하던 턴에서는 작업 줄 아래에 서고, 정리 줄은 작업 로그에 서지 않는다", () => {
+    const read = update(2, { sessionUpdate: "tool_call", toolCallId: "r", title: "Read a.rs", kind: "read", status: "completed", locations: [{ path: "/w/a.rs" }] });
+    const markup = flow([sent, read, compacting(3)]);
+    expect(markup.indexOf("a.rs")).toBeLessThan(markup.indexOf(WORDS));
+    expect(markup).not.toContain("Compact conversation");
+  });
+
+  it("「생각 중」과 함께 서지 않는다 — 정리가 그 자리를 잇는다", () => {
+    const thought = update(2, { sessionUpdate: "agent_thought_chunk", messageId: "m", content: { type: "text", text: "살펴본다" } });
+    const markup = flow([sent, thought, compacting(3)]);
+    expect(markup).toContain(WORDS);
+    expect(markup).not.toContain("생각 중");
+  });
+
+  it("끝나지 않은 줄도 턴이 끝나면 걷힌다", () => {
+    const ended: RecordLine = { seq: 3, at: at(3), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } };
+    expect(flow([sent, compacting(2), ended])).not.toContain(WORDS);
+  });
+});

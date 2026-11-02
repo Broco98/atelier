@@ -75,6 +75,8 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 /// - `2.1.316/stream-thinking` — 생각 조각에 글이 실린 한 턴. 이 녹음만 `--thinking-display summarized`를 더해 떴다.
 /// - `2.1.316/stream-permission` — 조각이 든 승인의 두 턴: 작업 자리 밖 `Write`를 허락한 턴과 거부한 턴.
 /// - `2.1.316/stream-interrupt` — 답이 흐르는 도중에 interrupt로 멈춘 턴과 맥락을 이어 답한 턴. 멈춘 턴의 완성 줄은 그때까지 낸 글이다.
+/// - `2.1.316/stream-compact` — 말 두 턴 · `/compact`의 턴 · 정리한 맥락으로 답한 턴(restart 티켓 01b-4). 정리의 턴은 답이 없다.
+/// - `2.1.316/stream-compact-empty` — 정리할 것이 없는 첫 턴의 `/compact`(`compact_result: "failed"`, 까닭은 `<synthetic>` 답)와 다음 턴.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -98,6 +100,8 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.316/stream-thinking", include_str!("../../tests/fixtures/claude-2.1.316/stream-thinking.jsonl")),
     ("2.1.316/stream-permission", include_str!("../../tests/fixtures/claude-2.1.316/stream-permission.jsonl")),
     ("2.1.316/stream-interrupt", include_str!("../../tests/fixtures/claude-2.1.316/stream-interrupt.jsonl")),
+    ("2.1.316/stream-compact", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact.jsonl")),
+    ("2.1.316/stream-compact-empty", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact-empty.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
@@ -181,9 +185,10 @@ struct Turn {
     spontaneous: bool,
 }
 
-/// 원문을 띄우자마자 낼 줄들과 턴들로 가른다 — 턴은 `system/init`에서 시작해 `result`에서 끝난다. 첫 `init` 앞의 줄은
-/// 띄우자마자 내고, `result`와 다음 `init` 사이의 줄은 앞 턴에 붙인다. 원문의 `control_response`는 뺀다 — 잰 쪽이 보낸
-/// 제어 요청의 답이라, 되감기는 받은 제어 요청에 스스로 답한다. 다만 interrupt의 답(`still_queued`)은 그 자리에 멈춤을 남긴다.
+/// 원문을 띄우자마자 낼 줄들과 턴들로 가른다 — 턴은 `system/init`에서 시작해 `result`에서 끝난다. `/compact`의 턴만
+/// `status: "compacting"`이 `init`보다 앞서므로 그 줄에서 시작한다(2.1.316 실측). 첫 턴 앞의 줄은 띄우자마자 내고, `result`와
+/// 다음 턴 사이의 줄은 앞 턴에 붙인다. 원문의 `control_response`는 뺀다 — 잰 쪽이 보낸 제어 요청의 답이라, 되감기는 받은
+/// 제어 요청에 스스로 답한다. 다만 interrupt의 답(`still_queued`)은 그 자리에 멈춤을 남긴다.
 fn fixture_turns(text: &str) -> (Vec<Step>, Vec<Turn>) {
     let mut startup = Vec::new();
     let mut turns: Vec<Turn> = Vec::new();
@@ -194,8 +199,9 @@ fn fixture_turns(text: &str) -> (Vec<Step>, Vec<Turn>) {
             Some("control_response") => continue,
             _ => Step::Line(value.clone()),
         };
-        let is_init = value["type"] == "system" && value["subtype"] == "init";
-        if is_init && !open {
+        let system = value["type"] == "system";
+        let starts_turn = system && (value["subtype"] == "init" || value["status"] == "compacting");
+        if starts_turn && !open {
             turns.push(Turn::default());
             open = true;
         }

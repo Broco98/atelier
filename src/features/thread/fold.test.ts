@@ -1305,3 +1305,96 @@ describe("계획 체크리스트", () => {
     expect(checklists(foldThread(blessed))).toEqual([]);
   });
 });
+
+// 대화 정리(01b-4 · 스토리 51 · 52) — Claude 변환기와 Codex가 같은 도구 줄(`Compact conversation`, `think`)로 알린다. 접기는 이 제목으로 줄을 가려 작업
+// 로그에 넣지 않고, 턴이 열려 있고 줄이 끝나지 않은 동안만 정리 중이라고 말한다. 바탕은 엔진이 `/compact` 녹음으로 쓴 기록이다 — seq 19가 정리의
+// 시작, 20이 그 끝, 21이 그 턴의 끝이다.
+describe("대화 정리", () => {
+  const compact = record("thread-compact");
+  const tools = (model: ThreadModel) => model.turns.flatMap((turn) => turn.entries.filter((entry) => entry.kind === "tool"));
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "/compact" } };
+  const opened = (seq = 2) =>
+    update(seq, seq, { sessionUpdate: "tool_call", toolCallId: "compact", title: "Compact conversation", kind: "think", status: "in_progress" });
+  const closed = (seq: number, status: string) => update(seq, seq, { sessionUpdate: "tool_call_update", toolCallId: "compact", status });
+  const ended = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } });
+
+  it("줄이 끝나지 않은 동안만 정리 중이다", () => {
+    expect(foldThread(through(compact, 18)).compacting).toBe(false);
+    expect(foldThread(through(compact, 19)).compacting).toBe(true);
+    expect(foldThread(through(compact, 20)).compacting).toBe(false);
+    expect(foldThread(compact).compacting).toBe(false);
+  });
+
+  it("실패로 끝나도 정리는 끝났다", () => {
+    expect(foldThread([sent, opened(), closed(3, "failed")]).compacting).toBe(false);
+  });
+
+  it("정리 중에는 「답하는 중」이 서지 않고, 끝난 뒤 아직 답이 없으면 다시 선다", () => {
+    expect(answeringLine(foldThread(through(compact, 19)))).toBe(false);
+    expect(answeringLine(foldThread(through(compact, 20)))).toBe(true);
+  });
+
+  it("줄이 작업 로그에 들지 않는다 — 정리만 한 턴에는 구분선도 서지 않는다", () => {
+    const model = foldThread(compact);
+    expect(tools(model)).toEqual([]);
+    const turn = model.turns[2];
+    expect(turn.sent).toBe("/compact");
+    expect(turn.entries).toEqual([]);
+    expect(workLine(turn)).toBeNull();
+  });
+
+  it("끝나지 않은 줄은 턴이 끝나면 닫힌다", () => {
+    const model = foldThread([sent, opened(), ended(3)]);
+    expect(model.compacting).toBe(false);
+    expect(tools(model)).toEqual([]);
+  });
+
+  it("끝나지 않은 줄은 Session이 사라져도 닫힌다", () => {
+    const died: RecordLine = { seq: 3, at: at(3), kind: "session", payload: { state: "died" } };
+    expect(foldThread([sent, opened(), died]).compacting).toBe(false);
+    expect(foldThread([sent, opened()], 2).compacting).toBe(false);
+  });
+
+  it("턴이 끝난 뒤 온 끝은 줄을 세우지 않고, 다음 정리는 새로 선다", () => {
+    const late = foldThread([sent, opened(), ended(3), closed(4, "completed")]);
+    expect(tools(late)).toEqual([]);
+    const again: RecordLine = { ...sent, seq: 5, at: at(5) };
+    expect(foldThread([sent, opened(), ended(3), again, opened(6)]).compacting).toBe(true);
+  });
+
+  it("보낸 말 없이 온 정리도 턴을 세운다 — 그 턴의 끝에 닫힌다", () => {
+    const model = foldThread([opened(1)]);
+    expect(model.running).toBe(true);
+    expect(model.compacting).toBe(true);
+    const outOfTurn: RecordLine = { seq: 2, at: at(2), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000, outOfTurn: true } };
+    expect(foldThread([opened(1), outOfTurn]).running).toBe(false);
+  });
+
+  it("`Guardian Review`는 같은 종류여도 도구 줄로 남는다", () => {
+    const guardian = update(2, 2, {
+      sessionUpdate: "tool_call",
+      toolCallId: "guardian_assessment:edb67edb",
+      kind: "think",
+      title: "Guardian Review",
+      status: "in_progress",
+      content: [{ type: "content", content: { type: "text", text: "Status: In progress\nAction: MCP mark on atelier-thread" } }],
+    });
+    const model = foldThread([sent, guardian]);
+    expect(tools(model).map((tool) => tool.kind === "tool" && tool.call.title)).toEqual(["Guardian Review"]);
+    expect(model.compacting).toBe(false);
+  });
+
+  it("서브에이전트의 설명이 같은 글이어도 도구 줄로 남는다", () => {
+    const agent = update(2, 2, {
+      sessionUpdate: "tool_call",
+      toolCallId: "agent",
+      title: "Compact conversation",
+      kind: "think",
+      status: "in_progress",
+      _meta: { claudeCode: { toolName: "Agent", subagent: { subagentType: "general-purpose", description: "Compact conversation" } } },
+    });
+    const model = foldThread([sent, agent]);
+    expect(tools(model)).toHaveLength(1);
+    expect(model.compacting).toBe(false);
+  });
+});

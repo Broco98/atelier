@@ -1,0 +1,5 @@
+{"type": "control_request", "request_id": "req_6e62fb27", "request": {"subtype": "initialize"}}
+{"type": "user", "message": {"role": "user", "content": "Remember the word lantern. Reply with one word: ok"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "Say one short sentence about lanterns."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "/compact"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "Which word did I ask you to remember? Reply with that one word."}, "parent_tool_use_id": null, "session_id": ""}

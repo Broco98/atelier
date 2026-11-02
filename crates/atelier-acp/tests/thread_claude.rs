@@ -229,6 +229,36 @@ fn 서브에이전트의_안쪽_줄이_그_도구_줄의_update로_기록되고_
     common::assert_record("thread-subagent", &settled(&sandbox, &record, &thread, &session));
 }
 
+/// `/compact`의 턴은 정리 줄 하나로 적히고 요약문은 기록에 없다 — 화면의 접기(`fold.ts`)가 이 기록에서 「대화를 정리하는 중」을 짓는다. 흐르는
+/// 시험(L2)이 엔진이 실제로 쓴 줄을 재도록 축복해 둔다.
+#[test]
+fn 대화_정리는_도구_줄로_기록되고_요약문은_기록되지_않고_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.316/stream-compact", &[], "Remember the word lantern. Reply with one word: ok");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "Say one short sentence about lanterns.").expect("둘째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.send_to_thread(&thread, "/compact").expect("정리");
+    sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    host.send_to_thread(&thread, "Which word did I ask you to remember? Reply with that one word.").expect("넷째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 4);
+
+    let compact = &record[turn_end_at(&record, 1) + 1..turn_end_at(&record, 2)];
+    let updates: Vec<&Value> = compact.iter().filter(|line| line["kind"] == "update").map(|line| &line["payload"]["update"]).collect();
+    assert_eq!(updates.len(), 2, "정리의 턴은 도구 줄과 그 끝이다:\n{}", common::lines_text(compact));
+    assert_eq!((&updates[0]["title"], &updates[0]["kind"]), (&json!("Compact conversation"), &json!("think")));
+    assert_eq!(
+        (&updates[1]["toolCallId"], &updates[1]["status"]),
+        (&updates[0]["toolCallId"], &json!("completed")),
+        "같은 줄이 닫힌다"
+    );
+    let text = common::lines_text(&record);
+    assert!(!text.contains("Primary Request"), "요약문은 기록에 없다:\n{text}");
+
+    host.shut_down();
+    common::assert_record("thread-compact", &settled(&sandbox, &record, &thread, &session));
+}
+
 #[test]
 fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기다렸다가_간다() {
     let sandbox = Sandbox::new();
