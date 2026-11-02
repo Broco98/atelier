@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, listShows, shownServices, serviceGraph, serviceMenu, serviceStarts, serviceWorks } from "./service-view";
+import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, listShows, scopeMenu, shownServices, serviceGraph, serviceMenu, serviceStarts, serviceWorks } from "./service-view";
 import type { SharedService, Service } from "./types";
 
 const service = (over: Partial<Service> = {}): Service => ({
@@ -201,13 +201,48 @@ describe("Service 메뉴(03 §5 · §10)", () => {
     expect(serviceMenu([service({ projects: [] })], null, 2).rows?.[0].projects).toBe("Project 없음");
   });
 
-  // 트레이의 Service 칩이 여는 메뉴(06 · F4-KitComposer 「Service 칩 메뉴」) — 맨 위가 늘 「Service 없음」이고 곁말이 「… 읽기」다. 빼기는 칩의 ×가 한다.
-  it("Service 칩의 메뉴는 맨 위가 늘 「Service 없음 — 등록된 Project N개 읽기」이고 지금이면 ✓다", () => {
-    expect(serviceMenu(services, null, 3, "chip").top).toEqual({ kind: "none", label: "Service 없음", note: "등록된 Project 3개 읽기", current: true });
-    const picked = serviceMenu(services, "결제-서비스", 3, "chip");
-    expect(picked.top).toEqual({ kind: "none", label: "Service 없음", note: "등록된 Project 3개 읽기", current: false });
-    expect(picked.rows?.find((row) => row.current)?.slug).toBe("결제-서비스");
-    expect(serviceMenu([], null, 0, "chip").top).toEqual({ kind: "none", label: "Service 없음", note: "등록된 Project가 없어요", current: true });
+});
+
+// 시안 Composer 「범위 메뉴」 칸의 글 그대로다 — 범위 없음 · Service 줄 · Project 줄.
+describe("범위 메뉴", () => {
+  const services = [
+    service(),
+    service({ slug: "깨진", name: "", projects: [], problems: [{ line: 3, kind: "unknownProject", project: "x", message: "등록되지 않은 Project예요" }] }),
+  ];
+  const projects = [
+    { slug: "atelier", name: "Atelier", path: "~/MyProjects/atelier" },
+    { slug: "backend", name: "backend", path: "~/work/payments/backend" },
+  ];
+  const NONE = { pick: null, name: "범위 없음", note: "등록된 Project 전부", troubled: false };
+  const PAYMENTS = { pick: { kind: "service", slug: "결제-서비스" }, name: "결제 서비스", note: "Service · Project 2개", troubled: false };
+  const BROKEN = { pick: { kind: "service", slug: "깨진" }, name: "깨진", note: "Service · Project 없음", troubled: true };
+  const ATELIER = { pick: { kind: "project", slug: "atelier" }, name: "Atelier", note: "Project · ~/MyProjects/atelier", troubled: false };
+  const BACKEND = { pick: { kind: "project", slug: "backend" }, name: "backend", note: "Project · ~/work/payments/backend", troubled: false };
+
+  it("범위 없음 · Service · Project 차례로 서고 지금 것에 ✓다", () => {
+    expect(scopeMenu(services, projects, null, true)).toEqual([
+      { ...NONE, current: true },
+      { ...PAYMENTS, current: false },
+      { ...BROKEN, current: false },
+      { ...ATELIER, current: false },
+      { ...BACKEND, current: false },
+    ]);
+    const current = (held: Parameters<typeof scopeMenu>[2]) => scopeMenu(services, projects, held, true).filter((row) => row.current).map((row) => row.name);
+    expect(current({ kind: "service", slug: "결제-서비스" })).toEqual(["결제 서비스"]);
+    expect(current({ kind: "project", slug: "backend" })).toEqual(["backend"]);
+  });
+
+  it("같은 slug의 Service와 Project를 가른다", () => {
+    const both = scopeMenu([service({ slug: "atelier", name: "앱" })], projects, { kind: "project", slug: "atelier" }, true);
+    expect(both.filter((row) => row.current).map((row) => row.pick)).toEqual([{ kind: "project", slug: "atelier" }]);
+  });
+
+  it("작업공간을 고른 동안은 Project 줄이 서지 않는다 — Project 범위는 작업공간 밖의 값이다", () => {
+    expect(scopeMenu(services, projects, null, false).map((row) => row.name)).toEqual(["범위 없음", "결제 서비스", "깨진"]);
+  });
+
+  it("등록된 Project가 없으면 범위 없음이 그렇게 말한다", () => {
+    expect(scopeMenu([], [], null, true)).toEqual([{ ...NONE, note: "등록된 Project가 없어요", current: true }]);
   });
 });
 

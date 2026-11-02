@@ -4,8 +4,9 @@
 //!
 //! 규칙(§7):
 //! 1. Service를 정한다 — Work에 이었으면 그 Work의 `service`, 아니면 Thread의 `service`([`ScopeOf::thread`]). 그 slug의 Service 파일이 없으면
-//!    Service가 없는 것이다.
-//! 2. 바탕 — Service가 있으면 그 Service의 `projects` 가운데 등록된 것(적힌 차례), 없으면 등록된 Project 전부(이름 차례).
+//!    Service가 없는 것이다. Project 범위는 Work 밖 Thread의 값이고 Service와 함께 서지 않는다 — 등록되지 않은 slug면 Project 범위가 없는 것이다.
+//! 2. 바탕 — Service가 있으면 그 Service의 `projects` 가운데 등록된 것(적힌 차례), Project 범위가 있으면 그 Project 하나, 없으면 등록된
+//!    Project 전부(이름 차례).
 //! 3. 더한다 — Work의 Project 가운데 아직 worktree가 없는 것, 그리고 「읽기만 하기」로 허락한 Project(`readOnlyProjects`).
 //! 4. 뺀다 — 폴더를 찾을 수 없는 Project, 그리고 이 Work에 worktree가 있는 Project(그 Project는 worktree에서 일한다).
 //!
@@ -19,25 +20,27 @@ use crate::threads::ThreadFile;
 use crate::work::Work;
 use crate::Result;
 
-/// 범위를 셀 자리 — 이은 Work, 정해진 Service(규칙 1을 지난 것), 「읽기만 하기」로 허락한 Project.
+/// 범위를 셀 자리 — 이은 Work, 정해진 Service(규칙 1을 지난 것), Project 범위, 「읽기만 하기」로 허락한 Project.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ScopeOf<'a> {
     /// 이은 Work — 읽어 온 `work.json`. 없으면 Work 없는 Thread다(보내기 전 새 Thread의 「Work 없이 대화」 · 「새 Work」도).
     pub work: Option<&'a Work>,
     /// Service의 slug.
     pub service: Option<&'a str>,
+    /// Project 범위의 slug — Work 밖 Thread의 값이다. Work나 Service가 있으면 읽지 않는다.
+    pub project: Option<&'a str>,
     pub read_only: &'a [String],
 }
 
 impl<'a> ScopeOf<'a> {
     /// Thread 하나의 자리 — 규칙 1이 여기 있다. Work에 이은 Thread는 그 Work의 `service`를 따르고 Thread의 칸은 보지 않는다(§9). 이은
-    /// Work를 읽지 못했으면(보관 · 지움) Service도 없다.
+    /// Work를 읽지 못했으면(보관 · 지움) Service도 없다. Project 범위도 Work 밖 Thread만 읽는다.
     pub fn thread(file: &'a ThreadFile, work: Option<&'a Work>) -> Self {
-        let service = match &file.work {
-            Some(_) => work.and_then(|work| work.service.as_deref()),
-            None => file.service.as_deref(),
+        let (service, project) = match &file.work {
+            Some(_) => (work.and_then(|work| work.service.as_deref()), None),
+            None => (file.service.as_deref(), file.project.as_deref()),
         };
-        Self { work: work.filter(|_| file.work.is_some()), service, read_only: &file.read_only_projects }
+        Self { work: work.filter(|_| file.work.is_some()), service, project, read_only: &file.read_only_projects }
     }
 }
 
@@ -47,6 +50,8 @@ impl<'a> ScopeOf<'a> {
 pub struct ReadingScope {
     /// 정해진 Service — 그 파일이 있을 때만 선다.
     pub service: Option<ScopeService>,
+    /// 정해진 Project 범위 — 등록된 Project일 때만 서고, Service와 함께 서지 않는다.
+    pub project: Option<PickedProject>,
     /// 읽는 Project — 함께 여는 폴더의 차례다(바탕 → Work → 읽기만).
     pub projects: Vec<ScopeProject>,
     /// 이 Work의 worktree에서 일하는 Project(규칙 4로 뺀 것 — 등록된 것만) — 바탕 차례(Service 파일 · 등록부) 뒤 Work 차례. 범위 줄 ·
@@ -92,12 +97,22 @@ pub struct WorkedProject {
     pub name: String,
 }
 
+/// Project 범위로 고른 Project 하나.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedProject {
+    pub slug: String,
+    pub name: String,
+}
+
 /// 왜 읽나(§7 「읽는 Project(slug · 이름 · 왜 읽나)」).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ScopeWhy {
     /// 그 Service에 들어 있다.
     Service,
+    /// Project 범위로 골랐다.
+    Project,
     /// Service가 없어 등록된 Project 전부를 읽는다.
     All,
     /// 이 Work의 Project인데 아직 worktree가 없다.
@@ -108,13 +123,14 @@ pub enum ScopeWhy {
 
 /// 범위 줄의 갈래(§5) — 「등록된 Project N개를 읽어요」 · 「web-app · api-server를 읽어요」 · 「읽는 Project가 없어요」 · 「등록된
 /// Project가 없어요 · Project 추가」. 「빈 Service」는 Service 파일에 Project가 하나도 적히지 않았을 때만이다 — 닫히지 않은 파일도 적힌
-/// 것을 읽지 못해 빈 것이다. 적힌 것을 worktree가 다 덮었거나 하나도 읽을 수 없어도 `Service`다.
+/// 것을 읽지 못해 빈 것이다. 적힌 것을 worktree가 다 덮었거나 하나도 읽을 수 없어도 `Service`다. `Project`도 폴더가 사라져 읽을 수 없어도 그대로다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ScopeKind {
     All,
     Service,
     EmptyService,
+    Project,
     NoProjects,
 }
 
@@ -123,6 +139,11 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
     let registered = crate::store::read_projects(&crate::paths::projects_in(data_root)).unwrap_or_default();
     // 규칙 1 — 그 slug의 파일이 없으면(지웠다 · 손으로 지웠다 · 경로를 품은 slug) Service가 없다.
     let service = of.service.and_then(|slug| crate::service::get_service(data_root, slug).ok());
+    // 규칙 1 — Project 범위는 Work 밖 Thread의 값이고 Service와 함께 서지 않는다. 등록되지 않은 slug면 없는 것이다.
+    let picked = of
+        .project
+        .filter(|_| of.work.is_none() && service.is_none())
+        .and_then(|slug| registered.iter().find(|project| project.slug == slug));
     // 이 Work에 worktree가 선 Project — 그 Project는 worktree에서 일한다(규칙 4). 서지 않은 것은 읽기로 더한다(규칙 3).
     let (mut worked, mut waiting) = (Vec::new(), Vec::new());
     if let Some(work) = of.work {
@@ -144,9 +165,10 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
         }
     };
     // 규칙 2 — 바탕. 등록되지 않은 것(문제 있는 Service)은 `read`가 건너뛴다.
-    match &service {
-        Some(service) => service.projects.iter().for_each(|slug| read(slug, ScopeWhy::Service)),
-        None => registered.iter().for_each(|project| read(&project.slug, ScopeWhy::All)),
+    match (&service, picked) {
+        (Some(service), _) => service.projects.iter().for_each(|slug| read(slug, ScopeWhy::Service)),
+        (None, Some(project)) => read(&project.slug, ScopeWhy::Project),
+        (None, None) => registered.iter().for_each(|project| read(&project.slug, ScopeWhy::All)),
     }
     // 규칙 3 — 바탕에 이미 든 것은 그 까닭 그대로다.
     waiting.iter().for_each(|slug| read(slug, ScopeWhy::Work));
@@ -155,6 +177,7 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
         _ if registered.is_empty() => ScopeKind::NoProjects,
         Some(service) if service.projects.is_empty() => ScopeKind::EmptyService,
         Some(_) => ScopeKind::Service,
+        None if picked.is_some() => ScopeKind::Project,
         None => ScopeKind::All,
     };
     // worktree에서 일하는 Project — 바탕 차례 뒤 Work 차례, 등록된 것만 한 번씩.
@@ -177,17 +200,24 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
         file: service.file_in(data_root),
         slug: service.slug,
     });
-    ReadingScope { service, projects, worked: worked_in, kind, registered: registered.len() }
+    let project = picked.map(|project| PickedProject { slug: project.slug.clone(), name: project.name.clone() });
+    ReadingScope { service, project, projects, worked: worked_in, kind, registered: registered.len() }
 }
 
 /// 앱이 묻는 읽는 범위(명령 `reading_scope`) — `thread`가 있으면 그 Thread(`thread.json`과 이은 Work를 읽는다), 없으면 보내기 전의 새
-/// Thread(입력창이 쥔 Work · Service)다. 새 Thread의 Service는 입력창이 쥔 것 그대로다 — 최근 Work를 고르면 입력창이 그 Work의 Service를
-/// 쥐고, 바꾼 Service는 첫 말 때 그 Work에 적는다(03 S4). 없는 Thread · 없는 Work는 그 까닭으로 실패한다. Thread와 입력창의 Work · Service를
-/// 함께 주면 거절한다 — Thread의 범위는 그 파일이 정해, 함께 준 것을 말없이 버리게 된다.
-pub fn reading_scope_of(data_root: &Path, thread: Option<&str>, work: Option<&str>, service: Option<&str>) -> Result<ReadingScope> {
+/// Thread(입력창이 쥔 Work · Service · Project)다. 새 Thread의 Service는 입력창이 쥔 것 그대로다 — 최근 Work를 고르면 입력창이 그 Work의 Service를
+/// 쥐고, 바꾼 Service는 첫 말 때 그 Work에 적는다(03 S4). 없는 Thread · 없는 Work는 그 까닭으로 실패한다. Thread와 입력창의 Work · Service ·
+/// Project를 함께 주면 거절한다 — Thread의 범위는 그 파일이 정해, 함께 준 것을 말없이 버리게 된다.
+pub fn reading_scope_of(
+    data_root: &Path,
+    thread: Option<&str>,
+    work: Option<&str>,
+    service: Option<&str>,
+    project: Option<&str>,
+) -> Result<ReadingScope> {
     let works = crate::paths::works_in(data_root);
-    if thread.is_some() && (work.is_some() || service.is_some()) {
-        return Err(crate::Error::Validation("읽는 범위는 채팅 하나이거나 입력창의 작업공간 · Service다 — 둘을 함께 주지 않는다".to_owned()));
+    if thread.is_some() && (work.is_some() || service.is_some() || project.is_some()) {
+        return Err(crate::Error::Validation("읽는 범위는 채팅 하나이거나 입력창의 작업공간 · 범위다 — 둘을 함께 주지 않는다".to_owned()));
     }
     if let Some(thread) = thread {
         let file = crate::threads::read_thread(data_root, thread)?;
@@ -195,7 +225,7 @@ pub fn reading_scope_of(data_root: &Path, thread: Option<&str>, work: Option<&st
         return Ok(reading_scope(data_root, &ScopeOf::thread(&file, work.as_ref())));
     }
     let work = work.map(|slug| crate::works::read_work(&works, slug)).transpose()?;
-    Ok(reading_scope(data_root, &ScopeOf { work: work.as_ref(), service, read_only: &[] }))
+    Ok(reading_scope(data_root, &ScopeOf { work: work.as_ref(), service, project, read_only: &[] }))
 }
 
 #[cfg(test)]
@@ -362,7 +392,7 @@ mod tests {
         let half = work_named(&home, "half", &["api-server"], &["api-server"], None);
         let mixed = work_named(&home, "mixed", &["backoffice", "ghost", "web-app"], &["backoffice", "ghost", "web-app"], None);
         fn of<'a>(service: Option<&'a str>, work: Option<&'a Work>) -> ScopeOf<'a> {
-            ScopeOf { work, service, read_only: &[] }
+            ScopeOf { work, service, ..ScopeOf::default() }
         }
 
         let rows: [(&str, ScopeOf, ScopeKind, &[&str], &[&str]); 6] = [
@@ -397,7 +427,7 @@ mod tests {
         let work = work(&home, &["api-server", "backoffice"], &["api-server"], Some("결제-서비스"));
         let read_only = vec!["docs".to_owned(), "web-app".to_owned()];
 
-        let scope = reading_scope(&home.root(), &ScopeOf { work: Some(&work), service: Some("결제-서비스"), read_only: &read_only });
+        let scope = reading_scope(&home.root(), &ScopeOf { work: Some(&work), service: Some("결제-서비스"), project: None, read_only: &read_only });
 
         assert_eq!(
             read(&scope),
@@ -406,7 +436,7 @@ mod tests {
         );
         assert_eq!(scope.kind, ScopeKind::Service);
 
-        let all = reading_scope(&home.root(), &ScopeOf { work: Some(&work), service: None, read_only: &[] });
+        let all = reading_scope(&home.root(), &ScopeOf { work: Some(&work), ..ScopeOf::default() });
         assert_eq!(
             read(&all),
             [("backoffice", ScopeWhy::All), ("docs", ScopeWhy::All), ("web-app", ScopeWhy::All)],
@@ -427,6 +457,75 @@ mod tests {
         let of = ScopeOf::thread(&linked, Some(&work));
         assert_eq!((of.work.map(|work| work.slug.as_str()), of.service), (Some("refund"), Some("사내-도구")), "Thread의 칸은 보지 않는다");
         assert_eq!(ScopeOf::thread(&linked, None).service, None, "이은 Work를 읽지 못하면 Service도 없다");
+    }
+
+    #[test]
+    fn thread의_project_범위는_work_밖에서만_읽는다() {
+        let home = Home::new();
+        let loose = ThreadFile { project: Some("web-app".into()), ..ThreadFile::default() };
+        assert_eq!(ScopeOf::thread(&loose, None).project, Some("web-app"));
+
+        let work = work(&home, &[], &[], None);
+        let linked = ThreadFile { work: Some("refund".into()), project: Some("web-app".into()), ..ThreadFile::default() };
+        assert_eq!(ScopeOf::thread(&linked, Some(&work)).project, None);
+        assert_eq!(ScopeOf::thread(&linked, None).project, None, "이은 Work를 읽지 못해도 Project 범위로 돌아가지 않는다");
+    }
+
+    #[test]
+    fn project_범위는_그_project_하나를_바탕으로_읽는다() {
+        let home = Home::new();
+        home.register("web-app").register("api-server").register("docs");
+
+        let scope = reading_scope(&home.root(), &ScopeOf { project: Some("api-server"), ..ScopeOf::default() });
+
+        assert_eq!(read(&scope), [("api-server", ScopeWhy::Project)]);
+        assert_eq!((scope.kind, scope.registered, scope.service.clone()), (ScopeKind::Project, 3, None));
+        assert_eq!(scope.project, Some(PickedProject { slug: "api-server".into(), name: "api-server".into() }));
+        assert_eq!(scope.projects[0].folder, home.folder("api-server"), "함께 여는 폴더는 등록부의 자리다");
+
+        let read_only = vec!["docs".to_owned()];
+        let plus = reading_scope(&home.root(), &ScopeOf { project: Some("api-server"), read_only: &read_only, ..ScopeOf::default() });
+        assert_eq!(read(&plus), [("api-server", ScopeWhy::Project), ("docs", ScopeWhy::ReadOnly)], "「읽기만 하기」는 바탕에 더한다");
+    }
+
+    #[test]
+    fn 범위_없음과_service는_project_칸이_없어도_지금과_같은_범위를_낸다() {
+        let home = Home::new();
+        home.register("web-app").register("api-server");
+        home.service("결제-서비스", "---\nname: 결제 서비스\nprojects:\n  - web-app\n---\n");
+
+        let none = reading_scope(&home.root(), &ScopeOf::default());
+        assert_eq!((read(&none), none.kind, none.project.clone()), (vec![("api-server", ScopeWhy::All), ("web-app", ScopeWhy::All)], ScopeKind::All, None));
+
+        let service = reading_scope(&home.root(), &ScopeOf { service: Some("결제-서비스"), ..ScopeOf::default() });
+        assert_eq!((read(&service), service.kind, service.project.clone()), (vec![("web-app", ScopeWhy::Service)], ScopeKind::Service, None));
+    }
+
+    #[test]
+    fn 등록되지_않은_project는_범위가_없는_것이고_폴더가_사라진_project는_읽을_것이_없다() {
+        let home = Home::new();
+        home.register("web-app").register_missing("gone");
+
+        let unknown = reading_scope(&home.root(), &ScopeOf { project: Some("지운-것"), ..ScopeOf::default() });
+        assert_eq!((read(&unknown), unknown.kind, unknown.project.clone()), (vec![("web-app", ScopeWhy::All)], ScopeKind::All, None), "Service 파일이 없을 때와 같다");
+
+        let gone = reading_scope(&home.root(), &ScopeOf { project: Some("gone"), ..ScopeOf::default() });
+        assert_eq!((read(&gone), gone.kind), (vec![], ScopeKind::Project), "고른 것은 그대로 서고 등록된 전부로 넓히지 않는다");
+        assert_eq!(gone.project.map(|project| project.slug).as_deref(), Some("gone"));
+    }
+
+    #[test]
+    fn project_범위는_service나_work와_함께_서지_않는다() {
+        let home = Home::new();
+        home.register("web-app").register("api-server");
+        home.service("결제-서비스", "---\nname: 결제 서비스\nprojects:\n  - web-app\n---\n");
+
+        let both = reading_scope(&home.root(), &ScopeOf { service: Some("결제-서비스"), project: Some("api-server"), ..ScopeOf::default() });
+        assert_eq!((read(&both), both.kind, both.project.clone()), (vec![("web-app", ScopeWhy::Service)], ScopeKind::Service, None), "Service가 이긴다");
+
+        let work = work(&home, &[], &[], None);
+        let in_work = reading_scope(&home.root(), &ScopeOf { work: Some(&work), project: Some("api-server"), ..ScopeOf::default() });
+        assert_eq!((in_work.kind, in_work.project), (ScopeKind::All, None), "Project 범위는 작업공간 밖 채팅의 값이다");
     }
 
     /// 앱이 묻는 범위 — Thread 하나는 `thread.json`과 이은 Work를 읽어 세고, 보내기 전의 새 Thread는 입력창이 쥔 Work · Service로 센다.
@@ -452,19 +551,25 @@ mod tests {
         .unwrap()
         .id;
 
-        let linked = reading_scope_of(&home.root(), Some(&thread), None, None).unwrap();
+        let linked = reading_scope_of(&home.root(), Some(&thread), None, None, None).unwrap();
         assert_eq!(read(&linked), [("web-app", ScopeWhy::Service)], "이은 Work의 Service를 따르고 worktree가 선 api-server는 뺀다");
         assert_eq!(linked.service.map(|service| service.slug).as_deref(), Some("결제-서비스"));
 
-        let fresh = reading_scope_of(&home.root(), None, Some("refund"), None).unwrap();
+        let fresh = reading_scope_of(&home.root(), None, Some("refund"), None, None).unwrap();
         assert_eq!((read(&fresh), fresh.kind), (vec![("web-app", ScopeWhy::All)], ScopeKind::All), "입력창이 쥔 Service가 앞선다 — 비웠으면 없다");
-        let picked = reading_scope_of(&home.root(), None, None, Some("결제-서비스")).unwrap();
+        let picked = reading_scope_of(&home.root(), None, None, Some("결제-서비스"), None).unwrap();
         assert_eq!(read(&picked), [("web-app", ScopeWhy::Service)]);
-        assert!(matches!(reading_scope_of(&home.root(), None, Some("nope"), None), Err(crate::Error::WorkNotFound(_))));
-        assert!(reading_scope_of(&home.root(), Some("20990101-000000"), None, None).is_err(), "없는 Thread");
+        let project = reading_scope_of(&home.root(), None, None, None, Some("api-server")).unwrap();
+        assert_eq!((read(&project), project.kind), (vec![("api-server", ScopeWhy::Project)], ScopeKind::Project));
+        assert!(matches!(reading_scope_of(&home.root(), None, Some("nope"), None, None), Err(crate::Error::WorkNotFound(_))));
+        assert!(reading_scope_of(&home.root(), Some("20990101-000000"), None, None, None).is_err(), "없는 Thread");
         assert!(
-            matches!(reading_scope_of(&home.root(), Some(&thread), Some("refund"), None), Err(crate::Error::Validation(_))),
+            matches!(reading_scope_of(&home.root(), Some(&thread), Some("refund"), None, None), Err(crate::Error::Validation(_))),
             "Thread의 범위는 그 파일이 정한다 — 입력창의 Work · Service를 함께 주면 말없이 버리지 않고 거절한다"
+        );
+        assert!(
+            matches!(reading_scope_of(&home.root(), Some(&thread), None, None, Some("web-app")), Err(crate::Error::Validation(_))),
+            "입력창의 Project도 같다"
         );
     }
 }

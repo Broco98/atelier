@@ -1,6 +1,6 @@
 //! Service와 이어짐(03 구현 스펙 §7 · §9 · 티켓 05) — Work · Thread의 `service` 한 칸을 붙이고 · 바꾸고 · 빼고, 흐름에 Service 줄을 남긴다.
 //!
-//! - **Work에 이은 Thread의 Service는 그 Work의 것이다**(§9) — Thread에서 바꾸면(Service 칩) 그 Work의 Service가 바뀐다(스토리 42). Work의
+//! - **Work에 이은 Thread의 Service는 그 Work의 것이다**(§9) — Thread에서 바꾸면(Service 도구) 그 Work의 Service가 바뀐다(스토리 42). Work의
 //!   Service가 바뀌면 그 Work의 Thread마다 Service 줄이 선다(S9) — 그 Thread들의 범위가 모두 바뀐다.
 //! - **Service 줄**(`service`)은 시스템 줄이다. 갈래 다섯(`change` — 사람이 칩 · 메뉴로 한 바꿈 `changed` · 뺌 `removed`,
 //!   Host 「묻지 않음」의 붙임 `attached`(08), 지워짐 `deleted` · 되돌림 `restored`(07))과 바뀐 뒤의 범위(읽는 Project의 이름 · 등록된
@@ -43,8 +43,8 @@ impl ServiceChoice {
 }
 
 impl ConversationHost {
-    /// Thread의 Service 붙이기 · 바꾸기 · 빼기(`None`) — `thread.json`의 `service`만 고치고 Service 줄을 남긴다. Work에 이은 Thread면 그 Work의
-    /// Service를 바꾼다([`Self::set_work_service`]). 같은 Service면 아무것도 하지 않는다. 없는 Service는 아무것도 적지 않고 거절한다.
+    /// Thread의 Service 붙이기 · 바꾸기 · 빼기(`None`) — `thread.json`의 `service`를 고치고 Project 범위를 지운 뒤 Service 줄을 남긴다. Work에 이은
+    /// Thread면 그 Work의 Service를 바꾼다([`Self::set_work_service`]). 범위가 같으면 아무것도 하지 않는다. 없는 Service는 아무것도 적지 않고 거절한다.
     pub fn set_thread_service(&self, thread: &str, service: Option<&str>) -> Result<(), HostError> {
         self.put_thread_service(thread, service, Change::Picked, false)
     }
@@ -63,11 +63,15 @@ impl ConversationHost {
             return self.put_work_service(work, service, change, folded.then_some(thread));
         }
         self.require_service(service)?;
-        if file.service.as_deref() == service {
+        if file.service.as_deref() == service && file.project.is_none() {
             return Ok(());
         }
         let before = file.service;
-        let file = self.change_thread(thread, |file| file.service = service.map(str::to_owned))?;
+        // Service와 Project 범위는 함께 서지 않는다 — 「Service 없이」도 등록된 Project 전부를 읽는다고 말하므로 함께 지운다.
+        let file = self.change_thread(thread, |file| {
+            file.service = service.map(str::to_owned);
+            file.project = None;
+        })?;
         if folded {
             return Ok(());
         }
@@ -326,7 +330,7 @@ impl ConversationHost {
                 "사람이 나중에 정하기로 함 — Service를 바꾸지 않았다. {}. 같은 물음을 곧바로 다시 하지 않는다.",
                 now_text(&before)
             ),
-            _ if before.service.as_ref().map(|service| &service.slug) == scope.service.as_ref().map(|service| &service.slug) => {
+            _ if same_base(&before, &scope) => {
                 format!("사람이 지금 Service를 그대로 두기로 했다 — {}. 바꾸지 않았다.", now_text(&scope))
             }
             ServiceChoice::Without => format!("사람이 Service 없이 하기로 했다 — 다음 말부터 {}. {THIS_TURN}", reads(&scope)),
@@ -355,6 +359,16 @@ impl ConversationHost {
     pub(super) fn require_service(&self, service: Option<&str>) -> Result<(), HostError> {
         match service {
             Some(slug) if service_gone(&self.data_root, slug) => Err(HostError::ServiceNotFound(slug.to_owned())),
+            _ => Ok(()),
+        }
+    }
+
+    /// 고른 Project가 등록되어 있는지 — 없으면 `ProjectNotFound`로 거절한다(고르지 않음은 늘 된다).
+    pub(super) fn require_project(&self, project: Option<&str>) -> Result<(), HostError> {
+        match project {
+            Some(slug) if atelier_core::get_project(&atelier_core::projects_in(&self.data_root), slug).is_err() => {
+                Err(HostError::ProjectNotFound(slug.to_owned()))
+            }
             _ => Ok(()),
         }
     }
@@ -423,11 +437,24 @@ pub(super) fn listed<'a>(slugs: impl IntoIterator<Item = &'a str>) -> String {
     if slugs.is_empty() { "없음".to_owned() } else { slugs.join(", ") }
 }
 
+/// 범위의 바탕이 같은가 — 같은 Service이거나 같은 Project이거나 둘 다 없다.
+fn same_base(one: &ReadingScope, other: &ReadingScope) -> bool {
+    let base = |scope: &ReadingScope| {
+        (
+            scope.service.as_ref().map(|service| service.slug.clone()),
+            scope.project.as_ref().map(|project| project.slug.clone()),
+        )
+    };
+    base(one) == base(other)
+}
+
 /// 읽는 Project — slug(Thread 도구가 받는 것)를 잇는다. Service가 없으면 「등록된 Project N개를 모두 읽는다」(등록이 없으면 「등록된
-/// Project가 없다」)다.
+/// Project가 없다」)다. Project 범위면 「읽는 Project: …」다.
 fn reads(scope: &ReadingScope) -> String {
+    let slugs = || listed(scope.projects.iter().map(|project| project.slug.as_str()));
     match &scope.service {
-        Some(_) => listed(scope.projects.iter().map(|project| project.slug.as_str())),
+        Some(_) => slugs(),
+        None if scope.project.is_some() => format!("읽는 Project: {}", slugs()),
         None if scope.registered == 0 => "등록된 Project가 없다".to_owned(),
         None => format!("등록된 Project {}개를 모두 읽는다", scope.registered),
     }

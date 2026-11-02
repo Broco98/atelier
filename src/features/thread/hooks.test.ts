@@ -144,7 +144,7 @@ describe("엔진이 남긴 PR 줄(v1 티켓 36)", () => {
 });
 
 // 03 티켓 08 — Service 질문 카드에 답하면 엔진이 그 Thread(Work에 이었으면 그 Work)의 `service`를 고치지만 묻던 Thread에는 Service 줄이 서지 않는다
-// (답한 줄이 그 결정이다). 그 답 줄이 연 Thread의 칸(머리 줄 · Service 칩)과 읽는 범위를 다시 읽게 한다.
+// (답한 줄이 그 결정이다). 그 답 줄이 연 Thread의 칸(머리 줄)과 읽는 범위를 다시 읽게 한다.
 describe("Service 질문 카드의 답 줄", () => {
   const answered = (card: string): RecordLine => ({
     seq: 9,

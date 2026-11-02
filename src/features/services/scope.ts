@@ -3,11 +3,11 @@ import { particle } from "@/lib/particle";
 // 읽는 범위(03 구현 스펙 §7) — core `reading_scope.rs`가 내는 모양 그대로다(serde camelCase). Thread가 읽는 Project는 core의 함수 하나에서
 // 나온다 — Session의 자리 · 머리말 · 요약 카드 「소스」 · Service 메뉴가 같은 값을 읽는다(화면은 다시 세지 않는다).
 
-/** 그 Project를 왜 읽나 — Service에 묶임 · Service가 없어 전부 · Work의 아직 worktree 없는 Project · 「읽기만 하기」로 허락함. */
-export type ScopeWhy = "service" | "all" | "work" | "readOnly";
+/** 그 Project를 왜 읽나 — Service에 묶임 · Project 범위로 고름 · 범위가 없어 전부 · Work의 아직 worktree 없는 Project · 「읽기만 하기」로 허락함. */
+export type ScopeWhy = "service" | "project" | "all" | "work" | "readOnly";
 
-/** 범위 줄의 갈래 — Service 없음(등록된 전부) · Service · 빈 Service · 등록된 Project 없음. */
-export type ScopeKind = "all" | "service" | "emptyService" | "noProjects";
+/** 범위 줄의 갈래 — 범위 없음(등록된 전부) · Service · 빈 Service · Project · 등록된 Project 없음. */
+export type ScopeKind = "all" | "service" | "emptyService" | "project" | "noProjects";
 
 export interface ScopeService {
   slug: string;
@@ -15,6 +15,12 @@ export interface ScopeService {
   name: string;
   /** 파일에 문제가 있다 — 읽을 수 있는 Project만 읽는다. */
   troubled: boolean;
+}
+
+/** Project 범위로 고른 Project. */
+export interface PickedProject {
+  slug: string;
+  name: string;
 }
 
 export interface ScopeProject {
@@ -32,6 +38,8 @@ export interface WorkedProject {
 export interface ReadingScope {
   /** 정한 Service — 없거나 그 파일이 없으면 `null`이다(§7 규칙 1). */
   service: ScopeService | null;
+  /** 정한 Project 범위 — 없거나 등록되어 있지 않으면 `null`이고 Service와 함께 서지 않는다. */
+  project: PickedProject | null;
   /** 읽는 Project — 바탕(Service · 전부) 뒤에 더한 것(Work · 읽기만) 차례다. worktree에서 일하는 Project · 폴더가 없는 Project는 빠졌다. */
   projects: ScopeProject[];
   /** 이 Work의 worktree에서 일하는 Project — 범위 줄 · Service 줄은 이것도 읽는 Project로 말한다(고치는 것이 먼저 — 요약 카드 「소스」 차례). */
@@ -41,12 +49,16 @@ export interface ReadingScope {
   registered: number;
 }
 
-/** 범위를 셀 자리 — 연 Thread, 또는 보내기 전의 새 Thread가 쥔 Work · Service(입력창, 06). */
+/** 범위를 셀 자리 — 연 Thread, 또는 보내기 전의 새 Thread가 쥔 Work · Service · Project(입력창). */
 export interface ScopeOf {
   thread?: string | null;
   work?: string | null;
   service?: string | null;
+  project?: string | null;
 }
+
+/** 범위 칩이 쥔 것 — Service나 Project 하나다. 없으면 `null`(범위 없음 — 등록된 Project 전부)이다. */
+export type ScopePick = { kind: "service" | "project"; slug: string } | null;
 
 /** 읽는 Project의 이름이 이 수를 넘으면 앞 둘과 「외 N개」다(§5 범위 줄 「web-app · api-server 외 2개를 읽어요」). */
 const NAMED = 3;

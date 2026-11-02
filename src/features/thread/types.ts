@@ -168,13 +168,15 @@ export interface StartPicks {
   /** 첫 Session의 생각 깊이 — claude `--effort`가 받는 값. */
   effort: string | null;
   /**
-   * 트레이 Service 칩에서 고른 Service(03 §5) — 첫 말의 범위다. Work 없는 Thread면 그 Thread의 Service로 서고, 이은 Work면 그 Work의 Service가 된다
+   * 트레이 범위 칩에서 고른 Service(03 §5) — 첫 말의 범위다. Work 없는 Thread면 그 Thread의 Service로 서고, 이은 Work면 그 Work의 Service가 된다
    * (S4). `null`은 고르지 않음(이은 Work의 Service를 건드리지 않는다)이다.
    */
   service: ServicePick | null;
+  /** 트레이 범위 칩에서 고른 Project의 slug — 첫 말의 범위다. Work 없는 Thread의 값이고 Service와 함께 서지 않는다. */
+  project: string | null;
 }
 
-/** Service 칩에서 고른 것(`atelier_acp::ServicePick`) — `slug`가 `null`이면 「Service 없음」을 고른 것이다(고르지 않음과 가른다). */
+/** 범위 칩에서 고른 Service(`atelier_acp::ServicePick`) — `slug`가 `null`이면 Service를 뺀 것이다(고르지 않음과 가른다). */
 export interface ServicePick {
   slug: string | null;
 }

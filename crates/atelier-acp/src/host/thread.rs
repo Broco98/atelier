@@ -105,13 +105,16 @@ pub struct StartPicks {
     pub model: Option<String>,
     /// 첫 Session의 생각 깊이 — 채팅의 값으로 선다. claude `--effort`가 받는 값만 받는다.
     pub effort: Option<String>,
-    /// 트레이 Service 칩에서 고른 Service(03 §5 · 티켓 06) — 첫 말이 그 범위로 시작하고 Service 줄은 남기지 않는다. Work 없는 Thread면
+    /// 트레이 범위 칩에서 고른 Service(03 §5 · 티켓 06) — 첫 말이 그 범위로 시작하고 Service 줄은 남기지 않는다. Work 없는 Thread면
     /// `thread.json`의 `service`로 서고, 이은 Work면 다를 때 그 Work의 Service가 된다(S4 — 그 Work의 다른 Thread에는 Service 줄이 선다). 고르지
     /// 않았으면 `None`이다 — 이은 Work의 Service를 건드리지 않는다.
     pub service: Option<ServicePick>,
+    /// 트레이 범위 칩에서 고른 Project — 첫 말이 그 범위로 시작하고 `thread.json`의 `project`로 선다. Work 밖 Thread의 값이고 Service와 함께
+    /// 서지 않는다 — 이은 Work이거나 Service를 함께 고르면 읽지 않는다.
+    pub project: Option<String>,
 }
 
-/// Service 칩에서 고른 것 — `slug`가 `None`이면 「Service 없음」을 고른 것이다. 「고르지 않음」(`StartPicks::service`의 `None`)과 갈라야 해서
+/// 범위 칩에서 고른 Service — `slug`가 `None`이면 Service를 뺀 것이다. 「고르지 않음」(`StartPicks::service`의 `None`)과 갈라야 해서
 /// 칸 하나를 싼다 — IPC의 `null`과 빠진 칸은 둘 다 `None`으로 읽힌다.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct ServicePick {
@@ -359,7 +362,8 @@ impl ConversationHost {
 
     /// 입력창 칩에서 고른 것과 함께 새 Thread — [`Self::start_thread_asking`]과 같고, 첫 말 전에 고른 모델 · 생각 깊이(v1 티켓 31 ·
     /// 스토리 33)가 채팅의 값으로 서서 첫 Session이 그 값(`--model` · `--effort`)으로 뜬다. claude가 받지 않는 생각 깊이면 아무것도
-    /// 세우지 않고 거절한다. 트레이 Service 칩에서 고른 Service(03 §5)는 첫 말의 범위다 — 없는 Service면 아무것도 세우지 않고 거절한다.
+    /// 세우지 않고 거절한다. 트레이 범위 칩에서 고른 Service(03 §5)나 Project는 첫 말의 범위다 — 없는 Service나 등록되지 않은 Project면 아무것도
+    /// 세우지 않고 거절한다. 「새 작업공간」으로 연 채팅의 Project 범위는 첫 메시지 안내에 적는다 — 작업공간 제안에 쓴다.
     pub fn start_thread_picking(
         &self,
         text: &str,
@@ -372,9 +376,13 @@ impl ConversationHost {
         }
         let service = picks.service.as_ref().map(|pick| pick.slug.as_deref());
         self.require_service(service.flatten())?;
+        // Project 범위는 Work 밖 Thread의 값이고 Service와 함께 서지 않는다.
+        let linked = matches!(link, ThreadLink::Work { .. });
+        let project = picks.project.filter(|_| !linked && service.flatten().is_none());
+        self.require_project(project.as_deref())?;
         let attachments = attachments_of(attachments)?;
         let new_work = link == ThreadLink::NewWork;
-        let note = new_work.then_some(NEW_WORK_NOTE);
+        let note = new_work.then(|| new_work_note(project.as_deref()));
         let work = match link {
             ThreadLink::Work { slug } => {
                 self.open_work(&slug)?;
@@ -398,6 +406,7 @@ impl ConversationHost {
             mode,
             new_work,
             service,
+            project,
             model: picks.model,
             effort: picks.effort,
         };
@@ -414,7 +423,7 @@ impl ConversationHost {
                 self.set_thread_mode(&created.id, mode)?;
             }
         }
-        self.say_noting(&created.id, text, None, attachments, note)?;
+        self.say_noting(&created.id, text, None, attachments, note.as_deref())?;
         drop(log);
         Ok(created.id)
     }
@@ -1077,8 +1086,8 @@ impl ConversationHost {
     /// | worktree 하나 | 그 worktree | spec 폴더 + 읽는 범위 |
     /// | worktree 여럿 | `trees/` | spec 폴더 + 읽는 범위 |
     ///
-    /// - **읽는 범위는 함수 하나다**([`atelier_core::reading_scope`] — §7 규칙 1–4). Service가 있으면 그 Service의 Project, 없으면 등록된 Project
-    ///   전부, 그리고 worktree가 아직 없는 Work의 Project와 Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project(S22)다. worktree가 선
+    /// - **읽는 범위는 함수 하나다**([`atelier_core::reading_scope`] — §7 규칙 1–4). Service가 있으면 그 Service의 Project, Project 범위면 그 Project
+    ///   하나, 없으면 등록된 Project 전부, 그리고 worktree가 아직 없는 Work의 Project와 Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project(S22)다. worktree가 선
     ///   Project와 폴더가 사라진 Project는 빠진다. Work 없는 Thread가 Work를 제안하기 전에 어느 Project의 일인지 보려고 저장소를 읽던 것(끝
     ///   점검 39(a))이 Work 안에서도 같다 — 옆 저장소를 카드 없이 읽는다(`F4-WorkNoSpace`).
     /// - **읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 · Thread 폴더). 범위가
@@ -1187,6 +1196,14 @@ impl ConversationHost {
             *held = Some(loaded);
         }
         Ok(use_it(held.as_mut().expect("방금 읽었다")))
+    }
+}
+
+/// 「새 Work로 시작」의 첫 머리말 끝 줄 — Project 범위로 열었으면 작업공간 제안에 쓰게 한 줄을 더한다.
+fn new_work_note(project: Option<&str>) -> String {
+    match project {
+        Some(slug) => format!("{NEW_WORK_NOTE}- 사람이 Project `{slug}` 범위로 열었다 — 제안의 `projects`에 이 Project를 넣는다.\n"),
+        None => NEW_WORK_NOTE.to_owned(),
     }
 }
 

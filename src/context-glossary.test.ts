@@ -250,15 +250,17 @@ describe("말의 사전", () => {
     }
   });
 
-  // 03 구현 스펙 §2 · §5 · 티켓 06. 트레이의 Work 칩 뒤에 「Service 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「Service 넣기」 ·
+  // 03 구현 스펙 §2 · §5 · 티켓 06 · 01a-13. 새 채팅 트레이의 Work 칩 뒤에 「범위 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「범위 없음」 ·
   // ×로 빼기 · Work의 Service면 ▾)와 「고른 것이 가는 때」(첫 말 전에는 입력창이 쥐고 첫 말과 함께 · 첫 말 뒤엔 곧바로 · Work면 그 Work에)를
   // 말하지 않으면 다음 사람이 첫 말 전의 고르기마다 Service 줄을 남기거나 Work 파일을 메뉴만 훑어도 바꾼다. 범위 줄이 범위의 넷을 말하지 않으면
   // 화면이 범위를 따로 센다. 「워크스페이스」 · 「컨텍스트 칩」은 거부어다.
-  it("「Service 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
-    expect(names).toEqual(expect.arrayContaining(["Service 칩", "범위 줄"]));
-    for (const piece of ["Work 칩 바로 뒤", "「Service 넣기」", "×", "▾", "첫 말과 함께", "Service 줄이 남는다", "그 Work의 Service"]) {
-      expect(bodyOf("Service 칩"), piece).toContain(piece);
+  it("「범위 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["범위 칩", "범위 메뉴", "범위 줄"]));
+    expect(names).not.toContain("Service 칩");
+    for (const piece of ["Work 칩 바로 뒤", "「범위 없음」", "×", "▾", "첫 말과 함께", "첫 말 뒤에 서지 않는다", "그 Work의 Service", "`?project=`"]) {
+      expect(bodyOf("범위 칩"), piece).toContain(piece);
     }
+    for (const piece of ["「이 채팅이 읽을 곳」", "「범위 없음」", "Project"]) expect(bodyOf("범위 메뉴"), piece).toContain(piece);
     // 빈 Service는 Project가 적히지 않은 Service다 — worktree가 다 덮은 Service가 아니다(03 코드 리뷰 P3).
     for (const piece of [
       "읽는 범위",
@@ -282,7 +284,7 @@ describe("말의 사전", () => {
     expect(names).toEqual(expect.arrayContaining(["읽는 범위", "Service 줄", "Service 메뉴"]));
     expect(bodyOf("읽는 범위")).toContain("_피할 말_: 스코프");
     expect(refused).toContain("스코프");
-    for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때"]) {
+    for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때", "Project 범위", "Work에 이으면 지우고"]) {
       expect(bodyOf("읽는 범위"), piece).toContain(piece);
     }
     for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Service 없이", "되돌렸어요"]) expect(bodyOf("Service 줄"), piece).toContain(piece);

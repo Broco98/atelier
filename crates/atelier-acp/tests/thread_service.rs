@@ -231,7 +231,7 @@ fn work의_service를_바꾸면_그_work의_thread마다_service_줄이_서고_�
     sandbox.wait_thread_kind(&loose, "turn-end", 1);
 
     host.set_work_service("refund-api", Some("결제-서비스")).expect("붙이기");
-    // Work에 이은 Thread에서 바꾸면(Service 칩 — 스토리 42) 그 Work의 Service가 바뀐다.
+    // Work에 이은 Thread에서 바꾸면(Service 도구 — 스토리 42) 그 Work의 Service가 바뀐다.
     host.set_thread_service(&second, Some("사내-도구")).expect("바꾸기");
     host.shut_down();
 
@@ -304,7 +304,7 @@ fn work_없는_thread가_빈_service를_고르면_함께_여는_폴더_없이_th
     assert_eq!(sandbox.thread_json(&thread)["service"], "빈-것");
 }
 
-/// 입력창 Service 칩에서 첫 말 전에 고른 것(03 티켓 06) — `None`이면 「Service 없음」을 고른 것이다.
+/// 범위 칩에서 첫 말 전에 고른 Service(03 티켓 06) — `None`이면 Service를 뺀 것이다.
 fn picked(service: Option<&str>) -> StartPicks {
     StartPicks { service: Some(ServicePick { slug: service.map(str::to_owned) }), ..StartPicks::default() }
 }
@@ -355,6 +355,77 @@ fn 첫_말_전에_고른_service는_thread_파일에_적혀_첫_session부터_�
     assert_eq!(thread_count(&sandbox), before, "거절하면 Thread 폴더도 서지 않는다");
 }
 
+/// 범위 칩에서 첫 말 전에 고른 Project.
+fn in_project(slug: &str) -> StartPicks {
+    StartPicks { project: Some(slug.to_owned()), ..StartPicks::default() }
+}
+
+#[test]
+fn 첫_말_전에_고른_project는_thread_파일에_적혀_첫_session부터_그_project_하나만_읽는다() {
+    let sandbox = Sandbox::new();
+    register(&sandbox, "web-app");
+    let api = register(&sandbox, "api-server");
+    let host = sandbox.host(two_turns(&sandbox));
+
+    let thread = host.start_thread_picking("환불 금액 확인해 줘", &[], ThreadLink::NoWork, in_project("api-server")).expect("Project를 고른 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["project"].clone(), file.get("service")), (json!("api-server"), None), "Project 범위가 Thread 파일에 선다");
+    assert_eq!(added_dirs(&last_launch(&sandbox, &thread).0), [api], "함께 여는 폴더는 그 Project 하나다");
+    assert_eq!(service_preamble(&record, 0), "- Service: 없음 — 읽는 Project: api-server", "머리말이 읽는 곳을 그대로 말한다");
+    assert!(service_lines(&sandbox, &thread).is_empty(), "첫 말이 그 범위로 시작한다");
+
+    let plain = host.start_thread_picking("그냥 물어볼게", &[], ThreadLink::NoWork, StartPicks::default()).expect("범위 없음");
+    let record = sandbox.wait_thread_kind(&plain, "turn-end", 1);
+    assert_eq!(sandbox.thread_json(&plain).get("project"), None, "고르지 않았으면 칸째 없다");
+    assert_eq!(service_preamble(&record, 0), "- Service: 없음 — 등록된 Project 2개를 모두 읽는다");
+
+    let before = thread_count(&sandbox);
+    assert_eq!(
+        host.start_thread_picking("없는 데서", &[], ThreadLink::NoWork, in_project("없는-것")),
+        Err(HostError::ProjectNotFound("없는-것".into())),
+        "등록되지 않은 Project면 아무것도 세우지 않는다"
+    );
+    host.shut_down();
+    assert_eq!(thread_count(&sandbox), before, "거절하면 Thread 폴더도 서지 않는다");
+}
+
+#[test]
+fn 작업공간에_이어_시작한_채팅은_project_범위를_받지_않는다() {
+    let sandbox = Sandbox::new();
+    register(&sandbox, "api-server");
+    refund_work(&sandbox, &["api-server"], &[]);
+    let host = sandbox.host(two_turns(&sandbox));
+
+    let thread = host.start_thread_picking("환불 고쳐 줘", &[], in_refund(), in_project("api-server")).expect("이은 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(sandbox.thread_json(&thread).get("project"), None, "Project 범위는 작업공간 밖 채팅의 값이다");
+}
+
+#[test]
+fn 새_작업공간으로_연_채팅의_project_범위는_첫_메시지_안내에_적힌다() {
+    let sandbox = Sandbox::new();
+    register(&sandbox, "web-app");
+    register(&sandbox, "api-server");
+    let host = sandbox.host(two_turns(&sandbox));
+
+    let thread = host.start_thread_picking("환불 고치기", &[], ThreadLink::NewWork, in_project("api-server")).expect("새 작업공간으로 시작");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let first = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
+    assert!(first.contains("`propose_work`로 Work 만들기를 제안하라"), "{first}");
+    assert!(first.contains("- 사람이 Project `api-server` 범위로 열었다 — 제안의 `projects`에 이 Project를 넣는다"), "{first}");
+
+    // 안내는 고른 범위가 있을 때만 선다.
+    let bare = host.start_thread_picking("환불 고치기", &[], ThreadLink::NewWork, StartPicks::default()).expect("범위 없이");
+    let record = sandbox.wait_thread_kind(&bare, "turn-end", 1);
+    host.shut_down();
+    let first = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
+    assert!(!first.contains("범위로 열었다"), "{first}");
+}
+
 #[test]
 fn 최근_work를_고르고_바꾼_service는_첫_말_때_그_work에_적히고_그_work의_다른_thread에만_service_줄이_선다() {
     let sandbox = Sandbox::new();
@@ -369,7 +440,7 @@ fn 최근_work를_고르고_바꾼_service는_첫_말_때_그_work에_적히고_
     let first = host.start_thread("환불부터", in_refund()).expect("Work에 이은 Thread");
     sandbox.wait_thread_kind(&first, "turn-end", 1);
 
-    // Service 칩을 건드리지 않았으면 그 Work의 Service 그대로다 — 메뉴를 훑다 버린 입력이 Work 파일을 바꾸지 않는다(S4).
+    // 범위 칩을 건드리지 않았으면 그 Work의 Service 그대로다 — 메뉴를 훑다 버린 입력이 Work 파일을 바꾸지 않는다(S4).
     let kept = host.start_thread_picking("설계 문서도", &[], in_refund(), StartPicks::default()).expect("고르지 않음");
     sandbox.wait_thread_kind(&kept, "turn-end", 1);
     assert_eq!(work_json(&sandbox)["service"], "결제-서비스");

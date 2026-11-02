@@ -11,8 +11,8 @@ export const servicesApi = {
   check: (slug: string | null, text: string) => invoke<ServiceDraft>("check_service", { slug, text }),
   saveText: (slug: string | null, text: string) => invoke<Service>("save_service_text", { slug, text }),
   /** 읽는 범위(§7) — Thread가 있으면 그 Thread의 것, 없으면 보내기 전의 새 Thread(입력창이 쥔 Work · Service)의 것이다. */
-  scope: ({ thread, work, service }: ScopeOf) =>
-    invoke<ReadingScope>("reading_scope", { thread: thread ?? null, work: work ?? null, service: service ?? null }),
+  scope: ({ thread, work, service, project }: ScopeOf) =>
+    invoke<ReadingScope>("reading_scope", { thread: thread ?? null, work: work ?? null, service: service ?? null, project: project ?? null }),
   // 지우기(03 티켓 07) — 확인 창의 쓰임(core만), 지우기 · 되돌리기(엔진 — 비운 곳마다 「지워짐」 · 「되돌림」 줄을 남긴다).
   usage: (slug: string) => invoke<ServiceUsage>("service_usage", { slug }),
   remove: (slug: string) => invoke<DeletedService>("thread_delete_service", { slug }),

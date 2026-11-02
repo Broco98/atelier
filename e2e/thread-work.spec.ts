@@ -45,6 +45,7 @@ const 잠긴칩 = (page: Page) => page.locator('[data-slot="composer-tray"] [dat
  */
 const scopeOf = (...slugs: string[]): ReadingScope => ({
   service: null,
+  project: null,
   projects: slugs.map((slug) => ({ slug, name: slug, why: "all" })),
   worked: [],
   kind: "all",

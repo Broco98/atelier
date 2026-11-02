@@ -177,16 +177,17 @@ pub async fn service_usage(slug: String) -> CmdResult<ServiceUsage> {
         .map_err(|e| format!("Service의 쓰임을 읽지 못했습니다: {e}"))?
 }
 
-/// 읽는 범위(03 구현 스펙 §7) — Service(slug · 이름 · 문제 있음) · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Service · 빈 Service · 등록
-/// 없음). `thread`가 있으면 그 Thread의 범위, 없으면 보내기 전의 새 Thread — 입력창이 고른 Work · Service로 센다. 요약 카드 「소스」와
-/// Service 메뉴가 이것을 그린다. 읽기만 하고 core를 부르기만 한다(L4 다리로도 탄다).
+/// 읽는 범위(03 구현 스펙 §7) — Service(slug · 이름 · 문제 있음) · Project 범위 · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Service · 빈 Service ·
+/// Project · 등록 없음). `thread`가 있으면 그 Thread의 범위, 없으면 보내기 전의 새 Thread — 입력창이 고른 Work · Service · Project로 센다. 요약 카드
+/// 「소스」와 범위 칩이 이것을 그린다. 읽기만 하고 core를 부르기만 한다(L4 다리로도 탄다).
 #[tauri::command]
 pub async fn reading_scope(
     thread: Option<String>,
     work: Option<String>,
     service: Option<String>,
+    project: Option<String>,
 ) -> CmdResult<atelier_core::ReadingScope> {
-    atelier_core::reading_scope_of(&data_root(), thread.as_deref(), work.as_deref(), service.as_deref()).map_err(err)
+    atelier_core::reading_scope_of(&data_root(), thread.as_deref(), work.as_deref(), service.as_deref(), project.as_deref()).map_err(err)
 }
 
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
@@ -887,9 +888,9 @@ pub async fn thread_read_record(
 /// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
 /// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 /// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 칩에서 고른 값이다(v1 티켓 23) — 이은 Work면 그 Work의 정도가
-/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 Service 칩에서
-/// 고른 Service(`service` — `{slug}`, 「Service 없음」이면 `{slug: null}`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Service가 된다, S4).
-/// 고르지 않은 칸은 `null`이다.
+/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 범위 칩에서
+/// 고른 Service(`service` — `{slug}`, 「Service 없음」이면 `{slug: null}`)와 Project(`project`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Service가
+/// 된다, S4). 고르지 않은 칸은 `null`이다.
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -900,8 +901,9 @@ pub async fn thread_start(
     model: Option<String>,
     effort: Option<String>,
     service: Option<atelier_acp::ServicePick>,
+    project: Option<String>,
 ) -> CmdResult<String> {
-    let picks = atelier_acp::StartPicks { mode, model, effort, service };
+    let picks = atelier_acp::StartPicks { mode, model, effort, service, project };
     to_host(&engine, "채팅을 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
 }
 
@@ -1100,17 +1102,6 @@ pub async fn thread_set_mode(
     mode: atelier_acp::AskLevel,
 ) -> CmdResult<()> {
     to_host(&engine, "물어보는 정도를 바꾸지 못했습니다", move |host| host.set_thread_mode(&thread, mode)).await
-}
-
-/// Thread의 Service 붙이기 · 바꾸기 · 빼기(`service` 없음, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Service가 바뀐다(§9). 떠 있는 Session은
-/// 그대로 두고 다음 말부터 새 범위로 이어 연다. 바꾼 것은 Service 줄(`service`)로 남는다. 없는 Service는 그 까닭으로 거절된다.
-#[tauri::command]
-pub async fn thread_set_service(
-    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    thread: String,
-    service: Option<String>,
-) -> CmdResult<()> {
-    to_host(&engine, "Service를 바꾸지 못했습니다", move |host| host.set_thread_service(&thread, service.as_deref())).await
 }
 
 /// Work의 Service 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Service 메뉴(03 티켓 05). 그 Work의 Thread마다 Service 줄이 선다(S9).

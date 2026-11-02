@@ -546,7 +546,6 @@ pub fn run() {
             commands::thread_set_model,
             commands::thread_set_effort,
             commands::thread_set_mode,
-            commands::thread_set_service,
             commands::thread_set_work_service,
             commands::thread_delete_service,
             commands::thread_restore_service,

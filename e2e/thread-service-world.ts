@@ -60,12 +60,13 @@ export const WORLD_SERVICE_DETAILS: Record<string, ServiceDetail> = Object.fromE
 
 /** 범위 하나 — Service(없으면 `null`)와 그 Project. Project가 없으면 빈 Service다. */
 const scopeOf = (of: Service | null, registered = WORLD_PROJECTS.length): ReadingScope => {
-  if (registered === 0) return { service: null, projects: [], worked: [], kind: "noProjects", registered };
+  if (registered === 0) return { service: null, project: null, projects: [], worked: [], kind: "noProjects", registered };
   if (of === null) {
-    return { service: null, projects: WORLD_PROJECTS.map(({ slug, name }) => ({ slug, name, why: "all" })), worked: [], kind: "all", registered };
+    return { service: null, project: null, projects: WORLD_PROJECTS.map(({ slug, name }) => ({ slug, name, why: "all" })), worked: [], kind: "all", registered };
   }
   return {
     service: { slug: of.slug, name: of.name, troubled: false },
+    project: null,
     projects: of.projects.map((slug) => ({ slug, name: slug, why: "service" })),
     worked: [],
     kind: of.projects.length > 0 ? "service" : "emptyService",

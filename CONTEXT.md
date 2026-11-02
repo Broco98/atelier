@@ -265,7 +265,7 @@ Runtime의 권한 · 일하는 방식(계획 모드 같은 것). 화면에서 �
 계획 모드로 돌리고, 그 밖에는 기본 모드다. 묻고 넘기는 판단은 Runtime이 아니라 Atelier가 한다.
 
 **트레이**:
-입력창 상자에 붙은 회색 띠 — Work 칩이 서고, 그 곁에 Service 칩과 범위 줄이 선다. 자리는 입력창의 자리를
+입력창 상자에 붙은 회색 띠 — Work 칩이 서고, 새 채팅이면 그 곁에 범위 칩과 범위 줄이 선다. 자리는 입력창의 자리를
 따른다: 입력창이 가운데인 첫 화면은 상자 아래, 입력창이 화면 아래에 붙은 Thread 화면은 상자 위다(아래에 두면 창 끝에 눌려 칩이 입력창
 뒤로 숨는다). 띠 안의 칩 모양은 두 자리에서 같다. 입력창 자리에 카드가 서면 함께 걷힌다. 입력창 안은 `+` · 물어보는 정도 · 모델 칩뿐이다.
 
@@ -283,25 +283,30 @@ Work가 고르면 그 안의 Project를 읽는다(「읽는 범위」). 한 Proj
 정한다. 프로세스 표본을 모으는 코드의 `ProcessService`는 다른 말이다.
 _피할 말_: Space
 
-**Service 칩**:
-트레이에서 Work 칩 바로 뒤에 서는 칩 — 이 Thread가 읽을 Service를 고른다. 비어 있으면 흐린 「Service 넣기」, 고르면 흰 칩에 그 Service 이름과
-×(빼기)다. 바꾸는 것이 Work의 Service면(Work에 이은 Thread · 최근 Work를 고른 첫 화면) × 대신 ▾가 서고 빼기도 메뉴에서만 한다. 누르면
-Service 메뉴가 열린다. 첫 말 전에 고른 Service는 입력창이 쥐었다가 첫 말과 함께 간다 — 첫 말이 그 범위로 시작해 줄을 남기지 않는다. 최근
-Work를 고르고 바꿨으면 첫 말을 보낼 때 그 Work의 Service가 바뀐다(메뉴만 훑고 버린 것은 Work를 바꾸지 않는다). 첫 말 뒤에 바꾸면 곧바로
-적히고 흐름에 Service 줄이 남는다 — Work 없는 Thread면 그 Thread의, Work에 이은 Thread면 그 Work의 Service다. 주소의 씨앗 `?service=`가 처음 쥘
-Service를 정한다.
+**범위 칩**:
+새 채팅의 트레이에서 Work 칩 바로 뒤에 서는 칩 — 이 Thread가 읽을 곳을 없음, Service, Project 가운데 하나로 고른다. 비어 있으면 흐린 「범위 없음」,
+고르면 흰 칩에 그 이름과 ×(빼기)다. 바꾸는 것이 Work의 Service면(최근 Work를 고른 첫 화면) × 대신 ▾가 서고 빼기도 메뉴에서만 한다. 누르면
+범위 메뉴가 열린다. 첫 말 전에 고른 것은 입력창이 쥐었다가 첫 말과 함께 간다 — 첫 말이 그 범위로 시작해 줄을 남기지 않는다. 최근
+Work를 고르고 바꿨으면 첫 말을 보낼 때 그 Work의 Service가 바뀐다(메뉴만 훑고 버린 것은 Work를 바꾸지 않는다). 칩은 첫 말 뒤에 서지 않는다 —
+범위는 대화로 바꾼다. 주소의 씨앗 `?service=` · `?project=`가 처음 쥘 것을 정한다.
 _피할 말_: 컨텍스트 칩, 워크스페이스
 
+**범위 메뉴**:
+범위 칩이 여는 메뉴 — 「이 채팅이 읽을 곳」 아래 「범위 없음」(등록된 Project 전부), Service, Project가 차례로 서고 지금 것에 ✓가 붙는다. Project
+줄은 작업공간을 고른 동안 서지 않는다.
+
 **범위 줄**:
-트레이에서 Service 칩 옆에 서는 한 줄 — 읽는 범위를 그대로 말한다. Service가 없으면 「등록된 Project 3개를 읽어요」, 있으면 「web-app ·
+트레이에서 범위 칩 옆에 서는 한 줄 — 읽는 범위를 그대로 말한다. 범위가 없으면 「등록된 Project 3개를 읽어요」, 있으면 「web-app ·
 api-server를 읽어요」(셋을 넘으면 「web-app · api-server 외 2개를 읽어요」)다 — 그 Work의 worktree에서 일하는 Project도 든다(worktree에서
 읽는다). 빈 Service(Project가 하나도 적히지 않은 Service)면 「읽는 Project가 없어요」, 등록된 Project가 없으면
 「등록된 Project가 없어요 · Project 추가」가 경고 색으로 서고 「Project 추가」는 Project 추가 창을 연다 — 어느 쪽이든 대화는 막지 않는다.
 
 **읽는 범위**:
 Thread가 읽는 Project들 — 함수 하나가 정하고, Session이 읽기로 함께 여는 폴더 · Runtime이 받는 머리말의 「- Service:」 줄 · 요약 카드
-「소스」 · 범위 줄이 모두 그 값을 쓴다. Work에 이은 Thread는 그 Work의 Service를, Work 없는 Thread는 그 Thread의 Service를 따른다(그 Service 파일이
-없으면 Service가 없는 것이다). 바탕은 Service가 있으면 그 Service의 등록된 Project, 없으면 등록된 Project 전부다. 여기에 Work의 아직 worktree가 없는
+「소스」 · 범위 줄이 모두 그 값을 쓴다. Work에 이은 Thread는 그 Work의 Service를, Work 없는 Thread는 그 Thread의 Service나 Project 범위를 따른다(그
+Service 파일이 없으면 Service가 없는 것이고, 등록되지 않은 Project면 Project 범위가 없는 것이다). Project 범위는 Work 밖 Thread의 값이고 Service와
+함께 서지 않는다 — Work에 이으면 지우고, Service를 고르면 지운다. 바탕은 Service가 있으면 그 Service의 등록된 Project, Project 범위면 그 Project 하나,
+없으면 등록된 Project 전부다. 여기에 Work의 아직 worktree가 없는
 Project와 「읽기만 하기」로 허락한 Project를 더하고, 폴더를 찾을 수 없는 Project와 그 Work에 worktree가 있는 Project(그 Project는 worktree에서
 일한다)를 뺀다. 고칠 수 있는 곳은 바뀌지 않는다 — 읽는 범위의 폴더에 쓰려 하면 Work 밖 Project 카드가 선다. 범위가 바뀌면 떠 있는 Session은
 다음 말을 보낼 때 새 폴더로 다시 열린다. 돌고 있는 턴은 끊기지 않는다.
@@ -317,8 +322,7 @@ Service 파일을 지웠으면 그 Thread의 다음 말을 보낼 때 같은 「
 하나를 묻지 않고 붙이면 「결제 서비스 Service에 넣었어요 — web-app · api-server를 읽어요」가 선다.
 
 **Service 메뉴**:
-Service를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Service / 작업공간 이름」에서 흐린 Service(없으면 흐린 「Service 없음」)를 누르면 열리고, 트레이의
-Service 칩도 같은 메뉴를 연다(칩에서는 맨 위가 늘 「Service 없음 — 등록된 Project 3개 읽기」다 — 고르면 뺀다. ×가 있는 칩은 ×로도 뺀다). Work 화면에서 맨 위는
+Service를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Service / 작업공간 이름」에서 흐린 Service(없으면 흐린 「Service 없음」)를 누르면 열린다. 맨 위는
 「Service 빼기」(Service가 없으면 ✓가 붙은 「Service 없음」)와 빼면 읽는 것(「등록된 Project 3개를 모두 읽어요」)이고, 그 아래 「Service — 고르면 그
 안의 Project만 읽어요」 묶음에 Service마다 이름과 적힌 Project가 서며 지금 것에 ✓가 붙는다. 파일에 문제가 있는 Service도 이름 뒤 「문제 있음」을
 달고 선다 — 고르면 읽을 수 있는 Project만 읽는다. 끝은 「Service 관리 · 메뉴 › Service」다. Service가 하나도 없으면 목록 자리에

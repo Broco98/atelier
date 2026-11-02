@@ -1,9 +1,10 @@
 import type { ProjectView } from "@/features/projects/types";
 import type { NewThreadSearch } from "@/routes/-new-thread-search";
+import type { ScopePick } from "./scope";
 import type { SharedService, Service } from "./types";
 
 // Service 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14) — 그래프 배치 · 넣기 메뉴 · 만든 이 줄 · Work 묶음 · 시작 단추가 여는
-// 첫 화면, 그리고 Work 화면 머리 · Service 칩이 여는 Service 메뉴(§5 · §10). 화면 부품은 이 값을 그리기만 한다(L2가 잰다).
+// 첫 화면, 그리고 Work 화면 머리의 Service 메뉴(§10)와 범위 칩의 범위 메뉴. 화면 부품은 이 값을 그리기만 한다(L2가 잰다).
 
 /** 화면이 부르는 이름 — 읽을 수 없는 파일은 이름이 없어 slug다. */
 export function serviceName(service: Pick<Service, "slug" | "name">): string {
@@ -226,27 +227,15 @@ export interface ServiceMenu {
 }
 
 /**
- * Service 메뉴(시안 F4-WorkSpaced · F4-WorkNoSpace — Work 화면 머리 줄이 열고, 트레이의 Service 칩이 같은 부품을 쓴다). `current`는 지금 이은
- * Service의 slug다 — 그 파일이 없으면 Service가 없는 것이다(§7 규칙 1). 문제 있는 Service도 선다 — 고르면 읽을 수 있는 Project만 읽는다(§5). 적힌
- * Project는 등록되지 않은 것도 적힌 그대로다(파일의 말).
- *
- * 맨 위 줄은 여는 자리(`place`)를 따른다 — Work 화면(`work`)은 Service가 있으면 「Service 빼기 · 등록된 Project 3개를 모두 읽어요」, Service 칩
- * (`chip` — F4-KitComposer 「Service 칩 메뉴」)은 늘 고르는 줄 「Service 없음 · 등록된 Project 3개 읽기」다 — 고르면 뺀다(×가 있는 칩은 ×로도 뺀다).
+ * Service 메뉴(시안 F4-WorkSpaced · F4-WorkNoSpace — Work 화면 머리 줄이 연다). `current`는 지금 이은 Service의 slug다 — 그 파일이 없으면 Service가
+ * 없는 것이다(§7 규칙 1). 문제 있는 Service도 선다 — 고르면 읽을 수 있는 Project만 읽는다(§5). 적힌 Project는 등록되지 않은 것도 적힌 그대로다(파일의
+ * 말).
  */
-export function serviceMenu(
-  services: readonly Service[],
-  current: string | null,
-  registered: number,
-  place: "work" | "chip" = "work",
-): ServiceMenu {
+export function serviceMenu(services: readonly Service[], current: string | null, registered: number): ServiceMenu {
   const on = services.some((one) => one.slug === current) ? current : null;
-  const reads = place === "chip" ? "개 읽기" : "개를 모두 읽어요";
-  const note = registered > 0 ? `등록된 Project ${registered}${reads}` : "등록된 Project가 없어요";
+  const note = registered > 0 ? `등록된 Project ${registered}개를 모두 읽어요` : "등록된 Project가 없어요";
   return {
-    top:
-      on && place === "work"
-        ? { kind: "remove", label: "Service 빼기", note, current: false }
-        : { kind: "none", label: "Service 없음", note, current: on === null },
+    top: on ? { kind: "remove", label: "Service 빼기", note, current: false } : { kind: "none", label: "Service 없음", note, current: true },
     rows:
       services.length === 0
         ? null
@@ -260,9 +249,51 @@ export function serviceMenu(
   };
 }
 
+// ── 범위 메뉴 ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** 범위 메뉴의 한 줄 — 고르면 쥘 것(범위 없음은 `null`) · 이름 · 곁말 · 문제 있음 · 지금 것(✓). */
+export interface ScopeMenuRow {
+  pick: ScopePick;
+  name: string;
+  note: string;
+  troubled: boolean;
+  current: boolean;
+}
+
+/**
+ * 범위 메뉴(시안 Composer 「범위 메뉴」) — 새 채팅의 범위 칩이 연다. 범위 없음 · Service · Project 차례다. `held`는 칩이 보이는 범위이고, 그것이 없으면
+ * 범위 없음이 지금 것이다. 작업공간을 고른 동안은 Project 줄이 서지 않는다(`withProjects`) — Project 범위는 작업공간 밖의 값이다.
+ */
+export function scopeMenu(
+  services: readonly Service[],
+  projects: readonly Pick<ProjectView, "slug" | "name" | "path">[],
+  held: ScopePick,
+  withProjects: boolean,
+): ScopeMenuRow[] {
+  const isHeld = (pick: ScopePick) => pick?.kind === held?.kind && pick?.slug === held?.slug;
+  const service = (one: Service): ScopeMenuRow => {
+    const pick = { kind: "service", slug: one.slug } as const;
+    const count = one.projects.length > 0 ? `Project ${one.projects.length}개` : "Project 없음";
+    return { pick, name: serviceName(one), note: `Service · ${count}`, troubled: one.problems.length > 0, current: isHeld(pick) };
+  };
+  const project = (one: Pick<ProjectView, "slug" | "name" | "path">): ScopeMenuRow => {
+    const pick = { kind: "project", slug: one.slug } as const;
+    return { pick, name: one.name, note: `Project · ${one.path}`, troubled: false, current: isHeld(pick) };
+  };
+  const rows = [...services.map(service), ...(withProjects ? projects.map(project) : [])];
+  const none: ScopeMenuRow = {
+    pick: null,
+    name: "범위 없음",
+    note: projects.length > 0 ? "등록된 Project 전부" : "등록된 Project가 없어요",
+    troubled: false,
+    current: !rows.some((row) => row.current),
+  };
+  return [none, ...rows];
+}
+
 // ── 시작 단추 ───────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// Service 화면의 시작 단추(§14)는 첫 화면(`/`)을 씨앗과 함께 연다 — Work 칩 · Service 칩 · 입력 글을 미리 넣을 뿐 보내지 않는다. 보내기는 사람이
+// Service 화면의 시작 단추(§14)는 첫 화면(`/`)을 씨앗과 함께 연다 — Work 칩 · 범위 칩 · 입력 글을 미리 넣을 뿐 보내지 않는다. 보내기는 사람이
 // 한다(S16 — 사람이 말을 더할 수 있다).
 
 /**
@@ -275,7 +306,7 @@ export const HOST_MAKE: NewThreadSearch = {
 };
 
 /**
- * Service 상세 머리의 둘(§14) — 「새 작업공간」은 Work 칩 「새 작업공간」 · Service 칩 「◇ 결제 서비스 ×」(스토리 159), 「대화로 고치기」(S17)는 그 Service를
+ * Service 상세 머리의 둘(§14) — 「새 작업공간」은 Work 칩 「새 작업공간」 · 범위 칩 「◇ 결제 서비스 ×」(스토리 159), 「대화로 고치기」(S17)는 그 Service를
  * 붙인 Work 없는 대화에 고쳐 달라는 말(끝에 빈칸 — 사람이 이어 쓴다)이다. Host는 그 Service의 Project를 읽은 채 시작한다.
  */
 export function serviceStarts(service: Pick<Service, "slug" | "name">): { newWork: NewThreadSearch; hostEdit: NewThreadSearch } {

@@ -204,7 +204,7 @@ impl ConversationHost {
             }
         }
         // Thread의 Service를 Work로 옮기고 Thread의 칸은 비운다(03 §9) — 이은 뒤로는 Work의 Service를 따르므로(§7 규칙 1) 범위가 그대로다.
-        // 옮기지 못했으면 칸은 남긴다 — 읽히지는 않지만(규칙 1) 사람이 고른 것을 잃지 않게.
+        // 옮기지 못했으면 칸은 남긴다 — 읽히지는 않지만(규칙 1) 사람이 고른 것을 잃지 않게. Project 범위는 Work 밖 Thread의 값이라 지운다.
         let moved = file.service.as_deref().is_none_or(|service| match atelier_core::update_work_service(&works, &slug, Some(service)) {
             Ok(_) => true,
             Err(error) => {
@@ -214,6 +214,7 @@ impl ConversationHost {
         });
         self.change_thread(thread, |file| {
             file.work = Some(slug.clone());
+            file.project = None;
             if moved {
                 file.service = None;
             }

@@ -354,6 +354,26 @@ fn thread의_service는_work_만들기_카드에_서고_만든_work로_옮겨_�
     assert!(of_kind(&sandbox.thread_record(&thread), "service").len() == 1, "옮김은 Service 줄을 더 남기지 않는다 — 범위가 그대로다");
 }
 
+/// Project 범위는 작업공간 밖 채팅의 값이다 — 작업공간에 이으면 지운다. 이은 뒤로는 그 작업공간의 범위를 따른다.
+#[test]
+fn 작업공간에_이으면_project_범위가_지워진다() {
+    let sandbox = Sandbox::new();
+    register(&sandbox, "api-server", "");
+    register(&sandbox, "web-app", "");
+    let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
+    let picks = atelier_acp::StartPicks { project: Some("api-server".into()), ..atelier_acp::StartPicks::default() };
+    let thread = host.start_thread_picking("환불 API 버그 고쳐줘", &[], ThreadLink::NoWork, picks).expect("Project를 고른 첫 말");
+    let asked = wait_card(&sandbox, &thread, "asked");
+    assert_eq!(sandbox.thread_json(&thread)["project"], "api-server");
+
+    host.answer_work(&thread, &request_of(&asked), create(&["api-server"], "fix/refund-api")).expect("Work 만들기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["work"].clone(), file.get("project")), (json!("refund-api"), None), "이으면 Project 범위가 지워진다");
+}
+
 /// 입력창 Work 칩의 「새 Work로 시작」(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
 /// Work부터 만든다. `thread.json`에 그 표시(`newWork`)가 남아, Work가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린 「새 Work」다(03 S3).
 /// 「Work 없이」는 아무것도 하지 않는다.

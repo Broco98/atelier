@@ -3,8 +3,11 @@ import { readFileSync } from "fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "url";
 import { describe, expect, it, vi } from "vitest";
+import { scopeKey } from "@/features/services/hooks";
+import type { ReadingScope, ScopeOf } from "@/features/services/scope";
 import { threadQuery } from "./hooks";
 import { mergeLines, setQueue } from "./thread-store";
+import type { NewThreadSeed } from "@/routes/-new-thread-search";
 import { NewThreadScreen, ThreadScreen } from "./ThreadScreen";
 import type { RecordLine, ThreadView } from "./types";
 
@@ -78,17 +81,60 @@ describe("채팅 화면", () => {
     const html = draw({ ...chat, id: "20261010-100002", model: null, effort: null });
     expect(html).toContain("Sonnet");
   });
+
+  it("범위 칩과 범위 줄은 첫 말 뒤에 서지 않는다 — 범위는 대화로 바꾼다", () => {
+    const html = draw({ ...chat, id: "20261010-100003" });
+    expect(html).not.toContain('aria-label="범위');
+    expect(html).not.toContain('aria-label="Service');
+    expect(html).not.toContain('data-slot="scope-line"');
+  });
 });
 
 describe("새 채팅 화면", () => {
-  const drawNew = () =>
-    renderToStaticMarkup(
-      <QueryClientProvider client={new QueryClient()}>
-        <NewThreadScreen seed={{ link: { kind: "no-work" }, say: null, service: null }} />
+  const SEEDLESS = { link: { kind: "no-work" }, say: null, service: null, project: null } as const;
+  const READ: ReadingScope = { service: null, project: null, projects: [], worked: [], kind: "all", registered: 2 };
+  const drawNew = (seed: Partial<NewThreadSeed> = {}, reading?: [ScopeOf, Partial<ReadingScope>]) => {
+    const client = new QueryClient();
+    if (reading) client.setQueryData(scopeKey(reading[0]), { ...READ, ...reading[1] });
+    return renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <NewThreadScreen seed={{ ...SEEDLESS, ...seed }} />
       </QueryClientProvider>,
     );
+  };
 
   it("작업공간 없는 새 채팅의 칩은 「편집 자동」이다", () => {
     expect(drawNew()).toContain('aria-label="물어보는 정도 편집 자동"');
+  });
+
+  it("씨앗이 없으면 범위 칩이 「범위 없음」으로 선다", () => {
+    expect(drawNew()).toContain('aria-label="범위 없음"');
+  });
+
+  it("`?service=`로 연 새 채팅의 칩에 그 Service가 골라져 있다", () => {
+    const html = drawNew(
+      { service: "결제-서비스" },
+      [{ service: "결제-서비스" }, { service: { slug: "결제-서비스", name: "결제 서비스", troubled: false }, kind: "service" }],
+    );
+    expect(html).toContain('aria-label="범위: 결제 서비스"');
+    expect(html).toContain('aria-label="범위 빼기"');
+  });
+
+  it("`?project=`로 연 새 채팅의 칩에 그 Project가 골라져 있다", () => {
+    const html = drawNew(
+      { project: "api-server" },
+      [
+        { project: "api-server" },
+        { project: { slug: "api-server", name: "API 서버" }, projects: [{ slug: "api-server", name: "API 서버", why: "project" }], kind: "project" },
+      ],
+    );
+    expect(html).toContain('aria-label="범위: API 서버"');
+    expect(html).toContain("API 서버를 읽어요");
+  });
+
+  it("「새 작업공간」으로 연 새 채팅도 그 Project를 고른 채 선다", () => {
+    const html = drawNew({ link: { kind: "new-work" }, project: "api-server" });
+    expect(html).toContain('aria-label="범위: api-server"');
+    expect(html).toContain('aria-label="어디서 일할지 새 작업공간"');
   });
 });

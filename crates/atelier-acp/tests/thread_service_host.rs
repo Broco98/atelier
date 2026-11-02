@@ -432,6 +432,77 @@ fn service_없이를_고르면_service를_빼고_다음_말부터_등록된_proj
     );
 }
 
+/// Project 범위로 시작한 채팅 — 첫 턴에 Runtime이 `calls`를 부른다.
+fn in_project(sandbox: &Sandbox, calls: &[Value], level: AskLevel) -> (ConversationHost, String) {
+    let host = sandbox.host(calling(sandbox, calls));
+    let picks = StartPicks { mode: Some(level), project: Some("api-server".into()), ..StartPicks::default() };
+    let thread = host.start_thread_picking("환불 고쳐 줘", &[], ThreadLink::NoWork, picks).expect("Project를 고른 첫 말");
+    (host, thread)
+}
+
+#[test]
+fn 묻지_않고_service를_붙이면_project_범위가_지워진다() {
+    let sandbox = Sandbox::new();
+    let (web, api, _) = payments_world(&sandbox);
+    let (host, thread) = in_project(&sandbox, &[set_payments(&["web-app", "api-server"])], AskLevel::Auto);
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    assert_eq!(added_dirs(&sandbox, &thread), [api.clone()], "첫 턴은 고른 Project 하나다");
+    host.shut_down();
+
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["service"].clone(), file.get("project")), (json!("결제-서비스"), None), "Service와 Project 범위는 함께 서지 않는다");
+
+    let host = sandbox.host(calling(&sandbox, &[]));
+    host.send_to_thread(&thread, "고쳐 줘").expect("둘째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.shut_down();
+    assert_eq!(added_dirs(&sandbox, &thread), [web, api]);
+}
+
+#[test]
+fn 질문_카드에서_service를_고르면_project_범위가_지워진다() {
+    let sandbox = Sandbox::new();
+    payments_world(&sandbox);
+    let (host, thread) = in_project(&sandbox, &[set_payments(&["web-app", "api-server"])], AskLevel::Always);
+    let asked = wait_card(&sandbox, &thread, "asked");
+    host.answer_service(&thread, &request_of(&asked), ServiceChoice::Service("결제-서비스".into())).expect("Service 고르기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["service"].clone(), file.get("project")), (json!("결제-서비스"), None));
+}
+
+#[test]
+fn 질문_카드의_service_없이는_project_범위를_지우고_등록된_전부를_읽는다() {
+    let sandbox = Sandbox::new();
+    payments_world(&sandbox);
+    let (host, thread) = in_project(&sandbox, &[set_payments(&["web-app", "api-server"])], AskLevel::Always);
+    let asked = wait_card(&sandbox, &thread, "asked");
+    host.answer_service(&thread, &request_of(&asked), ServiceChoice::Without).expect("Service 없이");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(sandbox.thread_json(&thread).get("project"), None, "카드가 말한 대로 등록된 Project를 모두 읽는다");
+    let answer = &answers(&sandbox, &thread)[0];
+    assert!(said(answer).starts_with("사람이 Service 없이 하기로 했다 — 다음 말부터 등록된 Project 3개를 모두 읽는다"), "{answer}");
+}
+
+#[test]
+fn 질문_카드의_나중에는_project_범위를_그대로_둔다() {
+    let sandbox = Sandbox::new();
+    payments_world(&sandbox);
+    let (host, thread) = in_project(&sandbox, &[set_payments(&["web-app", "api-server"])], AskLevel::Always);
+    let asked = wait_card(&sandbox, &thread, "asked");
+    host.answer_service(&thread, &request_of(&asked), ServiceChoice::Later).expect("나중에");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(sandbox.thread_json(&thread)["project"], "api-server");
+    let answer = &answers(&sandbox, &thread)[0];
+    assert!(said(answer).contains("지금 Service 없이 읽는 Project: api-server"), "{answer}");
+}
+
 #[test]
 fn service_붙이기의_설명은_다루는_project가_정해지면_붙이라고_한다() {
     let sandbox = Sandbox::new();

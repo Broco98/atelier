@@ -71,6 +71,9 @@ pub struct ThreadFile {
     /// (읽는 범위 규칙 1 — `reading_scope.rs`). 없으면 칸째 빠진다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
+    /// Project 범위의 slug — Work 밖 Thread의 값이고 Service와 함께 서지 않는다. Work에 이으면 비운다. 없으면 칸째 빠진다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
     /// 모르는 칸은 다시 써도 남는다 — 다른 판의 앱이 더한 칸을 지우지 않게(`work.json` · `agents.json`과 같은 규약).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -84,8 +87,10 @@ pub struct NewThread {
     pub mode: Option<String>,
     /// 「새 Work」로 시작했나 — [`ThreadFile::new_work`].
     pub new_work: bool,
-    /// 첫 말 전에 트레이 Service 칩에서 고른 Service — [`ThreadFile::service`]. Work에 이은 Thread는 쓰지 않는다.
+    /// 첫 말 전에 트레이 범위 칩에서 고른 Service — [`ThreadFile::service`]. Work에 이은 Thread는 쓰지 않는다.
     pub service: Option<String>,
+    /// 첫 말 전에 트레이 범위 칩에서 고른 Project — [`ThreadFile::project`]. Work에 이은 Thread는 쓰지 않는다.
+    pub project: Option<String>,
     /// 첫 Session의 모델 — [`ThreadFile::model`].
     pub model: Option<String>,
     /// 첫 Session의 생각 깊이 — [`ThreadFile::effort`].
@@ -125,6 +130,7 @@ pub(crate) fn create_thread_at(
         mode: thread.mode,
         new_work: thread.new_work,
         service: thread.service,
+        project: thread.project,
         model: thread.model,
         effort: thread.effort,
         ..blank_thread()

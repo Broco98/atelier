@@ -108,14 +108,19 @@ export function useSaveServiceText() {
   });
 }
 
+/** 범위 쿼리의 열쇠 — 범위를 셀 자리 그대로다. */
+export function scopeKey(of: ScopeOf) {
+  return [...SCOPE_KEY, of.thread ?? null, of.work ?? null, of.service ?? null, of.project ?? null];
+}
+
 /**
- * 읽는 범위(§7) — 연 Thread의 것, 또는 보내기 전의 새 Thread가 쥔 Work · Service의 것. 요약 카드 「소스」 · 트레이의 범위 줄이 읽는다. 쥔 Service를
+ * 읽는 범위(§7) — 연 Thread의 것, 또는 보내기 전의 새 Thread가 쥔 Work · 범위의 것. 요약 카드 「소스」 · 트레이의 범위 줄이 읽는다. 쥔 범위를
  * 바꿔 열쇠가 바뀌어도 새 답이 오기까지 앞 답을 그대로 그린다 — 범위 줄이 한 번 비었다 서며 칩 줄이 들썩이지 않게.
  */
 export function useReadingScope(of: ScopeOf, enabled = true) {
   useServicesFeed();
   return useQuery({
-    queryKey: [...SCOPE_KEY, of.thread ?? null, of.work ?? null, of.service ?? null],
+    queryKey: scopeKey(of),
     queryFn: () => servicesApi.scope(of),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
@@ -124,20 +129,15 @@ export function useReadingScope(of: ScopeOf, enabled = true) {
 }
 
 /**
- * Service 붙이기 · 바꾸기 · 빼기(`service: null`) — Work(Work 화면 머리의 Service 메뉴) 또는 Thread(06의 Service 칩). 엔진이 그 파일의 `service`만 고치고
- * Service 줄을 남긴다. 쓴 뒤 Work 목록 · 범위 · Thread를 다시 읽는다 — 감시의 종보다 먼저 화면이 따라온다. 못 바꾸면 그 까닭을 띄운다.
+ * Work의 Service 붙이기 · 바꾸기 · 빼기(`service: null`) — Work 화면 머리의 Service 메뉴. 엔진이 그 파일의 `service`만 고치고 Service 줄을 남긴다. 쓴 뒤
+ * Work 목록 · 범위를 다시 읽는다 — 감시의 종보다 먼저 화면이 따라온다. 못 바꾸면 그 까닭을 띄운다.
  */
 export function useSetService() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ target, service }: { target: { work: string } | { thread: string }; service: string | null }) =>
-      "work" in target ? threadApi.setWorkService(target.work, service) : threadApi.setService(target.thread, service),
-    onSuccess: async (_, { target }) => {
-      await Promise.all([
-        invalidateWorks(queryClient),
-        queryClient.invalidateQueries({ queryKey: SCOPE_KEY }),
-        "thread" in target && queryClient.invalidateQueries({ queryKey: ["thread", target.thread] }),
-      ]);
+    mutationFn: ({ work, service }: { work: string; service: string | null }) => threadApi.setWorkService(work, service),
+    onSuccess: async () => {
+      await Promise.all([invalidateWorks(queryClient), queryClient.invalidateQueries({ queryKey: SCOPE_KEY })]);
     },
     onError: (error) => void showProblem(`Service를 바꾸지 못했어요 — ${error}`),
   });

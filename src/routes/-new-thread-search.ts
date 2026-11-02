@@ -1,6 +1,6 @@
 import type { ThreadLink } from "@/features/thread/types";
 
-// 새 Thread 주소(`/`)의 search — **처음 고를 곳**(Work 칩 · Service 칩의 씨앗)과 **입력 글**이다. 라우트(`index.tsx`)가 검증하고 화면을 세우며, 앱 셸의
+// 새 Thread 주소(`/`)의 search — **처음 고를 곳**(Work 칩 · 범위 칩의 씨앗)과 **입력 글**이다. 라우트(`index.tsx`)가 검증하고 화면을 세우며, 앱 셸의
 // 「새 채팅으로 가는 길」(⌘N · 위 줄 「새 채팅」)과 그 행의 고른 모양이 「지금 씨앗 없는 새 채팅인가」를 같은 규칙으로 읽는다(02 코드
 // 리뷰 S1). 규칙이 둘이면 한쪽만 씨앗을 아는 날 가드가 키를 삼킨다 — 한때 가드가 주소의 경로(`/`)만 봐서, 씨앗을 단 새 Thread에서 ⌘N이
 // 먹지 않았다.
@@ -13,53 +13,58 @@ import type { ThreadLink } from "@/features/thread/types";
  *   `?work=`와 함께 오면 이것이다(+는 늘 이것만 싣는다).
  * - `?new=thread` — 「작업공간 없이 대화」(03 §5). 「Host와 만들기」(S16)처럼 어디에도 묶지 않고 묻는 길이 연다.
  * - `?say=<글>` — 입력 글(03 §5). 입력창에 그 글을 넣는다 — 보내지 않는다. Work 칩의 씨앗과 함께 올 수 있다.
- * - `?service=<slug>` — Service 칩이 처음 쥘 Service(03 §5 · §14). Service 상세의 「작업공간 만들기」(`?new=work&service=`) · 「Host와 고치기」
+ * - `?service=<slug>` — 범위 칩이 처음 쥘 Service(03 §5 · §14). Service 상세의 「작업공간 만들기」(`?new=work&service=`) · 「Host와 고치기」
  *   (`?new=thread&service=&say=`)가 그 Service를 고른 채 연다. 첫 말과 함께 간다(`service-chip.ts`의 `holdOf`).
+ * - `?project=<slug>` — 범위 칩이 처음 쥘 Project. Service와 함께 서지 않으므로 `?service=`가 있으면 읽지 않는다.
  */
 export interface NewThreadSearch {
   work?: string;
   new?: "work" | "thread";
   say?: string;
   service?: string;
+  project?: string;
 }
 
-/** 주소가 말하는 처음 것 — Work 칩의 씨앗(없으면 `null` — 기억한 쪽이다), 입력 글, Service 칩의 씨앗(없으면 `null`). */
+/** 주소가 말하는 처음 것 — Work 칩의 씨앗(없으면 `null` — 기억한 쪽이다), 입력 글, 범위 칩의 씨앗(Service나 Project — 없으면 `null`). */
 export interface NewThreadSeed {
   link: ThreadLink | null;
   say: string | null;
   service: string | null;
+  project: string | null;
 }
 
 export function validateNewThreadSearch(search: Record<string, unknown>): NewThreadSearch {
-  const { link, say, service } = seedOf(search);
+  const { link, say, service, project } = seedOf(search);
   return {
     ...(link?.kind === "new-work" && { new: "work" as const }),
     ...(link?.kind === "no-work" && { new: "thread" as const }),
     ...(link?.kind === "work" && { work: link.slug }),
     ...(say !== null && { say }),
     ...(service !== null && { service }),
+    ...(project !== null && { project }),
   };
 }
 
+/** 라우터가 읽은 그대로의 search — 검증 전이라 모르는 모양이 올 수 있다. */
+type SeedSearch = { [Key in keyof NewThreadSearch]?: unknown };
+
 /** 주소가 말하는 처음 것. 검증기가 주소를 청소하지 않아(`-work-search.ts`의 `viewTab` 머리말) 읽는 자리도 이것으로 눕힌다. */
-export function seedOf(search: { work?: unknown; new?: unknown; say?: unknown; service?: unknown }): NewThreadSeed {
+export function seedOf(search: SeedSearch): NewThreadSeed {
   const say = typeof search.say === "string" && search.say !== "" ? search.say : null;
   const service = typeof search.service === "string" && search.service !== "" ? search.service : null;
-  if (search.new === "work") return { link: { kind: "new-work" }, say, service };
-  if (typeof search.work === "string" && search.work !== "") return { link: { kind: "work", slug: search.work }, say, service };
-  return { link: search.new === "thread" ? { kind: "no-work" } : null, say, service };
+  const project = service === null && typeof search.project === "string" && search.project !== "" ? search.project : null;
+  if (search.new === "work") return { link: { kind: "new-work" }, say, service, project };
+  if (typeof search.work === "string" && search.work !== "") return { link: { kind: "work", slug: search.work }, say, service, project };
+  return { link: search.new === "thread" ? { kind: "no-work" } : null, say, service, project };
 }
 
 /**
  * **지금 씨앗 없는 새 Thread에 서 있나**(02 구현 스펙 §4 · 스토리 10) — ⌘N과 위 줄 「새 채팅」이 가는 곳이다. 그렇다면 둘은 아무것도 하지
  * 않고(같은 주소가 히스토리에 한 칸 더 쌓이지 않게), 그 행은 고른 모양이다. 씨앗을 단 새 Thread(`/?work=` · `/?new=work` · `/?new=thread` ·
- * `/?say=` · `/?service=`)는 아니다 — 거기서 누르면 씨앗이 걷힌 첫 화면으로 간다. 주소는 라우터가 읽은 그대로(`location` — 검증 전)라 씨앗도 `seedOf`로
- * 눕혀 읽는다.
+ * `/?say=` · `/?service=` · `/?project=`)는 아니다 — 거기서 누르면 씨앗이 걷힌 첫 화면으로 간다. 주소는 라우터가 읽은 그대로(`location` — 검증 전)라
+ * 씨앗도 `seedOf`로 눕혀 읽는다.
  */
-export function isBlankNewThread(location: {
-  pathname: string;
-  search: { work?: unknown; new?: unknown; say?: unknown; service?: unknown };
-}): boolean {
+export function isBlankNewThread(location: { pathname: string; search: SeedSearch }): boolean {
   const seed = seedOf(location.search);
-  return location.pathname === "/" && seed.link === null && seed.say === null && seed.service === null;
+  return location.pathname === "/" && seed.link === null && seed.say === null && seed.service === null && seed.project === null;
 }

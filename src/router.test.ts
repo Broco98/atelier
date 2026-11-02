@@ -180,13 +180,21 @@ describe("진입은 새 Thread다", () => {
   });
 
   // 03 구현 스펙 §5 · §14 · 티켓 06 — Service 씨앗(`?service=<slug>`)을 더했다. Service 상세의 「작업공간 만들기」(`?new=work&service=`)와 「대화로 고치기」
-  // (`?new=thread&service=&say=`)가 그 Service를 Service 칩에 고른 채 연다.
-  it("`/?new=work&service=…`도 새 Thread다 — Service 칩이 그 Service를 고른 채 선다", async () => {
+  // (`?new=thread&service=&say=`)가 그 Service를 범위 칩에 고른 채 연다.
+  it("`/?new=work&service=…`도 새 Thread다 — 범위 칩이 그 Service를 고른 채 선다", async () => {
     const { router } = setup(["/services/결제-서비스"]);
     await router.load();
     await router.navigate({ to: "/", search: { new: "work", service: "결제-서비스" } });
     expect(router.state.location.pathname).toBe("/");
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", service: "결제-서비스" });
+  });
+
+  it("`/?new=work&project=…`도 새 Thread다 — 범위 칩이 그 Project를 고른 채 선다", async () => {
+    const { router } = setup(["/projects"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "work", project: "api-server" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", project: "api-server" });
   });
 
   it("시작 직후 뒤로갈 곳이 없다", async () => {
@@ -214,6 +222,7 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/?new=thread")).toBe(false);
     expect(await blankAt("/?say=%EC%95%88%EB%85%95")).toBe(false);
     expect(await blankAt("/?service=pay")).toBe(false);
+    expect(await blankAt("/?project=api-server")).toBe(false);
     expect(await blankAt("/threads/20261010-100000")).toBe(false);
   });
 
@@ -222,10 +231,11 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/?new=project")).toBe(true);
     expect(await blankAt("/?say=")).toBe(true);
     expect(await blankAt("/?service=")).toBe(true);
+    expect(await blankAt("/?project=")).toBe(true);
   });
 
   it("씨앗을 단 새 Thread에서 `/`로 가면 씨앗이 걷히고 그 자리가 된다 — 히스토리는 한 칸 는다", async () => {
-    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95", "/?service=pay"]) {
+    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95", "/?service=pay", "/?project=api-server"]) {
       const { router, history } = setup([entry]);
       await router.load();
       await router.navigate({ to: "/" });

@@ -91,6 +91,7 @@ const HANDLERS: &[(&str, Handler)] = &[
             maybe_text(a, "thread").as_deref(),
             maybe_text(a, "work").as_deref(),
             maybe_text(a, "service").as_deref(),
+            maybe_text(a, "project").as_deref(),
         ))
     }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
@@ -297,7 +298,6 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_set_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_work_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     // Service 지우기 · 되돌리기(03 티켓 07)는 비운 곳마다 엔진이 「지워짐」 · 「되돌림」 줄을 남긴다 — 파일은 core L1(`service_delete`), 줄은
     // 기록 테스트(`thread_service_delete`)가 잰다.
