@@ -6,8 +6,9 @@ import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 // 경로 줄(codex-ds 스펙 §4 「카드 머리 · 경로 줄」 · DS `PathBar` · `.at-pathbar` — codex-ds 결정 12 · 13 · 14 · 27). 보는 것의 머리 줄이다 —
-// 작업 화면에서는 파일 탭의 코드 카드(탭 줄 아래 — git-integration S17)와 넓힌 카드의 보기(`ExpandedViewer`), Archive에서는 문서 카드에
-// 선다. 한때 spec 탭의 문서(탭 줄 아래)와 분할의 spec 열(열 머리)에도 섰다(restart 02a-13이 둘을 걷었다). 그보다 앞서 그 자리는 흰 알약의
+// 작업 화면에서는 파일 탭의 코드 카드(탭 줄 아래 — git-integration S17), Archive에서는 문서 카드에 선다. 한때 spec 탭의 문서(탭 줄 아래)와
+// 분할의 spec 열(열 머리)에도 섰고(restart 02a-13이 둘을 걷었다), 넓힌 카드의 보기 머리였다(restart 02b-8이 시안의 보기 머리
+// `ViewerHead`로 바꿨다). 그보다 앞서 그 자리는 흰 알약의
 // 위치 캡슐 · 두 칸 원문 전환 · 사각 경로 복사가 따로 선 카드 머리였다(ui-refresh 결정 5 · 7의 B).
 //
 // - 줄은 48(`--size-pathbar`) = 틈 8 · 컨트롤 32 · 틈 8이다. 아래 선이 없다.
@@ -26,9 +27,8 @@ import { cn } from "@/lib/utils";
 // - **캡슐 · 원 · 동그라미는 경로 줄의 모양이다**(결정 14 · DS `PathBar` 「규칙」). 경로 캡슐과 동그란 버튼의 모양은 이 파일에,
 //   보기 묶음의 알약 · 원은 `SegmentGroup`의 `pill` 크기에 있다. 다른 화면의 위치는 머리 줄 이름 뒤의 옅은 글자다(`Frame`의
 //   `HeadSlot`의 `sub`).
-// - **닫기 ×는 미리보기에만 단다**(결정 13) — Archive 문서에는 없고, 미리보기는 아직 앱에 없다. 줄 끝 칸(`end`)에 서는 것은 넓힌
-//   카드의 「카드로 접기」 ×다 — 미리보기 ×가 아니라 카드를 접는 것이다(`CONTEXT.md` 「경로 줄」). 한때 그 칸에 분할의 spec 열을 닫는 ×가
-//   섰다(codex-ds 스펙 S14 — restart 02a-13이 분할을 걷었다).
+// - **닫기 ×는 미리보기에만 단다**(결정 13) — Archive 문서에는 없고, 미리보기는 아직 앱에 없다. 한때 줄 끝 칸(`end`)에 넓힌 카드의
+//   「카드로 접기」 ×와 분할의 spec 열을 닫는 ×가 섰다(codex-ds 스펙 S14 — restart 02a-13 · 02b-8이 둘을 걷어 그 칸도 걷었다).
 
 /** 보기 묶음의 칸이 놓인 순서 — 아래 칸을 그리는 순서와 같다. 칩이 이것으로 서는 자리를 안다. */
 const VIEWS = ["doc", "source"] as const;
@@ -36,9 +36,9 @@ const VIEWS = ["doc", "source"] as const;
 /**
  * 동그란 버튼(DS `.at-cib`) — 32 원 · `fg-secondary` 글리프, 가리키면 `fill-hover` 면에 `fg`다(`quiet-hover` — 보드 `.ibtn`. 링은
  * v1 티켓 46이 걷었다). 원은 경로 줄의 모양이라(결정 14) 아이콘 버튼 규격(`icon-button` — 각진 28 · 24 · 26 · 16)의 단으로 두지
- * 않는다. 줄 끝 칸(`end`)에 서는 버튼도 이 모양이다.
+ * 않는다.
  */
-export const ROUND =
+const ROUND =
   "flex size-8 shrink-0 items-center justify-center rounded-full text-fg-secondary transition-colors outline-none quiet-hover focus-ring";
 
 /**
@@ -101,14 +101,11 @@ export function PathBar({
   path,
   view,
   onCopy,
-  end,
   ...marks
 }: {
   path: readonly string[];
   view?: PathView;
   onCopy?: () => void;
-  /** 줄 끝 칸 — 동그란 버튼 뒤에 사이 4로 선다. 넓힌 카드의 메모와 「카드로 접기」 ×(같은 `ROUND`)다. */
-  end?: ReactNode;
   [mark: `data-${string}`]: string | undefined;
 }) {
   const room = useRef<HTMLDivElement>(null);
@@ -144,14 +141,11 @@ export function PathBar({
         </nav>
       </div>
       {view && <ViewSwitch {...view} />}
-      <div className="flex shrink-0 items-center gap-1">
-        {onCopy && (
-          <Hint text="경로 복사" announce="name" type="button" tabIndex={0} onClick={onCopy} className={ROUND}>
-            <Copy aria-hidden className="size-4" />
-          </Hint>
-        )}
-        {end}
-      </div>
+      {onCopy && (
+        <Hint text="경로 복사" announce="name" type="button" tabIndex={0} onClick={onCopy} className={ROUND}>
+          <Copy aria-hidden className="size-4" />
+        </Hint>
+      )}
     </div>
   );
 }

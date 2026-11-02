@@ -6,12 +6,11 @@ import {
   invalidateAfterTurn,
   invalidateWorktree,
   refreshAllWorktrees,
-  refreshWorktrees,
   worktreeFolderQuery,
   worktreeTreeQuery,
 } from "./hooks";
 
-// 워크트리 데이터를 낡았다고 표시하는 문 넷이 **무엇을 지우는지**(결정 34 · 37). 다시 읽는 것은 보이는 쿼리뿐이라(S9) 그 수는
+// 워크트리 데이터를 낡았다고 표시하는 문 셋이 **무엇을 지우는지**(결정 34 · 37). 다시 읽는 것은 보이는 쿼리뿐이라(S9) 그 수는
 // L3(`files-live`)가 재고, 여기서는 표시만 본다 — 훅을 렌더하지 않는다(이 저장소의 L2에는 DOM이 없다).
 //
 // 키는 **쿼리가 짓는 것을 그대로 쓴다** — 손으로 같은 모양을 다시 지으면 진짜 키가 갈래를 옮겨도 초록이다(works 쪽 `hooks.test.ts`와
@@ -45,18 +44,12 @@ describe("워크트리 무효화 문", () => {
     expect(marked(client)).toEqual({ tree: true, folder: false, file: true, otherProject: false, otherWork: false });
   });
 
-  // 결정 37 — 걸린 폴더 안은 펼칠 때 · 창 포커스 · 새로고침에만 다시 읽는다. 턴 끝은 그 셋에 들지 않는다. 새로고침 버튼과 같은 문을
-  // 쓰면 턴마다 펼쳐 둔 `target/debug/deps`를 통째로 다시 읽는다.
+  // 결정 37 — 걸린 폴더 안은 펼칠 때 · 창 포커스에만 다시 읽는다. 턴 끝은 그 둘에 들지 않는다. 창 포커스와 같은 문을 쓰면 턴마다
+  // 펼쳐 둔 `target/debug/deps`를 통째로 다시 읽는다.
   it("「도는 중」 끝은 그 work의 워크트리 전부 — 걸린 폴더의 한 겹은 건너뛴다", async () => {
     const client = seeded();
     await invalidateAfterTurn(client, "가");
     expect(marked(client)).toEqual({ tree: true, folder: false, file: true, otherProject: true, otherWork: false });
-  });
-
-  it("새로고침 버튼은 그 work의 워크트리 전부 — 걸린 폴더의 한 겹까지", async () => {
-    const client = seeded();
-    await refreshWorktrees(client, "가");
-    expect(marked(client)).toEqual({ tree: true, folder: true, file: true, otherProject: true, otherWork: false });
   });
 
   it("창 포커스는 모든 work의 워크트리 전부 — 걸린 폴더의 한 겹까지", async () => {

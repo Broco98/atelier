@@ -80,13 +80,15 @@ export const HEAD_GLYPH = "size-4";
 /**
  * 머리 줄의 아이콘 단추 — 28 · `radius-lg`(아이콘 버튼 기본 — `--size-control`), 글리프 `fg-titlebar`(#898a8b — 크롬 위 글리프). 쉴 때
  * hover는 버튼 hover(`quiet-hover`)이고, 펼친 메뉴의 트리거(`open` — 「…」 · ⋯)는 hover와 같은 면, 켜진 토글(`on` — 요약 단추)은
- * 크롬 위 켜진 면(`fill-toggle-on` #ebebec)이다. 둘 다 글리프가 `fg`로 진해진다. hover는 쉴 때의 가지에만 둔다(`quiet-hover` 머리말).
+ * 고른 면(`fill-selected` — 라이트 #eff0f0 · 다크 흰 .08, 시안 `.ra-tbtn[aria-pressed="true"]`)이다. 둘 다 글리프가 `fg`로 진해진다.
+ * hover는 쉴 때의 가지에만 둔다(`quiet-hover` 머리말). 한때 켜진 면이 02 실측 `fill-toggle-on`(#ebebec)이었다 — 다크 값이 없어 다크에서
+ * 흰 네모로 떴다(restart 02b-8b).
  * Thread의 「…」 · 요약 단추와 공용 틀의 ⋯ · 패널 토글 · 돌아가기가 이 한 벌이다.
  */
 export function headButton(state: "rest" | "open" | "on" = "rest") {
   return cn(
     "icon-button transition-colors focus-ring",
-    state === "open" ? "bg-fill-hover text-fg" : state === "on" ? "bg-fill-toggle-on text-fg" : "text-fg-titlebar quiet-hover",
+    state === "open" ? "bg-fill-hover text-fg" : state === "on" ? "bg-fill-selected text-fg" : "text-fg-titlebar quiet-hover",
   );
 }
 

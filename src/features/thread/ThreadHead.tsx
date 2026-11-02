@@ -154,7 +154,7 @@ export const SummaryGlyph = createLucideIcon("summary", [
 /**
  * 머리 줄 오른쪽 끝의 요약 단추(02 §6 · 시안 Main · MainLoose `aria-label="요약 카드"` — restart 02a-9가 이름을 「요약 고정」에서 「요약 카드」로
  * 바꿨다, SummarySheet 규격) — 28 · `radius-lg`, 글리프 16 `fg-titlebar`. 켜지면
- * 바탕이 #ebebec(`fill-toggle-on`)이고 글리프가 `fg`로 진해지며, 켜진 채 hover해도 면이 그대로다(시안 `sumBg` · `sumColor`). 이름은 할 일
+ * 바탕이 고른 면(`fill-selected`)이고 글리프가 `fg`로 진해지며, 켜진 채 hover해도 면이 그대로다(시안 `.ra-tbtn[aria-pressed="true"]`). 이름은 할 일
  * 하나이고 켬/끔은 `aria-pressed`가 말한다.
  *
  * 요약 카드(02 §7 · `SummaryCard`)를 여닫는다 — 오른쪽 자리를 `summary`로 세우거나 걷는다(`right-place.ts`). 작업공간의 채팅 탭은 작업공간

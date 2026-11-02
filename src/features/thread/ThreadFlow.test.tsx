@@ -72,8 +72,15 @@ describe("흐름의 물음 자리", () => {
     return markup.slice(start, end).replace(/<[^>]*>/g, "");
   };
 
-  it("도는 턴의 머리줄 끝은 기다리는 물음을 말한다 — 승인은 시안 문장, 나머지는 무엇의 답인지다", () => {
-    const waiting = (lines: readonly RecordLine[]) => /<span class="text-link">([^<]*)<\/span>/.exec(flow(lines))?.[1] ?? null;
+  // Tools 보드 「승인 대기」 · States 07(restart 02b-4) — 사람을 기다리는 동안 머리는 시간 없이 그 말 하나가 경고색으로 선다. 시계는 멈춰 있다
+  // (`fold.test.ts` 「사람을 기다리는 동안의 시계」). 한때 「N초 동안 작업 중입니다 · 승인을 기다립니다」가 링크 색으로 붙었다.
+  it("도는 턴의 머리는 기다리는 물음을 시간 없이 경고색으로 말한다 — 승인은 시안 문장, 나머지는 무엇의 답인지다", () => {
+    const waiting = (lines: readonly RecordLine[]) => {
+      const markup = flow(lines);
+      const head = /<div data-work-divider[^>]*>(.*?)<\/div>/.exec(markup)?.[1] ?? "";
+      expect(head).not.toContain("동안 작업 중입니다");
+      return /<span class="[^"]*\btext-warning\b[^"]*">([^<]*)<\/span>/.exec(head)?.[1] ?? null;
+    };
     expect(waiting(through(record("thread-permission"), 8))).toBe("승인을 기다립니다");
     expect(waiting(through(record("thread-question"), 7))).toBe("질문의 답을 기다려요");
     expect(waiting(through(record("thread-work"), 54))).toBe("작업공간 만들기 답을 기다려요");
@@ -576,6 +583,38 @@ describe("멈춘 턴", () => {
     const answer = /<div class="([^"]*)"><p>멈추기 전 글/.exec(markup);
     expect(answer?.[1]).toBeDefined();
     expect(answer?.[1]).not.toContain("text-fg-secondary");
+  });
+});
+
+// 거부로 멈춘 턴 · 앱이 막아서 멈춘 턴(Tools 보드 「거부로 멈춤」 · 「앱이 막아서 멈춤」 · restart 02b-4) — 사람이 멈춘 턴처럼 머리가 위에 서고 로그는
+// 펼친 채 남는다. 둘은 머리의 글로 갈리고, 앱이 막은 턴은 아래에 까닭 안내가 선다. 바탕은 엔진이 쓴 Codex 거절 기록이다(`thread-codex-refused`).
+describe("거부로 멈춘 턴", () => {
+  const refused = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-codex-refused.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  const denied = refused.map((line) => {
+    if (line.kind !== "turn-end") return line;
+    const { appRefusal: _reason, ...payload } = line.payload as Record<string, unknown>;
+    return { ...line, payload };
+  });
+  const flow = (rows: readonly RecordLine[]) => renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Codex" />);
+  const heads = (markup: string) => [...markup.matchAll(/<button[^>]*data-work-divider[^>]*>(.*?)<\/button>/g)];
+
+  it("앱이 막은 턴은 「앱이 막아서 멈췄어요」가 펼친 채 서고 그 아래 까닭 안내가 선다", () => {
+    const markup = flow(refused);
+    const head = heads(markup)[heads(markup).length - 1];
+    expect(head[0]).toContain('aria-expanded="true"');
+    expect(head[1]).toContain("앱이 막아서 멈췄어요");
+    expect(markup.indexOf('data-end-notice="app-refused"')).toBeGreaterThan(head.index);
+  });
+
+  it("사람이 거부한 턴은 「거부해서 멈췄어요」가 펼친 채 서고 안내가 없다", () => {
+    const markup = flow(denied);
+    const head = heads(markup)[heads(markup).length - 1];
+    expect(head[0]).toContain('aria-expanded="true"');
+    expect(head[1]).toContain("거부해서 멈췄어요");
+    expect(markup).not.toContain("data-end-notice");
   });
 });
 

@@ -31,7 +31,7 @@ interface WorktreeChange {
  *   빼고 — 결정 37).
  *
  * 예비 신호의 나머지는 여기 없다 — 트리가 서면 트리 쿼리가 켜지며 읽는다(`staleTime` 0). 한때 files 칸 머리에 새로고침 버튼이 섰다
- * (restart 02a-14가 칸과 함께 걷었다 — 문 `refreshWorktrees`는 남았다). 여기 셋은 같은 무효화 문을 지나 몰려도 합쳐진다(`./hooks`의
+ * (restart 02a-14가 칸과 함께 걷었다 — 그 문 `refreshWorktrees`는 02b-8이 걷었다). 여기 셋은 같은 무효화 문을 지나 몰려도 합쳐진다(`./hooks`의
  * `invalidateMerging`).
  */
 export function useFollowWorktreeChanges(): void {

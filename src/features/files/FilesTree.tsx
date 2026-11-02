@@ -11,7 +11,7 @@ import {
   type TreeRowsProps,
 } from "@/features/works/SpecTree";
 import type { WorktreeView, WorkView } from "@/features/works/types";
-import { foldsOf, rememberFolds, type Folds } from "./folds";
+import { folderOpen, foldsOf, rememberFolds, type Folds } from "./folds";
 import { worktreeFolderQuery, worktreeTreeQuery } from "./hooks";
 import type { WorktreeEntry, WorktreeTree } from "./types";
 
@@ -26,6 +26,10 @@ const NOTE = "px-2 py-1.5 text-chat-meta text-fg-tertiary";
  * 워크트리 트리 — 이 work의 워크트리(git-integration 판 01, 결정 37). 프로젝트마다 구획이 하나다. 넓힌 카드의 Project 보기가 그
  * Project 하나를 건네 쓴다(`ExpandedViewer`). 한때 작업 패널 files 칸의 몸이었다 — restart 02a-14가 그 칸을 걷었다.
  *
+ * **행은 촘촘한 행이다**(restart 02b-8 · 보드 `.ra-vwtree` · `.ra-tree-row`) — 24 · 줄 사이 2 · 한 단 12 · 앞은 확장자 첫 글자이고, 트리
+ * 상자는 위아래 8 · 좌우 6이다. `changed`(이 Work가 그 Project에서 바꾼 파일의 worktree 기준 경로)의 행은 이름이 파란 글자이고 끝에 파란
+ * 점이 선다.
+ *
  * **돌려주는 스크롤 영역이 그 몸의 직계 flex 자식이다** — spec 패널의 몸(`SpecTab`)과 같은 계약이다. 머리는 카드에
  * 고정되고 트리만 세로로 스크롤한다. 표식(`data-files-tree`)은 이 트리 범위의 토큰(흐린 글자 — `index.css`)이 서는 자리다.
  *
@@ -39,18 +43,20 @@ function FilesTree({
   work,
   visible,
   current,
+  changed = [],
   onPress,
 }: {
   work: WorkView;
   visible: boolean;
   current: CodeTarget | null;
+  changed?: readonly string[];
   onPress: (target: CodeTarget, clicks: number) => void;
 }) {
   const { data: projects } = useProjects();
   // 프로젝트가 하나면 구획 머리 없이 바로 트리다(S13) — 대부분의 work가 하나다.
   const headed = work.worktrees.length > 1;
   return (
-    <div data-files-tree="" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
+    <div data-files-tree="" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 py-2 scroll-quiet">
       {work.worktrees.length === 0 ? (
         <span className={NOTE}>이 작업공간에는 프로젝트가 없어요</span>
       ) : (
@@ -64,6 +70,7 @@ function FilesTree({
             title={headed ? (projects?.find((p) => p.slug === worktree.project)?.name ?? worktree.project) : null}
             visible={visible}
             current={current?.project === worktree.project ? current.path : null}
+            changed={changed}
             onPress={onPress}
           />
         ))
@@ -88,13 +95,16 @@ const rowsOf = (entries: readonly WorktreeEntry[]): FileRow[] =>
     entry,
   }));
 
-// 행의 겉. 걸린 것은 흐리고 그 까닭을 말한다(스토리 19 · 88). 파일 행의 글리프는 확장자 꼬리표다(스토리 12) — 하위 모듈만
-// 제 글리프를 받는다.
-const lookOf = ({ entry }: FileRow): RowLook => ({
-  glyph: entry.kind === "submodule" ? FolderGit2 : null,
-  dim: entry.ignored,
-  note: entry.ignored ? IGNORED_NOTE : entry.kind === "submodule" ? SUBMODULE_NOTE : undefined,
-});
+// 행의 겉. 걸린 것은 흐리고 그 까닭을 말한다(스토리 19 · 88). 파일 행의 글리프는 확장자 첫 글자다(스토리 12 · restart 02b-8) — 하위
+// 모듈만 제 글리프를 받는다. 이 Work가 바꾼 파일은 바뀐 행이다.
+const lookWith =
+  (changed: ReadonlySet<string>) =>
+  ({ entry }: FileRow): RowLook => ({
+    glyph: entry.kind === "submodule" ? FolderGit2 : null,
+    dim: entry.ignored,
+    note: entry.ignored ? IGNORED_NOTE : entry.kind === "submodule" ? SUBMODULE_NOTE : undefined,
+    changed: changed.has(entry.path),
+  });
 
 /** 프로젝트 하나의 구획 — 머리(프로젝트가 둘 이상일 때)와 그 워크트리의 트리. */
 function ProjectSection({
@@ -103,6 +113,7 @@ function ProjectSection({
   title,
   visible,
   current,
+  changed,
   onPress,
 }: {
   slug: string;
@@ -111,6 +122,7 @@ function ProjectSection({
   visible: boolean;
   /** 본문에 선 파일 탭의 워크트리 기준 경로 — 그 탭이 이 구획의 프로젝트 것일 때만 찬다. */
   current: string | null;
+  changed: readonly string[];
   onPress: (target: CodeTarget, clicks: number) => void;
 }) {
   const { project } = worktree;
@@ -125,6 +137,9 @@ function ProjectSection({
     setFolds(next);
   };
   const headingId = useId();
+  const lookOf = useMemo(() => lookWith(new Set(changed)), [changed]);
+  // 기억이 없는 폴더는 바뀐 파일 위만 펼쳐 선다(`folderOpen`).
+  const isOpen = useMemo(() => folderOpen(folds, changed), [folds, changed]);
 
   // **지금 탭이 바뀌면 그 파일을 트리에서 보인다**(스토리 15 · 결정 37) — 조상 폴더를 펼치고 행을 보이는 자리로 스크롤한다.
   // 칸이 안 보이면(패널이 닫혔거나 다른 칸) 할 수 없다: 숨은 몸에는 잴 자리가 없고 트리도 안 읽었다(S9). 그래서 바뀐 파일을
@@ -142,7 +157,7 @@ function ProjectSection({
     if (path === null || !visible || !listed) return;
     toReveal.current = null;
     toScroll.current = true;
-    const closed = ancestorsOf(path).filter((folder) => !folds[folder]);
+    const closed = ancestorsOf(path).filter((folder) => !isOpen(folder));
     if (closed.length > 0) setOpen(closed, true);
   }, [current, visible, listed]);
   // 행은 조상이 펼쳐진 **다음** 그림에 선다 — 그래서 스크롤은 그림마다 보고, 행이 서 있을 때 한 번 한다.
@@ -157,10 +172,11 @@ function ProjectSection({
   // 구획의 행과 펼친 걸린 폴더 안의 행이 같은 값으로 선다 — 접힘 기억도, 강조하는 지금 파일도 한 벌이다.
   const rowsProps: RowsProps = {
     current,
-    isOpen: (row) => folds[row.path] ?? false,
+    isOpen: (row) => isOpen(row.path),
     onOpenChange: (path, open) => setOpen([path], open),
     onSelect: (path, clicks) => onPress({ project, path }, clicks),
     lookOf,
+    dense: true,
     // 아직 안 읽은 폴더(걸린 폴더)는 펼칠 때 한 겹 읽는다 — 그 몸이 읽기를 건다(스토리 20). 나머지 폴더는 받은 자식 행이다.
     folderBody: (row, depth) =>
       row.entry.children === null ? (
@@ -173,7 +189,7 @@ function ProjectSection({
       tree,
       rows,
       (items) => (
-        <div ref={rowsBox} className="flex shrink-0 flex-col gap-px">
+        <div ref={rowsBox} className="flex shrink-0 flex-col gap-0.5">
           <TreeRows items={items} depth={0} {...rowsProps} />
         </div>
       ),
@@ -271,7 +287,7 @@ const sectionNote = (text: string) => <span className={NOTE}>{text}</span>;
  */
 function FolderNote({ depth, text }: { depth: number; text: string }) {
   return (
-    <div className="flex h-7 items-center pr-2 text-chat-meta text-fg-tertiary" style={treeIndent(depth)} title={text}>
+    <div className="flex h-6 items-center pr-2 text-chat-meta text-fg-tertiary" style={treeIndent(depth, true)} title={text}>
       <span className="min-w-0 truncate">{text}</span>
     </div>
   );

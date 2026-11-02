@@ -94,19 +94,10 @@ describe("경로 복사 · 줄 끝", () => {
     expect(render({ copy: false })).not.toContain('aria-label="경로 복사"');
   });
 
-  // 닫기 ×는 미리보기에만 단다(codex-ds 결정 13) — 줄이 스스로 세우는 닫기는 없다. 줄 끝 칸은 부르는 쪽이 건넬 때만 선다
-  // (넓힌 카드의 「카드로 접기」 — 한때 분할 spec 열의 열 닫기였다, codex-ds 스펙 S14).
-  it("줄 끝 칸은 건넨 것만 서고, 경로 복사 뒤에 선다", () => {
+  // 닫기 ×는 미리보기에만 단다(codex-ds 결정 13) — 줄이 스스로 세우는 닫기는 없다. 한때 줄 끝 칸(`end`)이 넓힌 카드의 「카드로 접기」 ·
+  // 분할 spec 열의 열 닫기를 받았다 — restart 02a-13이 분할을, 02b-8이 넓힌 카드의 경로 줄을 걷어 그 칸도 걷었다.
+  it("줄이 스스로 세우는 닫기가 없다", () => {
     expect(render()).not.toMatch(/aria-label="[^"]*닫기"/);
-    const markup = renderToStaticMarkup(
-      <PathBar
-        path={["a"]}
-        view={{ source: false, locked: false, onChange: () => {} }}
-        onCopy={() => {}}
-        end={<button type="button" aria-label="spec 열 닫기" />}
-      />,
-    );
-    expect(markup.indexOf('aria-label="경로 복사"')).toBeLessThan(markup.indexOf('aria-label="spec 열 닫기"'));
   });
 });
 

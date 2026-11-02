@@ -384,6 +384,27 @@ describe("눈금의 사분 단", () => {
       className: "gap-2.25",
       why: "턴 머리 — 글 줄 아래 9에 0.5 선(States 보드 `.ra-whblock`의 `gap: 9px` · restart 02b-1, 한때 Diff-Chat 「작업 구분선」의 아래 안쪽 9)",
     },
+    // 작업 로그의 시안 값(restart 02b-4 · Tools 보드) — 명령 출력 상자 · 서브에이전트 묶음 · MCP 받은 값의 확장자 꼬리표
+    {
+      file: "src/features/thread/WorkLog.tsx",
+      className: "py-2.25",
+      why: "명령 출력 상자(`OUT_BOX`) — 위아래 안쪽 9(Tools 보드 `.ra-out`의 `padding: 9px 12px 9px 9px`)",
+    },
+    {
+      file: "src/features/thread/WorkLog.tsx",
+      className: "pl-2.25",
+      why: "위와 같다 — 왼쪽 안쪽 9",
+    },
+    {
+      file: "src/features/thread/WorkLog.tsx",
+      className: "ml-1.75",
+      why: "서브에이전트 묶음의 안쪽 줄 — 글리프 가운데에 선 세로선까지 7(Tools 보드 서브에이전트 `.ra-group`의 `margin-left: 7px`)",
+    },
+    {
+      file: "src/features/thread/WorkLog.tsx",
+      className: "px-0.75",
+      why: "MCP 받은 값 상자의 확장자 꼬리표 — 좌우 안쪽 3(DS `.at-code .at-ext`의 `padding: 0 3px`)",
+    },
     {
       file: "src/features/thread/SlashMenu.tsx",
       className: "gap-px",
@@ -408,11 +429,6 @@ describe("눈금의 사분 단", () => {
       file: "src/features/works/SpecTree.tsx",
       className: "gap-px",
       why: "작업공간 패널 트리 — 줄 사이 1(DS `.at-tree`)",
-    },
-    {
-      file: "src/features/files/FilesTree.tsx",
-      className: "gap-px",
-      why: "넓힌 카드의 Project 트리(워크트리) — spec 트리와 같은 줄 사이 1(DS `.at-tree`)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",
