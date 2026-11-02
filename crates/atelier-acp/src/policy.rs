@@ -3,9 +3,11 @@
 //! **Atelier가 하나뿐인 판정자다(S17).** Thread의 Session에 온 권한 요청은 모두 [`judge`]를 지난다. `claude`는 기본 모드로만(「계획만」
 //! 이면 계획 모드로) 돌아, Claude Code가 엔진에 묻지 않고 넘기는 것은 사용자 설정의 허용 규칙과 claude가 스스로 읽기만으로 치는 일 —
 //! 읽기 전용 명령(`echo` · `ls` · `cat` …)과 계획 모드에서 제 계획 파일(`~/.claude/plans/*.md`)을 쓰는 것 — 뿐이다(진짜 claude
-//! 2.1.309, v1 티켓 27). 작업 자리의 `.claude/settings.json` 허용 규칙은 claude가 믿지 않은 폴더라 버린다. Agent의 `forbid`는
-//! 변환기가 `--disallowedTools`로도 넘겨 claude가 먼저 막는다 — 1번 칸은 그 밖으로 새는 명령의 그물이다. 입출력이 없다 — 받는 것은
+//! 2.1.309, v1 티켓 27). 작업 자리의 `.claude/settings.json` 허용 규칙은 claude가 믿지 않은 폴더라 버린다. 입출력이 없다 — 받는 것은
 //! 엔진이 읽어 넘기고(`host/thread/gate.rs`), 내는 것을 엔진이 권한 답과 `permission` 줄로 옮긴다.
+//!
+//! **Agent 규칙의 칸(`forbid` · `ask_before` · `tools.cli`)은 엔진에서 늘 비었다** — 규칙을 적던 Agent 정의가 사라졌다. 01a-9가 칸과
+//! [`Policy`]를 지운다. 그때까지 칸의 표는 이 파일의 시험이 지킨다.
 //!
 //! **판정 순서**(§9) — 처음 걸린 칸이 답한다.
 //! 1. `forbid`에 걸리면 거절한다. 볼 수 없는 조각이 있어 걸렸을 수 있으면 묻는다(아래 「모를 때」).
@@ -20,9 +22,7 @@
 //! 6. 그 밖에는 물어보는 정도의 표([`by_level`])를 따른다.
 //!
 //! **규칙 이름은 S19 한 벌이다** — `forbid` · `ask_before` · 허락 · `tools.cli`가 같은 낱말을 쓴다: `edit`(편집 전부) · `shell`(명령
-//! 전부) · `push` · `merge`, 그리고 명령 패턴 `Bash(…)`. Claude 변환기의 금지 규칙(`translator/agent_flags.rs`의 `FORBID`)과 같은
-//! 명령을 막는다 — 한쪽만 고치면 claude가 막는 것과 판정이 막는 것이 갈린다. `schema`(마이그레이션 명령)는 고정 목록이 없다 — Host
-//! 기본 파일이 명령 패턴으로 적는다(S19 · 결정.md 12).
+//! 전부) · `push` · `merge`, 그리고 명령 패턴 `Bash(…)`. `schema`(마이그레이션 명령)는 고정 목록이 없다(S19 · 결정.md 12).
 //!
 //! 명령은 셸이 실행하는 명령마다 조각낸다(`&&` · `;` · `|` · 괄호 · 명령 치환 · `sh -c '…'`, `policy/shell.rs`). git은 전역 옵션을 건너
 //! 하위 명령을 읽는다 — `git -C fe push`도 `push`다. **막는 쪽(`forbid` · `ask_before`)은 조각 하나만 걸려도, 넘기는 쪽(허락 ·
@@ -42,11 +42,17 @@ mod shell;
 
 use std::path::{Path, PathBuf};
 
-use atelier_core::Policy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use shell::{pieces, Piece};
+
+/// Agent 규칙 — 막는 쪽의 규칙 이름들(S19). 판정의 칸과 함께 01a-9가 지운다.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Policy {
+    pub ask_before: Vec<String>,
+    pub forbid: Vec<String>,
+}
 
 /// 물어보는 정도(스토리 84 · S18) — 입력창 칩이 고른다(v1 티켓 23). 저장 글자는 `always` · `edits` · `plan` · `auto`다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -164,9 +170,9 @@ pub(crate) enum Card {
 pub(crate) struct Case<'a> {
     /// 요청이 하는 일.
     pub act: &'a Act,
-    /// `host.md`의 Policy — `ask_before` · `forbid`.
+    /// `ask_before` · `forbid` — 엔진이 넘기는 값은 늘 비었다.
     pub policy: &'a Policy,
-    /// 그 Agent의 `tools.cli` — 묻지 않는 명령.
+    /// `tools.cli` — 묻지 않는 명령. 엔진이 넘기는 값은 늘 비었다.
     pub cli: &'a [String],
     pub level: AskLevel,
     /// 「다시 묻지 않기」 허락 — 규칙 이름들(S19).
@@ -323,7 +329,7 @@ enum Rule<'a> {
     Nothing,
 }
 
-/// 추상 이름이 막는 명령(S19) — 변환기의 `FORBID`와 같은 명령이다.
+/// 추상 이름이 막는 명령(S19).
 const NAMED: [(&str, &[&str]); 2] = [("push", &["git push"]), ("merge", &["gh pr merge", "git merge"])];
 
 fn rule(name: &str) -> Rule<'_> {

@@ -13,9 +13,6 @@ use atelier_acp::ThreadLink;
 use common::{has_pair, of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 가짜 claude가 첫 턴에 부를 Thread 도구 — `FAKE_CLAUDE_MCP_CALL`.
 fn rename_call(title: &str) -> String {
     json!({"tool": "rename_thread", "arguments": {"title": title}}).to_string()
@@ -49,7 +46,6 @@ fn socket_of(server: &Value) -> PathBuf {
 #[test]
 fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목록이_바뀌고_도구의_답이_claude에게_돌아간다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     // 다른 Thread 하나 — 도구는 Thread id를 받지 않는다. 부른 Session의 Thread만 바뀐다.
     let quiet = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let other = quiet.start_thread("다른 일", ThreadLink::NoWork).expect("다른 Thread");
@@ -111,7 +107,6 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
 #[test]
 fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명이_말한다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(calling(&sandbox, &rename_call("환불 API 버그")));
 
     let thread = host.start_thread("환불이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
@@ -159,7 +154,6 @@ fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명
 #[test]
 fn 빈_이름으로_부르면_도구가_거절_까닭을_돌려주고_아무것도_바꾸지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(calling(&sandbox, &rename_call("  \n ")));
 
     let thread = host.start_thread("환불이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
@@ -176,7 +170,6 @@ fn 빈_이름으로_부르면_도구가_거절_까닭을_돌려주고_아무것�
 #[test]
 fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let thread = host.start_thread("어제의 말", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -200,7 +193,6 @@ fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린
 #[test]
 fn agent_저장과_agent_부르기_도구는_도구_목록에도_머리말에도_서지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(calling(&sandbox, &rename_call("리뷰어 만들기")));
 
     let thread = host.start_thread("보안 위주로 보는 리뷰어 만들어줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
@@ -223,7 +215,6 @@ fn agent_저장과_agent_부르기_도구는_도구_목록에도_머리말에도
 #[test]
 fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(recorded_rename(&sandbox));
 
     let thread = host
@@ -242,7 +233,6 @@ fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() 
 #[test]
 fn host의_stdout이_thread_도구_부르기보다_늦게_닿아도_기록의_차례가_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-rename-host"), ("FAKE_CLAUDE_STDOUT_LAG", "500")],

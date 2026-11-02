@@ -4,7 +4,7 @@ import type { AskLevel, RecordLine, ThreadView } from "./types";
 // 입력창 칩과 「/」 메뉴의 원천(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 스토리 33) — 기록 줄에서 Session의 모델 목록 ·
 // 명령을, 채팅의 값(`thread.json`)에서 고른 모델 · 생각 깊이를 읽는 **순수 함수**다. three-axes 칩(`chat/chips.ts`)을 옮겨 왔다.
 // - **지금 값은 채팅의 값이 이긴다.** 모델 · 생각 깊이 바꾸기는 채팅의 값을 먼저 고치고(Session이 떠 있으면 다음 턴부터 든다), 떠
-//   있지 않으면 다음에 띄울 때 그 값으로 연다. 그래서 고른 값이 있으면 그것이고, 없으면(정의 파일에도 없다) Session이 연 값이다.
+//   있지 않으면 다음에 띄울 때 그 값으로 연다. 그래서 고른 값이 있으면 그것이고, 없으면 Session이 연 값이다.
 // 모드 칩은 없다 — 물어보는 정도(v1 티켓 23)가 그 자리를 맡는다. 정도는 Session이 아니라 Thread(Work에 이었으면 Work)의 값이라 기록이
 // 아니라 Thread의 지금(`ThreadView.askLevel`)에서 읽는다.
 
@@ -128,7 +128,7 @@ export const currentModel = (lists: ChipLists, view: Pick<ThreadView, "model">):
 
 /**
  * 칩 글자(캔버스 Composer 보드 「Opus · 높음」) — 모델은 목록의 이름에서 괄호 설명을 뗀 것(「Default (recommended)」 → 「Default」),
- * 목록에 없으면 값 그대로다 — 다만 소문자 한 낱말인 별칭(`opus` · `sonnet`, 목록이 서기 전 Host 정의의 값)은 이름처럼 머리를 대문자로 쓴다.
+ * 목록에 없으면 값 그대로다 — 다만 소문자 한 낱말인 별칭(`opus` · `sonnet`, 목록이 서기 전 채팅의 값)은 이름처럼 머리를 대문자로 쓴다.
  * 생각 깊이를 고르지 않았으면 모델만이다. 둘 다 모르면 「기본 모델」이다.
  */
 export function chipLabel(models: readonly ChoiceOption[] | null, model: string | null, effort: string | null): string {

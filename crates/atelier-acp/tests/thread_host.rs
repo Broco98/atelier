@@ -12,9 +12,6 @@ use atelier_acp::{StartPicks, ThreadLink};
 use common::{has_pair, of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md` — 선호 모델과 생각 깊이를 적었다.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\nmodel:\n  prefer: sonnet\n  effort: high\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// spec 배치 글의 머리 줄 — `atelier_start_work`가 건네는 글과 같다.
 const SPEC_LAYOUT_HEAD: &str = "Spec layout — how to arrange documents inside `specDir`.";
 
@@ -29,7 +26,7 @@ fn same_dir(a: &Path, b: &Path) -> bool {
 }
 
 #[test]
-fn library_폴더가_없어도_새_thread가_열리고_답한다() {
+fn library_폴더가_없어도_새_thread가_열리고_답하며_앱이_그_폴더를_만들지_않는다() {
     let sandbox = Sandbox::new();
     assert!(!sandbox.data_root().join("library").exists(), "시작 절차가 옮긴 뒤의 자리다");
     let host = sandbox.host(two_turns(&sandbox));
@@ -39,15 +36,47 @@ fn library_폴더가_없어도_새_thread가_열리고_답한다() {
     host.shut_down();
 
     assert_eq!(of_kind(&record, "turn-end").len(), 1, "{}", common::lines_text(&record));
+    assert!(!sandbox.data_root().join("library").exists(), "앱이 Library를 세우지 않는다");
+}
+
+/// 옛 판이 남긴 `library` 폴더 — 다른 설치본에서 온 자료다. 앱은 읽지도 지우지도 않는다.
+#[test]
+fn 옛_library의_정의는_읽지_않아_고르지_않으면_모델_생각_깊이_도구_금지를_넘기지_않고_깨져_있어도_채팅이_열린다() {
+    let sandbox = Sandbox::new();
+    let library = sandbox.data_root().join("library/agents");
+    std::fs::create_dir_all(&library).unwrap();
+    let definition = library.join("host.md");
+    let narrow = "---\nmodel:\n  prefer: sonnet\n  effort: high\ntools:\n  builtin: [read]\npolicy:\n  forbid: [shell]\n---\n";
+    std::fs::write(&definition, narrow).unwrap();
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
+
+    let thread = host.start_thread("어제의 말", ThreadLink::NoWork).expect("새 Thread");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["model"].clone(), file["effort"].clone()), (Value::Null, Value::Null), "고르지 않으면 채팅에 값이 없다: {file}");
+    let args = common::receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(&thread)));
+    for name in ["--model", "--effort", "--tools", "--disallowedTools"] {
+        assert!(!args.iter().any(|arg| arg == name), "고르지 않으면 {name}가 없다: {args:?}");
+    }
+
+    std::fs::write(&definition, "frontmatter 없는 글\n").unwrap();
+    let broken = host.start_thread("오늘의 말", ThreadLink::NoWork).expect("깨진 옛 정의가 채팅을 막지 않는다");
+    sandbox.wait_thread_kind(&broken, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(std::fs::read_to_string(&definition).unwrap(), "frontmatter 없는 글\n", "옛 파일은 글자 그대로다");
 }
 
 #[test]
 fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thread_폴더에_남는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (host, events) = sandbox.host_with_events(two_turns(&sandbox));
 
-    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let picks = StartPicks { model: Some("sonnet".into()), effort: Some("high".into()), ..StartPicks::default() };
+    let thread = host
+        .start_thread_picking("세 낱말로 답해 줘: hello from turn", &[], ThreadLink::NoWork, picks)
+        .expect("새 Thread의 첫 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     let dir = sandbox.thread_dir(&thread);
 
@@ -62,7 +91,7 @@ fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thre
     assert_eq!(
         (file["runtime"].clone(), file["model"].clone(), file["effort"].clone()),
         (json!("claude-code"), json!("sonnet"), json!("high")),
-        "Runtime · 모델 · 생각 깊이가 채팅의 값이다 — 모델 · 생각 깊이는 Library의 host.md에서 옮겨 적는다"
+        "Runtime · 모델 · 생각 깊이가 채팅의 값이다 — 모델 · 생각 깊이는 칩에서 고른 값이다"
     );
     assert!(same_dir(Path::new(file["cwd"].as_str().expect("cwd")), &dir), "Work 없는 Thread의 cwd는 Thread 폴더다(S11)");
 
@@ -117,7 +146,6 @@ fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thre
 #[test]
 fn runtime_값이_없는_옛_채팅_폴더는_목록에서_빠지고_지워지지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let old = "20261001-090000";
     let dir = sandbox.thread_dir(old);
     std::fs::create_dir_all(dir.join("agents")).unwrap();
@@ -147,27 +175,17 @@ fn runtime_값이_없는_옛_채팅_폴더는_목록에서_빠지고_지워지�
     assert_eq!(sandbox.claude_launches().len(), 1, "옛 채팅을 띄우지 않았다");
 }
 
-#[test]
-fn library의_host_md가_깨졌으면_아무것도_세우지_않는다() {
-    let sandbox = Sandbox::new();
-    sandbox.library_agent("host", "frontmatter 없는 글\n");
-    let host = sandbox.host(two_turns(&sandbox));
-
-    let refused = host.start_thread("안녕", ThreadLink::NoWork);
-    assert!(matches!(&refused, Err(atelier_acp::HostError::AgentBroken { .. })), "{refused:?}");
-    assert_eq!(host.list_threads().expect("목록"), [], "거절된 첫 말은 Thread를 세우지 않는다");
-    host.shut_down();
-}
-
 /// 기록 축복(S26 꼴) — 새 Thread의 두 턴(답만 하는 턴 · `Write` · `Read` · `Bash`의 턴)이 검사 자료로 선다. PR ①의 L3(v1 티켓 10)가
 /// 이 파일을 `thread:record`로 흘려 Thread 화면을 그린다.
 #[test]
 fn 새_thread_두_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(two_turns(&sandbox));
 
-    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let picks = StartPicks { model: Some("sonnet".into()), effort: Some("high".into()), ..StartPicks::default() };
+    let thread = host
+        .start_thread_picking("세 낱말로 답해 줘: hello from turn", &[], ThreadLink::NoWork, picks)
+        .expect("새 Thread의 첫 말");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.send_to_thread(&thread, "notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘").expect("이어 말하기");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
@@ -195,12 +213,13 @@ fn yesterday(sandbox: &Sandbox) -> String {
 #[test]
 fn 참여자가_없는_채팅이_앱을_다시_켠_뒤_같은_session으로_이어_열리고_모델은_채팅의_값이다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
-    let thread = yesterday(&sandbox);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
+    let picks = StartPicks { model: Some("sonnet".into()), effort: Some("high".into()), ..StartPicks::default() };
+    let thread = host.start_thread_picking("어제의 말", &[], ThreadLink::NoWork, picks).expect("새 Thread");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
     let session = sandbox.thread_session_id(&thread);
     assert!(sandbox.thread_json(&thread).get("participants").is_none());
-    // 그사이 사람이 Library의 host.md를 고쳤다 — 모델 · 생각 깊이는 채팅의 값이라 그대로다.
-    sandbox.library_agent("host", &HOST_MD.replace("sonnet", "opus"));
 
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     assert_eq!(sandbox.claude_launches().len(), 1, "다시 지어도 띄우지 않는다");
@@ -233,7 +252,6 @@ fn 참여자가_없는_채팅이_앱을_다시_켠_뒤_같은_session으로_이�
 #[test]
 fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_줄이_fresh이고_머리말과_thread_처음부터의_지난_말이_붙는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let thread = yesterday(&sandbox);
     let first = sandbox.thread_session_id(&thread);
 
@@ -266,65 +284,24 @@ fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_�
     host.shut_down();
 }
 
-/// 리뷰어처럼 좁힌 Library `host.md` — 읽기 · 찾기 · 명령만 쓰고 push를 막는다(기본 `reviewer.md`의 도구에 금지 하나).
-const NARROW_HOST_MD: &str =
-    "---\nname: Host\ntools:\n  builtin: [read, search, shell]\npolicy:\n  forbid: [push]\n---\n\n너는 좁은 Host다.\n";
-
 #[test]
-fn 정의의_도구와_금지는_새로_열기와_이어_열기_모두_claude의_인자에_들고_정의마다_도구_목록이_다르다() {
-    // v1 티켓 12 · 구현 스펙 §3 — 도구를 적지 않은 정의는 기본 도구 전부, 적은 정의는 그 도구만이다.
+fn 엔진이_넣는_mcp_서버는_thread_도구_하나이고_사용자_mcp는_그대로_붙는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
-    let wide = yesterday(&sandbox);
-    sandbox.library_agent("host", NARROW_HOST_MD);
-    let narrow = yesterday(&sandbox);
+    let thread = yesterday(&sandbox);
 
-    let launches = sandbox.claude_launch_args();
-    assert_eq!(launches.len(), 2);
-    let (wide_args, narrow_args) = (&launches[0], &launches[1]);
-    assert!(has_pair(wide_args, "--session-id", &sandbox.thread_session_id(&wide)), "{wide_args:?}");
-    for name in ["--tools", "--disallowedTools"] {
-        assert!(!wide_args.iter().any(|arg| arg == name), "적지 않은 정의는 {name}가 없다: {wide_args:?}");
-    }
-    let tools = "Read,Glob,Grep,LS,Bash,AskUserQuestion,ExitPlanMode,ToolSearch";
-    let forbid = "Bash(git push),Bash(git push *)";
-    assert!(has_pair(narrow_args, "--session-id", &sandbox.thread_session_id(&narrow)), "{narrow_args:?}");
-    assert!(
-        has_pair(narrow_args, "--tools", tools) && has_pair(narrow_args, "--disallowedTools", forbid),
-        "적은 정의는 그 도구만 쓰고 금지를 막는다: {narrow_args:?}"
-    );
-    for args in &launches {
-        let config = args.iter().position(|arg| arg == "--mcp-config").and_then(|at| args.get(at + 1)).expect("--mcp-config");
-        let servers: Vec<String> = serde_json::from_str::<Value>(config).unwrap()["mcpServers"]
-            .as_object()
-            .map(|servers| servers.keys().cloned().collect())
-            .unwrap_or_default();
-        assert_eq!(servers, ["atelier-thread"], "엔진이 넣는 MCP 서버는 Thread 도구 하나다(v1 티켓 15)");
-    }
-    assert!(
-        launches.iter().flatten().all(|arg| arg != "--strict-mcp-config"),
-        "도구를 좁힌 정의도 사용자 MCP는 그대로 붙는다: {launches:?}"
-    );
-
-    // 되살릴 때도 같은 도구 · 금지를 다시 싣는다.
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
-    host.send_to_thread(&narrow, "오늘의 말").expect("말을 보내면 띄워 되살린다");
-    sandbox.wait_thread_kind(&narrow, "turn-end", 2);
-    let revived = &sandbox.claude_launch_args()[2];
-    assert!(
-        has_pair(revived, "--resume", &sandbox.thread_session_id(&narrow))
-            && has_pair(revived, "--tools", tools)
-            && has_pair(revived, "--disallowedTools", forbid),
-        "`-p --resume`은 도구 · 금지를 되살리지 않으므로 열 때마다 다시 싣는다: {revived:?}"
-    );
-
-    host.shut_down();
+    let args = common::receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(&thread)));
+    let config = args.iter().position(|arg| arg == "--mcp-config").and_then(|at| args.get(at + 1)).expect("--mcp-config");
+    let servers: Vec<String> = serde_json::from_str::<Value>(config).unwrap()["mcpServers"]
+        .as_object()
+        .map(|servers| servers.keys().cloned().collect())
+        .unwrap_or_default();
+    assert_eq!(servers, ["atelier-thread"], "엔진이 넣는 MCP 서버는 Thread 도구 하나다(v1 티켓 15)");
+    assert!(!args.iter().any(|arg| arg == "--strict-mcp-config"), "사용자 MCP는 그대로 붙는다: {args:?}");
 }
 
 #[test]
 fn 이_work에_이은_thread는_thread_json에_work를_적고_worktree에서_spec_폴더를_함께_열고_머리말이_work를_싣는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let work = sandbox.work("cart", &["fe"]);
     let meta = work.join("work.json");
     let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&meta).unwrap()).unwrap();
@@ -362,7 +339,6 @@ fn 이_work에_이은_thread는_thread_json에_work를_적고_worktree에서_spe
 #[test]
 fn 아직_worktree가_없는_project가_있으면_머리말이_고치기_전에_start_editing을_부르라고_한다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let work = sandbox.work("cart", &["fe", "be"]);
     std::fs::remove_dir(work.join("trees/be")).unwrap();
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
@@ -379,7 +355,6 @@ fn 아직_worktree가_없는_project가_있으면_머리말이_고치기_전에_
 #[test]
 fn worktree가_없는_work의_thread는_spec_폴더에서_일하고_새_work로_시작은_work_없이_선다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let work = sandbox.work("cart", &[]);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
 
@@ -411,7 +386,6 @@ fn worktree가_없는_work의_thread는_spec_폴더에서_일하고_새_work로_
 
 /// 첫 턴이 멈출 때까지 도는 Thread — 원문은 40초 자는 명령을 돌리다 interrupt로 멈춘 턴이다. 도구 줄이 선 뒤에 돌려준다.
 fn running_thread(sandbox: &Sandbox) -> (atelier_acp::ConversationHost, common::Events, String) {
-    sandbox.library_agent("host", HOST_MD);
     let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")]);
     let (host, events) = sandbox.host_with_events(shell);
     let thread = host.start_thread("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해", ThreadLink::NoWork).expect("첫 말");
@@ -486,7 +460,6 @@ fn 지금_전하기는_도는_턴을_멈추고_그_말을_먼저_보낸다() {
 #[test]
 fn 로그인이_풀린_claude는_thread에_로그인_필요_줄을_남기고_로그인하면_같은_session으로_다시_뜬다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.log_in(atelier_acp::Agent::Claude);
     let receipts = sandbox.claude_receipts();
     let extra = [("FAKE_CLAUDE_FIXTURE", "2.1.309/noauth"), ("FAKE_CLAUDE_RECEIPTS", receipts.to_str().unwrap())];
@@ -526,7 +499,6 @@ fn 로그인이_풀린_claude는_thread에_로그인_필요_줄을_남기고_로
 #[test]
 fn 에이전트_프로세스가_죽으면_host의_죽음_줄이_서고_다음_말에서_같은_session으로_되살린다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -572,7 +544,6 @@ fn 끌_때_셈에_thread의_도는_턴과_대기_줄이_들고_호스트를_끄�
 #[test]
 fn 모델을_바꾸면_떠_있는_claude가_set_model을_받고_채팅의_값과_config_줄에_남고_떠_있지_않으면_다음에_띄울_때_든다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
     let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -609,7 +580,6 @@ fn 모델을_바꾸면_떠_있는_claude가_set_model을_받고_채팅의_값과
 #[test]
 fn 생각_깊이를_바꾸면_쉬는_session은_같은_session으로_다시_뜨고_떠_있지_않으면_다음에_띄울_때_들고_도는_턴에는_거절한다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(two_turns(&sandbox));
     let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -653,17 +623,15 @@ fn 생각_깊이를_바꾸면_쉬는_session은_같은_session으로_다시_뜨�
         host.set_thread_effort(&thread, "low").map(|_| ()),
         Err(atelier_acp::HostError::Setting("턴이 도는 동안에는 생각 깊이를 바꿀 수 없습니다".into()))
     );
-    assert_eq!(sandbox.thread_json(&thread)["effort"], "high", "거절하면 채팅의 값도 그대로다");
+    assert_eq!(sandbox.thread_json(&thread)["effort"], Value::Null, "거절하면 채팅의 값도 그대로다");
     host.shut_down();
 }
 
-/// 첫 말 전의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33) — 새 Thread의 입력창 칩에서 고른 값이 정의 파일의 선호 대신 첫 Session의
-/// `--model` · `--effort`가 되고 채팅의 값으로 남는다. 고르지 않은 칸은 정의의 값이다. claude가 받지 않는 생각 깊이는 아무것도 세우지
-/// 않고 거절한다.
+/// 첫 말 전의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33) — 새 Thread의 입력창 칩에서 고른 값이 첫 Session의 `--model` · `--effort`가
+/// 되고 채팅의 값으로 남는다. 고르지 않은 칸은 플래그가 없다. claude가 받지 않는 생각 깊이는 아무것도 세우지 않고 거절한다.
 #[test]
-fn 첫_말_전에_고른_모델과_생각_깊이로_첫_session이_서고_고르지_않은_칸은_정의의_값이다() {
+fn 첫_말_전에_고른_모델과_생각_깊이로_첫_session이_서고_고르지_않은_칸은_넘기지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let args_of = |thread: &str| {
         sandbox.wait_thread_kind(thread, "turn-end", 1);
@@ -680,7 +648,9 @@ fn 첫_말_전에_고른_모델과_생각_깊이로_첫_session이_서고_고르
     let model_only = StartPicks { model: Some("opus".into()), ..StartPicks::default() };
     let other = host.start_thread_picking("안녕", &[], ThreadLink::NoWork, model_only).expect("모델만 고른 새 Thread");
     let args = args_of(&other);
-    assert!(has_pair(&args, "--model", "opus") && has_pair(&args, "--effort", "high"), "고르지 않은 생각 깊이는 정의의 값이다: {args:?}");
+    assert!(has_pair(&args, "--model", "opus"), "고른 모델은 간다: {args:?}");
+    assert!(!args.iter().any(|arg| arg == "--effort"), "고르지 않은 생각 깊이는 넘기지 않는다: {args:?}");
+    assert_eq!(sandbox.thread_json(&other)["effort"], Value::Null, "고르지 않은 칸은 채팅에 값이 없다");
 
     let before = host.list_threads().unwrap().len();
     let unknown = StartPicks { effort: Some("extreme".into()), ..StartPicks::default() };
@@ -697,7 +667,6 @@ fn 첫_말_전에_고른_모델과_생각_깊이로_첫_session이_서고_고르
 #[test]
 fn 이름을_바꾸면_thread_json과_title_줄과_목록_요약이_바뀌고_같거나_빈_이름은_줄을_더하지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (host, events) = sandbox.host_with_events(two_turns(&sandbox));
     let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -740,7 +709,6 @@ fn 이름을_바꾸면_thread_json과_title_줄과_목록_요약이_바뀌고_�
 #[test]
 fn 읽은_자리를_적으면_thread_json과_목록_요약이_바뀌고_뒤로_가지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (host, events) = sandbox.host_with_events(two_turns(&sandbox));
     let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);

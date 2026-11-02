@@ -20,9 +20,6 @@ use atelier_acp::{ConversationHost, HostError, ProjectAddChoice, ThreadLink};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 결제 서비스 Space — web-app · api-server(캔버스 ④ 「결제 서비스」).
 const PAYMENTS: &str = "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불을 한 흐름으로 다뤄요.\n";
 
@@ -88,7 +85,6 @@ fn project_text(sandbox: &Sandbox, slug: &str) -> Option<String> {
 
 /// Work 없는 새 Thread — 첫 턴에 Host가 `calls`를 부른다.
 fn thread_calling(sandbox: &Sandbox, calls: &[Value]) -> (ConversationHost, String) {
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(calling(sandbox, calls));
     let thread = host.start_thread("설정 좀 해 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     (host, thread)

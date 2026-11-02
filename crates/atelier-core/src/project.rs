@@ -39,7 +39,7 @@ fn invalid(slug: &str, message: impl Into<String>) -> Error {
     Error::InvalidFile { slug: slug.to_string(), message: message.into() }
 }
 
-/// frontmatter와 본문을 가른다. **Markdown 파일의 frontmatter 규칙은 이것 하나다** — Project 파일과 Agent 파일(`agents.rs`)이
+/// frontmatter와 본문을 가른다. **Markdown 파일의 frontmatter 규칙은 이것 하나다** — Project 파일과 Space 파일(`space.rs`)이
 /// 같이 쓴다. 둘이 따로 가르면 한쪽에서 읽히는 파일이 다른 쪽에서 깨진다.
 pub(crate) fn split_frontmatter(content: &str) -> std::result::Result<(&str, &str), &'static str> {
     let rest = content.strip_prefix("---\n").ok_or("missing frontmatter")?;

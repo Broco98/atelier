@@ -77,7 +77,7 @@ export interface ThreadView {
   /** 지금 작업 폴더. Session이 처음 열리면 선다. */
   cwd: string | null;
   additionalDirectories: string[];
-  /** 고른 모델 — 고르지 않았으면 `host.md`의 값이거나 `null`(Session이 연 값)이다. */
+  /** 고른 모델 — 고르지 않았으면 `null`(Session이 연 값)이다. */
   model: string | null;
   /** 생각 깊이(`claude --effort`의 값). `null`이면 Runtime 기본값이다. */
   effort: string | null;

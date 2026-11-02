@@ -163,35 +163,39 @@ describe("말의 사전", () => {
     expect(bodyOf("패널 토글")).toContain("⌘Enter");
   });
 
-  // v1 티켓 05 · 08 · 구현 스펙 S2. 앱을 열면 새 Thread가 뜨고 Host가 답한다 — 화면의 도메인 낱말은 영어다(Thread · Agent · Host ·
-  // Session · Runtime · Library). 사전이 그 말들을 모르면 다음 사람이 Thread를 「채팅」·「채널」로, Agent를 「봇」·「어시스턴트」로,
-  // Runtime을 「엔진」으로 부른다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes의 대화 탭 이름도 Thread의 거부어다
-  // (S2 「피할 말은 채팅 · 채널 · 대화 탭」). 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 파일 첨부 단추).
-  it("「Thread」·「Agent」·「Host」·「Session」·「Runtime」·「Library」가 등재돼 있고, Thread가 「채팅」·「채널」·「대화 탭」을, Agent가 「봇」·「어시스턴트」를 거부한다", () => {
-    expect(names).toEqual(expect.arrayContaining(["Thread", "Agent", "Host", "Session", "Runtime", "Library"]));
+  // v1 티켓 05 · 08 · 구현 스펙 S2. 앱을 열면 새 Thread가 뜨고 Runtime이 답한다 — 화면의 도메인 낱말은 영어다(Thread · Session ·
+  // Runtime). 사전이 그 말들을 모르면 다음 사람이 Thread를 「채팅」·「채널」로, Runtime을 「엔진」·「봇」·「어시스턴트」로 부른다. 거부어에
+  // 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes의 대화 탭 이름도 Thread의 거부어다 (S2 「피할 말은 채팅 · 채널 · 대화
+  // 탭」). 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 파일 첨부 단추).
+  it("「Thread」·「Session」·「Runtime」이 등재돼 있고, Thread가 「채팅」·「채널」·「대화 탭」을, Runtime이 「봇」·「어시스턴트」를 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Thread", "Session", "Runtime"]));
     expect(bodyOf("Thread")).toContain("_피할 말_: 채팅, 채널, 스레드, 대화 탭");
     expect(bodyOf("Thread")).toContain("「Thread 3개」");
-    expect(bodyOf("Agent")).toContain("Markdown 파일 하나로 된 정의");
-    expect(bodyOf("Agent")).toContain("_피할 말_: 봇, 어시스턴트");
     expect(refused).toEqual(expect.arrayContaining(["채팅", "채널", "스레드", "대화 탭", "봇", "어시스턴트"]));
-    expect(bodyOf("Runtime")).toContain("_피할 말_: 하네스, 엔진");
+    expect(bodyOf("Runtime")).toContain("_피할 말_: 하네스, 엔진, 봇, 어시스턴트");
     expect(ariaLabels).toContain("파일 첨부");
   });
 
+  // 구현 스펙 「기준과 진행 · 말」 · 티켓 01a-8. Agent 개념을 걷었다 — 항목이나 문장에 그 말이 남으면 다음 사람이 없는 개념으로 새 화면을
+  // 부른다. 소문자 `ssh-agent`, 터미널의 「에이전트」는 다른 말이다.
+  it("지운 말 Agent · Host · Library · Agent 저장 · 호출 줄이 사전에 없다", () => {
+    for (const word of ["Agent", "Host", "Library", "Agent 저장", "호출 줄"]) expect(names).not.toContain(word);
+    expect(doc).not.toMatch(/\b(Agent|Host|Library)\b|호출 줄/);
+  });
+
   // v1 티켓 08 · 구현 스펙 S2. three-axes 대화창의 말 「대화창」 · 「대화」 · 「에이전트」(엔진이라는 뜻)를 걷었다 — 대화는 Thread가,
-  // 에이전트는 Agent와 Runtime이 넘겨받았다. 항목이 남으면 다음 사람이 걷힌 화면의 말로 새 화면을 부른다. 「턴」 · 「모드」 · 「고친 곳」은
+  // 에이전트는 Runtime이 넘겨받았다. 항목이 남으면 다음 사람이 걷힌 화면의 말로 새 화면을 부른다. 「턴」 · 「모드」 · 「고친 곳」은
   // 남는다 — Thread의 말로 옮겨 적었다.
-  it("「대화창」·「대화」·「에이전트」가 없고, 「턴」·「모드」·「고친 곳」은 Agent의 말로 남는다", () => {
+  it("「대화창」·「대화」·「에이전트」가 없고, 「턴」·「모드」·「고친 곳」은 Runtime의 말로 남는다", () => {
     expect(names).not.toContain("대화창");
     expect(names).not.toContain("대화");
     expect(names).not.toContain("에이전트");
     expect(names).toEqual(expect.arrayContaining(["턴", "모드", "고친 곳"]));
     for (const word of ["턴", "모드", "고친 곳"]) {
-      expect(bodyOf(word)).toContain("Agent");
+      expect(bodyOf(word)).toContain("Runtime");
       expect(bodyOf(word)).not.toContain("에이전트");
       expect(bodyOf(word)).not.toContain("엔진");
     }
-    expect(bodyOf("모드")).toContain("Runtime");
   });
 
   // 구현 스펙 S2. Session은 이제 **앱의 개념**이다 — develop의 「세션은 앱의 개념이 아니다」를 걷는다. 한글 「세션」 항목이 남으면
@@ -272,20 +276,20 @@ describe("말의 사전", () => {
     expect(bodyOf("Work 만들기 카드")).toContain("「◇ 결제 서비스 · Space」");
   });
 
-  // 03 구현 스펙 §2 · §11 · 티켓 08. Host가 Space를 묻는 카드는 질문 카드의 겉이다 — 사전이 그것을 말하지 않으면 다음 사람이 따로 그린
+  // 03 구현 스펙 §2 · §11 · 티켓 08. Runtime이 Space를 묻는 카드는 질문 카드의 겉이다 — 사전이 그것을 말하지 않으면 다음 사람이 따로 그린
   // 카드를 세우거나, 답한 뒤 Space 줄을 한 번 더 남긴다. 묻지 않고 붙이는 때(「알아서」)의 줄을 모르면 그 줄을 「바꿨어요」로 쓴다.
-  it("「질문 카드」가 Host의 Space 카드와 그 답한 줄을 말하고, 「Space 줄」이 묻지 않고 넣은 줄을 말한다", () => {
+  it("「질문 카드」가 Runtime의 Space 카드와 그 답한 줄을 말하고, 「Space 줄」이 묻지 않고 넣은 줄을 말한다", () => {
     for (const piece of ["Thread 도구가 같은 겉의 카드", "「어느 Space에서 할까요?」", "「Space 없이」", "따로 서지 않는다", "「Space는 나중에 정하기로 함」"]) {
       expect(bodyOf("질문 카드"), piece).toContain(piece);
     }
     expect(bodyOf("Space 줄")).toContain("Space에 넣었어요 — web-app · api-server를 읽어요");
   });
 
-  // 03 구현 스펙 §2 · §12 · S13 · 티켓 12. Host가 대화로 한 설정은 승인 없이 하고 결과 카드 한 장을 남긴다 — 사전이 그 카드를 「변경 사항」
+  // 03 구현 스펙 §2 · §12 · S13 · 티켓 12. Runtime이 대화로 한 설정은 승인 없이 하고 결과 카드 한 장을 남긴다 — 사전이 그 카드를 「변경 사항」
   // 아래 PR 줄이나 리뷰의 결과물과 가르지 않으면 다음 사람이 그 자리에 설정을 섞거나 PR 줄을 결과 카드로 부른다. 「열기」가 그 화면으로 가고
-  // 지우기는 화면에서만이라는 것을 모르면 카드에 되돌리기 · 지우기 단추를 세운다. Host의 git 물음이 질문 카드의 겉이라는 것을 모르면 따로
+  // 지우기는 화면에서만이라는 것을 모르면 카드에 되돌리기 · 지우기 단추를 세운다. Runtime의 git 물음이 질문 카드의 겉이라는 것을 모르면 따로
   // 그린 창을 세운다. 「설정 알림」 · 「변경 카드」는 거부어다.
-  it("「결과 카드」가 넷 · 「열기」 · 가름을 말하고, 「질문 카드」가 Host의 git 물음을 말한다", () => {
+  it("「결과 카드」가 넷 · 「열기」 · 가름을 말하고, 「질문 카드」가 Runtime의 git 물음을 말한다", () => {
     expect(names).toContain("결과 카드");
     for (const piece of [
       "승인 없이",
@@ -318,7 +322,7 @@ describe("말의 사전", () => {
     for (const piece of ["관계 편집과 같은 화면", "빈 틀", "`-2`", "「대화로 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
   });
 
-  // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Agent가 고친 자리를 그
+  // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Runtime이 고친 자리를 그
   // 말로 부르지 않는다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes가 턴 앞뒤로 spec 폴더를 견주어 세운 표시는
   // 대화창과 함께 걷혔다 — 본문이 그 표시의 지우는 때를 말하면 없는 화면을 말하는 것이다.
   it("「고친 곳」이 등재돼 있고, 「바뀐 곳」을 거부하며, 걷힌 표시를 지금 화면처럼 말하지 않는다", () => {

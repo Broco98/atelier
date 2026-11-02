@@ -3,7 +3,7 @@
 //! - 「예, 이 Work에서는 다시 묻지 않기」 — 허락하는 선택지로 답하고, 판정이 물음과 함께 낸 허락을 Work 폴더(Work 없으면 Thread 폴더)의
 //!   점 파일에 적는다. 같은 종류의 다음 요청은 판정의 5번 칸에서 묻지 않고 넘어간다.
 //! - 「아니요, 다르게 해 주세요」 — 거부하는 선택지로 답하며 사람이 쓴 말을 Agent에게 준다(claude는 deny의 글로 받는다).
-//! - `ask_before`가 물은 요청에는 「다시 묻지 않기」가 없다 — 허락이 `ask_before`를 넘기지 못한다.
+//! - 줄 허락이 없는 물음에는 「다시 묻지 않기」가 없다 — Thread 기록을 건드리는 명령처럼 허락이 넘기지 못하는 물음이다.
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 기록(`events.jsonl`) · 점 파일 · 가짜 claude의 stdin만 본다.
 
@@ -12,10 +12,6 @@ mod common;
 use atelier_acp::{ConversationHost, HostError, Reply, ThreadLink};
 use common::{of_kind, wait_until, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
-
-fn host_md(policy: &str) -> String {
-    format!("---\nname: Host\ntools:\n  agents: any\n{policy}---\n\n너는 시험 Thread의 Host다.\n")
-}
 
 fn in_cart() -> ThreadLink {
     ThreadLink::Work { slug: "cart".into() }
@@ -65,7 +61,6 @@ fn policy_file(dir: &std::path::Path) -> Value {
 #[test]
 fn work_없는_thread에서_다시_묻지_않기를_고르면_thread_폴더에_허락이_서고_다음_편집은_묻지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     // Host의 턴 둘이 각각 편집(`Write`)을 묻는다 — 경로는 작업 폴더(Thread 폴더)로 옮긴다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
@@ -104,12 +99,11 @@ fn work_없는_thread에서_다시_묻지_않기를_고르면_thread_폴더에_�
 #[test]
 fn work에서_다시_묻지_않기를_고르면_work_점_파일에_명령의_머리가_서고_같은_work의_다른_thread도_묻지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     // 둘 다 첫 턴에 명령(`python3 -c …`)을 묻는다.
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background")]));
 
-    let first = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("Host의 Thread");
+    let first = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("새 Thread");
     let asked = wait_permission(&sandbox, &first, "asked", 1);
     assert_eq!(asked["payload"]["grant"], json!(["Bash(python3 *)"]), "{asked}");
     reply(&host, &first, &asked, &remember("allow_once")).expect("다시 묻지 않기");
@@ -131,7 +125,6 @@ fn work에서_다시_묻지_않기를_고르면_work_점_파일에_명령의_머
 #[test]
 fn 아니요를_고르며_쓴_말은_거절과_함께_agent에게_가고_답_줄에_남는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
@@ -153,19 +146,21 @@ fn 아니요를_고르며_쓴_말은_거절과_함께_agent에게_가고_답_줄
 }
 
 #[test]
-fn ask_before가_물은_요청에는_다시_묻지_않기를_줄_수_없고_요청은_그대로_걸려_있다() {
+fn 줄_허락이_없는_물음에는_다시_묻지_않기를_줄_수_없고_요청은_그대로_걸려_있다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md("policy:\n  ask_before: [\"Bash(python3 *)\"]\n"));
-    sandbox.work("cart", &["fe"]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background")]));
-    let thread = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("Host의 Thread");
+    // Work 없는 Thread의 작업 폴더가 그 Thread 폴더라 맨 이름(`thread.json`)이 그 기록이다. 기록을 건드리는 명령은 허락이 넘기지 못한다.
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", "python3 -c=echo x > thread.json; python3 -c")],
+    ));
+    let thread = host.start_thread("배경 작업을 돌려 줘", ThreadLink::NoWork).expect("새 Thread");
 
     let asked = wait_permission(&sandbox, &thread, "asked", 1);
-    assert_eq!(asked["payload"]["policy"], "「python3」 실행 전에 묻기");
-    assert!(asked["payload"].get("grant").is_none(), "허락은 ask_before를 넘기지 못한다 — 내밀지 않는다: {asked}");
+    assert_eq!(asked["payload"]["policy"], "Thread 기록을 건드리기 전에 묻기");
+    assert!(asked["payload"].get("grant").is_none(), "허락이 넘기지 못하는 물음이다 — 내밀지 않는다: {asked}");
     let refused = reply(&host, &thread, &asked, &remember("allow_once")).expect_err("줄 허락이 없다");
     assert!(matches!(refused, HostError::PermissionNoGrant { .. }), "{refused:?}");
-    assert!(!sandbox.work_dir("cart").join(".policy.json").exists(), "아무것도 적지 않았다");
+    assert!(!sandbox.thread_dir(&thread).join(".policy.json").exists(), "아무것도 적지 않았다");
 
     reply(&host, &thread, &asked, &Reply::pick("allow_once")).expect("요청은 그대로 걸려 있어 이번만 허락할 수 있다");
     let answered = wait_permission(&sandbox, &thread, "answered", 1);

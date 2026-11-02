@@ -9,12 +9,9 @@ use atelier_acp::{ConversationHost, Reply, ThreadLink};
 use common::{of_kind, wait_until, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
-const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 녹음의 두 턴이 각각 Thread 폴더 안 파일 쓰기(`Write`)를 묻는다 — Work 없는 Thread라 「매번 묻기」가 묻는다.
 fn sandbox_and_host() -> (Sandbox, ConversationHost) {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],

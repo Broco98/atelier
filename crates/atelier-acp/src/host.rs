@@ -562,8 +562,6 @@ pub enum HostError {
     Login(String),
     /// 그 id의 Thread가 없다(v1 티켓 04) — 폴더가 없거나 id의 꼴이 아니다.
     ThreadNotFound(String),
-    /// 그 Agent의 정의 파일이 깨졌다(v1 구현 스펙 §6 「깨진 파일」) — 부를 수 없다. 까닭은 사람이 읽을 글이다.
-    AgentBroken { handle: String, reason: String },
     /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
     BadTitle,
     /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
@@ -611,7 +609,6 @@ impl fmt::Display for HostError {
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
             HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없어요: {thread}"),
-            HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했어요: {reason}"),
             HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
             HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
@@ -837,24 +834,19 @@ fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
     })
 }
 
-/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이 · 내장 도구 · 금지. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
+/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
 #[derive(Debug, Clone, Default)]
 struct ClaudeChoice {
     /// 권한 모드 — Thread의 Session은 늘 싣는다: `default`, 「계획만」이면 `plan`(v1 구현 스펙 S17 · v1 티켓 22).
     mode: Option<String>,
     model: Option<String>,
     effort: Option<String>,
-    /// `host.md`의 `tools.builtin` — 추상 이름 그대로다. `None`이면 기본 도구 전부다(§3).
-    tools: Option<Vec<atelier_core::BuiltinTool>>,
-    /// `host.md`의 `policy.forbid` — 추상 이름 · 명령 패턴 그대로다(S19).
-    forbid: Vec<String>,
 }
 
 /// Claude를 띄우는 것 — 변환기(앱에서는 이 실행 파일의 하위 모드 `acp-claude`)를 로그인 env 그대로 띄운다. 변환기가
-/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이 · 내장 도구 ·
-/// 금지)은 `session/new`의 `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지
-/// 않는다(three-axes 결정 16). 되살릴 때(`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다
-/// (v1 티켓 03 · 12). 도구 · 금지는 추상 이름 그대로 싣고, Claude Code의 이름으로 옮기는 일은 변환기가 한다(v1 티켓 12).
+/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이)은 `session/new`의
+/// `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지 않는다(three-axes 결정 16). 되살릴 때
+/// (`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다(v1 티켓 03).
 ///
 /// 변환기는 앱과 같은 판이어야 연다 — 다르면 「판 어긋남」으로 열기 실패다(워크플로 S4).
 fn claude_launch(
@@ -875,12 +867,6 @@ fn claude_launch(
     }
     if let Some(effort) = &choice.effort {
         atelier.insert("effort".into(), json!(effort));
-    }
-    if let Some(tools) = &choice.tools {
-        atelier.insert("builtinTools".into(), json!(tools));
-    }
-    if !choice.forbid.is_empty() {
-        atelier.insert("forbid".into(), json!(choice.forbid));
     }
     let launch = Launch {
         program: translator.program.clone(),

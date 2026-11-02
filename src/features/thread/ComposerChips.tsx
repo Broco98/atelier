@@ -88,7 +88,7 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
     </>
   );
   if (!models || models.length === 0) {
-    // 앉지 않은 Agent를 멘션했다 — 그 Agent가 들어와 Session이 열려야 값이 그 Session의 것이 된다. 그때까지는 정의 파일의 값을 보이기만 한다.
+    // 고를 목록이 없다 — Session이 열려야 Runtime이 낸 목록이 선다. 그때까지는 채팅의 값을 보이기만 한다.
     return (
       <span aria-label={`모델 ${label}`} className={cn(CHIP, MODEL_CHIP)}>
         {mark}

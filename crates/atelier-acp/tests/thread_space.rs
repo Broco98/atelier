@@ -17,9 +17,6 @@ use atelier_acp::{HostError, SpacePick, StartPicks, ThreadLink};
 use common::{has_pair, of_kind, receipt_args, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 결제 서비스 Space — web-app · api-server(캔버스 ④ 「결제 서비스」).
 const PAYMENTS: &str = "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불을 한 흐름으로 다뤄요.\n";
 
@@ -108,7 +105,6 @@ fn space_lines(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
 #[test]
 fn work_없는_thread에_space를_붙이면_다음_말부터_같은_session을_그_space의_project만_함께_열어_잇고_머리말이_space를_알린다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let web = register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     let back = register(&sandbox, "backoffice");
@@ -169,7 +165,6 @@ fn work_없는_thread에_space를_붙이면_다음_말부터_같은_session을_�
 #[test]
 fn work에_이은_thread는_spec_폴더와_읽는_범위를_함께_열고_worktree가_선_project는_worktree에서_일하며_고칠_자리는_그대로다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let web = register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     let back = register(&sandbox, "backoffice");
@@ -221,7 +216,6 @@ fn work에_이은_thread는_spec_폴더와_읽는_범위를_함께_열고_worktr
 #[test]
 fn work의_space를_바꾸면_그_work의_thread마다_space_줄이_서고_다른_thread에는_서지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     register(&sandbox, "api-server");
     register(&sandbox, "backoffice");
@@ -262,7 +256,6 @@ fn work의_space를_바꾸면_그_work의_thread마다_space_줄이_서고_다�
 #[test]
 fn 빈_space와_문제_있는_space는_읽을_수_있는_project만_함께_연다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     space(&sandbox, "빈-것", "---\nname: 빈 것\nprojects: []\n---\n");
@@ -294,7 +287,6 @@ fn 빈_space와_문제_있는_space는_읽을_수_있는_project만_함께_연�
 #[test]
 fn work_없는_thread가_빈_space를_고르면_함께_여는_폴더_없이_thread_폴더에서_일한다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     register(&sandbox, "api-server");
     space(&sandbox, "빈-것", "---\nname: 빈 것\nprojects: []\n---\n");
@@ -324,7 +316,6 @@ fn thread_count(sandbox: &Sandbox) -> usize {
 #[test]
 fn 첫_말_전에_고른_space는_thread_파일에_적혀_첫_session부터_그_space의_project만_읽고_space_줄을_남기지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let web = register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     register(&sandbox, "backoffice");
@@ -367,7 +358,6 @@ fn 첫_말_전에_고른_space는_thread_파일에_적혀_첫_session부터_그_
 #[test]
 fn 최근_work를_고르고_바꾼_space는_첫_말_때_그_work에_적히고_그_work의_다른_thread에만_space_줄이_선다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     let back = register(&sandbox, "backoffice");
@@ -417,7 +407,6 @@ fn carries_preamble(record: &[Value], n: usize) -> bool {
 #[test]
 fn space만_바뀌고_함께_여는_폴더가_같으면_다시_열지_않고_다음_말에_머리말이_다시_붙는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     register(&sandbox, "api-server");
     register(&sandbox, "backoffice");
@@ -465,7 +454,6 @@ fn space만_바뀌고_함께_여는_폴더가_같으면_다시_열지_않고_다
 #[test]
 fn space를_붙이고_뺀_대화의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     register(&sandbox, "api-server");
     register(&sandbox, "backoffice");

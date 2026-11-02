@@ -94,18 +94,6 @@ pub(crate) fn layouts_in(root: &Path) -> PathBuf {
     root.join("layouts")
 }
 
-/// Library의 Agent 자리 — 어디서나 쓰는 내 Agent 정의(v1 구현 스펙 §6 · agent-definition.md 「파일 위치」). Project 안의 Agent는
-/// 여기가 아니라 그 Project의 `.atelier/agents/`다. Thread 엔진(`atelier-acp`)이 Host를 여기서 읽는다.
-pub fn library_agents_in(root: &Path) -> PathBuf {
-    root.join("library").join("agents")
-}
-
-/// 레포 안의 Agent 자리 — Project 폴더 또는 그 worktree 아래 `.atelier/agents/`(agent-definition.md 「파일 위치」). 데이터 뿌리가
-/// 아니라 레포를 받는다. `.claude/agents/`가 아니다 — 거기 두면 Claude Code가 자기 subagent로 읽는다(스토리 70).
-pub(crate) fn repo_agents_in(folder: &Path) -> PathBuf {
-    folder.join(".atelier").join("agents")
-}
-
 /// Thread들의 자리(v1 구현 스펙 §4). Thread 하나가 이 아래 `<id>/` 폴더 하나다. Work 폴더 밖이라 Work가 보관되어도
 /// 옮겨지지 않는다 — 보관된 Work의 Thread는 제자리에서 읽기만 된다.
 pub(crate) fn threads_in(root: &Path) -> PathBuf {

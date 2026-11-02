@@ -11,11 +11,6 @@ use atelier_acp::{AskLevel, ConversationHost, HostError, StartPicks, ThreadLink}
 use common::{of_kind, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
-/// Host는 범위 안 아무 Agent나 부른다(S15). `policy`는 frontmatter에 그대로 붙는 줄들이다.
-fn host_md(policy: &str) -> String {
-    format!("---\nname: Host\ntools:\n  agents: any\n{policy}---\n\n너는 시험 Thread의 Host다.\n")
-}
-
 fn in_cart() -> ThreadLink {
     ThreadLink::Work { slug: "cart".into() }
 }
@@ -71,90 +66,10 @@ fn answer(host: &ConversationHost, thread: &str, asked: &Value, option: &str) {
 }
 
 #[test]
-fn forbid에_걸린_요청은_사람에게_묻지_않고_policy의_글로_거절되며_claude는_그_글을_받는다() {
-    let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md("policy:\n  forbid: [shell]\n"));
-    // Host의 첫 턴은 명령(`Bash`)을 묻는다.
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background")]));
-    let thread = host.start_thread("테스트를 돌려 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
-
-    let decided = wait_permission(&sandbox, &thread, "decided");
-    let record = sandbox.thread_record(&thread);
-    let text = common::lines_text(&record);
-    assert_eq!(permissions(&record).len(), 1, "물음 줄 없이 판정 줄 하나다 — 승인 카드가 서지 않는다:\n{text}");
-    let refused = "이 Agent의 Policy가 금지한 일이에요(forbid: shell) — 하지 말고 다른 길을 찾으세요";
-    let payload = &decided["payload"];
-    assert_eq!((payload["optionId"].clone(), payload["reason"].clone()), (json!("reject"), json!(refused)), "{text}");
-    assert_eq!(payload["toolCall"]["kind"], "execute", "받은 요청을 함께 남긴다");
-    let session = sandbox.thread_session_id(&thread);
-    assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": refused})]);
-
-    host.shut_down();
-}
-
-#[test]
-fn claude의_금지_규칙이_앞머리로_놓친_git_전역_옵션_뒤의_push는_판정이_둘째_줄로_거절한다() {
-    // 코드 리뷰 1차 A1 — 변환기가 넘기는 `--disallowedTools Bash(git push *)`는 claude 쪽 앞머리 일치라 `git -C <dir> push`가 그대로
-    // 샌다. 그 요청은 claude가 묻는 대로 판정에 오고, 판정이 하위 명령을 읽어 거절한다.
-    let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md("policy:\n  forbid: [push]\n"));
-    // 녹음의 명령(`python3 -c …`) 앞에 `git -C … push`를 붙인다 — `FAKE_CLAUDE_REROOT`는 내는 줄의 글 바꾸기다.
-    let pushed = "git -C ../api push origin main && python3 -c";
-    let host = sandbox.host(sandbox.claude_login_shell(
-        "normal",
-        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", &format!("python3 -c={pushed}"))],
-    ));
-    let thread = host.start_thread("배경 작업을 돌려 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
-
-    let decided = wait_permission(&sandbox, &thread, "decided");
-    let session = sandbox.thread_session_id(&thread);
-    let args = args_of(&sandbox, &session);
-    let first_line = args.iter().position(|arg| arg == "--disallowedTools").map(|at| args[at + 1].as_str());
-    assert_eq!(first_line, Some("Bash(git push),Bash(git push *)"), "claude가 먼저 막는 줄은 앞머리 규칙이다");
-    let command = decided["payload"]["toolCall"]["rawInput"]["command"].as_str().unwrap_or_default();
-    assert!(command.starts_with(pushed), "claude는 그 줄로 막지 못하고 묻는다: {command}");
-    let refused = "이 Agent의 Policy가 금지한 일이에요(forbid: push) — 하지 말고 다른 길을 찾으세요";
-    let payload = &decided["payload"];
-    assert_eq!((payload["optionId"].clone(), payload["reason"].clone()), (json!("reject"), json!(refused)));
-    assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": refused})]);
-
-    host.shut_down();
-}
-
-#[test]
-fn 알아서에서도_셸에_흘려_넣어_읽을_수_없는_명령은_push_전에_묻기로_묻는다() {
-    // 코드 리뷰 2차 A1 — `echo git push | sh`의 셸이 무엇을 실행할지 판정은 글에서 볼 수 없다. 막는 쪽은 모를 때 걸린 것으로 본다 —
-    // 「알아서」에서도 묻지 않고 넘어가지 않는다.
-    let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md("policy:\n  ask_before: [push]\n"));
-    // 가짜 로그인 셸이 env 값을 작은따옴표로 싸 두므로 녹음에 붙이는 글에는 작은따옴표가 없다.
-    let piped = "echo git push | sh; python3 -c";
-    let host = sandbox.host(sandbox.claude_login_shell(
-        "normal",
-        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", &format!("python3 -c={piped}"))],
-    ));
-    let thread = host
-        .start_thread_asking("배경 작업을 돌려 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto))
-        .expect("알아서로 새 Thread");
-
-    let asked = wait_permission(&sandbox, &thread, "asked");
-    let command = asked["payload"]["toolCall"]["rawInput"]["command"].as_str().unwrap_or_default();
-    assert!(command.starts_with(piped), "{command}");
-    assert_eq!(
-        (asked["payload"]["card"].clone(), asked["payload"]["policy"].clone()),
-        (json!("command"), json!("push하기 전에 묻기 — 읽을 수 없는 명령")),
-        "{asked}"
-    );
-
-    host.shut_down();
-}
-
-#[test]
 fn 알아서에서도_thread_폴더의_기록_파일이_나오는_명령은_묻는다() {
     // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만 명령으로는 쓸 수 있었다. Work 없는 Thread의 작업 폴더가 그 Thread
     // 폴더라 맨 이름(`thread.json`)이 그 기록이다.
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     let touched = "echo x > thread.json; python3 -c";
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
@@ -178,7 +93,6 @@ fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어�
     // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl`은
     // Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을 넓힌다.
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     // 녹음의 `Write`(`outside/allowed.txt`)를 작업 폴더(Thread 폴더)의 `.policy.json`으로 옮긴다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
@@ -208,7 +122,6 @@ fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어�
 #[test]
 fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_고치기_시작_도구를_가리킨다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     // 녹음의 `Write`가 쓰는 폴더의 위가 등록된 Project다 — 그 Project는 이 Work에 붙지 않았다.
     let projects = sandbox.data_root().join("projects");
@@ -236,26 +149,14 @@ fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_
 }
 
 #[test]
-fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_걸린_명령은_카드_종류와_policy_이름으로_묻는다() {
+fn 알아서에서_명령은_묻지_않고_허용_줄로_남는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md("policy:\n  ask_before: [\"Bash(python3 *)\"]\n"));
     sandbox.work("cart", &["fe"]);
     cart_mode(&sandbox, "auto");
-    // 둘 다 첫 턴에 명령(`python3 -c …`)을 묻는다.
+    // 첫 턴에 명령(`python3 -c …`)을 묻는다.
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background")]));
 
-    let asking = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("Host의 Thread");
-    let asked = wait_permission(&sandbox, &asking, "asked");
-    assert_eq!(
-        (asked["payload"]["card"].clone(), asked["payload"]["policy"].clone()),
-        (json!("command"), json!("「python3」 실행 전에 묻기")),
-        "ask_before는 알아서보다 먼저다: {asked}"
-    );
-    assert_eq!(asked["payload"]["toolCall"]["kind"], "execute");
-
-    // `ask_before` 없는 정의로 연 둘째 채팅 — 정의는 Session을 열 때 읽는다.
-    sandbox.library_agent("host", &host_md(""));
-    let running = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("둘째 채팅");
+    let running = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("새 Thread");
     let decided = wait_permission(&sandbox, &running, "decided");
     let record = sandbox.thread_record(&running);
     assert_eq!(permissions(&record).len(), 1, "물음 줄이 없다:\n{}", common::lines_text(&record));
@@ -265,7 +166,7 @@ fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_�
         "자동으로 허용한 일은 까닭과 함께 남는다"
     );
     let session = sandbox.thread_session_id(&running);
-    assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow", "둘째 채팅의 claude는 허락을 받고 이어 간다");
+    assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow", "claude는 허락을 받고 이어 간다");
 
     host.shut_down();
 }
@@ -273,7 +174,6 @@ fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_�
 #[test]
 fn 편집은_허용에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐어_같은_work의_다른_편집은_거절된다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     sandbox.register_project("api");
     cart_mode(&sandbox, "edits");
@@ -289,7 +189,7 @@ fn 편집은_허용에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐
         ],
     ));
 
-    let writing = host.start_thread("장바구니 수량을 고쳐 줘", in_cart()).expect("Host의 Thread");
+    let writing = host.start_thread("장바구니 수량을 고쳐 줘", in_cart()).expect("새 Thread");
     let decided = wait_permission(&sandbox, &writing, "decided");
     assert_eq!(
         (decided["payload"]["optionId"].clone(), decided["payload"]["reason"].clone()),
@@ -313,7 +213,6 @@ fn 편집은_허용에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐
 #[test]
 fn 물어보는_정도는_work에_이은_thread면_work_점_파일에_아니면_thread_json에_두고_다음_요청부터_든다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     // Host의 턴 둘이 각각 편집(`Write`)을 묻는다 — 경로는 작업 폴더로 옮긴다.
     let host = sandbox.host(sandbox.claude_login_shell(
@@ -358,7 +257,6 @@ fn 물어보는_정도는_work에_이은_thread면_work_점_파일에_아니면_
 #[test]
 fn thread를_열면_지금_물어보는_정도가_함께_온다_work에_이은_thread는_work의_것이다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
@@ -393,7 +291,6 @@ fn modes_sent(sandbox: &Sandbox, session: &str) -> Vec<String> {
 #[test]
 fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같은_work의_다른_thread도_함께_바뀐다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
@@ -425,7 +322,6 @@ fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같�
 #[test]
 fn 이은_work로_시작한_thread에서_고른_정도는_그_work의_정도가_되고_칩은_work의_지금_정도를_읽는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &[]);
     cart_mode(&sandbox, "auto");
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
@@ -451,7 +347,6 @@ fn 이은_work로_시작한_thread에서_고른_정도는_그_work의_정도가_
 #[test]
 fn 새_thread는_첫_말과_함께_고른_정도로_서고_계획만이면_claude가_계획_모드로_뜬다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
     let thread = host
@@ -470,7 +365,6 @@ fn 새_thread는_첫_말과_함께_고른_정도로_서고_계획만이면_claud
 #[test]
 fn 편집은_허용으로_세운_thread의_첫_편집은_묻지_않고_허용되며_그_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     // Host의 첫 턴이 편집(`Write`)을 묻는다 — 경로는 Thread 폴더로 옮긴다(Thread 폴더 밖이면 판정이 거절한다).
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
@@ -500,7 +394,6 @@ fn 편집은_허용으로_세운_thread의_첫_편집은_묻지_않고_허용되
 #[test]
 fn 편집은_허용으로_세운_thread를_매번_묻기로_바꾸면_다음_편집부터_다시_묻고_그_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     // 녹음의 첫 턴은 편집을 허락받고 둘째 턴은 거절당한다 — 경로는 Thread 폴더로 옮긴다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
@@ -533,7 +426,6 @@ fn 편집은_허용으로_세운_thread를_매번_묻기로_바꾸면_다음_편
 #[test]
 fn claude는_기본_모드로만_뜨고_계획만일_때만_계획_모드로_뜬다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 

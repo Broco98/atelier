@@ -15,8 +15,6 @@ use atelier_acp::{AskLevel, HostError, QuestionAnswer, QuestionReply, Reply, Thr
 use common::{of_kind, wait_until, Sandbox};
 use serde_json::{json, Value};
 
-const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
-
 const FEE: &str = "부분 환불 수수료는 어떻게 할까요?";
 const SCREEN: &str = "어느 화면에 보일까요?";
 
@@ -37,7 +35,6 @@ fn refund_questions() -> Value {
 /// Host의 턴 둘이 각각 사람에게 묻는다(녹음 `thread-question-host`).
 fn asking_sandbox() -> (Sandbox, atelier_acp::ConversationHost) {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-question-host")]));
     (sandbox, host)
 }
@@ -157,7 +154,6 @@ fn 질문이_걸린_채_멈추면_질문이_거둬지고_승인_답으로는_닫
 #[test]
 fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_나가고_다시_쓰기에_쓴_말은_claude에게_간다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     // 녹화의 작업 폴더를 claude의 자리(Thread 폴더)로 옮긴다 — 구현의 편집이 Thread 폴더 안이라 정도대로 묻는다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",

@@ -322,15 +322,6 @@ impl Sandbox {
 
     // ── Thread(v1 티켓 04) ──────────────────────────────────────────────────────
 
-    /// Library에 Agent 정의 파일 하나를 둔다 — `library/agents/<handle>.md`. 있으면 덮는다(사람이 고친 꼴).
-    pub fn library_agent(&self, handle: &str, text: &str) -> PathBuf {
-        let dir = atelier_core::library_agents_in(&self.data_root());
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(format!("{handle}.md"));
-        fs::write(&path, text).unwrap();
-        path
-    }
-
     /// Thread 폴더 `threads/<id>`.
     pub fn thread_dir(&self, thread: &str) -> PathBuf {
         self.data_root().join("threads").join(thread)

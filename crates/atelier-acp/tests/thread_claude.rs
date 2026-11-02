@@ -18,13 +18,9 @@ use atelier_acp::{AskLevel, ConversationHost, HostError, QuitCounts, StartPicks,
 use common::{assert_all_gone, of_kind, payloads_of, sent_texts, write_script, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md` — 모델 · 생각 깊이를 적지 않았다(엔진 기본값).
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 그 원문(`FAKE_CLAUDE_FIXTURE`)을 되감는 가짜 claude로 새 Thread를 세운다 — 첫 말이 곧 첫 턴이다. `extra`는 가짜 claude에게
 /// 가는 env다. 호스트 · Thread id · Host의 Session id를 돌려준다.
 fn thread_on(sandbox: &Sandbox, fixture: &str, extra: &[(&str, &str)], first: &str) -> (ConversationHost, String, String) {
-    sandbox.library_agent("host", HOST_MD);
     let mut env = vec![("FAKE_CLAUDE_FIXTURE", fixture)];
     env.extend_from_slice(extra);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &env));
@@ -53,7 +49,6 @@ fn settled(sandbox: &Sandbox, record: &[Value], thread: &str, session: &str) -> 
 #[test]
 fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-stop-host")]));
     // 녹음(v1 티켓 44 끝 점검)은 「알아서」 Thread다 — 판정이 묻지 않고 허락한 명령이 도는 동안 사람이 멈췄다.
     let picks = StartPicks { mode: Some(AskLevel::Auto), ..StartPicks::default() };
@@ -276,7 +271,6 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
 #[test]
 fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남고_남은_프로세스가_없다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     // 판이 다른 변환기 — 가짜 ACP 에이전트가 `initialize`에 다른 판을 싣는다. 띄운 pid는 감싼 스크립트가 적는다.
     let pids = sandbox.claude_receipts().join("translator-pids");
     let wrapper = sandbox.bin("old-translator").join("acp-claude");
@@ -312,7 +306,6 @@ fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남�
 #[test]
 fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_남은_프로세스가_없다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (builder, events) = sandbox.host_builder_with_events(sandbox.claude_login_shell("silent-initialize", &[]));
     let host = builder.open_limit(Duration::from_millis(800)).build();
 
@@ -347,7 +340,6 @@ fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_�
 #[test]
 fn claude는_변환기의_프로세스_그룹_안에_있고_호스트를_끄면_후손이_0개다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("mcp-child", &[]));
     let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread");
     let session = sandbox.thread_session_id(&thread);

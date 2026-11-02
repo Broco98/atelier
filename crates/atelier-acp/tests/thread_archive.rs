@@ -14,9 +14,6 @@ use atelier_acp::{ConversationHost, HostError, ThreadLink};
 use atelier_core::WorkGone;
 use common::{of_kind, Sandbox};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 fn in_cart() -> ThreadLink {
     ThreadLink::Work { slug: "cart".into() }
 }
@@ -45,7 +42,6 @@ fn read_only(thread: &str, gone: WorkGone) -> Result<(), HostError> {
 
 /// Work에 이은 Thread — 첫 턴이 끝날 때까지 기다린다.
 fn settled(sandbox: &Sandbox) -> (ConversationHost, common::Events, String) {
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("cart", &[]);
     let (host, events) = sandbox.host_with_events(sandbox.claude_login_shell("normal", &[]));
     let thread = host.start_thread("장바구니 문서를 정리하자", in_cart()).expect("Work에 이은 Thread");
@@ -105,7 +101,6 @@ fn 지워진_work의_thread도_읽기만이고_쉬던_session이_꺼진다() {
 #[test]
 fn 턴이_도는_동안_보관되면_그_턴은_이어_돌고_끝난_뒤에_session이_꺼지며_대기_줄의_말은_가지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("cart", &[]);
     // 원문은 40초 자는 명령을 돌리다 interrupt로 멈춘 턴이다 — 멈추기 전에는 끝나지 않는다.
     let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")]);

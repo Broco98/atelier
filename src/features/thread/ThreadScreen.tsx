@@ -168,7 +168,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
   };
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「매번 묻기」, 최근 Work면
-  // 그 Work의 지금 정도이고, 모델 · 생각 깊이는 받는 Agent 정의의 값이다.
+  // 그 Work의 지금 정도이고, 모델 · 생각 깊이는 Runtime의 기본값이다.
   const [picks, setPicks] = useState<Omit<StartPicks, "space">>({ mode: null, model: null, effort: null });
   const workLevel = useWorkMode(work);
   const level: AskLevel = picks.mode ?? workLevel ?? "always";

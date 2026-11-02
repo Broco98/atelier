@@ -462,7 +462,7 @@ fn using_works(data_root: &Path, slug: &str) -> Result<Vec<UsingWork>> {
         .collect())
 }
 
-/// Project 파일 하나. `get_project`와 달리 git을 캐묻지 않는다 — Agent 범위(`agents::scope`)가 폴더 자리만 읽는다.
+/// Project 파일 하나. `get_project`와 달리 git을 캐묻지 않는다.
 pub(crate) fn read_project(root: &Path, slug: &str) -> Result<Project> {
     let path = project_path(root, slug)?;
     let content =

@@ -17,9 +17,6 @@ use atelier_acp::{HostError, ThreadLink};
 use common::{has_pair, of_kind, receipt_args, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 결제 서비스 Space — web-app · api-server(캔버스 ④ 「결제 서비스」).
 const PAYMENTS: &str = "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불을 한 흐름으로 다뤄요.\n";
 
@@ -117,7 +114,6 @@ fn restored_line(work: Option<&str>) -> Value {
 #[test]
 fn space를_지우면_비운_곳마다_지워짐_줄이_서고_다음_말은_space_없음의_범위로_같은_session을_이어_연다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let web = register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     let back = register(&sandbox, "backoffice");
@@ -183,7 +179,6 @@ fn space를_지우면_비운_곳마다_지워짐_줄이_서고_다음_말은_spa
 #[test]
 fn 되돌리는_사이_같은_slug가_다시_쓰였으면_거절하고_줄을_남기지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     space(&sandbox, "결제-서비스", PAYMENTS);
     let host = sandbox.host(two_turns(&sandbox));
@@ -205,7 +200,6 @@ fn 되돌리는_사이_같은_slug가_다시_쓰였으면_거절하고_줄을_�
 #[test]
 fn 손으로_지운_space_파일은_그_thread의_다음_말에서_칸을_비우고_지워짐_줄을_남기며_범위가_넓어진다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let web = register(&sandbox, "web-app");
     let api = register(&sandbox, "api-server");
     let back = register(&sandbox, "backoffice");
@@ -263,7 +257,6 @@ fn 손으로_지운_space_파일은_그_thread의_다음_말에서_칸을_비우
 #[test]
 fn space를_지우고_되돌린_대화의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "web-app");
     register(&sandbox, "api-server");
     register(&sandbox, "backoffice");

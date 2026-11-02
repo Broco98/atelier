@@ -9,9 +9,6 @@ use atelier_acp::{Quote, ThreadLink};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
-
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
     sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")])
 }
@@ -39,7 +36,6 @@ fn picked() -> Quote {
 #[test]
 fn 인용한_말은_spec_폴더의_실제_경로와_줄_범위의_인용_블록이_본문_바로_앞에_가고_sent_줄에_인용이_남는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("plan", &[]);
     let host = sandbox.host(two_turns(&sandbox));
 
@@ -79,7 +75,6 @@ fn 인용한_말은_spec_폴더의_실제_경로와_줄_범위의_인용_블록�
 #[test]
 fn 인용이_spec_폴더_밖을_가리키거나_work_없는_thread면_보내기_전에_거절하고_아무것도_적지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("plan", &[]);
     let host = sandbox.host(two_turns(&sandbox));
 

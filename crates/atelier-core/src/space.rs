@@ -794,7 +794,7 @@ struct Key {
 }
 
 impl<'a> Outline<'a> {
-    /// frontmatter를 가르는 규칙은 Project · Agent 파일과 같은 하나다(`split_frontmatter`). 닫히지 않았으면 `None`이다.
+    /// frontmatter를 가르는 규칙은 Project 파일과 같은 하나다(`split_frontmatter`). 닫히지 않았으면 `None`이다.
     fn of(text: &'a str) -> Option<Self> {
         let (yaml, _) = crate::project::split_frontmatter(text).ok()?;
         let lines: Vec<&str> = text.split('\n').collect();

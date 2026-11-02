@@ -11,8 +11,6 @@ use atelier_acp::{DocWriting, HostEvent, ThreadLink};
 use common::{of_kind, wait_until, Sandbox};
 use serde_json::Value;
 
-const HOST_MD: &str = "---\nname: 진행자\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 그 Work에 대해 낸 `work:writing` 목록들 — 낸 차례대로.
 fn writings(events: &common::Events, work: &str) -> Vec<Vec<DocWriting>> {
     events
@@ -36,7 +34,6 @@ fn wait_permission(sandbox: &Sandbox, thread: &str, state: &str) -> Value {
 #[test]
 fn spec_폴더의_문서에_편집_도구가_서면_그_work의_쓰는_중_목록에_들고_턴이_끝나면_빠진다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("plan", &[]);
     let shell = sandbox.claude_login_shell(
         "normal",
@@ -45,7 +42,7 @@ fn spec_폴더의_문서에_편집_도구가_서면_그_work의_쓰는_중_목�
     let (host, events) = sandbox.host_with_events(shell);
 
     let thread = host.start_thread("설계 문서를 써 줘", ThreadLink::Work { slug: "plan".into() }).expect("Work에 이은 Thread");
-    // Host가 spec 폴더의 `allowed.txt`를 쓰려고 묻는 동안 — 곧 쓸 문서라 쓰는 중이다. 이름은 「Host」다(정의 이름과 상관없이).
+    // Runtime이 spec 폴더의 `allowed.txt`를 쓰려고 묻는 동안 — 곧 쓸 문서라 쓰는 중이다.
     let asked = wait_permission(&sandbox, &thread, "asked");
     assert_eq!(asked["payload"]["toolCall"]["kind"], "edit");
     let first = DocWriting { path: "allowed.txt".into(), thread: thread.clone() };

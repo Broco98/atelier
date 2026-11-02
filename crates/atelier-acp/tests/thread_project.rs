@@ -20,9 +20,6 @@ use atelier_acp::{AskLevel, ConversationHost, HostError, ProjectChoice, ThreadLi
 use common::{has_pair, of_kind, receipt_args, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// Host가 Work 밖 web-app을 고치려 한다(캔버스 Cards 보드 「Work 밖 Project」).
 fn edit_web_app() -> Value {
     json!({"tool": "start_editing", "arguments": {"project": "web-app", "reason": "환불 버튼이 두 번 눌리는 문제는 web-app에 있어요"}})
@@ -117,7 +114,6 @@ fn real(path: &Path) -> PathBuf {
 #[test]
 fn work에_있는_project를_처음_고치면_묻지_않고_그_project에만_worktree가_서고_시스템_줄이_남고_도구가_그_경로를_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server");
     register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server", "web-app"]);
@@ -149,7 +145,6 @@ fn work에_있는_project를_처음_고치면_묻지_않고_그_project에만_wo
 #[test]
 fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree를_만들고_다음_턴은_그_worktree에서_이어_열려_편집이_허용된다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server"]);
@@ -221,7 +216,6 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
 #[test]
 fn 읽기만_하기면_work에_붙이지_않고_worktree도_만들지_않으며_다음_턴부터_project_폴더를_함께_연다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     let web = register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server"]);
@@ -261,7 +255,6 @@ fn 읽기만_하기면_work에_붙이지_않고_worktree도_만들지_않으며_
 #[test]
 fn 읽기만_하기_뒤_다시_물어_붙이고_고치기면_읽기만_목록에서_빠지고_다음_턴에는_원본_폴더를_함께_열지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     let web = register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server"]);
@@ -293,7 +286,6 @@ fn 읽기만_하기_뒤_다시_물어_붙이고_고치기면_읽기만_목록에
 #[test]
 fn 아니요면_아무것도_바꾸지_않고_도구가_이_work의_project에서만_고치라는_거절_글을_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server"]);
@@ -323,7 +315,6 @@ fn 아니요면_아무것도_바꾸지_않고_도구가_이_work의_project에�
 #[test]
 fn work가_없는_thread나_등록되지_않은_project는_카드를_세우지_않고_그_까닭을_도구의_실패로_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     let unknown = json!({"tool": "start_editing", "arguments": {"project": "billing"}});
     let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[edit_web_app(), unknown.clone()]));
@@ -356,7 +347,6 @@ fn added_dirs(args: &[String]) -> Vec<String> {
 #[test]
 fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로_함께_열고_그_안의_편집은_알아서여도_work부터_만들라며_거절된다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server");
     let web = register(&sandbox, "web-app");
     // 녹음의 `Write`가 쓰는 폴더를 api-server 저장소로 옮긴다 — Host가 Work 없이 등록된 저장소를 고치려는 꼴.
@@ -400,7 +390,6 @@ fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로
 fn work_없는_thread는_폴더가_사라진_project를_함께_열지_않는다() {
     // 등록한 뒤 저장소를 옮기거나 지운 Project — 없는 폴더를 claude에게 넘기지 않는다.
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server");
     let web = register(&sandbox, "web-app");
     std::fs::remove_dir_all(&web).unwrap();
@@ -417,7 +406,6 @@ fn work_없는_thread는_폴더가_사라진_project를_함께_열지_않는다(
 fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다음_말에서_같은_session을_바뀐_폴더들로_이어_연다() {
     // 함께 여는 폴더가 바뀌는 것은 「읽기만 하기」로 폴더를 더한 것과 같은 바뀜이다(S11 「바꿔 이어 열기」, v1 티켓 32).
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server");
     let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[]));
     let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("Work 없는 Thread");
@@ -450,7 +438,6 @@ fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다�
 #[test]
 fn 사람이_thread를_멈추면_서_있는_work_밖_project_카드를_거두고_도구는_사람이_멈춤을_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server"]);
@@ -473,7 +460,6 @@ fn 사람이_thread를_멈추면_서_있는_work_밖_project_카드를_거두고
 #[test]
 fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴은_같은_session을_spec_폴더에서_이어_연다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server");
     let propose = json!({"tool": "propose_work", "arguments": {"title": "환불 API 버그 수정", "slug": "refund-api", "reason": "문서부터"}});
     let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[propose]));
@@ -510,7 +496,6 @@ fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴
 #[test]
 fn work_밖_project를_붙이고_고친_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server");
     register(&sandbox, "web-app");
     deferred_work(&sandbox, &["api-server"]);

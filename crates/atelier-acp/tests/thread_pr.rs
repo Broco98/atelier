@@ -21,7 +21,6 @@ use atelier_core::{Ci, PrLookup};
 use common::{of_kind, LoginShell, Sandbox};
 use serde_json::{json, Value};
 
-const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
 /// 시험의 Work — Project `api`의 worktree가 브랜치 `fix/refund`로 서 있다.
 const WORK: &str = "refund";
 
@@ -70,10 +69,9 @@ const PENDING: &str = r#"[{"__typename": "CheckRun", "name": "e2e", "status": "I
 const FAILING: &str = r#"[{"__typename": "CheckRun", "name": "e2e", "status": "COMPLETED", "conclusion": "FAILURE"}]"#;
 const PASSING: &str = r#"[{"__typename": "CheckRun", "name": "e2e", "status": "COMPLETED", "conclusion": "SUCCESS"}]"#;
 
-/// 시험의 자리 — Library의 Host, 브랜치가 선 Work 하나, 가짜 claude와 가짜 `gh`가 든 로그인 PATH.
+/// 시험의 자리 — 브랜치가 선 Work 하나, 가짜 claude와 가짜 `gh`가 든 로그인 PATH.
 fn setup() -> (Sandbox, Gh, ShellSource) {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let dir = sandbox.work(WORK, &["api"]);
     let mut work: Value = serde_json::from_str(&fs::read_to_string(dir.join("work.json")).unwrap()).unwrap();
     work["branch"] = json!("fix/refund");

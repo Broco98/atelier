@@ -12,9 +12,6 @@ use atelier_acp::{ConversationHost, ProjectChoice, ThreadLink};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 고치는 채팅의 첫 말 — 그 채팅의 이름이 된다.
 const FIXING: &str = "장바구니 수량을 고쳐 줘";
 
@@ -31,10 +28,9 @@ const WRITES: &str = "2.1.309/permission-stdio";
 /// 녹음 — 명령(`Bash`)을 묻는 턴.
 const RUNS: &str = "2.1.309/g4-background";
 
-/// 시험의 자리 — Library의 `host.md`와, Project 하나에 worktree가 선 Work `cart`와, 그 Work 밖에 등록된 Project `api`.
+/// 시험의 자리 — Project 하나에 worktree가 선 Work `cart`와, 그 Work 밖에 등록된 Project `api`.
 fn sandbox() -> Sandbox {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("cart", &["fe"]);
     sandbox.register_project("api");
     sandbox

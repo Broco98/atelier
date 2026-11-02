@@ -18,9 +18,6 @@ use atelier_acp::{AskLevel, ConversationHost, HostError, SpaceChoice, SpacePick,
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 결제 서비스 Space — web-app · api-server(캔버스 ④ 「결제 서비스」).
 const PAYMENTS: &str =
     "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불을 한 흐름으로 다뤄요.\n둘째 줄.\n";
@@ -67,7 +64,6 @@ fn space(sandbox: &Sandbox, slug: &str, text: &str) {
 
 /// 캔버스 ④의 자리 — Project 셋(web-app · api-server · backoffice)과 Space 둘(결제 서비스 · 사내 도구).
 fn payments_world(sandbox: &Sandbox) -> (PathBuf, PathBuf, PathBuf) {
-    sandbox.library_agent("host", HOST_MD);
     let web = register(sandbox, "web-app");
     let api = register(sandbox, "api-server");
     let back = register(sandbox, "backoffice");

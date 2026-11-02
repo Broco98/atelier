@@ -12,9 +12,6 @@ use atelier_acp::ThreadLink;
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 첨부 블록의 머리 — 엔진의 글과 따로 적는다(시험의 기댓값).
 const ATTACHED_HEAD: &str = "첨부 — 사람이 이 말에 붙인 파일 · 폴더의 절대 경로다. 내용은 싣지 않았다. 필요하면 그 경로를 읽어라.";
 
@@ -50,7 +47,6 @@ fn text(path: &Path) -> String {
 #[test]
 fn 첨부한_말은_절대_경로_목록이_본문_바로_앞에_가고_sent_줄에_첨부가_남는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (log, shots) = dropped(&sandbox);
     let host = sandbox.host(two_turns(&sandbox));
 
@@ -108,7 +104,6 @@ fn 첨부한_말은_절대_경로_목록이_본문_바로_앞에_가고_sent_줄
 #[test]
 fn 첨부가_절대_경로가_아니거나_없으면_보내기_전에_거절하고_아무것도_적지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (log, _) = dropped(&sandbox);
     let gone = text(&log.with_file_name("지운.log"));
     let host = sandbox.host(two_turns(&sandbox));
@@ -135,7 +130,6 @@ const DESK: &str = "/Users/tester/Desktop";
 #[test]
 fn 첨부한_첫_말의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let (log, shots) = dropped(&sandbox);
     let host = sandbox.host(two_turns(&sandbox));
 

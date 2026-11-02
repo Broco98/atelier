@@ -17,9 +17,6 @@ use atelier_acp::{ConversationHost, HostError, ThreadLink, WorkChoice};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 가짜 claude가 첫 턴 앞머리에서 차례로 부를 Thread 도구들 — `FAKE_CLAUDE_MCP_CALL`.
 fn calling(sandbox: &Sandbox, calls: &[Value]) -> atelier_acp::ShellSource {
     let calls = Value::Array(calls.to_vec()).to_string();
@@ -101,7 +98,6 @@ fn started(sandbox: &Sandbox, calls: &[Value]) -> (ConversationHost, String) {
 #[test]
 fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_worktree_없는_work가_서고_thread가_이어지며_도구가_그_work를_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server", "결제 · 환불 API");
     register(&sandbox, "web-app", "환불 버튼 화면");
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
@@ -168,7 +164,6 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
 #[test]
 fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사용자가_work_없이_계속하기로_함을_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
 
@@ -201,7 +196,6 @@ fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사�
 #[test]
 fn 만들지_못하면_아무것도_적지_않고_카드가_그대로_서며_고쳐서_다시_고르면_선다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server", "");
     git(&api, &["branch", "fix/refund-api"]);
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
@@ -229,7 +223,6 @@ fn 만들지_못하면_아무것도_적지_않고_카드가_그대로_서며_고
 #[test]
 fn 카드를_세울_수_없는_제안은_그_까닭을_도구의_실패로_돌려주고_카드를_세우지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     sandbox.work("cart", &[]);
     let unknown = tool("propose_work", json!({"title": "t", "slug": "t-1", "reason": "r", "projects": [{"slug": "web-app"}]}));
@@ -262,7 +255,6 @@ fn 카드를_세울_수_없는_제안은_그_까닭을_도구의_실패로_돌�
 #[test]
 fn 사람이_thread를_멈추면_서_있는_카드를_거두고_도구는_사람이_멈춤을_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
 
@@ -285,7 +277,6 @@ fn 사람이_thread를_멈추면_서_있는_카드를_거두고_도구는_사람
 #[test]
 fn project_목록은_등록된_project와_그_브랜치를_돌려주고_work_읽기는_이은_work의_spec_폴더와_project를_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server", "결제 · 환불 API");
     git(&api, &["branch", "fix/login-timeout"]);
     let calls = [tool("list_projects", json!({})), tool("get_work", json!({}))];
@@ -314,7 +305,6 @@ fn project_목록은_등록된_project와_그_브랜치를_돌려주고_work_읽
 #[test]
 fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
     let thread = host
@@ -340,7 +330,6 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
 #[test]
 fn thread의_space는_work_만들기_카드에_서고_만든_work로_옮겨_가며_thread의_칸은_비운다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let spaces = atelier_core::spaces_in(&sandbox.data_root());
     std::fs::create_dir_all(&spaces).unwrap();
@@ -371,7 +360,6 @@ fn thread의_space는_work_만들기_카드에_서고_만든_work로_옮겨_가�
 #[test]
 fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안을_먼저_하라고_하고_work_없이는_그_줄이_없다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let preamble = |thread: &str| {
         let record = sandbox.wait_thread_kind(thread, "turn-end", 1);
@@ -401,7 +389,6 @@ fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안
 #[test]
 fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "백엔드 — 결제 · 환불 API");
     register(&sandbox, "web-app", "프런트엔드 — 주문 상세의 환불 버튼 화면");
     let host = sandbox.host(recorded_work(&sandbox));

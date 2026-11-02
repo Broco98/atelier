@@ -528,14 +528,9 @@ fn launched_by(method: &str, params: Value) -> Vec<String> {
 }
 
 #[test]
-fn 모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_들고_시스템_프롬프트는_없다() {
+fn 모델_생각_깊이와_mcp_서버는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_들고_시스템_프롬프트는_없다() {
     // v1 구현 스펙 §3 — `claude -p --resume`은 이 값들을 되살리지 않으므로 열 때마다 다시 받는다.
-    let meta = json!({"atelier": {
-        "model": "opus",
-        "effort": "high",
-        "builtinTools": ["read", "shell"],
-        "forbid": ["push"]
-    }});
+    let meta = json!({"atelier": {"model": "opus", "effort": "high"}});
     let servers = json!([{"name": "thread", "command": "atelier", "args": [], "env": []}]);
     let fresh = json!({"cwd": CWD, "mcpServers": servers, "_meta": meta});
     let revive = json!({"sessionId": "yesterday", "cwd": CWD, "mcpServers": servers, "_meta": meta});
@@ -544,18 +539,10 @@ fn 모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_�
         let args = launched_by(method, params);
         assert!(!args.iter().any(|arg| arg.contains("system-prompt")), "{method}: 시스템 프롬프트를 건드리지 않는다: {args:?}");
         assert_eq!(
-            (
-                flag(&args, "--model").as_deref(),
-                flag(&args, "--effort").as_deref(),
-                flag(&args, "--tools"),
-                flag(&args, "--disallowedTools").as_deref(),
-                flag(&args, "--mcp-config").as_deref(),
-            ),
+            (flag(&args, "--model").as_deref(), flag(&args, "--effort").as_deref(), flag(&args, "--mcp-config").as_deref()),
             (
                 Some("opus"),
                 Some("high"),
-                Some(format!("Read,Glob,Grep,LS,Bash,{RUNTIME_TOOLS}")),
-                Some("Bash(git push),Bash(git push *)"),
                 Some(r#"{"mcpServers":{"thread":{"type":"stdio","command":"atelier","args":[],"env":{},"timeout":2147483647}}}"#),
             ),
             "{method}: {args:?}"
@@ -568,7 +555,15 @@ fn 모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_�
 
     // 비우면 플래그도 없다 — 사용자의 모델 설정 · 기본 도구 전부를 그대로 쓴다.
     let args = launched_by("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}}));
-    for name in ["--model", "--effort", "--tools", "--disallowedTools", "--mcp-config"] {
+    for name in ["--model", "--effort", "--mcp-config"] {
+        assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
+    }
+}
+
+#[test]
+fn meta의_지운_칸은_읽지_않아_claude가_기본_도구_전부로_뜬다() {
+    let args = launched_with(json!({"builtinTools": ["read"], "forbid": ["push"], "instructionsFile": "/old/host.instructions.md"}));
+    for name in ["--tools", "--disallowedTools", "--append-system-prompt-file"] {
         assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
     }
 }
@@ -576,60 +571,6 @@ fn 모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_�
 /// 그 `_meta.atelier`로 새로 연 claude의 인자.
 fn launched_with(atelier: Value) -> Vec<String> {
     launched_by("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": atelier}}))
-}
-
-/// Runtime의 반복이 쓰는 도구 — 내장 도구를 골라도 늘 남는다(결정.md 12).
-const RUNTIME_TOOLS: &str = "AskUserQuestion,ExitPlanMode,ToolSearch";
-
-#[test]
-fn 내장_도구는_추상_도구_표대로_claude_code_도구_이름으로_옮겨_tools로_들고_적지_않으면_기본_도구_전부다() {
-    // v1 구현 스펙 §3 「추상 도구」 표.
-    let table = [
-        (json!(["read"]), "Read,Glob,Grep,LS"),
-        (json!(["search"]), "Glob,Grep"),
-        (json!(["edit"]), "Edit,Write,NotebookEdit"),
-        (json!(["shell"]), "Bash"),
-        (json!(["web"]), "WebFetch,WebSearch"),
-        // 기본 리뷰어 — 겹치는 도구는 한 번만 든다.
-        (json!(["read", "search", "shell"]), "Read,Glob,Grep,LS,Bash"),
-    ];
-    for (builtin, tools) in table {
-        let args = launched_with(json!({"builtinTools": builtin}));
-        assert_eq!(flag(&args, "--tools"), Some(format!("{tools},{RUNTIME_TOOLS}")), "{builtin}: {args:?}");
-    }
-
-    // 빈 목록은 내장 도구 없음이다 — 능력 도구는 하나도 없고 반복의 도구만 남는다.
-    let args = launched_with(json!({"builtinTools": []}));
-    assert_eq!(flag(&args, "--tools").as_deref(), Some(RUNTIME_TOOLS), "{args:?}");
-
-    // 적지 않으면 플래그가 없다 — claude의 기본 도구 전부다(Host 기본 파일).
-    for atelier in [json!({}), json!({"builtinTools": null})] {
-        let args = launched_with(atelier);
-        assert!(!args.iter().any(|arg| arg == "--tools"), "{args:?}");
-    }
-}
-
-#[test]
-fn 금지는_s19_규칙으로_옮겨_disallowed_tools로_들고_명령_패턴은_그대로_간다() {
-    // v1 구현 스펙 S19 — 명령은 맨 명령과 인자가 붙은 명령을 함께 막는다.
-    let table = [
-        (json!(["edit"]), "Edit,Write,NotebookEdit"),
-        (json!(["shell"]), "Bash"),
-        (json!(["push"]), "Bash(git push),Bash(git push *)"),
-        (json!(["merge"]), "Bash(gh pr merge),Bash(gh pr merge *),Bash(git merge),Bash(git merge *)"),
-        (json!(["Bash(npx prisma migrate *)"]), "Bash(npx prisma migrate *)"),
-        (json!(["push", "Bash(rm -rf *)"]), "Bash(git push),Bash(git push *),Bash(rm -rf *)"),
-    ];
-    for (forbid, rules) in table {
-        let args = launched_with(json!({"forbid": forbid}));
-        assert_eq!(flag(&args, "--disallowedTools").as_deref(), Some(rules), "{forbid}: {args:?}");
-    }
-
-    // 마이그레이션 명령(`schema`)은 고정 목록이 없다 — 파일에 명령 패턴으로 적는다(S19). 옮길 규칙이 없으면 플래그도 없다.
-    for forbid in [json!([]), json!(["schema"])] {
-        let args = launched_with(json!({"forbid": forbid}));
-        assert!(!args.iter().any(|arg| arg == "--disallowedTools"), "{forbid}: {args:?}");
-    }
 }
 
 #[test]
@@ -673,16 +614,10 @@ fn acp_mcp_서버는_claude의_mcp_설정으로_옮겨_mcp_config로_들고_사�
 }
 
 #[test]
-fn 모르는_추상_도구나_stdio가_아닌_mcp_서버면_claude를_띄우지_않고_열기를_까닭으로_답한다() {
+fn stdio가_아닌_mcp_서버면_claude를_띄우지_않고_열기를_까닭으로_답한다() {
     let mut bench = Bench::new(Claude::replaying("2.1.309/twoturn-tools"));
     bench.request("initialize", json!({"protocolVersion": 1}));
 
-    // 모르는 추상 도구는 Agent 파일 오류다(§6) — 기본 도구 전부로도, 내장 도구 없음으로도 미끄러지지 않는다.
-    let unknown = bench.request(
-        "session/new",
-        json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {"builtinTools": ["read", "browse"]}}}),
-    );
-    assert_eq!(bench.error(unknown), json!({"code": -32602, "message": "모르는 추상 도구입니다: browse"}));
     // http · sse는 광고하지 않았다(ACP `mcpCapabilities`) — 받지 않는다.
     let http = bench.request(
         "session/new",
