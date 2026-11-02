@@ -25,8 +25,11 @@ export interface LogGroup {
   tools: { tool: ToolEntry; view: ToolView }[];
 }
 
-/** 도구 줄들을 작업 로그의 줄로 — 끝난 읽기 · 찾기가 둘 이상 이어지면 묶는다. 도구가 아닌 줄은 받지 않는다(그리는 쪽이 가른다). */
-export function logRows(tools: readonly ToolEntry[]): LogRow[] {
+/**
+ * 도구 줄들을 작업 로그의 줄로 — 끝난 읽기 · 찾기가 둘 이상 이어지면 묶는다. 도구가 아닌 줄은 받지 않는다(그리는 쪽이 가른다). `specRoot`(이은 작업공간의
+ * spec 폴더)를 알면 그 안에 새로 쓴 문서가 문서 줄이다(`describeTool`).
+ */
+export function logRows(tools: readonly ToolEntry[], specRoot: string | null = null): LogRow[] {
   const rows: LogRow[] = [];
   let run: { tool: ToolEntry; view: ToolView }[] = [];
   const flush = () => {
@@ -38,7 +41,7 @@ export function logRows(tools: readonly ToolEntry[]): LogRow[] {
     run = [];
   };
   for (const tool of tools) {
-    const view = describeTool(tool);
+    const view = describeTool(tool, specRoot);
     const groupable = view.group !== null && view.state === "done" && tool.stop === null && !tool.denied && tool.allowed === null;
     if (groupable) {
       run.push({ tool, view });

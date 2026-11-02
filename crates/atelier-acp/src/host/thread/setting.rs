@@ -92,17 +92,10 @@ impl Action {
         }
     }
 
-    /// 그 카드의 단추 — Project · 새 Service는 「열기」, Service 고침은 「관계 보기」(§12).
-    fn button(self) -> &'static str {
-        match self {
-            Action::ServiceEdited => "관계 보기",
-            Action::ProjectAdded | Action::ProjectEdited | Action::ServiceCreated => "열기",
-        }
-    }
-
-    /// 해낸 설정의 도구 결과 끝 — 사람이 결과 카드의 단추로 그 화면에서 다시 고친다.
+    /// 해낸 설정의 도구 결과 끝 — 사람이 결과 카드의 단추 「열기」로 그 화면에서 다시 고친다. 넷 모두 같은 단추다(restart 02b-6 · ChatCards
+    /// 「Service 고침」 — 관계 그래프가 없어져 「열기」로 통일한다. 한때 Service 고침은 「관계 보기」였다).
     fn settled(self) -> String {
-        format!("흐름에 결과 카드가 섰다 — 사람이 「{}」로 그 화면에서 다시 고칠 수 있다.", self.button())
+        "흐름에 결과 카드가 섰다 — 사람이 「열기」로 그 화면에서 다시 고칠 수 있다.".to_owned()
     }
 }
 
@@ -334,7 +327,7 @@ impl ConversationHost {
     }
 
     /// Thread 도구 「Service 고치기」(§12 · §8 「고치기」) — 준 칸만 글 단위로 고친다(나머지 글은 그대로). 새 문제가 생기면 쓰지 않고 그 문제를
-    /// 돌려준다. 바뀐 것이 있으면 결과 카드 줄(「관계 보기」)이 선다.
+    /// 돌려준다. 바뀐 것이 있으면 결과 카드 줄이 선다.
     pub(super) fn edit_service_tool(&self, thread: &str, edit: ServiceEdit) -> Value {
         let Ok(before) = atelier_core::get_service(&self.data_root, &edit.service) else {
             return thread_tools::said(&self.unknown_service(&edit.service), true);

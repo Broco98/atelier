@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Command,
   Copy,
+  FileText,
   Globe,
   Pencil,
   Search,
@@ -19,6 +20,7 @@ import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { autoAllowReason } from "./approval";
 import { useArrival, useChanged } from "./arrival";
+import { DocPlace } from "./doc-place";
 import type { ToolEntry } from "./fold";
 import { logRows, type LogGroup } from "./log";
 import { RULE } from "./ThreadMarkdown";
@@ -50,16 +52,21 @@ import { elapsed, phraseText, shownPath, type DiffLine, type DiffPiece, type Too
 //   화면의 말이다 — 엔진은 허락을 「이 Work에서는 다시 묻지 않기」로 적고, 화면이 넘어간 도구의 종류로 카드의 말을 고른다(`autoAllowReason` —
 //   02 코드 리뷰 A1). 그 도구 줄은 제 줄 그대로 뒤에 선다(결과 · 펼친 안은 도구 줄의 것이다).
 //
-// 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 머리의 「작업공간 패널에서 열기」는 Work 패널(31)이 서는 날 단다.
+// - **spec 문서 줄**(Thread 보드 · States 08 · restart 02b-6) — 이은 작업공간의 spec 폴더에 새로 쓴 문서는 문서 글리프 · 「생성됨 재시도-규칙.md」 · 새 파일
+//   점이고 `+N −N`과 셰브런이 없다(펼칠 diff가 없다). 그 문서는 답 아래 문서 카드가 연다. spec 폴더는 문서 카드와 같은 자리(`DocPlace`)에서 읽는다.
+//
+// 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 카드 머리에는 「변경 복사」만 선다 — 보드(Tools · Thread)의 머리에 「작업공간 패널에서
+// 열기」가 없다(restart 02b-6). 한때 Work 패널(31)이 서는 날 단다고 적었다.
 
 /** 그 Thread의 작업 폴더(Host Session의 `cwd`) — 변경 상자 머리가 경로를 이 폴더에서 본 자리로 줄인다(`shownPath`). */
 export const LogPlace = createContext<string | null>(null);
 
 /** 도구 줄들 — 이어진 읽기 · 찾기는 묶음 줄로 선다. 판정이 묻지 않고 허용한 줄은 그 앞에 방패 줄이 선다. */
 export function ToolRows({ tools }: { tools: readonly ToolEntry[] }) {
+  const specRoot = useContext(DocPlace)?.specRoot ?? null;
   return (
     <>
-      {logRows(tools).map((row) =>
+      {logRows(tools, specRoot).map((row) =>
         row.kind === "group" ? (
           <GroupLine key={row.key} group={row} />
         ) : (
@@ -99,6 +106,7 @@ const ROW_BUTTON = "transition-colors hover:text-fg focus-ring";
 const GLYPHS: Record<ToolGlyph, LucideIcon> = {
   read: BookOpen,
   edit: Pencil,
+  doc: FileText,
   execute: SquareTerminal,
   search: Search,
   web: Globe,
@@ -248,7 +256,9 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
   const swapped = useChanged(view.state);
   const label = phraseText(view.phrase);
   const received = view.mcp !== null && view.mcp.received !== "";
-  const expandable = view.shell !== null || view.diffs.length > 0 || received || view.text !== null || tool.inner.length > 0;
+  // spec 문서 줄은 셈 · 펼침이 없다 — 그 문서는 답 아래 문서 카드가 연다(Thread 보드 「생성됨 재시도-규칙.md」).
+  const diffs = view.doc ? [] : view.diffs;
+  const expandable = view.shell !== null || diffs.length > 0 || received || view.text !== null || tool.inner.length > 0;
   const added = view.diffs.reduce((sum, piece) => sum + piece.added, 0);
   const deleted = view.diffs.reduce((sum, piece) => sum + piece.deleted, 0);
   const took = view.state === "running" || view.stopped ? null : elapsed(tool);
@@ -256,7 +266,7 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
     <>
       {view.stopped ? <StopMark /> : <Glyph glyph={view.glyph} running={view.state === "running" && !view.waiting} />}
       <Phrase view={view} />
-      {view.diffs.length > 0 && view.state === "done" && !view.stopped && (
+      {diffs.length > 0 && view.state === "done" && !view.stopped && (
         <>
           <span className="shrink-0 text-code text-diff-added tabular-nums">+{added}</span>
           <span className="shrink-0 text-code text-diff-deleted tabular-nums">−{deleted}</span>

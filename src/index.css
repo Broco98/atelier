@@ -2089,6 +2089,13 @@ body[data-palette-open] [data-scrollbar] {
     mask-image: linear-gradient(90deg, #000 calc(100% - var(--size-stream-fade)), rgb(0 0 0 / 0.18));
 }
 
+/* **접힌 내 말**(restart 02b-6 · Cards 보드 「긴 말」 — 「8줄 넘으면 접고 더 보기」). 잘린 말풍선의 아래 40%가 옅어져 사라진다 — 말이 이어진다는
+   표시다. 움직임이 아니라 동작 줄이기에도 그대로다. 펼치면 걷는다(`UserMessage`의 `MessageBubble`). */
+@utility fold-fade {
+    -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
+    mask-image: linear-gradient(180deg, #000 60%, transparent);
+}
+
 /* **작업 중 점**(02 구현 스펙 §12 · Motion 보드 「작업 중 점」 · Screen-Live `.dot` — Codex `_typing-dot-wave`). 4 점 셋이 4 사이로 서서
    파도친다 — 1s(`duration-wave`) `steps(3)`(`ease-wave`)로 +1.2px 내려갔다 −2px 오르고 제자리에 서며, 점마다 .1s(`stagger-wave`) 늦다.
    +1.2로 내려가는 구간만 Codex 그대로 `steps(6)`이다. 점 색은 놓인 자리의 글자색이다 — 입력창 위 원 안은 2단계(70% — Codex `bg-text/70`),

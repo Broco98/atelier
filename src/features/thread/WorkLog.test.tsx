@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { foldThread, type ToolEntry } from "./fold";
 import type { RecordLine } from "./types";
+import { DocPlace } from "./ThreadFlow";
 import { InnerTools, ToolRows } from "./WorkLog";
 
 // 방패 줄(v1 티켓 23 · 캔버스 WorkLog 보드 「자동 허용 줄」) — 판정이 묻지 않고 허용한 도구 줄 앞에 「자동으로 허용함」 · 대상 · 까닭 알약이
@@ -141,5 +142,35 @@ describe("도구 줄의 모양", () => {
     );
     expect(html).toContain('aria-label="생성됨 b.ts"');
     expect(html).toContain('data-dot="created"');
+  });
+
+  // Thread 보드 · States 08(restart 02b-6) — 이은 작업공간의 spec 폴더에 새로 쓴 문서는 문서 글리프 · 「생성됨 재시도-규칙.md」 · 새 파일 점이고, 셈과
+  // 셰브런이 없는 줄이다(보드 `canOpen` 없음). 같은 글을 spec 폴더를 모르는 채팅에서 그리면 코드 파일처럼 연필 · `+N −N` · 펼칠 diff다.
+  it("spec 폴더에 새로 쓴 문서는 문서 글리프의 셈 · 펼침 없는 줄이다", () => {
+    const spec = "/h/.atelier/works/watcher/spec";
+    const doc = line(
+      {
+        kind: "edit",
+        title: `Write ${spec}/01-실패-신호/재시도-규칙.md`,
+        status: "completed",
+        content: [{ type: "diff", path: `${spec}/01-실패-신호/재시도-규칙.md`, oldText: null, newText: "# 재시도 규칙\n" }],
+      },
+      { endedAt: "2026-11-03T10:00:01.100Z" },
+    );
+    const inWork = renderToStaticMarkup(
+      <DocPlace.Provider value={{ specRoot: spec, open: () => {} }}>
+        <ToolRows tools={[doc]} />
+      </DocPlace.Provider>,
+    );
+    expect(inWork).toContain('aria-label="생성됨 재시도-규칙.md"');
+    expect(inWork).toContain('data-glyph="doc"');
+    expect(inWork).toContain('data-dot="created"');
+    expect(inWork).not.toContain("text-diff-added");
+    expect(inWork).not.toContain("aria-expanded");
+
+    const loose = markup(doc);
+    expect(loose).toContain('data-glyph="edit"');
+    expect(loose).toContain("text-diff-added");
+    expect(loose).toContain('aria-expanded="false"');
   });
 });
