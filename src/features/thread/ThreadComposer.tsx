@@ -116,8 +116,14 @@ export interface ThreadComposerProps {
   drops?: boolean;
   /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창(과 그 안의 칩) 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
   card?: ReactNode;
-  /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
+  /** 입력창 바로 위에 서는 것 — 기다리는 말. */
   above?: ReactNode;
+  /**
+   * 입력창 자리 위에 떠 있는 세 칸 줄 — 바뀐 파일 알약(왼쪽) · 「맨 아래로」(가운데)다(Thread 보드 `.ra-float` — restart 02b-7). 자리(기다리는 말 ·
+   * 카드 포함) 위 6에 떠서 대화 칸을 줄이지 않고 바닥 페이드 위에 겹친다. 줄은 누름을 받지 않고 그 안의 것만 받는다 — 빈 칸 밑의 대화를 그대로
+   * 누른다. 한때 `above`의 한 줄이라 서면 대화 칸이 40 줄었다.
+   */
+  floating?: ReactNode;
   /** 말을 보낸다(붙인 첨부 · 인용과 함께). 거절되면 쓴 글 · 첨부 · 인용을 돌려놓고 그 글을 보인다. */
   onSend: (text: string, attachments: readonly Attachment[], quote: Quote | null) => Promise<void>;
   onStop?: () => Promise<void>;
@@ -152,6 +158,7 @@ function ThreadComposer({
   drops = true,
   card,
   above,
+  floating,
   onSend,
   onStop,
   onNewThread,
@@ -321,7 +328,15 @@ function ThreadComposer({
     </Tray>
   );
   return (
-    <div data-dock={docked ? "" : undefined} className={cn("flex shrink-0 flex-col", docked && DOCK_FADE)}>
+    <div data-dock={docked ? "" : undefined} className={cn("flex shrink-0 flex-col", floating && "relative", docked && DOCK_FADE)}>
+      {floating && (
+        <div
+          data-floating
+          className="pointer-events-none absolute inset-x-0 bottom-full z-2 mb-1.5 grid grid-cols-[1fr_auto_1fr] items-end *:pointer-events-auto"
+        >
+          {floating}
+        </div>
+      )}
       {above && <div className="flex flex-col gap-2 pb-2">{above}</div>}
       {card ?? (
         <form

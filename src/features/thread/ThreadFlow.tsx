@@ -1,4 +1,4 @@
-import { createContext, Fragment, memo, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { createContext, Fragment, memo, useContext, useEffect, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Check, CircleAlert, Folder, GitBranch, Info, Layers, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -121,12 +121,6 @@ export const TURN_BOX = "flex flex-col gap-4";
 /** 흐름의 Thread — Runtime 경고의 펼침을 Thread마다 기억하는 열쇠이고, 흐르는 글을 찾는 열쇠다. */
 const FlowThread = createContext("");
 
-/**
- * 맨 아래를 보던 흐름을 꼬리까지 내리는 길 — Thread 본문이 준다. 흐르는 글은 기록 줄이 아니라 본문이 다시 그려지지 않으므로, 글이 늘면
- * 꼬리가 부른다(`MessageView`).
- */
-export const FollowTail = createContext<() => void>(() => {});
-
 interface ThreadFlowProps {
   thread: string;
   model: ThreadModel;
@@ -198,13 +192,15 @@ function ThreadFlow({ thread, model, runtime, actions = null, pending = null }: 
                 severed={turn === last ? model.severed : null}
                 connecting={turn === last && model.connecting}
                 lead={leadOf(model, turn)}
+                arrival={sentArrival(at)}
               />
               {prs(at + 1)}
             </div>
             {between(at + 1)}
           </Fragment>
         ))}
-        {pending && <PendingTurn sent={pending} starting={model.connecting} />}
+        {/* 대기 말풍선은 다음 턴의 자리에 선다 — 그 턴이 기록에 서면 같은 이름이라 다시 오르지 않는다. */}
+        {pending && <PendingTurn sent={pending} starting={model.connecting} arrival={sentArrival(model.turns.length)} />}
       </div>
     </FlowThread.Provider>
   );
@@ -214,10 +210,10 @@ function ThreadFlow({ thread, model, runtime, actions = null, pending = null }: 
  * 기록에 서기 전의 보낸 말(States 보드 02 · 03) — 턴 상자 하나에 말풍선과, Session이 열리는 동안 그 아래 16에 「채팅을 시작하는 중」이 선다. 흐름
  * 끝의 대기 말풍선(`pending`)과 새 채팅의 첫 말(`ThreadScreen`의 `NewChat`)이 같다. 시각은 기록이 말한다 — 말 머리에는 복사만 선다.
  */
-export function PendingTurn({ sent, starting }: { sent: SentWords; starting: boolean }) {
+export function PendingTurn({ sent, starting, arrival }: { sent: SentWords; starting: boolean; arrival?: string }) {
   return (
     <div data-pending className={TURN_BOX}>
-      <UserMessage text={sent.text} attachments={sent.attachments} quote={sent.quote} />
+      <UserMessage text={sent.text} attachments={sent.attachments} quote={sent.quote} arrival={arrival} />
       {starting && <StartingLine />}
     </div>
   );
@@ -320,7 +316,15 @@ interface TurnViewProps {
   connecting: boolean;
   /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, 답의 줄 앞이다(화면 2 보드). */
   lead: readonly SystemLine[];
+  /** 보낸 말이 들어서는 이름(`sentArrival`) — 그 자리의 대기 말풍선과 같은 이름이다. */
+  arrival: string;
 }
+
+/**
+ * 흐름의 n째 턴 자리에 보낸 말이 들어서는 이름(restart 02b-7 · Motion 「보낸 말이 선다」) — 기록에 서기 전의 대기 말풍선은 다음 턴의 자리에 선다.
+ * 턴은 끝에만 늘어 자리가 바뀌지 않는다. 그래서 대기 말풍선으로 오른 말이 기록의 턴이 되어도 다시 오르지 않는다(`useArrival`).
+ */
+const sentArrival = (at: number) => `sent-${at}`;
 
 /**
  * 턴 하나(States 보드 · restart 02b-1). 값이 그대로인 턴은 다시 그리지 않는다 — 기록 줄이 늘어도 지난 턴의 값은 그대로다(`foldOf`). 시스템 줄은 값으로 견준다:
@@ -344,6 +348,7 @@ const TurnView = memo(function TurnView({
   severed,
   connecting,
   lead,
+  arrival,
 }: TurnViewProps) {
   const thread = useContext(FlowThread);
   const running = turn.end === null;
@@ -357,17 +362,22 @@ const TurnView = memo(function TurnView({
   // 멈춘 턴 · 거부로 멈춘 턴 · 앱이 막아서 멈춘 턴은 로그가 펼친 채 남는다(Tools 보드 「사람이 멈춤」 · 「거부로 멈춤」 · 「앱이 막아서 멈춤」).
   const halted = turn.end?.stopReason === "cancelled";
   const cutTurn = turn.end !== null && turn.end.cut !== null;
-  const flat = running || cutTurn;
+  // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴과 끊긴 턴에는 없다. 펼칠 것이 없는 구분선은 늘 접힌 모양이다.
+  const line = workLine(turn);
+  // 멈춘 턴은 사람이 접기 전까지 도는 턴의 칸 그대로다(restart 02b-7) — 멈추는 순간 그려 둔 줄을 펼친 로그 상자로 옮기면 앞선 긴 글까지 통째로
+  // 다시 그려 그 프레임이 멎는다(L3 fixture — 앞선 글 4만 자 · 도구 60쌍에서 300ms). 같은 칸 · 같은 열쇠라 다시 그리지 않는다. 머리 아래 12 ·
+  // 로그 끝과 답 사이 16은 펼친 로그와 같다. 사람이 처음 접으면 그때 펼친 로그 상자로 옮겨 서며 접힌다(`Unfold`의 `from`).
+  const held = halted && line?.unfolds === true && open === undefined;
+  const leftHeld = useChanged(held) && !held;
+  const flat = running || cutTurn || held;
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
-  const final = flat ? [] : turn.entries.slice(from).filter((entry) => entry.kind === "message" || isCardDecision(entry));
+  const final = running || cutTurn ? [] : turn.entries.slice(from).filter((entry) => entry.kind === "message" || isCardDecision(entry));
   // 다시 이을 수 있을 때만 다시 잇자고 말한다 — 지난 턴과 읽기만인 채팅은 지난 일이다(`cutNotice`).
   const reconnectable = actions && severed && { failed: actions.reconnectFailure ?? severed.failed };
   const cut = cutNotice(turn, runtime, reconnectable);
   const notice = endNotice(turn) ?? cut;
   const reconnecting = cut !== null && actions !== null && reconnectable !== null && (connecting || actions.reconnecting);
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
-  // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴과 끊긴 턴에는 없다. 펼칠 것이 없는 구분선은 늘 접힌 모양이다.
-  const line = workLine(turn);
   const unfolded = line?.unfolds === true && (open ?? halted);
   const onToggle = () => toggleTurn(turnKey(thread, turn.key), !unfolded);
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
@@ -388,6 +398,7 @@ const TurnView = memo(function TurnView({
             quote={turn.quote}
             at={turn.startedAt}
             interjected={turn.interjected === true}
+            arrival={arrival}
           />
         </div>
       )}
@@ -405,10 +416,10 @@ const TurnView = memo(function TurnView({
             <>
               {line && (
                 <>
-                  <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key}>
+                  <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key} logged={held}>
                     {line.text}
                   </WorkDivider>
-                  {line.unfolds && <OpenedLog entries={before} open={unfolded} />}
+                  {line.unfolds && !held && <OpenedLog entries={before} open={unfolded} from={leftHeld} />}
                 </>
               )}
               {kept.map((entry) => (
@@ -418,6 +429,7 @@ const TurnView = memo(function TurnView({
           )}
           <Entries
             entries={flat ? turn.entries.filter(shownEntry) : final}
+            gapBefore={held ? final[0]?.key : undefined}
             tail={flow === "message" && stream !== null ? <MessageView key={flowKey(stream)} /> : flow === "thought" ? <FlowingThought key="thought" /> : null}
           />
           {turn.end ? (
@@ -450,6 +462,7 @@ function sameTurnView(a: TurnViewProps, b: TurnViewProps): boolean {
     a.actions === b.actions &&
     a.severed === b.severed &&
     a.connecting === b.connecting &&
+    a.arrival === b.arrival &&
     a.lead.length === b.lead.length &&
     a.lead.every((line, at) => line === b.lead[at])
   );
@@ -479,10 +492,6 @@ const flowKey = (stream: number) => `flow-${stream}`;
 function MessageView({ text }: { text?: string }) {
   const thread = useContext(FlowThread);
   const flowing = useStore(threadFlowStore, (state) => (text === undefined ? state[thread]?.text : undefined));
-  const follow = useContext(FollowTail);
-  useLayoutEffect(() => {
-    if (flowing) follow();
-  }, [follow, flowing]);
   const shown = text ?? flowing;
   if (!shown) return null;
   return <ThreadMarkdown text={shown} streaming={text === undefined} className="w-full" />;
@@ -492,8 +501,6 @@ function MessageView({ text }: { text?: string }) {
 function FlowingThought() {
   const thread = useContext(FlowThread);
   const flowing = useStore(threadFlowStore, (state) => state[thread]?.text);
-  const follow = useContext(FollowTail);
-  useLayoutEffect(follow, [follow, flowing]);
   if (!flowing) return null;
   return <ThreadMarkdown text={flowing} className="w-full text-fg-tertiary" />;
 }
@@ -512,7 +519,7 @@ function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) 
   const swapped = useChanged(waiting !== null);
   // 끝난 턴의 머리 자리에 선다(States 보드 05~11 `.ra-shimmer` — 14 / 22, 셰브런 없음) — 글은 띠가 지나가고 그 아래 가는 선이 같다.
   return (
-    <WorkDivider running>
+    <WorkDivider logged>
       {waiting ? (
         <span key="waiting" className={cn("leading-5.5 text-warning", swapped && "row-in")}>
           {waiting}
@@ -534,28 +541,40 @@ const logLine = (entry: Entry): entry is ToolEntry | DecisionEntry | UnansweredE
  * 턴의 줄들 — 잇따른 도구 줄 · 결정 줄은 작업 로그의 한 묶음이다(Tools 보드 `.ra-log-list` — 줄 24 · 줄 사이 4, 묶음 줄 포함). 묶음 밖의 줄(중간 설명 ·
  * 계획 · 카드)과는 턴 안 줄 사이 8이다 — 보드의 줄 사이 4 + 글 줄의 위아래 4와 같다. 흐르는 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
  */
-function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: ReactNode }) {
+/**
+ * 턴의 줄들 — 잇따른 로그 줄은 한 묶음(`data-log-run`), 글은 `MessageView`, 그 밖은 제 줄이다. `gapBefore`의 줄 앞에는 빈칸 하나가 서서 줄 사이 8을
+ * 한 번 더 둔다 — 사람이 접기 전의 멈춘 턴에서 로그 끝과 턴 끝 답 사이가 펼친 로그처럼 16이다(restart 02b-7). 빈칸도 열쇠가 있어 다른 줄을 다시
+ * 그리지 않는다.
+ */
+function Entries({ entries, tail = null, gapBefore }: { entries: readonly Entry[]; tail?: ReactNode; gapBefore?: string }) {
   const runs: Entry[][] = [];
   for (const entry of entries) {
     const last = runs[runs.length - 1];
     if (logLine(entry) && last && logLine(last[0])) last.push(entry);
     else runs.push([entry]);
   }
-  const rows = runs.map((run) => {
+  const rows = runs.flatMap((run, at) => {
     const [first] = run;
-    if (logLine(first)) {
-      // 열쇠는 묶음의 첫 도구 줄이다 — 답한 결정 줄이 그 도구 줄 위로 들어와도 묶음을 다시 세우지 않는다.
-      const key = (run.find((entry) => entry.kind === "tool") ?? first).key;
-      return (
-        <div key={key} data-log-run className="flex w-full flex-col gap-1">
-          <LogLines entries={run as (ToolEntry | DecisionEntry | UnansweredEntry)[]} />
-        </div>
-      );
-    }
-    if (first.kind === "message") return <MessageView key={first.stream === undefined ? first.key : flowKey(first.stream)} text={first.text} />;
-    return <EntryView key={first.key} entry={first} />;
+    const row = entryRow(run);
+    return first.key === gapBefore && at > 0 ? [<span key="log-end" data-log-end aria-hidden />, row] : [row];
   });
   return <>{tail === null ? rows : [...rows, tail]}</>;
+}
+
+/** 줄 묶음 하나의 그림 — 로그 줄 묶음 · 글 · 그 밖의 줄. */
+function entryRow(run: readonly Entry[]): ReactNode {
+  const [first] = run;
+  if (logLine(first)) {
+    // 열쇠는 묶음의 첫 도구 줄이다 — 답한 결정 줄이 그 도구 줄 위로 들어와도 묶음을 다시 세우지 않는다.
+    const key = (run.find((entry) => entry.kind === "tool") ?? first).key;
+    return (
+      <div key={key} data-log-run className="flex w-full flex-col gap-1">
+        <LogLines entries={run as (ToolEntry | DecisionEntry | UnansweredEntry)[]} />
+      </div>
+    );
+  }
+  if (first.kind === "message") return <MessageView key={first.stream === undefined ? first.key : flowKey(first.stream)} text={first.text} />;
+  return <EntryView key={first.key} entry={first} />;
 }
 
 /** 작업 로그 한 묶음의 줄들 — 잇따른 도구 줄은 `ToolRows`(읽기 · 찾기 묶음), 결정 줄은 제 줄이다. */
@@ -587,9 +606,9 @@ function LogLines({ entries }: { entries: readonly (ToolEntry | DecisionEntry | 
  * `Unfold`). 줄들은 턴의 줄 사이(8)를 그대로 따른다 — 자라는 상자는 위 8을 당겨 두고(`-mt-2`) 안에서 다시 띄워, 다 접힌 상자가 줄 사이를
  * 하나 더 만들지 않는다. 펼치면 머리 선 → 첫 줄 12, 마지막 줄 → 답 16이다(States 보드 14 — 작업 로그의 위 12 · 턴 칸 사이 16).
  */
-function OpenedLog({ entries, open }: { entries: readonly Entry[]; open: boolean }) {
+function OpenedLog({ entries, open, from }: { entries: readonly Entry[]; open: boolean; from?: boolean }) {
   return (
-    <Unfold open={open} className="-mt-2 w-full">
+    <Unfold open={open} from={from} className="-mt-2 w-full">
       <div className="flex flex-col items-start gap-2 pt-1 pb-2">
         <Entries entries={entries} />
       </div>
@@ -741,15 +760,11 @@ function AnswerActions({ text, usage }: { text: string; usage: Usage | null }) {
   const arrival = useArrival("row-in");
   const late = arrival !== undefined;
   const [shown, setShown] = useState(!late);
-  const follow = useContext(FollowTail);
   useEffect(() => {
     if (shown) return;
     const frame = window.requestAnimationFrame(() => setShown(true));
     return () => window.cancelAnimationFrame(frame);
   }, [shown]);
-  useLayoutEffect(() => {
-    if (shown && late) follow();
-  }, [follow, shown, late]);
   if (!shown) return null;
   return (
     <div data-answer-actions className={cn("mt-1 flex items-center gap-0.5 text-fg-tertiary", arrival)}>

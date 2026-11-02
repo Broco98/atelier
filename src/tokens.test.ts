@@ -501,6 +501,8 @@ describe("모션 토큰", () => {
     // 오른쪽 10에서 · 목록은 왼쪽 10에서 옅음을 벗으며 선다.
     "place-in": { 토큰: "place", 곡선: "var(--ease-enter-snappy)" },
     "place-back": { 토큰: "place", 곡선: "var(--ease-enter-snappy)" },
+    // 보낸 말이 선다(Motion 「보낸 말이 선다」 · 보드 `.ra-msg.rise` — restart 02b-7) — 아래 12 · .985배에서 320ms `ease-enter-snappy`.
+    "msg-rise": { 토큰: "rise", 곡선: "var(--ease-enter-snappy)" },
   };
 
   it("Thread의 움직임 유틸리티가 그 시간 · 곡선 토큰을 읽는다", async () => {
