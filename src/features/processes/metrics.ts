@@ -46,12 +46,22 @@ export function formatHeadCpu(percent: number | null): string {
   return `${Math.round(percent)}%`;
 }
 
+/**
+ * **사이드바 `Processes` 줄 끝의 글자**(restart 03-11 · 스토리 138 · 시안 Main 「13% · 3.3GB」) — 아틀리에 CPU(머리 숫자처럼 정수 — 맥 전체 =
+ * 100)와 아틀리에 메모리 합계. 10초 요약이 읽는다. CPU를 아직 모르면(첫 배경 표본) 「—」다. 메모리 합계를 못 읽었으면(macOS 밖) 없다 — 줄
+ * 끝에 「—」만 세우지 않는다.
+ */
+export function formatNavMeta(cpu: number | null, memory: number | null): string | null {
+  if (memory === null) return null;
+  return `${formatHeadCpu(cpu)} · ${formatMemory(memory)}`;
+}
+
 /** LISTEN 포트 — 받은 차례(백엔드가 오름차순으로 준다)로 「:5173 · :24678」. 없으면 빈 글자다: 포트가 없는 것은 모르는 것이 아니다. */
 export function formatPorts(ports: ReadonlyArray<number>): string {
   return ports.map(formatPort).join(PORT_SEPARATOR);
 }
 
-/** 포트 하나 — 「:5173」. 행의 포트 칩 하나가 이 글자다(칩 사이에 `PORT_SEPARATOR`를 숨겨 두면 칸의 글자가 `formatPorts`와 같다). */
+/** 포트 하나 — 「:5173」. 줄의 포트 칸은 이것을 `PORT_SEPARATOR`로 이은 글자다(`formatPorts`). */
 export function formatPort(port: number): string {
   return `:${port}`;
 }

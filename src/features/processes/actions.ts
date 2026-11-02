@@ -39,7 +39,8 @@ export async function endProcesses(
 }
 
 /**
- * 앱 확인 창(`askDanger`)을 거친 뒤 끝낸다 — 자손 행 [끝내기]와 출처 불명 [정리]. 취소하면 아무것도 안 부른다. 결과를 세울 줄은 **누른
+ * 앱 확인 창(`askDanger`)을 거친 뒤 끝낸다 — 출처 불명 [정리]. 줄의 [끝내기]는 줄 밑의 묻는 줄로 묻는다(`tree-rows.tsx` · restart 03-11).
+ * 취소하면 아무것도 안 부른다. 결과를 세울 줄은 **누른
  * 순간**(창을 띄우기 전)의 표본에서 찾는다 — 창이 떠 있는 동안 스스로 끝난 줄도 「이미 없음」으로 선다.
  */
 export async function askThenEnd(ask: Ask, targets: ProcessIdentity[]): Promise<void> {

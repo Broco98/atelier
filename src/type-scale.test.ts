@@ -330,6 +330,8 @@ describe("cn이 DS 단계를 안다", () => {
       ...["sidebar", "think", "arrive", "wave", "morph"],
       // restart 02a-1이 더한 Motion 보드의 시간 셋 — 패널 여닫기 · 레일 켜짐 표시 · 보낸 말.
       ...["panel-open", "rail", "rise"],
+      // restart 03-11이 더한 ProcessSheet 「보기와 움직임」의 시간 둘 — 막대 · 표본 점.
+      ...["bar", "beat"],
     ]);
     expect(eases).toEqual([
       ...["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"],

@@ -46,27 +46,35 @@ const DOT: Record<SampleBeat["kind"], string> = {
 
 /**
  * **머리의 잰 시각**(스토리 129 · 130 · 131 · 시안 `pr-beat`) — 6px 점과 12 글자(`fg-tertiary` · 고정폭 숫자). 「재는 중」 · 「14:02:31에 잰 값 ·
- * 2초마다」 · 「8초째 새 값이 없어요」이고, 멈춤은 점과 글자가 경고 색이다. 몸의 맨 위, 요약 타일 위에 선다 — 시안은 화면 이름 바로 옆인데 앱의
- * 화면 이름은 틀의 머리 줄에 산다(`Frame` — 그 자리는 글자 조각만 받는다).
+ * 2초마다」 · 「8초째 새 값이 없어요」이고, 멈춤은 점과 글자가 경고 색이다. 화면 이름(h1 「Processes」) 바로 옆에 선다(restart 03-11 — 한때 틀의
+ * 머리 줄이 글자 조각만 받아 몸의 맨 위에 따로 섰다).
+ *
+ * **점은 새 값이 온 순간에만 한 번 번진다**(시안 ProcessSheet 「표본 점」 — 700ms `ease-out`, 시계로 깜빡이지 않는다 · 동작 줄이기면 없음). 잰
+ * 시각이 바뀔 때마다 점을 새로 세워(`key`) 번짐이 처음부터 돈다(`beat-pulse`). 기다림 · 멈춤은 번지지 않는다.
  *
  * 글자는 박자마다 바뀌어 읽어 주는 자리(`aria-live`)로 두지 않는다 — 2초마다 시각을 읽어 준다. 멈춤은 안내 띠(`role="status"`)가 한 번 말한다.
  */
 export function BeatLine({ beat }: { beat: SampleBeat }) {
   return (
-    <p
+    <span
       data-beat={beat.kind}
-      className="mb-3 flex items-center gap-2 text-xs tracking-[0.025em] text-fg-tertiary tabular-nums data-[beat=stalled]:text-warning"
+      className="inline-flex min-w-0 items-center gap-2 text-xs text-fg-tertiary tabular-nums data-[beat=stalled]:text-warning"
     >
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT[beat.kind])} />
-      {beatText(beat)}
-    </p>
+      <span
+        key={beat.kind === "live" ? beat.measuredAt : beat.kind}
+        aria-hidden
+        data-beat-dot=""
+        className={cn("size-1.5 shrink-0 rounded-full", DOT[beat.kind], beat.kind === "live" && "beat-pulse")}
+      />
+      <span className="truncate">{beatText(beat)}</span>
+    </span>
   );
 }
 
 /**
- * **안내 띠**(스토리 131 · 132 · 133 · 시안 `pr-note`) — 요약 타일과 표 사이에 선다. 경고 무리의 옅은 면(`wait-soft`) · `radius-ctl` · 높이 36
- * 이상 · 안쪽 6 8 6 12, 앞에 경고 색 아이콘 14, 글자 13. 멈춤이면 끝에 「다시 읽기」가 선다 — 누르면 곧바로 한 번 묻는다(`readSnapshotNow`).
- * 실패하면 멈춤이 남는다.
+ * **안내 띠**(스토리 131 · 132 · 133 · 시안 `pr-note`) — 요약 카드와 보기 도구 사이에 선다. 경고 무리의 옅은 면(`wait-soft`) · `radius-ctl` ·
+ * 높이 36 이상 · 안쪽 6 8 6 12, 앞에 경고 색 아이콘 14, 글자 13. 멈춤이면 끝에 「다시 읽기」가 선다 — 누르면 곧바로 한 번 묻는다(`readSnapshotNow`).
+ * 실패하면 멈춤이 남는다. 들어올 때 줄 바뀜으로 선다(`row-in` — 시안 `ra-in`, restart 03-11).
  */
 export function SampleNoteBand({ note }: { note: SampleNote }) {
   const client = useQueryClient();
@@ -74,7 +82,7 @@ export function SampleNoteBand({ note }: { note: SampleNote }) {
     <div
       role="status"
       data-sample-note={note.retry ? "stalled" : "unread"}
-      className="mt-3 flex min-h-9 items-center gap-2 rounded-ctl bg-wait-soft py-1.5 pr-2 pl-3 text-chat-meta"
+      className="row-in flex min-h-9 items-center gap-2 rounded-ctl bg-wait-soft py-1.5 pr-2 pl-3 text-chat-meta"
     >
       <CircleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
       <span className="min-w-0 flex-1">{note.text}</span>

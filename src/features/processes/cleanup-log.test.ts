@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { OUTCOME_LABEL, REASON_LABEL, eventKey, eventKeys, eventLabel, loggedAt, targetLabel } from "./cleanup-log";
+import { OUTCOME_LABEL, REASON_LABEL, eventKey, eventKeys, eventLabel, eventOutcome, eventWhat, loggedAt, targetLabel } from "./cleanup-log";
 import type { CleanupEvent, CleanupTarget } from "./types";
 
 // 프로세스 티켓 32 — **정리 기록을 사람 말로**(프로세스 결정 6 · 프로세스 스펙 S12). 앱이 무엇을 언제 왜 끝냈는지가 `Processes`의
@@ -114,5 +114,23 @@ describe("펼친 대상 한 줄", () => {
   it("이름과 결과를 잇는다 — 명령줄은 따로 선다", () => {
     expect(targetLabel(대상(200, "node", "ended", "node vite"))).toBe("node, 끝남");
     expect(targetLabel(대상(300, "python3", "survived"))).toBe("python3, 못 끝냄");
+  });
+});
+
+describe("사건 줄의 대상과 결과(restart 03-11 · 시안 Processes 「정리 기록」)", () => {
+  // 시안의 줄은 「때 · 까닭 · 대상 · 결과」 한 줄이다. 대상이 여럿이면 첫 이름과 남은 수다 — 이름 전부는 펼친 줄이 보인다.
+  it("대상은 첫 이름이고 여럿이면 남은 수를 붙인다", () => {
+    expect(eventWhat(사건({ targets: [대상(1, "next dev", "survived")] }))).toBe("next dev");
+    expect(eventWhat(사건())).toBe("node 외 1개");
+    expect(eventWhat(사건({ targets: [] }))).toBe("");
+  });
+
+  // **결과 칸은 가장 손볼 결과다** — 못 끝냄이 하나라도 있으면 못 끝냄(경고 잉크), 그다음 강제로 끝남, 끝남, 이미 없음 차례다. 섞인 사건의
+  // 결과마다의 수는 펼친 줄이 보인다.
+  it("결과는 못 끝냄 · 강제로 끝남 · 끝남 · 이미 없음 차례로 가장 앞선 것이고, 못 끝냄은 나쁜 결과다", () => {
+    expect(eventOutcome(사건())).toEqual({ text: "강제로 끝남", bad: false });
+    expect(eventOutcome(사건({ targets: [대상(1, "a", "gone"), 대상(2, "b", "survived")] }))).toEqual({ text: "못 끝냄", bad: true });
+    expect(eventOutcome(사건({ targets: [대상(1, "a", "gone"), 대상(2, "b", "ended")] }))).toEqual({ text: "끝남", bad: false });
+    expect(eventOutcome(사건({ targets: [대상(1, "a", "gone")] }))).toEqual({ text: "이미 없음", bad: false });
   });
 });

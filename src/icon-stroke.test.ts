@@ -41,8 +41,8 @@ type NotIcon = { file: string; tags: string[]; why: string };
 const NOT_ICONS: NotIcon[] = [
   {
     file: "src/features/processes/SummaryCard.tsx",
-    tags: ["line", "polyline"],
-    why: "요약 타일의 추이 그림 — 차트의 바닥 · 선이고(`non-scaling-stroke`) 아이콘이 아니다",
+    tags: ["polyline"],
+    why: "CPU 카드의 추이 그림 — 차트의 두 선이고(`non-scaling-stroke`) 아이콘이 아니다",
   },
 ];
 
