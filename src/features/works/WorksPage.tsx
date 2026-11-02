@@ -46,19 +46,23 @@ import {
   keepChatTabPlace,
   onNewShellRequested,
   onShellOpenRejected,
+  openNewChat,
   openNewShell,
   renameShell,
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
+  settleNewChat,
   showChatTab,
   showCodeTab,
+  showNewChatTab,
   showShellTab,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import { useRenameThread, useThreads } from "@/features/thread/hooks";
+import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
 import { ThreadMenuItems } from "@/features/thread/ThreadHead";
-import { WorkChat } from "@/features/thread/ThreadScreen";
+import { WorkChat, WorkNewChat } from "@/features/thread/ThreadScreen";
 import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
 import type { BundleShown, ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
@@ -101,6 +105,14 @@ interface WorksPageProps {
   // 기록을 안 쌓는다(결정 13).
   thread: string | null;
   onOpenChat: (thread: string) => void;
+  // **새 채팅 탭으로 간다**(restart 02a-8) — 주소를 `tab=chat`(`thread` 없음)으로 고친다. 어느 새 채팅 탭인지는 묶음이 쥐므로 그 칸을 세우거나
+  // 켜는 일은 이 화면이 먼저 하고(`openNewChat` · `selectShell`), 주소를 쥔 쪽은 주소만 바꾼다 — 셸 탭과 같은 나눔이다. 분할은 꺼진다.
+  onOpenNewChat: () => void;
+  /**
+   * 주소가 **아직 탭을 고르지 않았다**(`opensWork` — 값이 없는 주소). 작업공간을 처음 여는 규칙이 주소를 고칠 때까지 기다린다 — 그 한 틱의
+   * `tab`은 기본 값 `chat`이지만 새 채팅 탭이 아니다(restart 02a-8). 새 채팅 탭으로 치면 채팅이 있는 작업공간에도 새 채팅 탭이 하나 선다.
+   */
+  opening?: boolean;
   // 분할도 주소가 정본이다(결정 97). `null`이면 단일 뷰다.
   //
   // **바꾸는 콜백이 열을 함께 받는다**: 열의 `×`는 분할을 끄면서 남는 쪽을 정하고
@@ -149,8 +161,19 @@ export function shellClosedByTab(
 }
 
 /**
- * ⌘W가 겨누는 **보기 탭** — 본문이 파일 탭(git-integration 스토리 50)이나 채팅 탭(restart 02a-5)이면 그 칸이다. 아니면 `null`이다.
- * 주소가 말하는 종류와 지금 탭의 종류가 같을 때만이다 — 본문에 선 것과 다른 칸을 닫지 않는다.
+ * 보기 탭(파일 탭 · 채팅 탭 · 새 채팅 탭)을 **확인 없이** 닫는다 — 칸만 빠진다(`closeViewTab`). 새 채팅 탭이면 그 탭의 글 · 첨부 · 인용도
+ * 함께 지운다(restart 02a-8 — 열쇠가 탭마다라 닫은 탭의 것은 다시 설 곳이 없다). 칸 id는 앱이 도는 동안 다시 쓰지 않아 다른 종류의 칸
+ * id로 지어도 그 열쇠에는 아무것도 없다 — 종류를 묻지 않고 지운다(`forgetNewChat`은 지울 것이 없으면 아무 일도 안 한다).
+ */
+function closeBundleView(id: number): void {
+  forgetNewChat(newChatKey(id));
+  closeViewTab(id);
+}
+
+/**
+ * ⌘W가 겨누는 **보기 탭** — 본문이 파일 탭(git-integration 스토리 50)이나 채팅 탭(restart 02a-5) · 새 채팅 탭(02a-8)이면 그 칸이다. 아니면
+ * `null`이다. 주소가 말하는 종류와 지금 탭의 종류가 같을 때만이다 — 본문에 선 것과 다른 칸을 닫지 않는다. 새 채팅 탭의 주소는 채팅 탭과 같은
+ * `chat`이다.
  *
  * 위 `shellClosedByTab`과 **따로 둔다** — 닫는 길이 다르다: 보기 탭은 확인 없이 닫고(`closeViewTab`), 셸은 확인 창을 거치는
  * 하나다(`requestCloseShell`). 한 함수가 둘을 돌려주면 받는 쪽이 종류를 다시 갈라야 하고, 그 갈림이 틀리면 셸이 확인 없이 닫힌다.
@@ -162,15 +185,23 @@ export function viewTabClosedByTab(
 ): number | null {
   if ((tab !== "code" && tab !== "chat") || owner === null) return null;
   const active = activeTabOf(state, owner);
-  return active?.kind === tab ? active.id : null;
+  const kind = active?.kind === "new-chat" ? "chat" : active?.kind;
+  return kind === tab ? (active?.id ?? null) : null;
 }
 
-/** 묶음의 지금 탭이 주소에 남기는 것(`BundleShown`) — 파일 탭이면 그 파일, 채팅 탭이면 그 채팅, 셸이거나 칸이 없으면 셸이다. */
+/**
+ * 묶음의 지금 탭이 주소에 남기는 것(`BundleShown`) — 파일 탭이면 그 파일, 채팅 탭이면 그 채팅, 새 채팅 탭이면 종류만(restart 02a-8 — 어느
+ * 탭인지는 묶음이 쥔다), 셸이거나 칸이 없으면 셸이다.
+ */
 function shownOf(tab: BundleTab | null): BundleShown {
   if (tab?.kind === "code") return { kind: "code", code: codeRefOf(tab) };
   if (tab?.kind === "chat") return { kind: "chat", thread: tab.thread };
+  if (tab?.kind === "new-chat") return NEW_CHAT;
   return SHELL;
 }
+
+/** 지금 탭이 새 채팅 탭이다 — 어느 새 채팅 탭인지는 주소에 없으므로 한 값으로 접는다(셸과 같다). */
+const NEW_CHAT: BundleShown = { kind: "new-chat" };
 
 /** 지금 탭이 셸이다 — 어느 셸인지는 주소에 없으므로(결정 33) 한 값으로 접는다. 회차를 넘어 같은 값이다. */
 const SHELL: BundleShown = { kind: "shell" };
@@ -180,7 +211,9 @@ const SHELL: BundleShown = { kind: "shell" };
  * 채팅은 `chat:<id>`다 — 파일 탭의 `<프로젝트>/<경로>`는 콜론으로 시작하는 프로젝트 이름이 없어 둘과 겹치지 않는다.
  */
 function shownKeyOf(shown: BundleShown): string {
-  return shown.kind === "code" ? shown.code : shown.kind === "chat" ? `chat:${shown.thread}` : "shell:";
+  if (shown.kind === "code") return shown.code;
+  if (shown.kind === "chat") return `chat:${shown.thread}`;
+  return shown.kind === "new-chat" ? "new-chat:" : "shell:";
 }
 
 /**
@@ -189,6 +222,17 @@ function shownKeyOf(shown: BundleShown): string {
  */
 function bundleShownOf(state: ShellsState, owner: ShellOwner | null): BundleShown {
   return shownOf(owner === null ? null : activeTabOf(state, owner));
+}
+
+/**
+ * **분할의 묶음 열에 설 것** — 묶음의 지금 탭인데, 새 채팅 탭이면 셸이다(restart 02a-8). 새 채팅 탭은 분할의 열에 서지 않는다(02a-13이 분할을
+ * 걷을 때까지) — 주소가 새 채팅 탭을 열에 세울 값(`code` · `thread`)을 갖지 않아, 문서 열에 포커스가 가면 셸 열과 갈리지 않는다. 분할을 켜는
+ * 자리(토글 · 끌어 놓기)가 이것을 읽는다. 묶음 쪽 변화를 따라가는 자리는 `bundleShownOf` 그대로다 — 새 채팅 탭이 켜지면 분할이 꺼진다
+ * (`bundleSearch`).
+ */
+function columnShownOf(state: ShellsState, owner: ShellOwner | null): BundleShown {
+  const shown = bundleShownOf(state, owner);
+  return shown.kind === "new-chat" ? SHELL : shown;
 }
 
 function WorksPage({
@@ -202,6 +246,8 @@ function WorksPage({
   onOpenCode,
   thread,
   onOpenChat,
+  onOpenNewChat,
+  opening = false,
   split,
   onSelectSplit,
   onFollowBundle,
@@ -356,11 +402,20 @@ function WorksPage({
   // 않는다(묶음의 지금 탭은 하나다 — `chatSearch` · `codeSearch`). 단일 뷰의 채팅 탭은 `thread`가 아직 없을 수 있다 — 어느 채팅인지
   // 모르는 주소에 닿은 한 틱이고, 주소를 쥔 쪽이 작업공간을 처음 여는 규칙으로 고친다(`-works-view`).
   const chatThread = codeTarget === null && (tab === "chat" || split !== null) ? thread : null;
+  // **새 채팅 탭**(restart 02a-8) — 단일 뷰의 `tab=chat`에 `thread`가 없으면 새 채팅 탭이 본문에 선다. 어느 새 채팅 탭인지는 묶음이 쥔다(셸과
+  // 같다 — 아래 「주소 → 묶음」이 지금 탭을 새 채팅 탭으로 맞춘다). 분할에는 서지 않는다(`newChatSearch`가 분할을 끈다).
+  const newChatShown = selected !== null && split === null && tab === "chat" && chatThread === null && !opening;
   const specStands = split !== null || tab === "spec";
   const terminalStands = (split !== null && codeTarget === null && chatThread === null) || tab === "terminal";
   // 주소가 묶음 쪽 본문(단일 뷰의 셸 · 파일 탭 · 채팅 탭이나 분할의 묶음 열)에 세우라고 말하는 것 — 열에 포커스가 들 때 그대로 넘긴다.
   const addressShown: BundleShown =
-    codeTarget !== null ? { kind: "code", code: codeRefOf(codeTarget) } : chatThread !== null ? { kind: "chat", thread: chatThread } : SHELL;
+    codeTarget !== null
+      ? { kind: "code", code: codeRefOf(codeTarget) }
+      : chatThread !== null
+        ? { kind: "chat", thread: chatThread }
+        : newChatShown
+          ? NEW_CHAT
+          : SHELL;
   const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
 
   // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
@@ -411,25 +466,27 @@ function WorksPage({
   // 같은 `open`으로 연다 — 셸 안과 밖이 언제나 같은 자리다. 요청은 **이 화면의 셸**이 보낸
   // 것만 받는다 — 거르는 자리는 스토어다(`onNewShellRequested`). 창 keydown 리스너를 하나 더 거는 모양으로 짓지 않는다(결정 93의
   // `stopPropagation`이 막아 둔 두 번 열기를 되살린다).
+  //
+  // **작업공간의 ⌘T는 새 채팅 탭을 연다**(restart 02a-8 — `+` 메뉴의 맨 윗줄이 「새 채팅」이고, `+` → Enter 한 번이 ⌘T와 같다는 규칙(#222)이
+  // 그대로 선다). 셸은 `+` 메뉴의 셸 줄로 연다. 셸 안 ⌘T(`requestNewShell`)도 같은 길이다 — 셸 안과 밖이 같은 키다.
+  const startNewChat = useCallback(() => {
+    if (tabOwner === null) return;
+    if (openNewChat(tabOwner) !== null) onOpenNewChat();
+  }, [tabOwner, onOpenNewChat]);
   useEffect(() => {
-    const open = () => {
-      if (!panelWork) return;
-      openNewShell(workDefaultOrigin(panelWork));
-      onSelectTab("terminal");
-    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
-      open();
+      startNewChat();
     };
     window.addEventListener("keydown", onKeyDown);
     // 고른 작업이 없으면 이 화면의 셸도 없다 — 들을 요청이 없다.
-    const stop = tabOwner === null ? () => {} : onNewShellRequested(tabOwner, open);
+    const stop = tabOwner === null ? () => {} : onNewShellRequested(tabOwner, startNewChat);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       stop();
     };
-  }, [panelWork, tabOwner, onSelectTab]);
+  }, [tabOwner, startNewChat]);
 
   /**
    * ⌘1은 spec, ⌘2~9는 **그 화면의 묶음**, ⌃Tab은 그 묶음의 순회(결정 78·79·109 · git-integration 결정 31).
@@ -476,11 +533,13 @@ function WorksPage({
         return;
       }
       selectShell(next);
-      onSelectTab("terminal");
+      // 새 채팅 탭이면 그 탭을 켜고 본문이 새 채팅 탭이 된다(restart 02a-8) — 어느 새 채팅 탭인지는 묶음이 쥐어 켜는 것은 여기서 한다(셸과 같다).
+      if (picked?.kind === "new-chat") onOpenNewChat();
+      else onSelectTab("terminal");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab, onOpenCode, onOpenChat]);
+  }, [panelWork, onSelectTab, onOpenCode, onOpenChat, onOpenNewChat]);
 
   /**
    * ⌘W — **켜진 탭을 닫는다**(결정 13).
@@ -513,7 +572,7 @@ function WorksPage({
       const viewId = viewTabClosedByTab(tab, tabOwner, terminalStore.state);
       if (viewId !== null) {
         e.preventDefault();
-        closeViewTab(viewId);
+        closeBundleView(viewId);
         return;
       }
       const id = shellClosedByTab(tab, tabOwner, terminalStore.state);
@@ -537,8 +596,11 @@ function WorksPage({
     if (tabOwner === null) return;
     if (codeTarget) showCodeTab(tabOwner, codeTarget);
     else if (chatThread !== null) showChatTab(tabOwner, chatThread);
+    // 새 채팅 탭(restart 02a-8) — 지금 탭이 새 채팅 탭이면 그대로, 아니면 묶음의 첫 새 채팅 탭을 켜고, 없으면 끝에 하나 세운다
+    // (`withNewChatActive`). 처음 여는 규칙이 주소를 고치는 한 틱은 세지 않는다(`opening`).
+    else if (newChatShown) showNewChatTab(tabOwner);
     else if (tab === "terminal" || split !== null) showShellTab(tabOwner);
-  }, [tabOwner, tab, code, thread, split]);
+  }, [tabOwner, tab, code, thread, split, opening]);
 
   /**
    * **묶음 → 주소.** 묶음의 지금 탭이 묶음 쪽에서 바뀌면 — 지금 탭을 닫아 이웃이 켜졌거나(결정 30), 셸이 스스로 끝나 빠졌다
@@ -651,23 +713,18 @@ function WorksPage({
   const changeSplit = useCallback(
     (next: SplitSide | null, column: ColumnTab) => {
       collapseOnSplit(next);
-      onSelectSplit(next, column, bundleShownOf(terminalStore.state, tabOwner));
+      onSelectSplit(next, column, columnShownOf(terminalStore.state, tabOwner));
     },
     [collapseOnSplit, onSelectSplit, tabOwner],
   );
 
   /**
-   * **묶음의 마지막 칸이 닫히면 본문이 문서로 돌아온다.** 세는 것은 셸이 아니라 **묶음의 칸**이다(git-integration 결정 30 —
-   * 묶음이 비면 spec으로 간다). 셸이든 파일 탭이든 마지막 칸이 빠지면 걷는다.
+   * **묶음의 마지막 칸이 닫히면 새 채팅 탭이 선다**(restart 02a-8 — 한때 「묶음이 비면 spec」이었다, git-integration 결정 30). 세는 것은
+   * 셸이 아니라 **묶음의 칸**이다 — 셸이든 파일 탭이든 채팅 탭이든 새 채팅 탭이든 마지막 칸이 빠지면 새 채팅 탭 하나를 세운다. 작업공간의
+   * 묶음은 비지 않는다.
    *
-   * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
-   * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
-   *
-   * **분할이면 분할째로 걷는다.** 한때 「문서가 이미 옆 열에 서 있으니 그냥 둔다」로
-   * 두었는데, 실물에서 그 화면은 **빈 터미널 열이 반을 차지한 채로 남았다** — 볼 것이
-   * 없는 열이 절반을 먹는 것이 두 열을 나란히 세운 이유와 정면으로 어긋난다.
-   * 남는 것은 문서 하나이므로 `split`을 끄면서 `tab`도 함께 문서로 보낸다(한 번의 이동이라
-   * 「끄면 남는 쪽」(결정 97)도 어긋나지 않는다).
+   * 본문이 묶음을 보여주고 있었으면 본문이 그 새 채팅 탭으로 간다 — 따로 옮기지 않는다: 세운 칸이 지금 탭이 되고, 「묶음 → 주소」가 그것을
+   * 따라간다(분할이면 분할이 꺼진다 — `bundleSearch`). 문서를 읽는 중(단일 뷰의 `spec`)이면 본문은 그대로이고 탭 줄에 칸만 선다.
    *
    * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
    * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
@@ -681,10 +738,8 @@ function WorksPage({
     const now = { owner: tabOwner, count: tabCount };
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
-    // 본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
-    // 화면에서 아무것도 안 바뀌어야 한다.
-    if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");
-  }, [tabCount, tabOwner, tab, split, changeSplit]);
+    if (emptied && tabOwner !== null) openNewChat(tabOwner);
+  }, [tabCount, tabOwner]);
 
   // 떨궜다. **묶음의 칸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
@@ -696,7 +751,7 @@ function WorksPage({
       if (source.kind !== "spec" && source.shellId !== null) selectShell(source.shellId);
       const next = dropSplit(source.kind, half);
       collapseOnSplit(next);
-      onDropInto(source, next, bundleShownOf(terminalStore.state, source.owner));
+      onDropInto(source, next, columnShownOf(terminalStore.state, source.owner));
     },
     [collapseOnSplit, onDropInto],
   );
@@ -803,6 +858,34 @@ function WorksPage({
     />
   );
 
+  // **새 채팅 탭의 몸**(restart 02a-8) — 입력창 하나다(`WorkNewChat` — 홈의 새 채팅과 같은 몸, 이 작업공간에 이어 보낸다). 글 · 첨부 ·
+  // 인용은 탭마다의 열쇠에 산다(`newChatKey`). 첫 말의 답이 오면 그 칸이 그 채팅의 채팅 탭이 된다(`settleNewChat` — 켜짐은 그대로다).
+  // 켜져 있었으면 「묶음 → 주소」가 주소를 그 채팅으로 옮기고, 꺼져 있었으면 주소는 그대로다 — 그 탭으로 끌고 오지 않는다.
+  //
+  // **숨은 새 채팅 탭은 내리지 않는다**(구현 스펙 「02a — 숨은 탭」의 예외). 고른 서비스 · 보내는 중 상태는 그 몸의 지역 상태라 내리면
+  // 사라진다 — 채팅 탭처럼 스토어에 쥘 것이 없다. 그래서 그 작업공간의 새 채팅 탭을 **모두** 꽂고 켜진 하나만 보인다. 본문 카드마다 같은
+  // 자리(첫 자식)에 꽂는다 — 카드가 하나라(`Card`) 셸 · 파일 · 채팅 · 문서를 오가도 그 자리의 몸이 그대로 산다. 작업공간을 옮기거나
+  // 분할을 켜면 내려간다(02a-13이 분할을 걷을 때까지).
+  const visibleNewChat = newChatShown && tabOwner !== null ? activeTabOf(shellState, tabOwner) : null;
+  const newChats =
+    panelWork &&
+    bundleOf(shellState, ownerOf(panelWork.slug)).flatMap((one) =>
+      one.kind === "new-chat"
+        ? [
+            <div key={one.id} data-new-chat={one.id} className={visibleNewChat?.id === one.id ? "contents" : "hidden"}>
+              <WorkNewChat
+                work={panelWork.slug}
+                draftKey={newChatKey(one.id)}
+                onStarted={(started) => {
+                  settleNewChat(one.id, started);
+                  forgetNewChat(newChatKey(one.id));
+                }}
+              />
+            </div>,
+          ]
+        : [],
+    );
+
   // 채팅 탭의 이름 — 칸은 채팅 id만 든다. 이름은 채팅 목록(사이드바와 같은 캐시)에서 읽는다: 이름이 없으면 「새 채팅」, 깨진 채팅이면
   // 「열 수 없는 채팅」이다(사이드바 채팅 줄과 같은 말 — `ThreadRow`). 목록에 아직 없으면 「채팅」이다.
   const { data: threads } = useThreads();
@@ -872,6 +955,7 @@ function WorksPage({
       showing={
         codeTarget !== null ||
         chatThread !== null ||
+        newChatShown ||
         (terminalStands && activeShellOf(shellState, ownerOf(panelWork.slug)) !== null)
       }
       chat={chatTabs}
@@ -894,6 +978,12 @@ function WorksPage({
           onOpenChat(picked.thread);
           return;
         }
+        // 새 채팅 탭이면 그 탭을 켜고 본문이 새 채팅 탭이 된다(restart 02a-8) — 어느 새 채팅 탭인지는 묶음이 쥐므로 켜는 것은 여기서 한다.
+        if (picked?.kind === "new-chat") {
+          selectShell(id);
+          onOpenNewChat();
+          return;
+        }
         selectShellWithFocus(id);
         onSelectTab("terminal");
       }}
@@ -903,7 +993,7 @@ function WorksPage({
       onClose={(id) => {
         const kind = bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id)?.kind;
         if (kind === "shell") void requestCloseShell(id);
-        else if (kind) closeViewTab(id);
+        else if (kind) closeBundleView(id);
       }}
       // 셸 탭 메뉴(codex-ds 스펙 §9 · S7 · S8). 붙인 이름은 메모리에만 있다. 작업 폴더는 그 셸이 뜬 곳을 참조 표기(끝에 `/`)로 쓴다.
       onRename={renameShell}
@@ -918,6 +1008,8 @@ function WorksPage({
         openNewShell(origin);
         onSelectTab("terminal");
       }}
+      // `+` 메뉴 맨 윗줄 「새 채팅」(restart 02a-8) — ⌘T와 같은 길이다(위 `startNewChat`).
+      onNewChat={startNewChat}
       // 칸을 끌면 **한 눌림을 두 소비자가 나눠 본다**(UI개선 스펙 S10) — 본문 절반에
       // 놓으면 그 절반에 서고(결정 12, 아래 받침), 이 줄의 틈에 놓으면 순서가 바뀐다(UI개선 결정 11).
       // 놓은 곳이 이긴다.
@@ -932,10 +1024,13 @@ function WorksPage({
       // 묶음의 칸은 **그 칸의 종류**를 싣는다 — 셸 칸이든 파일 탭이든 줄의 틈에 놓이고(git-integration 결정 31), 본문
       // 절반이 받는 것은 받는 쪽이 종류로 거른다(`tabDragOf`). 종류는 레지스트리가 id로 안다(`onSelect`와 같다). 누르는
       // 사이 그 칸이 빠졌으면 걸 끌기가 없다. 채팅 탭도 같은 규칙으로 끌린다(restart 02a-5).
+      //
+      // 새 채팅 탭은 줄의 틈에만 놓인다(restart 02a-8) — 끄는 종류는 채팅 탭으로 싣고(틈은 종류를 안 본다), 본문 절반은 아래 `halfSource`가
+      // 거른다. 새 채팅 탭은 분할의 열에 서지 않는다(`columnShownOf`).
       onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
         const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
-        if (kind) armDrag({ kind, owner, shellId }, from);
+        if (kind) armDrag({ kind: kind === "new-chat" ? "chat" : kind, owner, shellId }, from);
       }}
       // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
       // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
@@ -1110,6 +1205,13 @@ function WorksPage({
   // **사이드바 작업 행은 본문이 안 받는다**(UI개선 스펙 §4) — 그 끌기가 놓일 자리는 목록의 틈이다.
   // 여기서 거르지 않으면 행을 끄는 순간 분할 겹판이 서고, 본문에 놓으면 화면이 갈린다.
   const dragSource = tabDragOf(drag);
+  // 본문 절반이 받는 것 — 새 채팅 탭은 아니다(restart 02a-8 — 분할의 열에 서지 않는다). 그 칸을 끌면 줄의 틈만 선다.
+  const halfSource =
+    dragSource !== null &&
+    dragSource.shellId !== null &&
+    bundleTabOf(shellState, dragSource.owner, dragSource.shellId)?.kind === "new-chat"
+      ? null
+      : dragSource;
 
   // 본문 — 넷 중 하나이고 모두 공용 틀의 카드다(ui-refresh 결정 4 · 15). 분할이면 틀이 `split`으로 받아 그리므로 여기는 비어
   // 있다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을
@@ -1122,23 +1224,27 @@ function WorksPage({
   const body = splitView ? undefined : terminalWork ? (
     // 터미널 — 탭 줄 아래가 곧 셸이다(Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
     <Card as="main" label="터미널" tone="terminal" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      {newChats}
       {terminalBody}
     </Card>
   ) : selected && codeTarget ? (
     // 코드 카드 — 파일 탭의 본문이다(git-integration 티켓 04). **접근 이름이 그 파일의 경로다**(스토리 89) — 화면 읽기가
     // 지금 무엇을 읽는지를 카드 이름으로 듣는다. 몸은 분할의 코드 열과 같은 경로 줄과 `codeBody`다.
     <Card as="main" label={codeRefOf(codeTarget)} className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      {newChats}
       {codeBar}
       {codeBody}
     </Card>
   ) : selected && tab === "chat" ? (
-    // 채팅 카드 — 채팅 탭의 본문이다(restart 02a-4). 머리는 탭 줄이고 몸은 채팅(`WorkChat`)이다. 어느 채팅인지 모르는 한 틱(주소를
-    // 고치는 중)에는 몸이 비어 있다.
-    <Card as="main" label="채팅" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+    // 채팅 카드 — 채팅 탭의 본문이다(restart 02a-4). 머리는 탭 줄이고 몸은 채팅(`WorkChat`)이다. `thread`가 없으면 새 채팅 탭이 선다
+    // (restart 02a-8 — 몸은 위 `newChats`의 켜진 하나다). 처음 여는 규칙이 주소를 고치는 한 틱에는 몸이 비어 있다.
+    <Card as="main" label={newChatShown ? "새 채팅" : "채팅"} className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      {newChats}
       {chatBody}
     </Card>
   ) : selected ? (
     <Card as="main" label="문서" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      {newChats}
       <PathBar path={docPath} view={docView} onCopy={copyDocPath} />
       {specBody}
     </Card>
@@ -1246,7 +1352,7 @@ function WorksPage({
               분할의 터미널 열 모두 카드 줄 꼭대기에서 선다) 겹판이 그 높이(`size-tab-row` — 줄이 읽는 토큰)만큼 아래에서
               시작한다. 그 띠 안의 다른 카드 머리(패널 머리 — 46)도 함께 안 덮인다. 문서 열의 경로 줄은 48이라
               아래 2px가 덮이지만, 그 2px는 아랫선도 컨트롤도 없는 빈 여백이다. */}
-          {dragSource && (
+          {halfSource && (
             // 겹판 **전체**를 벗어날 때만 끈다 — `pointerleave`는 버블하지 않아 반쪽 사이를
             // 오갈 때는 안 온다.
             <div className="absolute inset-x-0 top-(--size-tab-row) bottom-0 z-40 flex" onPointerLeave={clearHalf}>
@@ -1258,7 +1364,7 @@ function WorksPage({
                   data-drop-half={half}
                   data-over={drag.half === half ? "" : undefined}
                   onPointerMove={() => hoverHalf(half)}
-                  onPointerUp={() => dropHere(dragSource, half)}
+                  onPointerUp={() => dropHere(halfSource, half)}
                   className={cn(
                     "flex-1 transition-colors duration-basic",
                     drag.half === half && "bg-accent/12 ring-1 ring-inset ring-accent/40",

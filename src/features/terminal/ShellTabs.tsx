@@ -71,7 +71,8 @@ interface TabPress {
  * 칸끼리만 센다), 분할에 들지 않고(끄는 자리가 없다 — 분할은 늘 `spec ▏ 묶음의 지금 탭`), 순서를 바꾸지 않고, `×`가 없다. 모양과 켜짐을
  * 말하는 법은 `spec` 칸 그대로다.
  *
- * `id`는 칸의 `data-tab` 값이다 — `spec` · `shell` · `code`(파일 탭) · `new`는 이 줄이 이미 쓰므로 고르지 않는다. 묶음에 칸
+ * `id`는 칸의 `data-tab` 값이다 — `spec` · `shell` · `code`(파일 탭) · `chat`(채팅 탭) · `new-chat`(새 채팅 탭) · `new`는 이 줄이 이미
+ * 쓰므로 고르지 않는다. 묶음에 칸
  * 종류가 늘면 그 표식도 여기 더한다. 글리프는 값으로 받는다: 이 줄은 `features/works`를 모른다(머리말).
  */
 export interface FixedTab {
@@ -173,6 +174,11 @@ interface ShellTabsProps {
    */
   onOpen: (place: ShellPlace) => void;
   /**
+   * **새 채팅 탭을 연다**(restart 02a-8 · 구현 스펙 「02a」 — +와 ⌘T 메뉴 맨 위에 「새 채팅」). 주면 `+`가 「새 탭」 메뉴다 — 맨 윗줄이 「새
+   * 채팅」이고 그 아래가 셸 줄이다(`ShellPicker`). 작업공간 화면만 준다 — `/terminal`에는 채팅이 없어 `+`가 그대로 셸을 연다.
+   */
+  onNewChat?: () => void;
+  /**
    * 칸을 눌렀다 — 끌기를 걸어 둔다(UI개선 결정 11 · 결정 12). 문턱을 넘으면 끄는 중이 되고, 떨군 곳이
    * 정한다: work 화면의 본문 절반이면 분할, 이 줄의 틈이면 순서(UI개선 스펙 S10).
    *
@@ -262,6 +268,7 @@ function ShellTabs({
   onCloseOthers,
   onCopyCwd,
   onOpen,
+  onNewChat,
   onDragTab,
   slot,
   onSlot,
@@ -565,6 +572,18 @@ function ShellTabs({
         )}
       >
         {tabs.map((tab) => {
+          if (tab.kind === "new-chat") {
+            return (
+              <NewChatTab
+                key={tab.id}
+                tab={tab}
+                active={showing && tab.id === activeId}
+                onSelect={tabHandlers.onSelect}
+                onClose={tabHandlers.onClose}
+                onDragTab={tabHandlers.onDragTab}
+              />
+            );
+          }
           if (tab.kind === "chat") {
             return (
               <ChatTab
@@ -643,7 +662,19 @@ function ShellTabs({
           네이티브 `disabled`에는 툴팁을 달지 않고(S23), pointer-events-none은 hover 자체를 막아
           **그 툴팁이 안 뜬다**. aria-disabled + 클릭 무시다. 메뉴를 여는 `+`도 같다 — 잠겼으면
           메뉴가 여는 것만 막는다(`ShellPicker`의 `locked`). */}
-      {asks ? (
+      {onNewChat ? (
+        // **「새 탭」 메뉴**(restart 02a-8) — 작업공간 화면의 `+`는 늘 메뉴를 연다. 맨 윗줄이 「새 채팅」(⌘T)이고 그 아래가 셸 줄이다. 셸 상한에도
+        // 열린다 — 새 채팅은 상한과 무관하다. 잠긴 이유는 메뉴의 셸 줄 머리가 말한다. 시안 `Main`의 `+`가 「새 탭 ⌘T」다.
+        <ShellPicker
+          trigger={<PlusButton label="새 탭" notice={null} />}
+          locked={full}
+          notice={capNotice}
+          projects={projects}
+          defaultHint={placeHint(defaultCwd)}
+          onPick={onOpen}
+          onNewChat={onNewChat}
+        />
+      ) : asks ? (
         // 프로젝트를 묻는 `+`는 여는 버튼이 아니라 메뉴를 여는 버튼이다 — 눌렀는데 셸이 안 뜨는 것이
         // 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다. 그 속성(`aria-haspopup="menu"`·
         // `aria-expanded`)은 메뉴 부품의 트리거가 단다.
@@ -785,18 +816,28 @@ function fitOf(name: string): string {
  * (ref와 여닫는 손잡이까지)을 툴팁 트리거에 그대로 편다. 툴팁 트리거가 그 둘을 합쳐 버튼 하나에 단다.
  */
 function PlusButton({
+  label = "셸 열기",
   notice,
   className,
   ...props
-}: ComponentProps<"button"> & { notice: string | null }) {
+}: ComponentProps<"button"> & {
+  /**
+   * 이름 — 「셸 열기」(`/terminal`), 작업공간 화면은 「새 탭」이다(restart 02a-8 — 시안 `Main`의 「새 탭 ⌘T」). 「새 탭」은 ⌘T를 툴팁에 가르친다 —
+   * 그 키는 이 버튼을 누르는 키가 아니라 메뉴 맨 윗줄(「새 채팅」)이다(`shortcutElsewhere`).
+   */
+  label?: "셸 열기" | "새 탭";
+  notice: string | null;
+}) {
   const full = notice !== null;
   return (
     <Hint
-      text={notice ?? "셸 열기"}
+      text={notice ?? label}
+      shortcut={label === "새 탭" ? "newTab" : undefined}
+      shortcutElsewhere
       announce={full ? "description" : undefined}
       type="button"
       data-tab="new"
-      aria-label="셸 열기"
+      aria-label={label}
       aria-disabled={full || undefined}
       tabIndex={0}
       className={cn(
@@ -1399,6 +1440,78 @@ const ChatTab = memo(function ChatTab({ tab, title, active, onSelect, onClose, o
     </ContextMenu>
   );
 });
+
+interface NewChatTabProps {
+  tab: Extract<BundleTab, { kind: "new-chat" }>;
+  /** 본문이 지금 이 새 채팅 탭을 보여주는가. 켜진 칸 표시가 그때만 선다. */
+  active: boolean;
+  onSelect: (id: number) => void;
+  /** 칸을 닫는다 — 그 탭에 쓰던 글과 첨부도 함께 지운다(부르는 쪽 — `features/thread`의 `forgetNewChat`). */
+  onClose: (id: number) => void;
+  onDragTab: (id: number, from: TabPress) => void;
+}
+
+/**
+ * **새 채팅 탭** 칸 하나(restart 02a-8) — 첫 말을 보내면 같은 자리에서 채팅 탭이 된다. 꼴은 채팅 탭과 같다(말풍선 · 글자 폭 · 켜짐 면) —
+ * 이름이 「새 채팅」이고 바꿀 이름이 아직 없다(두 번 누르기 · F2가 없다). 우클릭 메뉴는 닫기 하나다 — 채팅의 ⋯ 항목은 채팅이 선 뒤의 것이다.
+ * 닫으면(`×` · 우클릭 · ⌘W) 칸과 함께 그 탭에 쓰던 글 · 첨부가 사라진다. 끌기는 셸 · 채팅 칸과 같은 규칙으로 줄 안에서 옮긴다.
+ */
+const NewChatTab = memo(function NewChatTab({ tab, active, onSelect, onClose, onDragTab }: NewChatTabProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const cell = useRef<HTMLDivElement>(null);
+  const nameButton = () => cell.current?.querySelector<HTMLElement>("button[aria-pressed]") ?? null;
+  return (
+    <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <ContextMenuTrigger
+        ref={cell}
+        render={
+          <div
+            data-tab="new-chat"
+            data-menu-target={menuOpen ? "" : undefined}
+            className={cn(BUNDLE_CELL, "focus-ring", tabTone(active))}
+            data-fit={NEW_CHAT_TITLE}
+          >
+            <div className={BUNDLE_BODY}>
+              <button
+                type="button"
+                aria-pressed={active}
+                tabIndex={0}
+                onClick={(event) => {
+                  if (!event.ctrlKey) onSelect(tab.id);
+                }}
+                onKeyDown={openMenuByKey}
+                onPointerDown={(event) => onDragTab(tab.id, event)}
+                className={NAME_BUTTON}
+              >
+                <MessageSquare className={TAB_GLYPH} />
+                <span className={NAME_TEXT}>{NEW_CHAT_TITLE}</span>
+              </button>
+              <Hint
+                text="새 채팅 탭 닫기"
+                type="button"
+                aria-label={`${NEW_CHAT_TITLE} 닫기`}
+                onClick={() => onClose(tab.id)}
+                tabIndex={0}
+                className={closeClass(active)}
+              >
+                <X className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
+              </Hint>
+            </div>
+          </div>
+        }
+      />
+      <ContextMenuContent finalFocus={() => nameButton() ?? true}>
+        <ContextMenuItem shortcut="closeShell" onClick={() => onClose(tab.id)}>
+          <X />
+          <span className="min-w-0 flex-1 truncate">닫기</span>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+});
+
+/** 새 채팅 탭의 이름 — 사이드바 위 칸 · 홈의 「새 채팅」과 같은 말이다. */
+const NEW_CHAT_TITLE = "새 채팅";
 
 /**
  * 누른 순간의 줄 기하 — 상자 안 **모든 칸**의 사각형을 **내용 좌표**(뷰포트 x + `scrollLeft`)로 잰다

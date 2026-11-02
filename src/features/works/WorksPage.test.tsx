@@ -15,17 +15,20 @@ import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 import { threadQuery, threadsQuery } from "@/features/thread/hooks";
-import { addChunk, discardFlow, mergeLines, setDraft } from "@/features/thread/thread-store";
+import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
+import { addChunk, discardFlow, mergeLines, NEW_THREAD, setDraft } from "@/features/thread/thread-store";
 import type { RecordLine, ThreadSummary, ThreadView } from "@/features/thread/types";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import {
+  activeIdOf,
   keepChatPlace,
   MAX_SHELLS,
   NO_SHELLS,
   openChatTab,
   openCodeTab,
+  openNewChatTab,
   openShell,
   ownerOf,
   shellCapNotice,
@@ -138,6 +141,7 @@ function render(
           onOpenCode={() => {}}
           thread={chat?.view.id ?? null}
           onOpenChat={() => {}}
+          onOpenNewChat={() => {}}
           split={split}
           onSelectSplit={() => {}}
           onFollowBundle={() => {}}
@@ -621,11 +625,14 @@ describe("WorksPage 터미널 탭", () => {
     expect(body, "빈 본문에 아무 말도 없다 — 그 자리는 고장으로 읽힌다").toContain(
       "아직 셸이 없어요",
     );
-    expect(body.match(/aria-label="셸 열기"/g), "본문에 여는 자리가 남았다").toBeNull();
-    // 그리고 여는 자리는 **탭 줄에** 있다. 둘 다 없으면 열 길이 아예 사라진 것이다.
-    expect(row).toContain('aria-label="셸 열기"');
+    expect(body.match(/aria-label="(?:셸 열기|새 탭)"/g), "본문에 여는 자리가 남았다").toBeNull();
+    // 그리고 여는 자리는 **탭 줄에** 있다. 둘 다 없으면 열 길이 아예 사라진 것이다. 작업공간 화면의 `+`는 「새 탭」 메뉴다(restart 02a-8 —
+    // 맨 윗줄 「새 채팅」, 그 아래 셸 줄).
+    expect(row).toContain('aria-label="새 탭"');
     // 패널이 **함께** 있다. 그 카드의 이름으로 확인한다.
     expect(markup).toContain('aria-label="작업공간 패널"');
+    // 작업공간 화면의 ⌘T는 새 채팅 탭을 연다(restart 02a-8) — 셸을 여는 키로 가르치지 않는다. 여는 법은 탭 줄의 `+`(메뉴의 셸 줄)다.
+    expect(body, "셸이 없는 본문이 ⌘T를 셸 여는 키로 가르친다").not.toContain("⌘T");
   });
 
   it("spec 본문에는 여는 자리가 없다 — 여는 자리는 탭 줄의 `+`다", () => {
@@ -635,8 +642,8 @@ describe("WorksPage 터미널 탭", () => {
     const markup = render({}, "spec");
     const row = tabRowOf(markup);
     expect(row, "탭 줄을 찾지 못했다").not.toBe("");
-    expect(row).toContain('aria-label="셸 열기"');
-    expect(markup.replace(row, "")).not.toContain('aria-label="셸 열기"');
+    expect(row).toContain('aria-label="새 탭"');
+    expect(markup.replace(row, "")).not.toContain('aria-label="새 탭"');
     expect(markup).toContain('aria-label="작업공간 패널"');
   });
 
@@ -909,7 +916,9 @@ describe("WorksPage ⌘Enter", () => {
   // 들을 사람이 없었다. **판정은 `opensShellFromWindow`가 혼자 알고**(그쪽 검사는
   // shell-registry.test.ts에 전수돼 있다) 여기서 보는 것은 그 판정이 이 화면에 실제로
   // 배선돼 있는가다 — 이펙트는 정적 렌더에서 안 돈다.
-  it("⌘T를 window에서 듣고, 열리면 본문이 터미널로 간다", () => {
+  // restart 02a-8 — **작업공간의 ⌘T는 새 채팅 탭을 연다.** `+` 메뉴의 맨 윗줄이 「새 채팅」이고 `+` → Enter 한 번이 ⌘T와 같다(#222). 셸은
+  // `+` 메뉴의 셸 줄로 연다.
+  it("⌘T를 window에서 듣고, 새 채팅 탭을 열어 본문이 그 탭으로 간다", () => {
     const worksPage = source("WorksPage.tsx");
     // **이펙트를 정규식으로 잘라내지 않는다.** 한때 그렇게 했는데 앞쪽 `[\s\S]*?`가
     // **다른 이펙트(⌘Enter, 156행)에서 출발**해 103줄을 통째로 삼켰고, 그래서 아래
@@ -919,25 +928,24 @@ describe("WorksPage ⌘Enter", () => {
     // **이름이 있는지만 보면 안 된다.** 가드의 `!` 하나를 지우면 ⌘T가 영영 안 먹고 다른
     // 모든 키가 셸을 여는데, 그렇게 뒤집어도 초록이었다. 리터럴 그대로 못박는다.
     expect(worksPage).toContain("if (!opensShellFromWindow(e)) return;");
-    // 딛고 선 작업. `selected`로 바꾸면 본문이 보여주는 셸과 **다른 작업의** 셸이 열린다.
-    // **기본 자리 함수다 — `null`이 없다**(UI개선 결정 17~19). 옛 `workShellOrigin(…, null)`은 멀티
-    // 프로젝트 work에서 `null`을 줘 ⌘T가 조용히 안 먹었다(스토리 45). 그 함수는 「고른
-    // 프로젝트」와 「들어갈 때」의 것으로 남는다.
-    expect(worksPage).toContain("openNewShell(workDefaultOrigin(panelWork));");
+    // 딛고 선 작업의 묶음(`tabOwner` — 탭 줄과 같은 소유자)에 새 채팅 탭을 세우고, 세웠으면 본문을 그 탭으로 옮긴다. 열기만 하고 본문을 안
+    // 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다(결정 98).
+    expect(worksPage).toContain("if (openNewChat(tabOwner) !== null) onOpenNewChat();");
+    expect(countOf(worksPage, "      startNewChat();\n")).toBe(1);
+    // 셸을 여는 길(`openNewShell`)은 `+` 메뉴의 셸 줄 하나다 — ⌘T가 셸을 열던 옛 리터럴이 남으면 키 하나에 두 길이 선다.
+    expect(worksPage).not.toContain("openNewShell(workDefaultOrigin(panelWork));");
     expect(worksPage).not.toContain("workShellOrigin(panelWork, null)");
-    // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
-    expect(worksPage).toContain("onSelectTab(\"terminal\")");
     // **셸 안 ⌘T도 이 자리로 온다**(UI개선 결정 19). xterm 핸들러는 요청만 보내고 화면이 연다 —
     // 구독이 빠지면 셸에 포커스가 있는 동안 ⌘T가 죽는다. 창 keydown 리스너로 짓지 않는다
     // (아래 개수가 그대로다). 여기서는 **구독하는가**만 본다 — 이 화면의 셸만 듣는 규칙은
     // 스토어가 쥐고 값으로 재며(「셸 안 ⌘T의 요청은 그 셸의 화면에만 간다」), 포커스를 둔
     // 셸의 ⌘T가 기본 자리로 이어지는 사슬은 `e2e/shell-origin.spec.ts`가 잰다.
-    expect(worksPage).toContain("onNewShellRequested(tabOwner");
+    expect(worksPage).toContain("onNewShellRequested(tabOwner, startNewChat)");
     // **등록을 따로 센다.** 위 리터럴은 전부 핸들러 **본문**이라, 핸들러가 window에 안
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
     // 셸이 0개인 화면에서 ⌘T가 다시 안 먹는다 — 결정 93이 없애려던 증상 그 자체다.
-    // 이 화면이 window에서 듣는 자리는 **넷이다** — ⌘Enter(패널 접기) · ⌘T(셸 열기) ·
+    // 이 화면이 window에서 듣는 자리는 **넷이다** — ⌘Enter(패널 접기) · ⌘T(새 채팅 탭) ·
     // 본문을 옮기는 ⌘1~9·⌃Tab(결정 78·79) · ⌘W(켜진 탭 닫기 — 결정 13). 줄어들면 그중
     // 한 벌이 통째로 죽은 것이다.
     expect(
@@ -1082,6 +1090,7 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
             onOpenCode={() => {}}
             thread={null}
             onOpenChat={() => {}}
+            onOpenNewChat={() => {}}
             split={null}
             onSelectSplit={() => {}}
             onFollowBundle={() => {}}
@@ -1134,15 +1143,21 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
   //
   // 묶음의 칸(셸 칸 · 파일 탭 — git-integration 결정 31 · 채팅 탭 — restart 02a-5)은 그 칸의 종류를 싣는다 — 종류는 레지스트리가 id로
   // 안다. 채팅 탭도 거르지 않는다 — 셸 탭과 같은 규칙으로 끌린다.
+  //
+  // 새 채팅 탭(restart 02a-8)은 채팅 탭의 종류로 끌린다 — 줄의 틈은 종류를 안 보고, 본문 절반은 화면이 거른다(`halfSource` — 새 채팅 탭은
+  // 분할의 열에 서지 않는다).
   it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 묶음의 칸을 그 종류로 가른다", () => {
+    const page = source("WorksPage.tsx");
     expect(countOf(
-      source("WorksPage.tsx"),
+      page,
       `onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
         const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
-        if (kind) armDrag({ kind, owner, shellId }, from);
+        if (kind) armDrag({ kind: kind === "new-chat" ? "chat" : kind, owner, shellId }, from);
       }}`,
     )).toBe(1);
+    expect(countOf(page, "{halfSource && (")).toBe(1);
+    expect(countOf(page, "onPointerUp={() => dropHere(halfSource, half)}")).toBe(1);
   });
 
   // 같은 눌림의 **둘째 소비자**가 탭 줄이다(UI개선 스펙 S10) — 줄은 스토어를 모르므로
@@ -1268,6 +1283,7 @@ describe("WorksPage 채팅 탭", () => {
               onOpenCode={() => {}}
               thread={thread}
               onOpenChat={() => {}}
+              onOpenNewChat={() => {}}
               split={null}
               onSelectSplit={() => {}}
               onFollowBundle={() => {}}
@@ -1486,11 +1502,163 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     expect(worksPage).toContain("void requestCloseShell(id);");
     // 탭의 `×`도 **같은 함수**로 온다. 두 길이 갈리면 한쪽만 확인 창을 거치는데, 화면으로는
     // 「가끔 안 묻는다」로만 보인다 — 결정 92가 `closeShell`을 밖으로 안 내보낸 그 이유다.
-    // 셸이 아닌 칸(파일 탭 · 채팅 탭)만 확인 없이 닫는다(git-integration 스토리 37 · restart 02a-5) — 셸 칸은 여전히 이 함수다.
+    // 셸이 아닌 칸(파일 탭 · 채팅 탭 · 새 채팅 탭)만 확인 없이 닫는다(git-integration 스토리 37 · restart 02a-5 · 02a-8) — 셸 칸은 여전히
+    // 이 함수다. 보기 탭을 닫는 길은 하나다(`closeBundleView` — 새 채팅 탭이면 그 탭의 글도 지운다).
     expect(worksPage).toContain(`if (kind === "shell") void requestCloseShell(id);
-        else if (kind) closeViewTab(id);`);
+        else if (kind) closeBundleView(id);`);
     // ⌘W도 보기 탭은 같은 길이다.
-    expect(worksPage).toContain("closeViewTab(viewId);");
+    expect(worksPage).toContain("closeBundleView(viewId);");
+    expect(countOf(worksPage, "closeViewTab(")).toBe(2);
+    expect(worksPage).toContain("  forgetNewChat(newChatKey(id));\n  closeViewTab(id);");
+  });
+});
+
+// restart 02a-8 — **작업공간에서 새 채팅 탭을 연다.** `tab=chat`에 `thread`가 없으면 새 채팅 탭이고, 어느 새 채팅 탭인지는 묶음이 쥔다(셸과
+// 같다). 몸은 그 작업공간에 이어 보내는 입력창이다 — 작업공간은 씨앗(`?work=`)이 아니라 그 탭이 선 묶음에서 읽는다. 글 · 첨부 · 인용의 열쇠는
+// 탭마다다(`newChatKey`). **숨은 새 채팅 탭은 내리지 않는다** — 고른 Runtime · 보내는 중 상태가 그 몸의 지역 상태라, 셸 · 파일 · 문서를
+// 다녀와도 남아야 한다. 묶음은 이 시험이 심는다 — 주소를 따라 묶음을 맞추는 일은 화면의 효과라 정적 마크업에서 돌지 않는다.
+describe("WorksPage 새 채팅 탭", () => {
+  const owner = ownerOf(work.slug);
+  let first = 0;
+  let second = 0;
+
+  function drawNewChat(tab: ViewTab, opening = false): string {
+    const client = new QueryClient();
+    client.setQueryData(worksQuery().queryKey, [work]);
+    client.setQueryData(threadsQuery().queryKey, []);
+    return renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <WorksPage
+            sidebarOpen
+            selectedSlug={work.slug}
+            currentFile={null}
+            onSelectFile={() => {}}
+            tab={tab}
+            onSelectTab={() => {}}
+            code={null}
+            onOpenCode={() => {}}
+            thread={null}
+            onOpenChat={() => {}}
+            onOpenNewChat={() => {}}
+            opening={opening}
+            split={null}
+            onSelectSplit={() => {}}
+            onFollowBundle={() => {}}
+            onDropInto={() => {}}
+          />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  /** 그 새 채팅 탭의 몸을 싼 상자(`data-new-chat`). */
+  const bodyOf = (markup: string, id: number) => boxOf(markup, new RegExp(`<div[^>]*data-new-chat="${id}"`));
+
+  const kindsOf = (markup: string) =>
+    markup
+      .split('data-tab="')
+      .slice(1)
+      .map((chunk) => ({ kind: chunk.slice(0, chunk.indexOf('"')), on: chunk.includes('aria-pressed="true"') }));
+
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+    // 새 채팅 탭 둘 — 둘째가 켜져 있다.
+    const one = openNewChatTab(NO_SHELLS, owner);
+    first = activeIdOf(one, owner) ?? -1;
+    const two = openNewChatTab(one, owner);
+    second = activeIdOf(two, owner) ?? -1;
+    terminalStore.setState(() => two);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    terminalStore.setState(() => NO_SHELLS);
+    forgetNewChat(newChatKey(first));
+    forgetNewChat(newChatKey(second));
+    forgetNewChat(NEW_THREAD);
+  });
+
+  it("새 채팅 탭이 `spec` 뒤 묶음에 「새 채팅」으로 서고, 켜진 하나가 켜져 있다", () => {
+    const row = tabRowOf(drawNewChat("chat"));
+    expect(kindsOf(row)).toEqual([
+      { kind: "spec", on: false },
+      { kind: "new-chat", on: false },
+      { kind: "new-chat", on: true },
+      { kind: "new", on: false },
+    ]);
+    expect(countOf(row, 'aria-label="새 채팅 닫기"')).toBe(2);
+  });
+
+  it("본문 카드가 「새 채팅」이고 몸은 이 작업공간에 이어 보내는 입력창이다", () => {
+    const markup = drawNewChat("chat");
+    const main = markup.slice(markup.indexOf("<main"));
+    expect(main).toMatch(/^<main[^>]*aria-label="새 채팅"/);
+    const shown = bodyOf(markup, second);
+    expect(shown).toMatch(/^<div[^>]*class="contents"/);
+    expect(shown).toContain('aria-label="보낼 말"');
+    // 작업공간은 탭이 선 묶음의 것이다 — 잠긴 Work 칩이 이 작업공간을 말한다.
+    expect(shown).toContain(`aria-label="작업공간으로 가기: ${work.title}"`);
+    expect(pathBarOf(markup)).toBe("");
+  });
+
+  it("작업공간 A의 새 채팅 탭에 쓴 글은 B의 새 채팅 탭과 홈에 서지 않는다", () => {
+    setDraft(newChatKey(first), "첫 탭에서 쓰던 말");
+    setDraft(NEW_THREAD, "홈에서 쓰던 말");
+    const markup = drawNewChat("chat");
+    expect(bodyOf(markup, first)).toMatch(/<textarea[^>]*>첫 탭에서 쓰던 말<\/textarea>/);
+    expect(bodyOf(markup, second)).toMatch(/<textarea[^>]*><\/textarea>/);
+    expect(markup).not.toContain("홈에서 쓰던 말");
+  });
+
+  // 숨은 새 채팅 탭은 내려가지 않는다 — 문서 · 채팅 · 셸 · 파일 카드 어디서든 **같은 자리**(탭 줄 바로 뒤, 카드의 첫 몸)에 꽂혀 카드를 오가도
+  // 그 몸이 새로 서지 않는다(카드는 하나 — `Card`). 자리가 갈리면 React가 그 몸을 내렸다 다시 세워 고른 Runtime이 사라진다.
+  it("숨은 새 채팅 탭의 몸은 문서를 봐도 그 자리에 숨어 있다", () => {
+    setDraft(newChatKey(first), "숨은 탭의 말");
+    for (const tab of ["spec", "chat"] as const) {
+      const markup = drawNewChat(tab);
+      const row = tabRowOf(markup);
+      const afterRow = markup.slice(markup.indexOf(row) + row.length);
+      expect(afterRow, tab).toMatch(new RegExp(`^<div[^>]*data-new-chat="${first}"`));
+      expect(bodyOf(markup, first), tab).toMatch(/^<div[^>]*class="hidden"/);
+      expect(bodyOf(markup, first), tab).toContain("숨은 탭의 말");
+    }
+    // 문서를 보는 중이면 둘 다 숨는다.
+    expect(bodyOf(drawNewChat("spec"), second)).toMatch(/^<div[^>]*class="hidden"/);
+  });
+
+  it("다른 작업공간의 새 채팅 탭은 이 화면에 꽂히지 않는다", () => {
+    const other = openNewChatTab(terminalStore.state, ownerOf("다른-작업"));
+    const theirs = activeIdOf(other, ownerOf("다른-작업")) ?? -1;
+    terminalStore.setState(() => other);
+    expect(drawNewChat("chat")).not.toContain(`data-new-chat="${theirs}"`);
+  });
+
+  // 처음 여는 주소(탭도 채팅도 적지 않았다)의 `chat`은 기본 값이지 새 채팅 탭이 아니다 — 처음 여는 규칙이 주소를 고칠 때까지 새 채팅 탭을
+  // 세우거나 보이지 않는다. 새 채팅 탭으로 치면 채팅이 있는 작업공간에도 새 채팅 탭이 하나 선다.
+  it("처음 여는 주소의 한 틱에는 새 채팅 탭이 서지 않는다", () => {
+    const markup = drawNewChat("chat", true);
+    expect(markup.slice(markup.indexOf("<main"))).toMatch(/^<main[^>]*aria-label="채팅"/);
+    expect(bodyOf(markup, second)).toMatch(/^<div[^>]*class="hidden"/);
+    expect(kindsOf(tabRowOf(markup)).filter((cell) => cell.on)).toEqual([]);
+    expect(source("WorksPage.tsx")).toContain("else if (newChatShown) showNewChatTab(tabOwner);");
+  });
+
+  // 배선은 렌더로 못 본다(핸들러 · 이펙트). 어느 새 채팅 탭인지는 묶음이 쥐므로 **켜는 것은 화면이 먼저 하고** 주소는 `tab=chat`만 고친다 —
+  // 탭 줄 · ⌘2~9가 같다. 첫 말의 답이 오면 그 칸이 채팅 탭이 되고(켜짐은 그대로 — 꺼져 있었으면 주소도 그대로다) 그 열쇠의 글을 지운다.
+  it("탭 줄 · ⌘2~9 · 첫 말의 답이 묶음과 주소에 이어진다", () => {
+    const page = source("WorksPage.tsx");
+    expect(page).toContain(`if (picked?.kind === "new-chat") {
+          selectShell(id);
+          onOpenNewChat();
+          return;
+        }`);
+    expect(page).toContain(`selectShell(next);
+      // 새 채팅 탭이면 그 탭을 켜고 본문이 새 채팅 탭이 된다(restart 02a-8) — 어느 새 채팅 탭인지는 묶음이 쥐어 켜는 것은 여기서 한다(셸과 같다).
+      if (picked?.kind === "new-chat") onOpenNewChat();
+      else onSelectTab("terminal");`);
+    expect(page).toContain(`settleNewChat(one.id, started);
+                  forgetNewChat(newChatKey(one.id));`);
+    expect(page).toContain("onNewChat={startNewChat}");
   });
 });
 
@@ -1570,10 +1738,11 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     //
     // **셸 안 ⌘T는 이제 요청만 보낸다**(UI개선 결정 19) — 여는 것은 그 요청을 받은 화면이다. 그래서
     // 사슬의 두 고리를 함께 본다: 핸들러가 요청을 보내고, 화면이 받은 요청을 알리는 쪽
-    // (`openNewShell`)으로 연다(위 「⌘T를 window에서 듣고…」가 그 리터럴을 못박는다).
+    // (`openNewShell`)으로 연다. 작업공간 화면의 ⌘T는 셸이 아니라 새 채팅 탭을 열어(restart 02a-8 — 위 「⌘T를 window에서 듣고…」) 상한과
+    // 무관하다 — 셸을 여는 `+` 메뉴의 셸 줄이 알리는 쪽으로 연다. 최상위 터미널의 ⌘T는 그대로 셸이다.
     const store = source("../terminal/terminal-store.ts");
     expect(store).toContain('if (route.hotkey === "new") requestNewShell(instance.origin.owner);');
-    expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(panelWork));");
+    expect(source("WorksPage.tsx")).toContain("openNewShell(origin);");
   });
 });
 
@@ -1720,16 +1889,13 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
   });
 });
 
-// **마지막 셸이 닫히면 본문에서 터미널이 걷힌다.** 판정은 `shellsEmptied`가 들고
-// (shell-registry.test.ts), 그것을 실제로 딛는지는 렌더로 안 보인다 — 이펙트라서다.
-//
-// 두 가지를 함께 못박는다: **분할이면 분할째로 걷는다**(빈 터미널 열이 반을 차지한 채
-// 남으면 두 열을 세운 이유와 정면으로 어긋난다) · **본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만**이다
-// (문서를 읽는 중에 사이드바로 셸을 닫은 것은 화면에서 아무것도 안 바뀌어야 한다 — git-integration 결정 30).
-it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 가만있는다", () => {
-  expect(source("WorksPage.tsx")).toContain(
-    'if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");',
-  );
+// **묶음의 마지막 칸이 닫히면 새 채팅 탭이 선다**(restart 02a-8 — 한때 「묶음이 비면 spec」이었다). 판정은 `shellsEmptied`가 들고
+// (shell-registry.test.ts), 그것을 실제로 딛는지는 렌더로 안 보인다 — 이펙트라서다. 본문을 따로 옮기지 않는다 — 세운 칸이 지금 탭이 되어
+// 「묶음 → 주소」가 따라간다(본문이 문서인 단일 뷰면 그대로다). 옛 갈래(분할째로 걷고 문서로 간다)가 남으면 새 칸과 문서가 한 틱에 겹친다.
+it("묶음의 마지막 칸이 닫히면 새 채팅 탭을 세우고, 본문은 묶음 → 주소가 옮긴다", () => {
+  const page = source("WorksPage.tsx");
+  expect(page).toContain("if (emptied && tabOwner !== null) openNewChat(tabOwner);");
+  expect(page).not.toContain('changeSplit(null, "spec");');
 });
 
 // 고른 항목이 하나도 없을 때의 본문. 목록을 비우고 `selectedSlug`를 `null`로 두면 그 화면이
@@ -1753,6 +1919,7 @@ function renderEmpty(projects: ProjectView[] = []): string {
           onOpenCode={() => {}}
           thread={null}
           onOpenChat={() => {}}
+          onOpenNewChat={() => {}}
           split={null}
           onSelectSplit={() => {}}
           onFollowBundle={() => {}}

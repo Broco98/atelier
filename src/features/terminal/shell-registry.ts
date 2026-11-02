@@ -160,11 +160,16 @@ export interface Shell {
  *
  * 채팅 탭은 **읽던 자리**(`place`, restart 02a-6)도 든다 — 숨은 채팅 탭은 내려가므로 굴림 자리를 칸이 쥐었다가 돌아오면 되살린다
  * (`keepChatPlace`). 칸이 빠지면 함께 사라진다 — 다시 연 탭은 새 탭이라 바닥에서 연다.
+ *
+ * **새 채팅 탭**(`new-chat`, restart 02a-8)은 아직 채팅이 없는 채팅 탭이다 — 정체가 없어 칸마다 따로다(같은 화면에 여럿 설 수 있다).
+ * 첫 말의 답이 오면 같은 자리 · 같은 id의 채팅 탭이 된다(`settleNewChatTab`). 입력 중인 글 · 첨부는 칸의 id로 지은 열쇠에 산다
+ * (`features/thread`의 `newChatKey`) — 칸은 그것을 모른다.
  */
 export type BundleTab =
   | { kind: "shell"; id: number }
   | ({ kind: "code"; id: number } & CodeTarget)
-  | { kind: "chat"; id: number; thread: string; place?: ReadingPlace };
+  | { kind: "chat"; id: number; thread: string; place?: ReadingPlace }
+  | { kind: "new-chat"; id: number };
 
 /**
  * 파일 탭이 가리키는 것 — 그 work의 **프로젝트**와 그 워크트리 기준 **경로**(조각은 `/`). 이 둘이 파일 탭의 정체다 —
@@ -570,6 +575,43 @@ export function openChatTab(state: ShellsState, owner: ShellOwner, thread: strin
     (tab) => tab.kind === "chat" && tab.thread === thread,
     (id) => ({ kind: "chat", id, thread }),
   );
+}
+
+/**
+ * 그 화면 묶음 끝에 **새 채팅 탭**을 하나 세우고 켠다(restart 02a-8 — `+` · ⌘T의 「새 채팅」). 늘 새 칸이다 — 새 채팅 탭에는 정체가 없어
+ * 이미 선 새 채팅 탭과 겹치지 않는다. 최상위 터미널(`""`)은 받지 않는다 — 채팅 탭은 작업공간 화면에만 선다.
+ */
+export function openNewChatTab(state: ShellsState, owner: ShellOwner): ShellsState {
+  return openTab(state, owner, () => false, (id) => ({ kind: "new-chat", id }));
+}
+
+/**
+ * 지금 탭이 **새 채팅 탭**이 되게 한다(restart 02a-8) — 주소가 새 채팅 탭을 말할 때(`tab=chat`, `thread` 없음) 작업공간 화면이 부른다.
+ * 어느 새 채팅 탭인지는 주소에 없어 묶음이 쥔다(셸의 `withShellActive`와 같다). 지금 탭이 새 채팅 탭이면 그대로, 묶음에 새 채팅 탭이 있으면
+ * 그 첫 칸을 켜고, 없으면 끝에 하나 세운다 — 채팅이 없는 작업공간을 처음 여는 길 · 요약 카드 「이 작업공간에서 새 채팅」 · `?work=`가 이것이다.
+ */
+export function withNewChatActive(state: ShellsState, owner: ShellOwner): ShellsState {
+  if (slugOfOwner(owner) === null) return state;
+  if (activeTabOf(state, owner)?.kind === "new-chat") return state;
+  const found = bundleOf(state, owner).find((tab) => tab.kind === "new-chat");
+  return found ? activateShell(state, found.id) : openNewChatTab(state, owner);
+}
+
+/**
+ * **새 채팅 탭이 채팅 탭이 된다**(restart 02a-8) — 그 칸의 첫 말의 답이 왔다(`thread_start`가 채팅 id를 돌려줬다). 같은 자리 · 같은 id의
+ * 채팅 탭으로 바꾼다. **켜짐은 건드리지 않는다** — 꺼진 탭이면 꺼진 채 채팅이 된다(사람을 그 탭으로 끌고 오지 않는다). 켜진 탭이면 작업공간
+ * 화면이 주소를 그 채팅으로 따라간다(묶음 → 주소). 그 칸이 이미 빠졌으면(답을 기다리는 사이 닫았다) 받은 상태 그대로다 — 채팅은 남아
+ * 사이드바에서 연다.
+ */
+export function settleNewChatTab(state: ShellsState, id: number, thread: string): ShellsState {
+  const owner = bundleOwnerOf(state, id);
+  if (owner === null) return state;
+  const tabs = bundleOf(state, owner);
+  const at = tabs.findIndex((tab) => tab.id === id);
+  if (tabs[at]?.kind !== "new-chat") return state;
+  const next = [...tabs];
+  next[at] = { kind: "chat", id, thread };
+  return { ...state, bundles: { ...state.bundles, [owner]: next } };
 }
 
 /** 그 화면 묶음에서 그 채팅의 탭이 쥔 읽던 자리(restart 02a-6). 탭이 없거나 쥔 자리가 없으면 `null`이다 — 바닥에서 연다. */
@@ -1152,7 +1194,7 @@ export function shellHotkey(event: KeyPress): ShellHotkey | null {
   // window에서 듣는 앱 셸이 그것을 받아 연다. 셸에 포커스가 있는 시간이 이 앱에서 제일
   // 길기 때문에 이 한 줄이 「어디서든 열린다」의 절반을 든다.
   if (shellNavKey(event) !== null || searchHotkey(event)) return "app";
-  if (pressed(event, "newShell")) return "new";
+  if (pressed(event, "newTab")) return "new";
   if (pressed(event, "closeShell")) return "close";
   return null;
 }

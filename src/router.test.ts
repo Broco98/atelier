@@ -149,7 +149,9 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it("`/?work=<slug>`도 새 Thread다 — 요약 카드 「…」의 「이 작업공간에서 새 채팅」이 그 Work를 고른 채 연다(v1 티켓 34)", async () => {
+  // restart 02a-8 — 그 씨앗은 이제 문이다: `/` 화면이 그 작업공간의 새 채팅 탭(`/works/<slug>?tab=chat`)으로 옮긴다(`newChatDoor` — 입력 글은 그
+  // 탭의 입력창에 채운다). 옮기는 것은 화면의 효과라 이 seam 밖이고, 여기서는 검증기가 씨앗을 지우지 않는 것만 본다.
+  it("`/?work=<slug>`의 씨앗을 검증기가 그대로 둔다 — 그 작업공간의 새 채팅 탭으로 옮기는 것은 `/` 화면이다", async () => {
     const { router } = setup(["/?work=refund-api"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/");

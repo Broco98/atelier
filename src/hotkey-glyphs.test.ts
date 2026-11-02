@@ -61,7 +61,7 @@ describe("꼴이 막을 것을 막는다", () => {
   });
 
   it.each([
-    ["<Kbd>{HOTKEYS.newShell.glyph}</Kbd>", LITERAL_KBD],
+    ["<Kbd>{HOTKEYS.newTab.glyph}</Kbd>", LITERAL_KBD],
     ["aria-keyshortcuts={hotkey?.aria}", LITERAL_ARIA],
     ["aria-keyshortcuts={shortcutElsewhere ? undefined : hotkey?.aria}", LITERAL_ARIA],
     ['<Hint shortcut="search" />', MODIFIER_GLYPH],

@@ -128,8 +128,8 @@ export const splitOf = (search: { split?: string }): SplitSide | null =>
  * 라고 말하지만 런타임 값은 아무 문자열일 수 있으므로, **모르는 값을 기본 값으로 눕히는 자리를
  * 하나 둔다.** 그 자리가 갈리면 화면마다 다른 값을 모르는 값으로 친다.
  *
- * 기본 값은 **채팅**이다(restart 02a-4 — `spec`이 맡던 자리를 물려받았다). 어느 채팅인지 모르는 채팅 탭(`thread`가 없다)에 닿으면
- * 작업공간 화면이 처음 여는 규칙으로 탭을 세우고 주소를 고친다(`openingSearch`).
+ * 기본 값은 **채팅**이다(restart 02a-4 — `spec`이 맡던 자리를 물려받았다). 값이 없는 주소에 닿으면 작업공간 화면이 처음 여는 규칙으로
+ * 탭을 세우고 주소를 고친다(`opensWork` · `openingSearch`). `tab=chat`을 적었는데 `thread`가 없으면 **새 채팅 탭**이다(restart 02a-8).
  */
 export const viewTab = (search: { tab?: string; code?: string }): ViewTab => {
   const tab = addressTabOf(search.tab);
@@ -162,6 +162,27 @@ export function tabSearch<T extends object>(
     code: keeps ? marks.code : undefined,
     thread: keeps ? marks.thread : undefined,
   };
+}
+
+/**
+ * **작업공간을 처음 여는 주소인가**(restart 02a-4 · 02a-8) — 탭도 채팅도 적지 않은 주소다(모르는 탭 값 · 가리키는 파일이 없는 `tab=code`도
+ * 같다 — 기본 값으로 눕는다). 작업공간 화면이 처음 여는 규칙으로 탭을 세운다(`openingSearch`). `tab=chat`을 적은 주소는 아니다 — `thread`가
+ * 없으면 새 채팅 탭이라는 다른 뜻이다.
+ */
+export const opensWork = (search: { tab?: unknown; code?: unknown; thread?: unknown }): boolean =>
+  viewTab(search as { tab?: string; code?: string }) === "chat" && search.tab !== "chat" && threadOf(search) === null;
+
+/**
+ * **새 채팅 탭으로 갈 때** 주소의 `search`를 어떻게 고치는가(restart 02a-8). `tab=chat`만 적고 `thread`와 `code`는 걷는다 — 어느 새 채팅
+ * 탭인지는 셸 탭처럼 묶음이 쥔다. 보던 문서(`file`)는 그대로다.
+ *
+ * **분할을 끈다**(02a-13이 분할을 걷을 때까지) — 새 채팅 탭은 분할의 묶음 열에 서지 않는다. 분할의 열은 주소의 `code` · `thread`로 무엇이
+ * 서는지 말하는데, 새 채팅 탭에는 그 값이 없어 문서 열에 포커스가 가면(`tab=spec`) 셸 열과 갈리지 않는다.
+ */
+export function newChatSearch<T extends object>(
+  prev: T,
+): T & { tab?: AddressTab; code?: string; thread?: string; split?: SplitSide } {
+  return { ...prev, tab: "chat", code: undefined, thread: undefined, split: undefined };
 }
 
 /**
@@ -222,12 +243,18 @@ export function splitSearch<T extends object>(
 
 /**
  * **묶음의 지금 탭이 주소에 남기는 것**(restart 02a-4) — 셸이면 어느 셸인지는 주소에 없고(결정 33), 파일 탭이면 그 파일(`code`),
- * 채팅 탭이면 그 채팅(`thread`)이다. 묶음 열 · 본문이 묶음을 따라가는 자리(`columnSearch` · `bundleSearch`)가 이것을 받는다.
+ * 채팅 탭이면 그 채팅(`thread`)이다. 새 채팅 탭(restart 02a-8)도 셸처럼 어느 탭인지가 주소에 없다. 묶음 열 · 본문이 묶음을 따라가는
+ * 자리(`columnSearch` · `bundleSearch`)가 이것을 받는다.
  */
-export type BundleShown = { kind: "shell" } | { kind: "code"; code: string } | { kind: "chat"; thread: string };
+export type BundleShown =
+  | { kind: "shell" }
+  | { kind: "code"; code: string }
+  | { kind: "chat"; thread: string }
+  | { kind: "new-chat" };
 
-/** 묶음의 지금 탭을 가리키는 `tab` — 셸은 `terminal`, 파일 탭은 `code`, 채팅 탭은 `chat`이다. */
-const tabOfShown = (shown: BundleShown): AddressTab => (shown.kind === "shell" ? "terminal" : shown.kind);
+/** 묶음의 지금 탭을 가리키는 `tab` — 셸은 `terminal`, 파일 탭은 `code`, 채팅 탭과 새 채팅 탭은 `chat`이다. */
+const tabOfShown = (shown: BundleShown): AddressTab =>
+  shown.kind === "shell" ? "terminal" : shown.kind === "new-chat" ? "chat" : shown.kind;
 
 /** 묶음의 지금 탭이 주소에 남기는 키 — 없으면(`null`) 둘 다 걷힌다. */
 const marksOf = (shown: BundleShown | null): { code?: string; thread?: string } => ({
@@ -269,14 +296,17 @@ export function columnSearch<T extends object>(
  *
  * **고칠 것을 모두 `prev`에서 읽는다.** 묶음의 변화는 다른 이동과 한 틱에 겹친다 — 셸 탭을 끌어 본문 절반에 놓으면 그 셸을 켜는
  * 것과 분할을 켜는 주소가 함께 난다. 화면이 들고 있던 `tab` · `split`으로 지으면 한 틱 늦은 값이 방금 놓은 분할을 덮는다.
+ *
+ * 새 채팅 탭이 켜지면 본문이 그 탭이 된다 — 분할이면 분할을 끈다(`newChatSearch` — 새 채팅 탭은 분할의 열에 서지 않는다).
  */
 export function bundleSearch<T extends object>(
   prev: T,
   bundle: BundleShown,
-): T & { tab?: AddressTab; code?: string; thread?: string } {
+): T & { tab?: AddressTab; code?: string; thread?: string; split?: SplitSide } {
   const search = prev as { tab?: string; code?: string; split?: string };
   const tab = viewTab(search);
   if (tab === "spec" && splitOf(search) === null) return { ...prev, tab: "spec", ...marksOf(null) };
+  if (bundle.kind === "new-chat") return newChatSearch(prev);
   return {
     ...prev,
     tab: tab === "spec" ? "spec" : tabOfShown(bundle),
@@ -285,15 +315,15 @@ export function bundleSearch<T extends object>(
 }
 
 /**
- * **작업공간을 처음 여는 주소**(restart 02a-4) — 어느 채팅인지 모르는 채팅 탭(값이 없는 주소)에 닿으면 작업공간 화면이 이것으로
- * 주소를 고친다. 가장 최근 채팅 탭 하나가 선다(`landingOf` — 사이드바의 작업공간 줄과 같은 규칙). 채팅이 없는 작업공간은 **임시로**
- * spec이다 — 02a-8이 새 채팅 탭으로 바꾼다.
+ * **작업공간을 처음 여는 주소**(restart 02a-4) — 값이 없는 주소(`opensWork`)에 닿으면 작업공간 화면이 이것으로 주소를 고친다. 가장
+ * 최근 채팅 탭 하나가 선다(`landingOf` — 사이드바의 작업공간 줄과 같은 규칙). 채팅이 없는 작업공간은 새 채팅 탭이 선다(restart 02a-8 —
+ * `newChatSearch`).
  */
 export function openingSearch<T extends object>(
   prev: T,
   landing: WorkLanding,
-): T & { tab?: AddressTab; code?: string; thread?: string } {
-  return landing.kind === "thread" ? chatSearch(prev, landing.id) : tabSearch(prev, "spec");
+): T & { tab?: AddressTab; code?: string; thread?: string; split?: SplitSide } {
+  return landing.kind === "thread" ? chatSearch(prev, landing.id) : newChatSearch(prev);
 }
 
 /**
@@ -327,13 +357,17 @@ export function chatHome(thread: { work: string | null; readOnly: WorkGone | nul
  *
  * **영속시키지 않는다.** 「무엇을 보고 있었나」는 위치이지 설정이 아니다 — 사이드바 접힘이
  * localStorage에 살고 slug 기억이 세션에만 사는 그 구분과 같은 쪽이다(shell-store).
- * 앱을 껐다 켜면 기본값(어느 채팅인지 모르는 채팅 탭 — 작업공간을 처음 여는 규칙)으로 돌아온다.
+ * 앱을 껐다 켜면 기본값(탭 없음 — 작업공간을 처음 여는 규칙)으로 돌아온다.
  *
  * 라우터 밖 모듈 스코프인 것은 이 값이 **주소가 아니기 때문이다.** 주소에 넣으면 뒤로가기가
  * 이 기억까지 되감아, 「돌아왔을 때 그 화면」이 히스토리 위치에 따라 갈린다.
  */
 export interface WorkMemory {
-  tab: ViewTab;
+  /**
+   * 보던 화면 탭. **`null`이면 주소에 탭을 적지 않는다** — 작업공간을 처음 여는 규칙이 탭을 세운다(`opensWork`). 아직 안 본 work이
+   * 그렇다. 「채팅 · `thread` 없음」은 새 채팅 탭이라(restart 02a-8) 처음 여는 규칙과 다른 값이다.
+   */
+  tab: ViewTab | null;
   split: SplitSide | null;
   /** 보던 문서. `null`은 주소에 `file`이 없는 것과 같은 뜻이다 — 기본 문서를 본다. */
   file: string | null;
@@ -359,11 +393,10 @@ export function rememberView(slug: string, view: WorkMemory): void {
 }
 
 /**
- * 적어 둔 화면. 없으면 **어느 채팅인지 모르는 채팅 탭**이다(restart 02a-4 — 기본 값이 채팅이다). 그 기억은 주소에 탭을 남기지 않아
- * (`viewSearch`) 작업공간을 처음 여는 규칙이 탭을 세운다.
+ * 적어 둔 화면. 없으면 **탭 없음**이다 — 그 기억은 주소에 탭을 남기지 않아(`viewSearch`) 작업공간을 처음 여는 규칙이 탭을 세운다.
  */
 export function recallView(slug: string): WorkMemory {
-  return lastView.get(slug) ?? { tab: "chat", split: null, file: null, code: null, thread: null };
+  return lastView.get(slug) ?? { tab: null, split: null, file: null, code: null, thread: null };
 }
 
 /**
@@ -399,10 +432,10 @@ export function viewSearch<T extends object>(
   view: WorkMemory,
 ): T & { tab?: AddressTab; split?: SplitSide; file?: string; code?: string; thread?: string } {
   return {
-    ...splitSearch(tabSearch(prev, view.tab), view.split),
-    // **어느 채팅인지 모르는 채팅 탭은 주소에 안 적는다**(restart 02a-4) — 값이 없는 주소가 곧 「작업공간을 처음 여는 규칙으로 탭을
-    // 세워라」다(`openingSearch`). `tab=chat`만 적으면 02a-8부터는 새 채팅 탭이라는 다른 뜻이 된다.
-    ...(view.tab === "chat" && view.thread === null ? { tab: undefined } : {}),
+    ...splitSearch(tabSearch(prev, view.tab ?? "chat"), view.split),
+    // **탭이 없는 기억은 주소에 탭을 안 적는다**(restart 02a-4) — 값이 없는 주소가 곧 「작업공간을 처음 여는 규칙으로 탭을 세워라」다
+    // (`openingSearch`). `tab=chat`만 적으면 새 채팅 탭이라는 다른 뜻이다(restart 02a-8).
+    ...(view.tab === null ? { tab: undefined } : {}),
     file: view.file ?? undefined,
     code: view.code ?? undefined,
     thread: view.thread ?? undefined,
@@ -434,3 +467,14 @@ export const recallSearch = (slug: string) => viewSearch({}, recallView(slug));
  * (`<Link {...workDoor(slug)}>`) — 주소와 씨앗을 자리마다 다시 적으면 위 「빠뜨린 문 하나」가 또 난다.
  */
 export const workDoor = (slug: string) => ({ to: "/works/$slug" as const, params: { slug }, search: recallSearch(slug) });
+
+/**
+ * **그 작업공간의 새 채팅 탭으로 가는 문**(restart 02a-8 · 구현 스펙 「02a — 새 채팅으로 가는 길」) — 요약 카드 ⋯의 「이 작업공간에서 새 채팅」,
+ * 채팅이 없는 작업공간 줄, `?work=` 씨앗이 지난다. 그 작업공간의 기억(보던 문서)을 씨앗으로 삼고(`recallSearch`) 새 채팅 탭으로 간다
+ * (`newChatSearch`). 어느 새 채팅 탭인지는 묶음이 쥔다 — 새 채팅 탭이 있으면 그 탭이고, 없으면 작업공간 화면이 하나 세운다.
+ */
+export const newChatDoor = (slug: string) => ({
+  to: "/works/$slug" as const,
+  params: { slug },
+  search: newChatSearch(recallSearch(slug)),
+});
