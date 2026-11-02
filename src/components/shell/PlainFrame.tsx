@@ -50,9 +50,11 @@ export function PlainFrame({ lead, title, menu, end, label, children }: PlainFra
       {/* 본문 카드 — 카드 자리를 다 쓴다(카드 자리가 가로 줄이다). 겉은 공용 틀의 본문 카드와 한 벌이다(`CARD_FACE` — 면 surface · 둥글기 8
           · 0.5 링, restart 02a-2). **제 내용 폭을 카드 밖에 알리지 않는다**(`contain-inline-size`) — 사이드바가 카드의 형제라 카드 자리는 본문의
           min-content를 바닥으로 들고 사이드바와 자리를 나눈다(`AppShell`의 카드 자리 `min-w-min`). 긴 코드 줄 · 주소가 그 바닥을 부풀리면
-          사이드바가 좁아지고 카드가 창 밖으로 밀린다 — 그려지는 폭은 카드 자리가 늘여 준다. */}
+          사이드바가 좁아지고 카드가 창 밖으로 밀린다 — 그려지는 폭은 카드 자리가 늘여 준다. 표식(`data-slot="card"`)도 공용 틀의 카드와 한
+          벌이다 — 카드를 집는 자리가 같은 표식으로 집는다(02a-15). */}
       <main
         aria-label={label}
+        data-slot="card"
         className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface contain-inline-size", CARD_FACE)}
       >
         {children}

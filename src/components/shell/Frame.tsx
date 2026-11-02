@@ -308,6 +308,16 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바와 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
  * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
  *
+ * **넘침은 가로만, 움직이는 동안만 자른다** — 카드의 0.5 링이 상자 끝에서 잘리지 않게(02a-15 · 카드의 링은 네 변에 선다, 02a-2). 카드는 상자
+ * 끝까지 차서(높이 100% · 폭 = 상자 − 틈) 상자가 넘침을 자르면 바깥 링(`shadow-hairline`)이 위 · 오른쪽 · 아래에서 잘린다. 세로는 늘 놓는다 —
+ * 폭만 움직이고 세로로 넘칠 것이 없다(사이드바의 `overflow-x-clip`과 같은 까닭). 가로는 접힌 동안과 접고 펴는 동안만 자른다 — 그동안 카드가
+ * 상자에 잘리는 것이 이 패널의 움직임이고(시안 `.ra-panelwrap { overflow: hidden }` · 02a-14c), 접힌 안쪽 열(고정 폭)이 문서의 가로 넘침이 되지
+ * 않는다. 다 편 뒤에는 놓는다 — 안쪽 열이 그때 상자 폭을 상한으로 받아(`clippingInnerClass` · `foldingInnerClass`) 넘치는 것은 링뿐이다. 놓는
+ * 순간은 펴는 길이만큼 늦는다: 넘침은 이산 값이라 `transition-discrete`로 늦추고, 늦음은 안쪽 열의 상한과 같은 토큰이다. 길이 · 곡선은 상자의
+ * 것 하나를 함께 쓴다(따로 적으면 상자 박자의 값이 목록이 된다) — 이산 값은 곡선을 거친 진행의 가운데서 바뀌어 상한보다 조금 뒤에 놓인다.
+ * 접을 때는 넘침이 트랜지션 목록에 없어 곧장 자른다. 자르는 선을 링만큼 밖으로 내는 길(`focus-ring-room`처럼 안쪽 여백 + 같은 만큼 바깥
+ * 여백)은 이 상자에 못 쓴다 — 상자 폭이 「틈 + 카드」인 것을 끄는 손(`drawnWidth`)과 L3가 잰다. WebKit에는 `overflow-clip-margin`이 없다.
+ *
  * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
  * 그래서 **닫힌 동안 안쪽 열은 `inert`다** — 폭만 0인 칸 안의 트리 행에 Tab · 찾기가 닿지 않게 한다(사이드바 목록 구획과 같은 손).
  * 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다. 안에 있던 포커스는 패널 토글로 간다(`useFoldedFocus`). 상자 자신(`aside` — 보조
@@ -351,17 +361,22 @@ export function PanelBox({
         } as CSSProperties
       }
       className={cn(
-        "relative flex overflow-hidden contain-inline-size",
+        "relative flex contain-inline-size",
         !size.dragging && PANEL_MOTION,
-        !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
+        // 넘침은 가로만, 움직이는 동안만 자른다(아래 머리말 「카드의 링」) — 펼 때 놓는 순간은 바깥 길이만큼 늦고 접을 때는 곧장 자른다.
+        !size.dragging &&
+          (open
+            ? "transition-[flex-basis,min-width,overflow-x] delay-[0s,0s,var(--duration-panel-open)] transition-discrete"
+            : "transition-[flex-basis]"),
         open
           ? cn(
+              "overflow-x-visible",
               "max-w-[calc(100%-var(--panel-reserve)-var(--panel-trail,0px))] basis-[calc(var(--panel-width)+var(--space-2))]",
               reserve === undefined
                 ? "min-w-[calc(var(--panel-min)+var(--space-2))]"
                 : "min-w-[min(calc(var(--panel-min)+var(--space-2)),max(0px,calc(100%-var(--panel-reserve))))]",
             )
-          : "basis-0 min-w-0",
+          : "basis-0 min-w-0 overflow-x-clip",
       )}
     >
       {/* 접히는 동안 글이 되흐르지 않게 안쪽은 고정 폭(틈 + 카드)이고, **펴진 뒤에만** 바깥 폭을 상한으로 받는다 — 좁게 선 칸에서 카드

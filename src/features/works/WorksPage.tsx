@@ -1031,8 +1031,10 @@ function WorksPage({
                 가운데는 이 틀의 **카드 줄** 가운데다. 한때 그 줄에 spec 패널이 함께 서서 패널에서
                 일어나는 일(트리 복사)까지 말하는 토스트가 둘을 아우른 가운데에 떴다 — 패널이 앱 셸의
                 기둥으로 옮겨(restart 02a-14) 이제 본문 카드의 가운데다. Provider는 앱 루트에 하나고
-                자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면도 제 카드 줄 아래 가운데에 둔다. */}
-            <Toaster />
+                자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면도 제 카드 줄 아래 가운데에 둔다.
+                **넓힌 카드가 서 있으면 그 보기의 자리가 받는다**(`ExpandedViewer` — 채팅 본문의 `toasts={!expanded}`와 같다). 두 자리가 한
+                관리자를 읽으면 같은 토스트가 두 자리에 함께 선다 — 토스트는 한 장이다(S26, 02a-15). */}
+            {right.card.opened === null && <Toaster />}
             {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
           </>
         }

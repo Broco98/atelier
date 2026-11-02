@@ -246,8 +246,9 @@ function ProcessesPage() {
             >
               {/* 몸 — 시안 `.pr-col`: 가운데 · 안쪽 20 28 40 · 사이 12. 폭 상한은 앱의 넓은 폭(1120 — 시안 1080)이다. */}
               <div className="mx-auto flex w-full max-w-(--measure-wide) flex-col gap-3 px-7 pt-5 pb-10">
-                {/* 머리(시안 `.pr-head`) — 화면 이름(24 · 600), 언제 잰 값인지(restart 03-9 · 스토리 129 · 130 · 131), 끝에 할 일. */}
-                <header className="flex min-h-7.5 min-w-0 items-center gap-3">
+                {/* 머리(시안 `.pr-head`) — 화면 이름(24 · 600), 언제 잰 값인지(restart 03-9 · 스토리 129 · 130 · 131), 끝에 할 일.
+                    `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead` · `ListParts`의 맨 위 줄과 같다, 02a-15). */}
+                <div className="flex min-h-7.5 min-w-0 items-center gap-3">
                   <h1 className="shrink-0 text-heading-lg leading-8 tracking-[-0.015em]">{PLACE.label}</h1>
                   <BeatLine beat={beat} />
                   <span className="flex-1" />
@@ -256,7 +257,7 @@ function ProcessesPage() {
                   <Button variant="secondary" size="xs" onClick={() => void closeQuietShells()}>
                     조용한 셸 모두 닫기
                   </Button>
-                </header>
+                </div>
                 <FiguresContext.Provider value={figures}>
                   <EndAskContext.Provider value={asks}>
                     {/* 카드 — CPU · 메모리 · 손볼 것(restart 03-11). */}
