@@ -154,7 +154,7 @@ describe("선택지 — 승인은 단추 줄, 계획은 번호 줄", () => {
     expect(always({ card: "edit", grant: ["edit"] }, "thread")).toBe("이 Thread에서 편집은 늘 허용");
   });
 
-  it("줄 허락이 없으면(ask_before · 그 밖의 도구) 늘 허용 단추가 없다", () => {
+  it("줄 허락이 없으면(앱 경계 · 그 밖의 도구) 늘 허용 단추가 없다", () => {
     expect(row(request(migrate), "work").choices.map(([label]) => label)).toEqual(["아니요, 다르게", "이번만 허용"]);
   });
 
@@ -281,16 +281,16 @@ describe("결정 줄", () => {
 
 // 02 코드 리뷰 A1 — **같은 허락을 화면에서 한 말로 부른다.** 승인 카드의 「이 Work에서 늘 허용」으로 준 허락이 다음 요청을 묻지 않고 넘기면
 // 방패 줄의 까닭이 선다. 엔진은 그 까닭을 옛 이름(「이 Work에서는 다시 묻지 않기」)으로 기록에 적는다 — 엔진 · 기록은 이 판이 바꾸지 않는다
-// (02 구현 스펙 §13). 그래서 화면이 그 까닭을 카드의 말로 읽는다. 지난 기록도 같다. 다른 까닭(물어보는 정도 · `tools.cli`)은 그대로다.
+// (02 구현 스펙 §13). 그래서 화면이 그 까닭을 카드의 말로 읽는다. 지난 기록도 같다. 다른 까닭(물어보는 정도 · 앱 기능 도구)은 그대로다.
 describe("방패 줄의 까닭", () => {
   it("「늘 허용」으로 준 허락의 까닭은 카드의 말이다 — 지난 기록의 옛 이름도", () => {
     expect(autoAllowReason("이 Work에서는 다시 묻지 않기")).toBe("이 Work에서 늘 허용");
     expect(autoAllowReason("이 Thread에서는 다시 묻지 않기")).toBe("이 Thread에서 늘 허용");
   });
 
-  it("물어보는 정도 · `tools.cli`의 까닭은 그대로다", () => {
+  it("물어보는 정도 · 앱 기능 도구의 까닭은 그대로다", () => {
     expect(autoAllowReason("편집은 허용")).toBe("편집은 허용");
     expect(autoAllowReason("알아서")).toBe("알아서");
-    expect(autoAllowReason("「gh」 명령은 묻지 않기")).toBe("「gh」 명령은 묻지 않기");
+    expect(autoAllowReason("앱 기능 도구")).toBe("앱 기능 도구");
   });
 });

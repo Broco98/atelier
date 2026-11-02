@@ -469,9 +469,9 @@ export interface PendingPermission {
   planReview: boolean;
   /** 판정이 세운 카드 종류(v1 티켓 22) — 판정 없이 물은 옛 기록이면 null이다. */
   card: "command" | "edit" | "plan" | null;
-  /** 왜 묻는지 — Policy 이름(「매번 묻기」 · 「「prisma migrate」 실행 전에 묻기」). 없으면 null이다. */
+  /** 왜 묻는지 — 판정이 단 까닭(「매번 묻기」 · 「Thread 기록을 건드리기 전에 묻기」). 없으면 null이다. */
   policy: string | null;
-  /** 「다시 묻지 않기」를 고르면 줄 허락(규칙 이름들) — 비었으면 카드에 그 선택지가 없다(`ask_before`가 물었다 · 계획 · 그 밖의 도구). */
+  /** 「다시 묻지 않기」를 고르면 줄 허락(규칙 이름들) — 비었으면 카드에 그 선택지가 없다(앱 경계가 물었다 · 계획 · 그 밖의 도구). */
   grant: string[];
 }
 

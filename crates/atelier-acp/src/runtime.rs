@@ -155,7 +155,7 @@ pub(crate) enum Judgement {
     Ask(Asking),
 }
 
-/// 판정이 묻기로 한 까닭 — 세울 카드의 종류와 왜 묻는지(Policy 이름, v1 구현 스펙 §9), 그리고 사람이 「다시 묻지 않기」를 고르면 줄
+/// 판정이 묻기로 한 까닭 — 세울 카드의 종류와 왜 묻는지, 그리고 사람이 「다시 묻지 않기」를 고르면 줄
 /// 허락(v1 티켓 24 — 비었으면 그 선택지가 서지 않는다). 물음 줄의 `card` · `policy` · `grant`가 된다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Asking {

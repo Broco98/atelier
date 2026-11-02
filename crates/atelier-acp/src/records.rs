@@ -38,7 +38,7 @@ pub use atelier_core::{RecordKind, RecordLine};
 #[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub(crate) enum PermissionLine {
     /// 물음 — 요청 params 원문(선택지는 에이전트가 준 그대로)과 도구 요지(빈 칸을 앞선 `tool_call`로 채운 `toolCall`). 판정이
-    /// 물었으면(v1 티켓 22) 세울 카드의 종류(`card`: `command` · `edit` · `plan`)와 왜 묻는지(`policy`: Policy 이름)를 함께 싣는다.
+    /// 물었으면(v1 티켓 22) 세울 카드의 종류(`card`: `command` · `edit` · `plan`)와 왜 묻는지(`policy`)를 함께 싣는다.
     /// 「다시 묻지 않기」를 고르면 줄 허락(`grant`: 규칙 이름들, v1 티켓 24)이 있으면 그것도 싣는다 — 없으면 카드에 그 선택지가 없다.
     Asked {
         request_id: String,

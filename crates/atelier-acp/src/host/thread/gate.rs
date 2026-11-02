@@ -13,7 +13,7 @@
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
 //!   `..`는 링크를 푼 뒤에 접는다(코드 리뷰 2차 A2) — 링크 뒤의 `..`가 고칠 수 있는 자리 · Thread 기록 판정을 비켜 가지 않게.
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
-//!   **거절**은 거부 선택지로 닫고 글을 Agent에게 준다. **물음**은 카드 종류 · Policy 이름 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
+//!   **거절**은 거부 선택지로 닫고 글을 Runtime에게 준다. **물음**은 카드 종류 · 왜 묻는지 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
 //!   달고, 선택지와 함께 적어 둔다(사람이 편집을 허락하면 쥐고, 다시 묻지 않기를 고르면 그 허락을 적는다 — v1 티켓 24). 고를 선택지가
 //!   없는 요청은 사람에게 묻는다.
 
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use atelier_core::PolicyPlace;
 
 use super::seat::{allowing, options_of, rejecting, Writer};
-use crate::policy::{self, Act, AskLevel, Card, Case, Policy, Verdict};
+use crate::policy::{self, Act, AskLevel, Card, Case, Verdict};
 use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 
 /// Session 하나의 판정 문 — Session을 열 때마다 짓는다.
@@ -43,7 +43,7 @@ impl Gate {
     }
 
     fn rule(&self, asked: &PermissionAsked) -> Judgement {
-        // Agent의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「알아서」
+        // Runtime의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「알아서」
         // 여도). Runtime이 물음들을 `_meta.atelier.questions`에 실었다(Claude 변환기 — `AskUserQuestion`).
         if asked.request["_meta"]["atelier"]["questions"].is_array() {
             let question = Asking { card: Card::Question, policy: String::new(), grant: Vec::new() };
@@ -70,9 +70,6 @@ impl Gate {
         let seat = if editing { self.writer.blocker() } else { None };
         let verdict = policy::judge(&Case {
             act: &act,
-            // Agent 규칙을 읽을 정의가 없어 늘 비었다.
-            policy: &Policy::default(),
-            cli: &[],
             level,
             grants: &grants,
             in_work: work.is_some(),

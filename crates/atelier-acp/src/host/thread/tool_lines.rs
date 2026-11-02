@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::seat::ends_turn;
 use crate::runtime::{RuntimeEvent, Sink};
-use crate::thread_tools::SERVER_NAME;
+use crate::thread_tools::app_tool;
 
 /// 도구 줄을 기다리는 한도 — 줄이 늦는 것은 부하 탓이라 보통은 곧바로 온다.
 const LIMIT: Duration = Duration::from_secs(5);
@@ -74,7 +74,7 @@ fn thread_tool(raw: &Value) -> Option<String> {
         return None;
     }
     let name = update["_meta"]["claudeCode"]["toolName"].as_str().or_else(|| update["title"].as_str())?;
-    name.strip_prefix("mcp__")?.strip_prefix(SERVER_NAME)?.strip_prefix("__").map(str::to_owned)
+    app_tool(name).map(str::to_owned)
 }
 
 #[cfg(test)]

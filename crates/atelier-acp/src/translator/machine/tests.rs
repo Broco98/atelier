@@ -562,7 +562,7 @@ fn 모델_생각_깊이와_mcp_서버는_새로_열기와_이어_열기_모두_c
 
 #[test]
 fn meta의_지운_칸은_읽지_않아_claude가_기본_도구_전부로_뜬다() {
-    let args = launched_with(json!({"builtinTools": ["read"], "forbid": ["push"], "instructionsFile": "/old/host.instructions.md"}));
+    let args = launched_with(json!({"builtinTools": ["read"], "instructionsFile": "/old/host.instructions.md"}));
     for name in ["--tools", "--disallowedTools", "--append-system-prompt-file"] {
         assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
     }

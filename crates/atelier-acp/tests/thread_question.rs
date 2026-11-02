@@ -32,6 +32,18 @@ fn refund_questions() -> Value {
     ]})
 }
 
+#[test]
+fn 알아서에서도_질문은_질문_카드로_선다() {
+    let (sandbox, host) = asking_sandbox();
+    let thread = host.start_thread_asking("환불 수수료를 정해 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto)).expect("알아서로 새 Thread");
+
+    let asked = wait_line(&sandbox, &thread, "question", "asked", 1);
+    assert_eq!(asked["payload"]["questions"][0]["question"], FEE, "{asked}");
+    assert!(of_kind(&sandbox.thread_record(&thread), "permission").is_empty(), "판정 줄 없이 질문 카드다");
+
+    host.shut_down();
+}
+
 /// Host의 턴 둘이 각각 사람에게 묻는다(녹음 `thread-question-host`).
 fn asking_sandbox() -> (Sandbox, atelier_acp::ConversationHost) {
     let sandbox = Sandbox::new();

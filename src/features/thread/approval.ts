@@ -7,8 +7,8 @@ import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFiel
 // 카드의 값(머리 한 줄 · 물음 · 어디서 한 줄 · 명령이나 diff), 선택지, 키 하나의 고르기로 옮기고, 사람이 고른 것(`DecisionEntry`)을
 // 결정 줄의 글로 옮기는 **순수 함수**다. 그리는 것은 `ApprovalCard` · `ThreadFlow`다.
 //
-// - **머리 한 줄이 누가 · 무슨 일 · 왜 묻는지다** — 「Host · 명령 실행 · 「스키마를 바꾸기 전에 묻기」」. 왜는 판정이 물음 줄에 단 Policy
-//   규칙 이름(`policy`, v1 티켓 22)이고, 없으면 그 조각을 뺀다. Runtime이 준 까닭(Claude `decision_reason` — 「This command requires
+// - **머리 한 줄이 누가 · 무슨 일 · 왜 묻는지다** — 「Host · 명령 실행 · 「Thread 기록을 건드리기 전에 묻기」」. 왜는 판정이 물음 줄에 단
+//   까닭(`policy`, v1 티켓 22)이고, 없으면 그 조각을 뺀다. Runtime이 준 까닭(Claude `decision_reason` — 「This command requires
 //   approval」)은 쓰지 않는다: Atelier가 하나뿐인 판정자다(S17). 머리가 Agent를 말하니 보이는 물음은 이름 없이 선다(「이 명령을 실행해도
 //   될까요?」) — 카드의 이름(`label`)은 누가 묻는지까지 든 물음이다.
 // - **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16) — 갈래는 요청 `toolCall`의 kind다. 명령 · 경로는 흐름의 그 도구
@@ -16,8 +16,8 @@ import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFiel
 // - **승인 카드는 단추 줄이다**(02 §10) — 왼쪽에서 「아니요, 다르게」(esc) · 「이 Work에서 늘 허용」 · 맨 오른쪽 「이번만 허용」(↵).
 //   Runtime의 선택지 이름이 아니라 `kind`로 고른다: 허용 둘은 이번만 허락(`allow_once`), 「아니요」는 이번만 거부(`reject_once`)다 — 「이
 //   대화에서 허락」(Claude `allow_always`)은 Runtime이 기억해 판정에 오지 않게 하므로 고르지 않는다(v1 티켓 22와 같은 까닭). 기억은
-//   Atelier가 한다: 「늘 허용」은 판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(`ask_before`가 물었다 ·
-//   그 밖의 도구)에는 그 단추가 서지 않는다(허락은 `ask_before`를 넘기지 못한다). 「아니요, 다르게」는 카드 안에 입력칸을 열고, 보내면
+//   Atelier가 한다: 「늘 허용」은 판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(앱 경계가 물었다 ·
+//   그 밖의 도구)에는 그 단추가 서지 않는다(허락은 앱 경계를 넘기지 못한다). 「아니요, 다르게」는 카드 안에 입력칸을 열고, 보내면
 //   거부와 그 말이 Agent에게 간다. **숫자 키는 없다**(S25 — 단추 줄의 눈 차례와 숫자 차례가 엇갈린다).
 // - **계획 넘어가기**(kind `switch_mode`, v1 티켓 26 · 스토리 88)는 번호 줄 그대로다 — 엔진의 두 선택지를 「계획대로 구현」 · 「계획 다시
 //   쓰기」로 부르고, 다시 쓰기가 고칠 점 입력칸을 연다 — 보내면 그 말이 고정 문구와 함께 Agent에게 간다(Claude 변환기). 허락 · 거부
@@ -28,7 +28,7 @@ export type CardKind = "command" | "edit" | "plan" | "other";
 
 export interface ApprovalView {
   kind: CardKind;
-  /** 머리 한 줄 — 「Host · 명령 실행 · 「스키마를 바꾸기 전에 묻기」」. 규칙 이름이 없으면 「Host · 명령 실행」이다. */
+  /** 머리 한 줄 — 「Host · 명령 실행 · 「Thread 기록을 건드리기 전에 묻기」」. 까닭이 없으면 「Host · 명령 실행」이다. */
   head: string;
   /** 보이는 물음(14/500) — 「이 명령을 실행해도 될까요?」. */
   title: string;
@@ -318,7 +318,7 @@ const ENGINE_GRANT_REASONS: Readonly<Record<string, string>> = {
 
 /**
  * 방패 줄의 까닭(v1 티켓 23 · `WorkLog`의 `AutoLine`) — 판정이 묻지 않고 허용한 까닭을 화면의 말로. 「늘 허용」으로 준 허락이면 카드의 말이고
- * (`ENGINE_GRANT_REASONS`), 물어보는 정도(「편집은 허용」) · `tools.cli`(「「gh」 명령은 묻지 않기」)의 까닭은 엔진이 적은 그대로다.
+ * (`ENGINE_GRANT_REASONS`), 물어보는 정도(「편집은 허용」) · 앱 기능 도구(「앱 기능 도구」)의 까닭은 엔진이 적은 그대로다.
  */
 export function autoAllowReason(reason: string): string {
   return ENGINE_GRANT_REASONS[reason] ?? reason;

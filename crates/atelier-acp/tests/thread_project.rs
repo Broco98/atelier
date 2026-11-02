@@ -204,7 +204,7 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
         "옮겨 연 Session에는 머리말을 다시 붙여 새 자리를 알린다: {prompt}"
     );
 
-    // 붙인 뒤에는 그 worktree 안의 편집이 허용된다(§9 2번 칸).
+    // 붙인 뒤에는 그 worktree 안의 편집이 허용된다(앱 경계).
     let decided: Vec<&Value> =
         of_kind(&record, "permission").into_iter().filter(|line| line["payload"]["state"] == "decided").collect();
     let last = decided.last().expect("판정 줄");

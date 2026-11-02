@@ -9,7 +9,7 @@
 //!   - 붙이고 고치기: Project를 Work에 붙이고(`work` 줄 `attached`) worktree를 만든다. 붙이지 못하면(core가 거절) 아무것도 적지 않고
 //!     카드가 그대로 선다.
 //!   - 읽기만 하기: `thread.json`의 `readOnlyProjects`에 적는다 — 다음 턴부터 그 Project 폴더를 함께 연다(S11). 고칠 수 있는 자리가 아니므로
-//!     고치기는 판정이 계속 거절한다(§9 2번 칸).
+//!     고치기는 판정이 계속 거절한다(앱 경계).
 //!   - 아니요: 거절 글을 도구의 실패로 돌려준다.
 //! - **Work 없는 Thread · 등록되지 않은 Project**면 카드를 세우지 않고 그 까닭을 도구의 실패로 돌려준다 — 붙일 Work가 없다.
 //! - worktree를 짓는 일은 호스트에서 하나씩이다 — 두 Agent가 같은 Project를 함께 시작해도 git worktree를 두 번 짓지 않는다.

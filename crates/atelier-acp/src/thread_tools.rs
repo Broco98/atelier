@@ -37,6 +37,11 @@ pub const THREAD_TOOLS_MODE: &str = "thread-tools";
 /// (§7) — 이름이 같으면 한쪽이 다른 쪽을 가린다.
 pub(crate) const SERVER_NAME: &str = "atelier-thread";
 
+/// Runtime의 도구 이름이 앱 기능 도구면 그 도구 이름 — Claude Code는 `mcp__<서버>__<도구>`로 부른다.
+pub(crate) fn app_tool(name: &str) -> Option<&str> {
+    name.strip_prefix("mcp__")?.strip_prefix(SERVER_NAME)?.strip_prefix("__")
+}
+
 /// 이 서버가 말하는 MCP 판 — 새것부터. 클라이언트가 이 가운데 하나를 물으면 그것으로, 아니면 맨 앞의 것으로 답한다. 쓰는 것(도구
 /// 목록 · 부르기 · 글 결과)은 네 판이 같다.
 const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];

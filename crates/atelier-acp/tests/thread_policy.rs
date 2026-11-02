@@ -1,6 +1,6 @@
-//! L1 — Thread의 승인은 판정 하나를 거친다(v1 티켓 22 · 구현 스펙 §9 · S17 · S18 · S19). Thread의 Session에 온 권한 요청은 모두
-//! 판정을 지나 — 허용이면 묻지 않고 허락하며 까닭과 함께 `permission` 줄(`decided`)로 남고, 거절이면 묻지 않고 Agent에게 글을
-//! 돌려주며, 물음이면 카드 종류와 Policy 이름을 단 물음 줄이 선다. `claude`는 기본 모드로만(「계획만」이면 계획 모드로) 뜬다.
+//! L1 — Thread의 승인은 판정 하나를 거친다(v1 티켓 22 · 구현 스펙 「01a — 권한」 · S17 · S18). Thread의 Session에 온 권한 요청은 모두
+//! 판정을 지나 — 허용이면 묻지 않고 허락하며 까닭과 함께 `permission` 줄(`decided`)로 남고, 거절이면 묻지 않고 Runtime에게 글을
+//! 돌려주며, 물음이면 카드 종류와 왜 묻는지를 단 물음 줄이 선다. `claude`는 기본 모드로만(「계획만」이면 계획 모드로) 뜬다.
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 기록(`events.jsonl`) · 가짜 claude의 영수증(받은 인자 · stdin 줄)만 본다. 판정 표의 모든
 //! 갈래는 판정 함수의 표 검사(`src/policy.rs`)가 덮는다 — 여기서는 엔진에 이어졌는지를 본다.
@@ -63,6 +63,58 @@ fn permission_mode(args: &[String]) -> Option<&str> {
 fn answer(host: &ConversationHost, thread: &str, asked: &Value, option: &str) {
     let request = asked["payload"]["requestId"].as_str().expect("요청 id");
     host.answer_thread_permission(thread, request, option).expect("사람의 답");
+}
+
+/// 녹음의 `Write`가 `tool`을 부르는 권한 요청이 되는 첫 말의 Thread — 판정의 문은 Claude 변환기가 실은 도구 이름을 읽는다.
+fn thread_asking_for(sandbox: &Sandbox, tool: &str, level: AskLevel) -> (ConversationHost, String) {
+    let renamed = format!("Write={tool}");
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_REROOT", &renamed)],
+    ));
+    let thread = host.start_thread_asking("이것을 해 줘", &[], ThreadLink::NoWork, Some(level)).expect("새 Thread");
+    (host, thread)
+}
+
+/// 물음 줄 없이 판정 줄 하나로 지나갔는지 보고 그 까닭을 돌려준다.
+fn passed_without_card(sandbox: &Sandbox, thread: &str, tool: &str) -> Value {
+    let decided = wait_permission(sandbox, thread, "decided");
+    let record = sandbox.thread_record(thread);
+    assert_eq!(permissions(&record).len(), 1, "물음 줄이 없다:\n{}", common::lines_text(&record));
+    assert_eq!(decided["payload"]["toolCall"]["_meta"]["claudeCode"]["toolName"], tool);
+    assert_eq!(decided["payload"]["optionId"], "allow_once");
+    assert_eq!(decisions(sandbox, &sandbox.thread_session_id(thread))[0]["behavior"], "allow");
+    decided["payload"]["reason"].clone()
+}
+
+#[test]
+fn 알아서에서_웹과_다른_mcp는_묻지_않고_허용_줄로_남는다() {
+    for tool in ["WebFetch", "mcp__plain__search"] {
+        let sandbox = Sandbox::new();
+        let (host, thread) = thread_asking_for(&sandbox, tool, AskLevel::Auto);
+        assert_eq!(passed_without_card(&sandbox, &thread, tool), json!("알아서"), "{tool}");
+        host.shut_down();
+    }
+}
+
+#[test]
+fn 앱_기능_도구는_어떤_모드에서도_승인_카드_없이_지나간다() {
+    let tool = "mcp__atelier-thread__get_work";
+    for level in [AskLevel::Always, AskLevel::Edits, AskLevel::Plan, AskLevel::Auto] {
+        let sandbox = Sandbox::new();
+        let (host, thread) = thread_asking_for(&sandbox, tool, level);
+        assert_eq!(passed_without_card(&sandbox, &thread, tool), json!("앱 기능 도구"), "{level:?}");
+        host.shut_down();
+    }
+}
+
+#[test]
+fn 다른_mcp는_알아서가_아니면_승인_카드가_선다() {
+    let sandbox = Sandbox::new();
+    let (host, thread) = thread_asking_for(&sandbox, "mcp__plain__search", AskLevel::Edits);
+    let asked = wait_permission(&sandbox, &thread, "asked");
+    assert_eq!((asked["payload"]["card"].clone(), asked["payload"]["policy"].clone()), (json!("command"), json!("편집은 허용")));
+    host.shut_down();
 }
 
 #[test]

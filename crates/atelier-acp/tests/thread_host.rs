@@ -46,7 +46,7 @@ fn 옛_library의_정의는_읽지_않아_고르지_않으면_모델_생각_깊�
     let library = sandbox.data_root().join("library/agents");
     std::fs::create_dir_all(&library).unwrap();
     let definition = library.join("host.md");
-    let narrow = "---\nmodel:\n  prefer: sonnet\n  effort: high\ntools:\n  builtin: [read]\npolicy:\n  forbid: [shell]\n---\n";
+    let narrow = "---\nmodel:\n  prefer: sonnet\n  effort: high\ntools:\n  builtin: [read]\n---\n";
     std::fs::write(&definition, narrow).unwrap();
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
 

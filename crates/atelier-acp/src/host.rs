@@ -537,8 +537,8 @@ pub enum HostError {
     PermissionClosed { thread: String, request: String },
     /// 그 권한 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
     PermissionOption { request: String, option: String },
-    /// 「다시 묻지 않기」를 줄 수 없는 답(v1 티켓 24) — 판정이 그 물음에 허락을 내지 않았거나(`ask_before`가 물었다 · 계획 넘어가기 ·
-    /// 그 밖의 도구) 허락하는 선택지가 아니다. 아무것도 적지 않았고 요청은 그대로 걸려 있다.
+    /// 「다시 묻지 않기」를 줄 수 없는 답(v1 티켓 24) — 판정이 그 물음에 허락을 내지 않았거나(앱 경계가 물었다 · 계획 넘어가기 · 그 밖의
+    /// 도구) 허락하는 선택지가 아니다. 아무것도 적지 않았고 요청은 그대로 걸려 있다.
     PermissionNoGrant { request: String },
     /// 질문 카드의 요청에 권한 답을 주었다(v1 티켓 26) — 질문은 질문의 답(물음마다의 답 · 나중에)으로만 닫는다. 요청은 그대로 걸려 있다.
     NotPermission { request: String },
@@ -597,7 +597,7 @@ impl fmt::Display for HostError {
                 write!(f, "이미 닫힌 권한 요청입니다. 답했거나 거둬진 요청에는 답할 수 없습니다")
             }
             HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
-            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「늘 허용」으로 허락할 수 없어요 — Policy가 매번 묻게 한 일이에요"),
+            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「늘 허용」으로 허락할 수 없어요 — 매번 물어야 하는 일이에요"),
             HostError::NotPermission { .. } => write!(f, "질문에는 답이나 「나중에」로 답해 주세요"),
             HostError::NotQuestion { .. } => write!(f, "질문이 아닌 요청이에요 — 승인 카드에서 골라 주세요"),
             HostError::LoginRequired { agent, .. } => {
