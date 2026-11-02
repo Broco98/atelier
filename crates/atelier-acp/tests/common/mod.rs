@@ -320,6 +320,37 @@ impl Sandbox {
         self.receipts().join("acp")
     }
 
+    // ── Codex(restart 01c-3) ────────────────────────────────────────────────────
+
+    /// Codex 채팅의 로그인 셸 — 로그인 검사의 PATH(`codex-acp`는 가짜 ACP 에이전트, `codex`는 가짜 codex, `node`는 찾기만 하는 가짜)에, 가짜 ACP가
+    /// 진짜 codex-acp 2.2.2의 녹음(`codex-acp-2.2.2/<이름>`)을 재생하게 하는 값을 싣는다. 호스트가 띄우는 `codex-acp`까지 닿는 길은 로그인
+    /// env뿐이다.
+    pub fn codex_login_shell(&self, fixture: &str, extra: &[(&str, &str)]) -> ShellSource {
+        let mut env = vec![("FAKE_ACP_FIXTURE", fixture)];
+        env.extend_from_slice(extra);
+        self.login_shell_for_login("replay", NO_BROWSER, &env)
+    }
+
+    /// 가짜 ACP 에이전트가 그 세션 id로 `session/new`를 받아 남긴 영수증 — pid · 받은 env · `initialize`와 `session/new`의 인자.
+    pub fn acp_receipt(&self, session_id: &str) -> Value {
+        receipt_at(&self.acp_receipts().join(format!("{session_id}.json")))
+    }
+
+    /// 가짜 ACP 에이전트가 받은 되살리기(`session/resume` · `session/load`)마다 `{pid, method, params, ok}` — 받은 차례대로.
+    pub fn acp_revivals(&self) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join("revivals"))
+    }
+
+    /// 가짜 ACP 에이전트가 뜰 때마다(`initialize`를 받을 때마다) 남긴 `{pid}`.
+    pub fn acp_launches(&self) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join("launches"))
+    }
+
+    /// 가짜 ACP 에이전트가 그 세션에서 받은 `session/prompt`의 인자들.
+    pub fn acp_prompts(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join(format!("{session_id}.prompts")))
+    }
+
     // ── Thread(v1 티켓 04) ──────────────────────────────────────────────────────
 
     /// Thread 폴더 `threads/<id>`.

@@ -20,7 +20,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use atelier_core::PolicyPlace;
+use atelier_core::{PolicyPlace, Runtime};
 
 use super::seat::{allowing, options_of, rejecting, Writer};
 use crate::policy::{self, Act, AskLevel, Card, Case, Verdict};
@@ -30,6 +30,8 @@ use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 pub(super) struct Gate {
     pub(super) data_root: PathBuf,
     pub(super) thread: String,
+    /// 이 채팅의 Runtime — 판정의 갈래가 Runtime마다 다르다(restart 스펙 「01c — Codex」 권한 판정).
+    pub(super) runtime: Runtime,
     /// 이 Session의 작업 폴더 — 상대 경로를 여기서 푼다.
     pub(super) cwd: PathBuf,
     pub(super) writer: Arc<Writer>,
@@ -53,6 +55,12 @@ impl Gate {
             Act::Edit(paths) => Act::Edit(paths.iter().map(|path| resolve(path, &self.cwd)).collect()),
             act => act,
         };
+        // Codex 채팅은 Claude의 판정 표를 지나지 않고 카드로 묻는다 — 표의 정도(「편집 자동」 · 「묻지 않음」)가 Codex의 요청을 저절로 허용하지
+        // 않게. 정도는 Claude 채팅만 읽으므로 까닭으로 달지 않고, 「다시 묻지 않기」로 줄 허락도 없다. Codex의 판정은 restart 01c-7이 짓는다.
+        if self.runtime == Runtime::Codex {
+            let card = Asking { card: act.card(), policy: String::new(), grant: Vec::new() };
+            return self.ask(asked, &act, options_of(&asked.request), card);
+        }
         let editing = matches!(act, Act::Edit(_));
         // 이은 Work는 쓰기 자리 손이 든다 — Work 만들기 카드로 턴 가운데 이어져도 다음 요청부터 그 Work다(v1 티켓 30).
         let work = self.writer.work();

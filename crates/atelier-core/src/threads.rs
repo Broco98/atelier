@@ -21,8 +21,31 @@ const THREAD_FILE: &str = "thread.json";
 const RECORD_FILE: &str = "events.jsonl";
 /// Work 없는 Thread의 작업 폴더 이름 — Thread 폴더 안에 선다([`thread_work_dir`]).
 const WORK_DIR: &str = "work";
-/// 지금 띄우는 Runtime 하나(S3) — 새 Thread가 이 값으로 선다.
-const RUNTIME: &str = "claude-code";
+
+/// 채팅을 돌리는 Runtime(restart 스펙 「01c — Codex」) — `thread.json`의 `runtime` 값이다. 새 채팅에서만 고르고 턴이 시작되면 잠긴다. 기본은
+/// Claude Code다. `thread.json`의 칸은 글자로 둔다 — 다른 판의 앱이 쓴 모르는 값을 깨진 파일로 보지 않게. 읽는 쪽이 [`Runtime::of`]로 가른다.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Runtime {
+    #[default]
+    ClaudeCode,
+    Codex,
+}
+
+impl Runtime {
+    /// `thread.json`에 적히는 값.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Runtime::ClaudeCode => "claude-code",
+            Runtime::Codex => "codex",
+        }
+    }
+
+    /// `thread.json`의 값에서 — 이 판이 모르는 값이면 없다.
+    pub fn of(value: &str) -> Option<Self> {
+        [Runtime::ClaudeCode, Runtime::Codex].into_iter().find(|runtime| runtime.as_str() == value)
+    }
+}
 
 /// `thread.json` 한 장(v1 구현 스펙 §4 표). 칸이 빠진 파일도 읽힌다 — 다른 판의 앱이 쓴 파일을 깨진 것으로 보지 않게.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -40,8 +63,8 @@ pub struct ThreadFile {
     /// 물어보는 정도. Work가 없을 때만 쓴다(v1 구현 스펙 §9 · S18).
     #[serde(default)]
     pub mode: Option<String>,
-    /// Runtime 이름(`claude-code`) — 채팅 하나가 Runtime 세션 하나다. 이 값이 없는 폴더는 옛 판의 것이라 목록에서 빠지고 없는 Thread처럼
-    /// 읽힌다(스펙 「옛 기록」, [`Loaded::Old`]).
+    /// Runtime 이름(`claude-code` · `codex` — [`Runtime`]) — 채팅 하나가 Runtime 세션 하나다. 이 값이 없는 폴더는 옛 판의 것이라 목록에서
+    /// 빠지고 없는 Thread처럼 읽힌다(스펙 「옛 기록」, [`Loaded::Old`]).
     #[serde(default)]
     pub runtime: Option<String>,
     /// Runtime의 세션 id — 다시 열 때 이 세션을 잇는다. Session이 처음 열리면 선다.
@@ -84,6 +107,8 @@ pub struct ThreadFile {
 /// 새 Thread의 처음 값 — 나머지 칸은 비어서 선다(세션 id · 작업 폴더는 엔진이 Session을 연 뒤 적는다).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NewThread {
+    /// 새 채팅에서 고른 Runtime — [`ThreadFile::runtime`]. 고르지 않으면 Claude Code다.
+    pub runtime: Runtime,
     pub title: String,
     pub work: Option<String>,
     pub mode: Option<String>,
@@ -135,7 +160,8 @@ pub(crate) fn create_thread_at(
         project: thread.project,
         model: thread.model,
         effort: thread.effort,
-        ..blank_thread()
+        runtime: Some(thread.runtime.as_str().to_owned()),
+        ..ThreadFile::default()
     };
     crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "채팅을")?;
     let mut log = RecordLog::open(&dir.join(RECORD_FILE))?;
@@ -143,9 +169,10 @@ pub(crate) fn create_thread_at(
     Ok(CreatedThread { id, log, first, file })
 }
 
-/// 빈 채팅 값 — 새로 쓰는 `thread.json`은 늘 Runtime 값을 든다. 없으면 옛 폴더로 읽혀 목록에서 빠진다.
+/// 빈 채팅 값 — 사라졌거나 깨진 `thread.json`을 다시 쓸 때의 바탕이다. 새로 쓰는 `thread.json`은 늘 Runtime 값을 든다. 없으면 옛 폴더로
+/// 읽혀 목록에서 빠진다. 깨진 파일의 Runtime은 읽을 수 없어 기본값(Claude Code)으로 선다 — 세션 id도 함께 사라져 다음 열기는 새 세션이다.
 fn blank_thread() -> ThreadFile {
-    ThreadFile { runtime: Some(RUNTIME.to_owned()), ..ThreadFile::default() }
+    ThreadFile { runtime: Some(Runtime::default().as_str().to_owned()), ..ThreadFile::default() }
 }
 
 /// 그 시각의 id로 Thread 폴더를 잡는다(S5) — `YYYYMMDD-HHMMSS`, 그 이름의 폴더가 이미 있으면 `-2` · `-3` ….
@@ -493,6 +520,24 @@ mod tests {
             (1, RecordKind::Sent, &json!({"text": "카트를 고쳐 줘"}))
         );
         assert_eq!(read_thread(root.path(), &created.id).unwrap().title, "카트 고치기");
+    }
+
+    /// restart 스펙 「01c — Codex」 — **새 채팅은 고른 Runtime으로 선다.** 고르지 않으면 Claude Code다.
+    #[test]
+    fn 새_채팅은_고른_runtime으로_서고_고르지_않으면_claude_code다() {
+        let root = tempfile::tempdir().unwrap();
+        let codex = NewThread { runtime: Runtime::Codex, ..new_thread("Codex 채팅") };
+        let picked = create(root.path(), "2026-10-23T21:05:09.000+09:00", codex, "말").id;
+        let plain = create(root.path(), "2026-10-23T21:05:10.000+09:00", new_thread("그냥 채팅"), "말").id;
+
+        assert_eq!(raw_thread_json(root.path(), &picked)["runtime"], "codex");
+        assert_eq!(read_thread(root.path(), &picked).unwrap().runtime.as_deref(), Some("codex"));
+        assert_eq!(raw_thread_json(root.path(), &plain)["runtime"], "claude-code");
+        let updated = update_thread(root.path(), &picked, |thread| thread.last_read = 2).unwrap();
+        assert_eq!(updated.runtime.as_deref(), Some("codex"), "다시 써도 Runtime은 그대로다");
+        assert_eq!(Runtime::of("codex"), Some(Runtime::Codex));
+        assert_eq!(Runtime::of("claude-code"), Some(Runtime::ClaudeCode));
+        assert_eq!(Runtime::of("gemini"), None, "모르는 Runtime은 읽지 않는다");
     }
 
     /// S5 — **같은 초에 선 Thread는 `-2` · `-3`을 붙여 따로 선다.** 앞 Thread의 폴더와 기록은 그대로다.

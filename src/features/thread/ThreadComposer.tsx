@@ -7,7 +7,17 @@ import { useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
-import { AskChip, LockedWorkChip, ModelChip, NewWorkChip, ScopeChip, ScopeLineText, type ComposerTray } from "./ComposerChips";
+import {
+  AskChip,
+  LockedWorkChip,
+  ModelChip,
+  NewWorkChip,
+  RuntimeChip,
+  ScopeChip,
+  ScopeLineText,
+  type ComposerTray,
+  type RuntimeChoice,
+} from "./ComposerChips";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
 import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
@@ -81,6 +91,11 @@ export interface ThreadComposerProps {
   tray?: ComposerTray;
   /** 비어 있을 때의 말 — 새 채팅이 시작할 곳을 따른다(`startPlaceholder`). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
   placeholder?: string;
+  /**
+   * 그 채팅의 Runtime(restart 01c-3) — 모델 칩 앞에 선다. 새 채팅이면 고르기(`onPick`)가 함께 오고, 턴이 시작된 채팅은 이름만 선다. 첫 말을 보내는
+   * 중(`busy`)에도 잠긴다 — Runtime은 그 말과 함께 떠났다.
+   */
+  runtime?: RuntimeChoice;
 }
 
 function ThreadComposer({
@@ -104,6 +119,7 @@ function ThreadComposer({
   onLevel,
   tray,
   placeholder,
+  runtime,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
   // 바깥이 이 입력창을 채웠다(주소의 입력 글 씨앗 · PR 카드 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
@@ -318,6 +334,7 @@ function ThreadComposer({
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", busy && "pointer-events-none opacity-50")}>
               <AskChip level={level} onLevel={onLevel} open={asking} onOpenChange={setAsking} />
               <span className="min-w-0 flex-1" />
+              {runtime && <RuntimeChip value={runtime.value} onPick={busy ? undefined : runtime.onPick} />}
               <ModelChip
                 models={models}
                 model={model}

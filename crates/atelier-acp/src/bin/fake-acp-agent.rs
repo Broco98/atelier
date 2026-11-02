@@ -21,7 +21,8 @@
 //! - `FAKE_ACP_AUTH_PAUSES` — 있으면 `needs-auth`가 로그인이 풀린 채 받은 프롬프트를 `<세션 id>.go`가 설 때까지
 //!   붙잡은 뒤 `-32000`으로 답한다 — 대기 줄에 말이 든 채로 로그인이 풀려 끝나는 턴을 잰다(three-axes 티켓 07 · 12).
 //! - `FAKE_ACP_PERMISSION_TOOL_CALL` — `bare`면 `asks-permission`의 권한 요청 `toolCall`에 `toolCallId` · `kind` ·
-//!   `status`만 싣는다(codex의 MCP 승인 모양 — 워크플로 G12). 런타임이 앞선 `tool_call`로 채우는지 잰다.
+//!   `status`만 싣는다(codex의 MCP 승인 모양 — 워크플로 G12). 런타임이 앞선 `tool_call`로 채우는지 잰다. `edit`이면 작업 폴더 안
+//!   `permission.txt`의 편집을 묻는다(codex의 편집 승인 모양 — 녹음 `edit`, restart 티켓 01c-3).
 //! - `FAKE_ACP_PERMISSION_WITHDRAWS` — 있으면 `asks-permission`이 권한을 묻고 **답을 기다리지 않고** 턴을 끝낸다.
 //! - `FAKE_ACP_PERMISSION_OUT_OF_TURN` — 있으면 `asks-permission`이 턴을 먼저 끝내고(`end_turn`) 그 뒤에 묻는다 — 턴 밖에서
 //!   걸린 권한이다. 답 뒤의 도구 update도 턴 밖에서 온다.
@@ -29,6 +30,8 @@
 //!   저장소가 비었다(three-axes 티켓 10). 없으면 이 영수증 폴더에 `<세션 id>.json`이 있는 세션(가짜가 연 세션)을 안다.
 //! - `FAKE_ACP_DIES_ASKING` — 있으면 `dies-mid-turn`이 죽기 전에 권한을 묻고, `<세션 id>.go`가 설 때까지 기다렸다 죽는다 —
 //!   권한이 걸린 채 죽는 갈래(three-axes 티켓 10).
+//! - `FAKE_ACP_REFUSES_RESUME` — 있으면 아는 세션이어도 `session/resume`을 모르는 세션으로 거절한다 — `session/load`는 받는다. 재개
+//!   차례(resume → load)의 둘째 칸을 잰다(restart 티켓 01c-3).
 //! - `FAKE_ACP_REVIVE_HOLDS` — 있으면 아는 세션의 되살리기(`session/resume` · `session/load`)를 답하기 전에 `<세션 id>.go`가 설
 //!   때까지 붙잡는다 — 되살리는 동안 온 명령(칩의 바꾸기)을 잰다.
 //! - `FAKE_ACP_LINGERS` — 있으면 시나리오가 끝나도(stdin이 닫혀도) 끝나지 않는다 — `ignores-shutdown`처럼 끄기가 1초 한도를 다
@@ -416,7 +419,7 @@ impl Play {
     /// 받은 요청 하나.
     fn request(&mut self, fake: &mut Fake, method: &str, id: Value, params: &Value) {
         let reviving = matches!(method, "session/resume" | "session/load");
-        if reviving && !fake.knows_session(params) {
+        if reviving && !fake.knows_session(method, params) {
             return generic_answer(fake, method, &id, params);
         }
         let Some((recorded, skipped)) = self.script.seek(method) else { return generic_answer(fake, method, &id, params) };
@@ -861,6 +864,11 @@ fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: b
     let tool_call = match std::env::var("FAKE_ACP_PERMISSION_TOOL_CALL").as_deref() {
         // codex의 MCP 승인 모양 — 제목도 입력도 없다(워크플로 G12).
         Ok("bare") => json!({"toolCallId": call, "kind": "execute", "status": "pending"}),
+        // codex의 편집 승인 모양(녹음 `edit`) — 작업 폴더 안 파일 하나다.
+        Ok("edit") => {
+            let inside = fake.spec_dir.clone().expect("세션이 열린 뒤에만 턴이 돈다").join("permission.txt");
+            json!({"toolCallId": call, "title": "Edit files", "locations": [{"path": inside}], "kind": "edit", "status": "pending"})
+        }
         _ => json!({"toolCallId": call, "title": "Run command",
                     "rawInput": {"command": format!("\"{PERMISSION_COMMAND}\""), "cwd": "/tmp/fake-worktree"},
                     "kind": "execute", "status": "pending"}),
@@ -1271,7 +1279,7 @@ impl Fake {
     /// 앞서 무엇을 바꿨든 config 기본값이다(three-axes 결정 27). load는 답 전에 과거를 되감고 답 뒤에 줄 하나를 더 보낸다.
     fn revive(&mut self, id: &Value, method: &str, params: &Value) {
         let session_id = params["sessionId"].as_str().unwrap_or_default().to_owned();
-        let known = self.knows_session(params);
+        let known = self.knows_session(method, params);
         let receipt = json!({"pid": std::process::id(), "method": method, "params": params, "ok": known});
         self.append_shared("revivals", &receipt.to_string());
         if !known {
@@ -1304,11 +1312,12 @@ impl Fake {
         }
     }
 
-    /// 되살리라는 세션(`params.sessionId`)을 아나 — 이 영수증 폴더에 `<세션 id>.json`이 있는 세션(가짜가 연 세션)이다.
-    /// `FAKE_ACP_FORGETS`면 모른다(세션 저장소가 빈 꼴).
-    fn knows_session(&self, params: &Value) -> bool {
+    /// 되살리라는 세션(`params.sessionId`)을 그 되살리기(`method`)로 열 수 있나 — 이 영수증 폴더에 `<세션 id>.json`이 있는 세션(가짜가 연
+    /// 세션)이다. `FAKE_ACP_FORGETS`면 모른다(세션 저장소가 빈 꼴). `FAKE_ACP_REFUSES_RESUME`면 `session/resume`만 거절한다.
+    fn knows_session(&self, method: &str, params: &Value) -> bool {
         let session_id = params["sessionId"].as_str().unwrap_or_default();
         std::env::var_os("FAKE_ACP_FORGETS").is_none()
+            && !(method == "session/resume" && std::env::var_os("FAKE_ACP_REFUSES_RESUME").is_some())
             && !session_id.is_empty()
             && self.receipts.as_ref().is_some_and(|dir| dir.join(format!("{session_id}.json")).exists())
     }

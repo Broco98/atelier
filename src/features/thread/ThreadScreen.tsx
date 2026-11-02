@@ -47,7 +47,7 @@ import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
-import { runtimeNameOf } from "./runtime";
+import { DEFAULT_RUNTIME, runtimeNameOf, type Runtime } from "./runtime";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
@@ -165,9 +165,11 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「편집 자동」, `?work=`면
   // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다.
-  const [picks, setPicks] = useState<Omit<StartPicks, "service" | "project">>({ mode: null, model: null, effort: null });
+  const [picks, setPicks] = useState<Omit<StartPicks, "runtime" | "service" | "project">>({ mode: null, model: null, effort: null });
+  // 이 채팅을 돌릴 Runtime(스토리 30) — 새 채팅에서만 고르고 첫 말과 함께 간다. 첫 말을 보내면 입력창이 칩을 잠근다(스토리 31).
+  const [runtime, setRuntime] = useState<Runtime>(DEFAULT_RUNTIME);
   const workLevel = useWorkMode(work);
-  const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel);
+  const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel, runtime);
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
   const guide = guideKind(engine, false);
@@ -176,7 +178,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
     setStarting({ text, attachments });
     let id: string;
     try {
-      id = await threadApi.start(text, attachments, link, { ...picks, mode, ...startScope(link, hold, shown) });
+      id = await threadApi.start(text, attachments, link, { ...picks, runtime, mode, ...startScope(link, hold, shown) });
     } catch (error) {
       setStarting(null);
       throw error;
@@ -188,6 +190,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
       setStarting(null);
       setHold(holdOf(seed));
       setPicks({ mode: null, model: null, effort: null });
+      setRuntime(DEFAULT_RUNTIME);
     });
   };
 
@@ -210,6 +213,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
       onNewThread={() => {}}
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
+      runtime={{ value: runtime, onPick: setRuntime }}
       // 트레이는 첫 말 전에 상자 아래에서 범위를 고르고, 씨앗이 있으면 그 앞에 Work 칩이 선다. 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의
       // 입력창처럼 상자 위에서 잠긴다. 범위 칩은 첫 말 뒤에 서지 않는다.
       tray={starting === null ? { at: "below", work: seeded, scope } : { at: "above", work: locked }}
@@ -680,6 +684,8 @@ function ThreadBody({
               level={view.askLevel}
               onLevel={pickLevel}
               tray={tray}
+              // 턴이 시작된 채팅의 Runtime은 잠겨 있다(스토리 31) — 이름만 선다.
+              runtime={{ value: view.runtime }}
               card={
                 // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
                 // 새 카드가 올라온다 — 자리의 열쇠가 그 물음이다.

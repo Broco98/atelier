@@ -132,6 +132,39 @@ const buttonsOf = (markup: string) =>
   });
 const sendSpot = (markup: string) => buttonsOf(markup).filter((one) => ["보내기", "보내는 중", "멈추기"].includes(one.name));
 
+// Composer 「Runtime 고르기」 · 스토리 30 · 31 — 새 채팅에서만 열리고, 턴이 시작되면 잠긴다. 자리는 아래 줄 오른쪽, 모델 칩 앞이다.
+describe("Runtime 칩", () => {
+  /** Runtime 칩의 마크업 — 고르는 칩이면 메뉴 단추, 잠긴 칩이면 글자만 선 칸이다. */
+  const runtimeChip = (markup: string) => /<(?:button|span)\b[^>]*aria-label="Runtime[^"]*"[^>]*>/.exec(markup)?.[0] ?? null;
+
+  it("새 채팅에서는 고른 Runtime 이름에 메뉴가 붙은 칩이다", () => {
+    const chip = runtimeChip(composer({ runtime: { value: "claude-code", onPick: none } }));
+    expect(chip).toContain('aria-label="Runtime: Claude Code"');
+    expect(chip).toContain("aria-haspopup");
+  });
+
+  it("턴이 시작된 채팅에서는 이름만 서고 메뉴가 없다", () => {
+    const markup = composer({ runtime: { value: "codex" } });
+    const chip = runtimeChip(markup);
+    expect(chip).toContain('aria-label="Runtime Codex"');
+    expect(chip).not.toContain("aria-haspopup");
+    expect(markup).toContain(">Codex<");
+  });
+
+  it("첫 말을 보내는 중이면 고를 수 있던 칩도 잠긴다 — Runtime이 이미 그 말과 함께 떠났다", () => {
+    const chip = runtimeChip(composer({ busy: true, runtime: { value: "codex", onPick: none } }));
+    expect(chip).toContain('aria-label="Runtime Codex"');
+    expect(chip).not.toContain("aria-haspopup");
+  });
+
+  it("모델 칩 앞에 선다", () => {
+    const markup = composer({ runtime: { value: "claude-code", onPick: none }, models: [{ value: "default", name: "Default", description: null }], model: "default" });
+    const names = buttonsOf(markup).map((one) => one.name);
+    const model = names.findIndex((name) => name.startsWith("모델과 생각 깊이"));
+    expect(names.indexOf("Runtime: Claude Code")).toBe(model - 1);
+  });
+});
+
 describe("「/」 명령 메뉴", () => {
   it("첫 말 전에도 `/work`가 없다 — 어디서 일할지는 씨앗이 정한다", () => {
     const menu = composer({ tray: { at: "below", work: { kind: "new-work", onDrop: none } } }, "/");

@@ -36,6 +36,17 @@ impl Agent {
     }
 }
 
+/// 채팅의 Runtime을 띄우는 엔진(restart 01c-3) — 찾기 · 로그인 · 로그인 필요가 이 엔진의 것으로 선다. 그래야 Codex 채팅의 로그인 끊김이
+/// Claude로 기록되지 않는다.
+impl From<atelier_core::Runtime> for Agent {
+    fn from(runtime: atelier_core::Runtime) -> Self {
+        match runtime {
+            atelier_core::Runtime::ClaudeCode => Agent::Claude,
+            atelier_core::Runtime::Codex => Agent::Codex,
+        }
+    }
+}
+
 /// 찾을 실행 파일 하나와, 못 찾았을 때 안내 카드가 보일 설치 명령.
 struct Program {
     name: &'static str,

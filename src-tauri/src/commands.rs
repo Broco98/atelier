@@ -890,20 +890,22 @@ pub async fn thread_read_record(
 /// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 칩에서 고른 값이다(v1 티켓 23) — 이은 Work면 그 Work의 정도가
 /// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 범위 칩에서
 /// 고른 Service(`service` — `{slug}`, 「Service 없음」이면 `{slug: null}`)와 Project(`project`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Service가
-/// 된다, S4). 고르지 않은 칸은 `null`이다.
+/// 된다, S4). 고르지 않은 칸은 `null`이다. Runtime(`runtime` — `claude-code` · `codex`)은 새 채팅에서만 고르는 채팅의 값이다(restart 01c-3) — Codex
+/// 채팅은 모델 · 생각 깊이를 받지 않는다.
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     text: String,
     attachments: Vec<String>,
     link: atelier_acp::ThreadLink,
+    runtime: atelier_acp::Runtime,
     mode: Option<atelier_acp::AskLevel>,
     model: Option<String>,
     effort: Option<String>,
     service: Option<atelier_acp::ServicePick>,
     project: Option<String>,
 ) -> CmdResult<String> {
-    let picks = atelier_acp::StartPicks { mode, model, effort, service, project };
+    let picks = atelier_acp::StartPicks { runtime, mode, model, effort, service, project };
     to_host(&engine, "채팅을 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
 }
 

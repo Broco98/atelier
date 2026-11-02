@@ -4,6 +4,9 @@
 // 글자로 못박는다(`engine_check.rs`의 「화면이 읽는 꼴」 · `thread.rs`의 이벤트 꼴). three-axes 대화의 값(`chat/types.ts`)은 v1
 // 티켓 08이 걷으며 Thread가 쓰는 것만 여기로 옮겼다.
 
+/** 채팅의 Runtime 값(`atelier_core::Runtime` — `thread.json`의 `runtime`). 다른 판이 쓴 채팅은 이 밖의 글자일 수 있어 `ThreadView.runtime`은 글자다. */
+export type Runtime = "claude-code" | "codex";
+
 /** 대기 줄의 말 하나 — 턴이 도는 동안 보낸 말이다(`atelier_acp::QueuedMessage`). 입력창 위 「대기 중」에 선다. */
 export interface QueuedMessage {
   /** 대기 id — 고치기 · 지우기 · 지금 보내기가 이것으로 고른다. */
@@ -164,6 +167,8 @@ export type ThreadLink = { kind: "no-work" } | { kind: "new-work" } | { kind: "w
 
 /** 새 Thread의 첫 말 전에 입력창 칩에서 고른 것(`atelier_acp::StartPicks`) — 고르지 않은 칸은 `null`이다. */
 export interface StartPicks {
+  /** 이 채팅을 돌릴 Runtime(restart 01c-3) — 새 채팅에서만 고르고 채팅의 값으로 선다. Codex 채팅은 아래의 모델 · 생각 깊이를 받지 않는다. */
+  runtime: Runtime;
   mode: AskLevel | null;
   /** 첫 Session의 모델 — claude `--model`이 받는 값. */
   model: string | null;

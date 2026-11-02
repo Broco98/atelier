@@ -20,6 +20,8 @@ mod thread_tools;
 mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
+/// 채팅의 Runtime(restart 01c-3) — 새 채팅의 칩이 고르고 `thread.json`에 적힌다. 저장 값이라 코어의 것을 그대로 내보낸다.
+pub use atelier_core::Runtime;
 pub use host::{
     ConversationHost, DocWriting, FlowChunk, FlowKind, HostBuilder, HostError, HostEvent, ProjectAddChoice, ProjectChoice, QuestionReply,
     QueuedMessage, QuitCounts, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, TranslatorCommand, WorkChoice,

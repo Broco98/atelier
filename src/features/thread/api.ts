@@ -59,8 +59,8 @@ export const threadApi = {
    */
   start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks) => {
     const attachments = pathsOf(attached);
-    const { mode, model, effort, service, project } = picks;
-    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort, service, project });
+    const { runtime, mode, model, effort, service, project } = picks;
+    return invoke<string>("thread_start", { text, attachments, link, runtime, mode, model, effort, service, project });
   },
   /**
    * 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. 인용(v1 티켓 35 ·

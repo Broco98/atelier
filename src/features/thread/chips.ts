@@ -1,5 +1,6 @@
 import { isObject, text } from "./json";
 import type { AskLevel, RecordLine, ThreadView } from "./types";
+import { DEFAULT_RUNTIME, type Runtime } from "./runtime";
 
 // 입력창 칩과 「/」 메뉴의 원천(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 스토리 33) — 기록 줄에서 Session의 모델 목록 ·
 // 명령을, 채팅의 값(`thread.json`)에서 고른 모델 · 생각 깊이를 읽는 **순수 함수**다. three-axes 칩(`chat/chips.ts`)을 옮겨 왔다.
@@ -88,18 +89,18 @@ export const askLevelOf = (value: unknown): (typeof ASK_LEVELS)[number] | null =
 /**
  * 새 채팅의 정도 — 칩이 보일 값(`shown`)과 첫 말과 함께 보낼 값(`sent`, 구현 스펙 「01a — 권한」). 작업공간 없는 새 채팅의 기본은 「편집 자동」이고
  * 보이는 값을 늘 보내 `thread.json`에 적는다 — 칩만 바꾸면 값이 없는 파일을 「매번 묻기」로 읽는 판정과 갈린다. 이은 작업공간의 값은 그 점 파일이
- * 쥐고 있어(값이 없으면 「매번 묻기」), 사람이 고르지 않았으면 보내지 않는다 — 읽는 동안의 칩 글자로 그 값을 덮지 않게.
+ * 쥐고 있어(값이 없으면 「매번 묻기」), 사람이 고르지 않았으면 보내지 않는다 — 읽는 동안의 칩 글자로 그 값을 덮지 않게. Codex 채팅은 이 값을 보내지
+ * 않는다 — 보내면 작업공간이 함께 쓰는 값이 바뀐다(Codex의 모드 칩은 01c-5가 짓는다).
  */
 export function newThreadLevel(
   picked: AskLevel | null,
   work: string | null,
   workLevel: AskLevel | null,
+  runtime: Runtime = DEFAULT_RUNTIME,
 ): { shown: AskLevel; sent: AskLevel | null } {
-  if (work === null) {
-    const level = picked ?? "edits";
-    return { shown: level, sent: level };
-  }
-  return { shown: picked ?? workLevel ?? "always", sent: picked };
+  const shown = work === null ? (picked ?? "edits") : (picked ?? workLevel ?? "always");
+  if (runtime !== "claude-code") return { shown, sent: null };
+  return { shown, sent: work === null ? shown : picked };
 }
 
 export function chipLists(lines: readonly RecordLine[]): ChipLists {

@@ -1314,9 +1314,13 @@ describe("서브에이전트의 안쪽 도구", () => {
     const records = readdirSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/", import.meta.url)))
       .filter((name) => name.startsWith("thread-"))
       .map((name) => record(name.replace(/\.jsonl$/, "")));
+    // 안쪽 줄은 Claude 변환기가 Claude 도구 이름으로만 싣는다 — Claude 도구 이름이 없는 줄(Codex 기록, 01c-3)은 되돌릴 원문이 없다.
     const finished = records.flatMap((lines) =>
       foldThread(lines).turns.flatMap((turn) =>
-        turn.entries.filter((entry): entry is ToolEntry => entry.kind === "tool" && entry.call.status === "completed" && !entry.denied),
+        turn.entries.filter(
+          (entry): entry is ToolEntry =>
+            entry.kind === "tool" && entry.call.status === "completed" && !entry.denied && toolFields(entry.call).toolName !== null,
+        ),
       ),
     );
     const names = new Set(finished.map((tool) => toolFields(tool.call).toolName));
@@ -1505,6 +1509,57 @@ describe("표준 값만 있는 도구 줄", () => {
     const view = tool && describeTool(tool);
     expect(view && phraseText(view.phrase)).toBe("web-app 고치기 시작함");
     expect(view?.mcp).toEqual({ name: "atelier-thread.start_editing", sent: '{\n  "project": "web-app"\n}', received: "web-app에서 고친다", receivedCode: false });
+  });
+});
+
+// Codex 채팅(01c-3 · 스토리 41) — 엔진 검사(L1)가 가짜 ACP에 진짜 codex-acp 2.2.2의 녹음을 재생시켜 **축복한** 기록이다(`thread-codex` — 답만 하는 턴 ·
+// `echo atelier`의 턴, `thread-codex-edit` — 작업공간에 이은 채팅이 작업 폴더(spec 폴더) 안에 묻지 않고 쓴 턴). 화면은 ACP 하나만 읽으므로 Claude
+// 기록(`thread-two-turns`)의 같은 일과 같은 모양으로 접힌다.
+describe("Codex 기록", () => {
+  const codex = record("thread-codex");
+  const edited = record("thread-codex-edit");
+  const toolsOf = (lines: readonly RecordLine[], turn: number) =>
+    foldThread(lines).turns[turn].entries.filter((entry): entry is ToolEntry => entry.kind === "tool").map(describeTool);
+  /** 도구 줄에서 Runtime마다 다른 글(명령 · 출력 · 파일 이름 · 걸린 시간)을 뺀 모양. */
+  const form = (view: ReturnType<typeof describeTool>) => ({
+    glyph: view.glyph,
+    state: view.state,
+    group: view.group,
+    verb: view.phrase.verb,
+    failed: view.phrase.failed,
+    shell: view.shell && { bad: view.shell.bad },
+    diffs: view.diffs.map((piece) => ({ written: piece.written, added: piece.added, deleted: piece.deleted })),
+    mcp: view.mcp,
+  });
+
+  it("보낸 말마다 턴이 서고 끝난 턴은 턴 끝 메시지만 남긴다 — Claude 기록과 같다", () => {
+    const model = foldThread(codex);
+    expect(model.running).toBe(false);
+    expect(model.system).toEqual([]);
+    expect(model.turns.map((turn) => turn.sent)).toEqual([
+      "Reply with exactly one word: ok",
+      "Run the shell command `echo atelier` and tell me what it printed. Do nothing else.",
+    ]);
+    expect(model.turns.map((turn) => finalMessages(turn).map((entry) => entry.kind === "message" && entry.text))).toEqual([["ok"], ["atelier"]]);
+  });
+
+  it("명령 줄은 Claude의 명령 줄과 같은 모양으로 접힌다", () => {
+    const [ran] = toolsOf(codex, 1);
+    const claudeRan = toolsOf(blessed, 1).find((view) => view.glyph === "execute");
+    expect(claudeRan).toBeDefined();
+    expect(form(ran)).toEqual(form(claudeRan!));
+    expect(ran.shell && [ran.shell.command, ran.shell.output]).toEqual(["echo atelier", "atelier"]);
+    expect(phraseText(ran.phrase)).toBe("echo atelier 실행함");
+  });
+
+  it("편집 줄은 Claude의 쓰기 줄과 같은 모양이고, 바뀐 파일 표시와 문서 카드를 만든다", () => {
+    const [wrote] = toolsOf(edited, 0);
+    const claudeWrote = toolsOf(blessed, 1).find((view) => view.glyph === "edit");
+    expect(claudeWrote).toBeDefined();
+    expect(form(wrote)).toEqual(form(claudeWrote!));
+    const [turn] = foldThread(edited).turns;
+    expect(changedFiles(turn)?.files.map((file) => [file.path, file.added, file.deleted])).toEqual([["~/.atelier/works/cart/spec/hello.txt", 1, 0]]);
+    expect(createdDocs(turn, "~/.atelier/works/cart/spec")).toEqual([{ path: "hello.txt", lines: 1 }]);
   });
 });
 

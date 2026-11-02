@@ -142,4 +142,12 @@ describe("새 채팅의 정도", () => {
   it("이은 작업공간에서 고른 값은 보낸다", () => {
     expect(newThreadLevel("plan", "cart", "auto")).toEqual({ shown: "plan", sent: "plan" });
   });
+
+  // 스펙 「01a — 권한」 — Codex 채팅은 이 값을 보내지 않는다. 보내면 작업공간이 함께 쓰는 값이 바뀐다(01a-10의 남긴 일).
+  it("Codex를 고른 새 채팅은 고른 값이 있어도 아무것도 보내지 않는다", () => {
+    expect(newThreadLevel(null, null, null, "codex").sent).toBeNull();
+    expect(newThreadLevel("auto", null, null, "codex").sent).toBeNull();
+    expect(newThreadLevel("plan", "cart", "auto", "codex").sent).toBeNull();
+    expect(newThreadLevel(null, null, null, "claude-code")).toEqual({ shown: "edits", sent: "edits" });
+  });
 });

@@ -83,6 +83,18 @@ describe("채팅 화면", () => {
     expect(html).toContain("Sonnet");
   });
 
+  // 스토리 31 — 턴이 시작되면 Runtime이 잠긴다. 채팅 화면은 첫 말이 간 뒤라 이름만 선다.
+  it("Runtime 칩은 그 채팅의 Runtime 이름으로 잠겨 선다 — 메뉴가 없다", () => {
+    for (const [runtime, name] of [
+      ["claude-code", "Claude Code"],
+      ["codex", "Codex"],
+    ] as const) {
+      const html = draw({ ...chat, id: `20261010-10001${runtime.length}`, runtime });
+      expect(html, runtime).toContain(`aria-label="Runtime ${name}"`);
+      expect(html, runtime).not.toContain('aria-label="Runtime:');
+    }
+  });
+
   it("범위 칩과 범위 줄은 첫 말 뒤에 서지 않는다 — 범위는 대화로 바꾼다", () => {
     const html = draw({ ...chat, id: "20261010-100003" });
     expect(html).not.toContain('aria-label="범위');
@@ -103,6 +115,11 @@ describe("새 채팅 화면", () => {
       </QueryClientProvider>,
     );
   };
+
+  // 스토리 30 — 새 채팅에서 Claude Code와 Codex 중 하나를 고른다. 기본은 Claude Code다.
+  it("Runtime 칩은 Claude Code를 고른 채 메뉴로 선다", () => {
+    expect(drawNew()).toContain('aria-label="Runtime: Claude Code"');
+  });
 
   it("작업공간 없는 새 채팅의 칩은 「편집 자동」이다", () => {
     expect(drawNew()).toContain('aria-label="물어보는 정도 편집 자동"');

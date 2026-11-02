@@ -980,6 +980,19 @@ fn claude_launch(
     (launch, terms)
 }
 
+/// Codex를 띄우는 것(restart 스펙 「01c — Codex」 연결) — 찾은 `codex-acp`를 로그인 env 그대로, 인자 없이 띄우고 찾은 `codex`를
+/// `CODEX_PATH`로 준다(three-axes 결정 26 — `codex-acp`가 사용자의 `codex`를 돌린다). 앱이 짓는 변환기가 아니라 판을 맞춰 보지 않고, 세션을 여는
+/// 요청에 Atelier의 값(`_meta`)을 싣지 않는다 — ACP 표준 값(`cwd` · `additionalDirectories` · `mcpServers`)만 간다. 모드는 01c-5가 연 뒤에 넣는다.
+fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &SessionPlace) -> (Launch, OpenTerms) {
+    let found = |name: &str| {
+        programs.iter().find(|program| program.name == name).map(|program| program.path.clone()).expect("찾은 것에 codex 셋이 있다")
+    };
+    let mut vars = env.vars().clone();
+    vars.insert(OsString::from("CODEX_PATH"), found("codex").into_os_string());
+    let launch = Launch { program: found("codex-acp"), args: Vec::new(), env: vars, cwd: place.cwd.clone() };
+    (launch, OpenTerms::default())
+}
+
 /// 그 엔진을 띄우는 데 드는 실행 파일들 — 로그인 셸의 PATH에서 찾는다. 못 찾으면 빠진 것과 설치 명령을 싣고 실패한다.
 fn find_programs(agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundProgram>, HostError> {
     discovery::look_up(agent, env.path()).map_err(|missing| HostError::EngineMissing { agent, missing })

@@ -248,8 +248,9 @@ _셸을 이 말로 부르지 않는다._ 막는 것은 여기까지다 — `sess
 수명을 가리키는 기존 용법은 다른 말이고 그대로 둔다.
 
 **Runtime**:
-Thread의 말을 받아 일하는 에이전트 프로그램 — Claude Code. 모델 목록과 「/」 명령은 Runtime이 낸 것을 그대로 보인다.
-three-axes 대화창이 「에이전트」라 부르던 것(Claude Code · Codex)이 이것이다. Codex는 화면에서 고르지 않는다.
+Thread의 말을 받아 일하는 에이전트 프로그램 — Claude Code 또는 Codex. 모델 목록과 「/」 명령은 Runtime이 낸 것을 그대로 보인다.
+three-axes 대화창이 「에이전트」라 부르던 것(Claude Code · Codex)이 이것이다. 새 Thread에서만 고르고(기본은 Claude Code) 턴이 시작되면
+잠긴다 — Thread 하나가 Runtime 세션 하나다. 화면과 기록은 두 Runtime 모두 ACP 줄 하나로 읽는다.
 _피할 말_: 하네스, 엔진, 봇, 어시스턴트, 페르소나
 
 **Thread 도구**:

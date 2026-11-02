@@ -53,13 +53,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
-use atelier_core::{Attachment, NewThread, RecordKind, RecordLine, ThreadFile, ThreadIndex, ThreadSummary, WorkGone};
+use atelier_core::{Attachment, NewThread, RecordKind, RecordLine, Runtime, ThreadFile, ThreadIndex, ThreadSummary, WorkGone};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    claude_launch, end_together, find_programs, mark_taken, record_opened, ClaudeChoice, Conv, ConversationHost, Draft,
-    FlowChunk, HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
+    claude_launch, codex_launch, end_together, find_programs, mark_taken, record_opened, ClaudeChoice, Conv, ConversationHost,
+    Draft, FlowChunk, HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
 };
 use crate::discovery::{Agent, FoundProgram};
 use crate::login_env::AgentEnv;
@@ -98,6 +98,10 @@ pub enum ThreadLink {
 /// 새 Thread의 첫 말과 함께 입력창 칩에서 고른 것(v1 티켓 23 · 31) — 고르지 않은 칸은 `None`이다.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StartPicks {
+    /// 채팅을 돌릴 Runtime(restart 스펙 「01c — Codex」) — 새 채팅에서만 고르고, 채팅의 값(`thread.json`의 `runtime`)으로 서서 바꿀 수 없다.
+    /// 기본은 Claude Code다. Codex 채팅은 아래의 모델 · 생각 깊이를 받지 않는다 — claude `--model` · `--effort`의 값이다(Codex의 칩은
+    /// 01c-5가 `configOptions`로 짓는다).
+    pub runtime: Runtime,
     /// 물어보는 정도 — Work 없는 Thread면 `thread.json`의 `mode`로 서고, 이은 Work면 다를 때 그 Work의 정도가 된다(S18). 화면은 새 Claude
     /// 채팅이면 칩에 보이는 값을 늘 보낸다. 엔진은 기본값을 정하지 않는다 — `None`은 적지 않고, 없는 값은 `always`로 읽는다.
     pub mode: Option<AskLevel>,
@@ -332,7 +336,7 @@ impl ConversationHost {
 
     /// 새 Thread의 첫 말 — Thread를 세우고 Runtime이 답한다(S6). 세운 Thread의 id를 돌려준다.
     ///
-    /// 1. 잇는 Work가 있는지 · Claude를 찾는지 먼저 본다 — 하나라도 막히면 아무것도 세우지 않는다.
+    /// 1. 잇는 Work가 있는지 · 고른 Runtime을 찾는지 먼저 본다 — 하나라도 막히면 아무것도 세우지 않는다.
     /// 2. Thread 폴더를 채팅의 값과 첫 줄(첫 Session의 `spawning`)과 함께 세운다. 이름은 첫 말의 앞부분이다. 그 줄을 첫 열기가 다시 쓰지
     ///    않는다.
     /// 3. Session을 열고(S11의 작업 폴더) 머리말 + 본문을 보낸다(S10). 답은 기록 줄 이벤트로 흐른다.
@@ -372,8 +376,11 @@ impl ConversationHost {
         text: &str,
         attachments: &[String],
         link: ThreadLink,
-        picks: StartPicks,
+        mut picks: StartPicks,
     ) -> Result<String, HostError> {
+        if picks.runtime == Runtime::Codex {
+            (picks.model, picks.effort) = (None, None);
+        }
         if let Some(effort) = picks.effort.as_deref().filter(|effort| !EFFORTS.contains(effort)) {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
@@ -394,7 +401,7 @@ impl ConversationHost {
             ThreadLink::NoWork | ThreadLink::NewWork => None,
         };
         let env = self.login_env(false)?;
-        find_programs(Agent::Claude, &env)?;
+        find_programs(picks.runtime.into(), &env)?;
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
         // 고른 Service — Work 없는 Thread는 제 파일에, 이은 Work는 그 Work에 적는다(S4). Work의 것은 Thread를 세우기 전에 바꾼다 — 새 Thread는
@@ -404,6 +411,7 @@ impl ConversationHost {
         }
         let service = service.flatten().filter(|_| work.is_none()).map(str::to_owned);
         let new = NewThread {
+            runtime: picks.runtime,
             title: title_of(text),
             work: work.clone(),
             mode,
@@ -972,14 +980,15 @@ impl ConversationHost {
             return Ok(());
         }
         let file = self.read_thread_file(thread)?;
+        let runtime = runtime_of(thread, &file)?;
         let env = self.login_env(false)?;
-        let programs = find_programs(Agent::Claude, &env)?;
+        let programs = find_programs(runtime.into(), &env)?;
         let conv = match self.threads.take(thread) {
             Some(mut session) => {
                 end_together(vec![(&mut session.agent, &*session.conv)]);
                 session.conv
             }
-            None => self.session_conv(thread)?,
+            None => self.session_conv(thread, runtime.into())?,
         };
         let queued = conv.lock_state().order.queued() > 0;
         let opened = self.open_session(thread, &file, Arc::clone(&conv), &env, &programs);
@@ -989,10 +998,11 @@ impl ConversationHost {
         opened
     }
 
-    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, 채팅의 모델 · 생각 깊이로.
-    /// 열리면 Session id · 작업 폴더를 `thread.json`에 적고 떠 있는 표에 넣는다.
+    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, 채팅의 Runtime으로(Claude면 채팅의 모델 · 생각 깊이로 — Codex는 `codex-acp`를
+    /// `CODEX_PATH`와 함께, restart 스펙 「01c — Codex」 연결). 되살리기의 차례(`session/resume` → `session/load` → 새 세션)와 앱 기능 도구의 새
+    /// 소켓은 두 Runtime이 같다. 열리면 Session id · 작업 폴더를 `thread.json`에 적고 떠 있는 표에 넣는다.
     ///
-    /// - Runtime이 로그인을 요구하면 로그인 필요 줄을 적고 로그인 창구가 그 Session을 쥔다 — 실패가 아니다.
+    /// - Runtime이 로그인을 요구하면 로그인 필요 줄을 적고 로그인 창구가 그 Session을 그 Runtime의 엔진으로 쥔다 — 실패가 아니다.
     /// - 그 밖의 까닭으로 못 열면 죽음 줄에 까닭을 적고 실패한다.
     fn open_session(
         &self,
@@ -1002,6 +1012,7 @@ impl ConversationHost {
         env: &AgentEnv,
         programs: &[FoundProgram],
     ) -> Result<(), HostError> {
+        let runtime = runtime_of(thread, file)?;
         let place = self.thread_place(thread, file)?;
         // Work 없는 Thread의 작업 폴더 `work/`는 처음 열 때 선다 — Thread 폴더는 만들지 않는다(사라진 Thread를 되살리지 않는다).
         if file.work.is_none() {
@@ -1009,14 +1020,19 @@ impl ConversationHost {
         }
         let recorder = &conv.recorder;
         recorder.spawning().map_err(HostError::Record)?;
-        // 기본 모드로만 띄운다 — 「계획」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
-        let (level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
-        let choice = ClaudeChoice {
-            mode: Some(level.claude_mode().to_owned()),
-            model: file.model.clone(),
-            effort: file.effort.clone(),
+        let (launch, mut terms) = match runtime {
+            Runtime::ClaudeCode => {
+                // 기본 모드로만 띄운다 — 「계획」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
+                let (level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
+                let choice = ClaudeChoice {
+                    mode: Some(level.claude_mode().to_owned()),
+                    model: file.model.clone(),
+                    effort: file.effort.clone(),
+                };
+                claude_launch(&self.translator, programs, env, &place, &choice)
+            }
+            Runtime::Codex => codex_launch(programs, env, &place),
         };
-        let (launch, mut terms) = claude_launch(&self.translator, programs, env, &place, &choice);
         // 채팅의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
         terms.revive = file.session_id.clone();
         // 열 때마다 새 소켓이다 — 되살린 Session도 앞 프로세스의 소켓은 이미 치웠다. 열지 못하면 여기서 놓여 치워진다.
@@ -1029,6 +1045,7 @@ impl ConversationHost {
         let gate = Gate {
             data_root: self.data_root.clone(),
             thread: thread.to_owned(),
+            runtime,
             cwd: place.cwd.clone(),
             writer: Arc::clone(&writer),
         };
@@ -1042,7 +1059,7 @@ impl ConversationHost {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {
                 recorder.session(SessionState::LoginRequired).map_err(HostError::Record)?;
-                self.logins.login_required(Agent::Claude, thread.to_owned());
+                self.logins.login_required(runtime.into(), thread.to_owned());
                 return Ok(());
             }
             Err(error) => {
@@ -1083,12 +1100,12 @@ impl ConversationHost {
         self.threads.find(thread).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up() && !state.order.turning()))
     }
 
-    /// 떠 있을 Session의 대화 — 그 Thread의 기록에 적고, 턴 도중의 로그인 요구를 창구에 쥐게 하고, 턴 끝에 그 Thread가
-    /// 읽기만 됐으면 끄러 보낸다(v1 티켓 38). spec 폴더를 찍지 않는다.
-    fn session_conv(&self, thread: &str) -> Result<Arc<Conv>, HostError> {
+    /// 떠 있을 Session의 대화 — 그 Thread의 기록에 적고, 턴 도중의 로그인 요구를 그 Runtime의 엔진(`agent`)으로 창구에 쥐게 하고, 턴 끝에
+    /// 그 Thread가 읽기만 됐으면 끄러 보낸다(v1 티켓 38). spec 폴더를 찍지 않는다.
+    fn session_conv(&self, thread: &str, agent: Agent) -> Result<Arc<Conv>, HostError> {
         let recorder = Recorder::of_thread(self.thread_log(thread)?);
         let vanish = VanishWatch::new(self.data_root.clone(), thread.to_owned(), self.weak());
-        Ok(Conv::new(recorder, self.login_watch(Agent::Claude, thread.to_owned()), vanish))
+        Ok(Conv::new(recorder, self.login_watch(agent, thread.to_owned()), vanish))
     }
 
     /// 그 Thread의 기록 — 연 것이 있으면 그것, 없으면 이어 열어 쥔다. Thread 폴더를 만들지 않는다.
@@ -1254,6 +1271,13 @@ fn title_of(text: &str) -> String {
 /// 사람이 고친 이름 — 줄마다 앞뒤 빈칸을 걷고 빈 줄을 버린 뒤 빈칸 하나로 잇는다.
 fn one_line(text: &str) -> String {
     text.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+/// 채팅의 Runtime(restart 01c-3) — `thread.json`의 값이다. 이 판이 모르는 값이면 띄우지 않는다(다른 판의 앱이 쓴 채팅이다).
+fn runtime_of(thread: &str, file: &ThreadFile) -> Result<Runtime, HostError> {
+    let value = file.runtime.as_deref().unwrap_or_default();
+    Runtime::of(value)
+        .ok_or_else(|| HostError::Open { thread: thread.to_owned(), reason: format!("이 판이 모르는 Runtime이에요: {value}") })
 }
 
 /// 그 Session이 연 자리(`thread.json`)가 지금 자리와 다른가(v1 티켓 32) — 처음 열기 전(작업 폴더가 없다)이면 다르지 않다.

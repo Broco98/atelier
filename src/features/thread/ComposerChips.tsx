@@ -15,6 +15,7 @@ import { addProject } from "@/features/projects/add-store";
 import type { ReadingScope, ScopePick } from "@/features/services/scope";
 import { ScopeMenuItems } from "@/features/services/ServiceMenu";
 import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, EFFORTS, type ChoiceOption } from "./chips";
+import { RUNTIMES, runtimeNameOf, type Runtime } from "./runtime";
 import { scopeChip, scopeLine, type ShownScope } from "./service-chip";
 import type { AskLevel, ThreadLink } from "./types";
 import { NEW_WORK, type LockedWork } from "./work-chip";
@@ -36,6 +37,8 @@ import { NEW_WORK, type LockedWork } from "./work-chip";
 //   않는다 — 대화로 바꾼다. 그 곁의 **범위 줄**이 지금 읽는 Project를 한 줄로 말한다(읽는 범위 — `scopeLine`).
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84)는 방패 · 지금 정도 이름의 칩이다(시안의 「매번 묻기」 — 셰브런 없이). 누르면 「언제
 //   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 입력창의 `/policy`도 이 메뉴를 연다.
+// - **Runtime 칩**(restart 01c-3 · Composer 「Runtime 고르기」 · 스토리 30 · 31)은 모델 칩 앞에 선다. 새 채팅에서만 이름 ▾로 열려 「이 채팅을 돌릴
+//   Runtime」 아래 Claude Code와 Codex가 이름과 설명 한 줄로 서고, 턴이 시작되면 이름만 남아 잠긴다(시안 `.ra-cc.locked`).
 
 /** 입력창 칩 — 28 · 알약 · 좌우 6 · 글리프와 글자 사이 4 · 13/18 `fg-subtle`, 테두리 · 면 없음(Diff-Chat 「칩」 · F1-Home `.chip`). */
 const CHIP =
@@ -318,6 +321,62 @@ export function ScopeLineText({ scope }: { scope: ReadingScope | undefined }) {
         </>
       )}
     </span>
+  );
+}
+
+/** Runtime 칩이 받는 것 — 그 채팅의 Runtime과, 새 채팅이면 고르기. 고르기가 없으면 잠긴 칩이다(턴이 시작된 채팅). */
+export interface RuntimeChoice {
+  value: Runtime | string;
+  onPick?: (runtime: Runtime) => void;
+}
+
+/**
+ * Runtime 칩(Composer 「Runtime 고르기」) — 고를 수 있으면 지금 Runtime 이름 ▾에 메뉴가 열리고, 잠겼으면 이름만 선다. 메뉴는 고른 것에만 체크가 붙고 설명은
+ * 한 줄로 끝난다. 쓸 수 있는지 확인하는 동안 보내기를 잠그는 것은 01c-9다.
+ */
+export function RuntimeChip({ value, onPick }: RuntimeChoice) {
+  const name = runtimeNameOf({ runtime: value });
+  if (!onPick) {
+    return (
+      <span data-slot="runtime-chip" aria-label={`Runtime ${name}`} className={CHIP}>
+        {name}
+      </span>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger data-slot="runtime-chip" aria-label={`Runtime: ${name}`} className={MENU_CHIP}>
+        {name}
+        <ChevronDown className="size-3 shrink-0" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>이 채팅을 돌릴 Runtime</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={value}
+            onValueChange={(next: Runtime) => {
+              if (next !== value) onPick(next);
+            }}
+          >
+            {RUNTIMES.map((one) => (
+              <DropdownMenuRadioItem
+                key={one.value}
+                value={one.value}
+                label={one.name}
+                aria-label={one.name}
+                aria-description={one.description}
+                size="note"
+              >
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{one.name}</span>
+                  <span className="truncate text-xs text-fg-tertiary">{one.description}</span>
+                </span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
