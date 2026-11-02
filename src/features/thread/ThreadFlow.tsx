@@ -36,6 +36,7 @@ import {
 } from "./fold";
 import { CopyButton } from "./CopyButton";
 import { DocCard } from "./DocCard";
+import { DocPlace } from "./doc-place";
 import { createdDocs } from "./expanded";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
@@ -101,11 +102,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
 
-/**
- * 대화 속 문서 카드의 자리(v1 티켓 35) — 이은 Work의 spec 폴더(절대 경로)와 그 문서를 넓힌 카드에서 여는 길. Work 없는 Thread · Session을
- * 띄운 화면 밖에서는 `null`이고 카드가 서지 않는다. 흐름의 모든 턴이 같은 값을 쓰므로 Context로 건넨다(`LogPlace`와 같다).
- */
-export const DocPlace = createContext<{ specRoot: string; open: (path: string) => void } | null>(null);
+// 대화 속 문서 카드의 자리(`DocPlace` — `doc-place.ts`). 작업 로그의 spec 문서 줄도 같은 자리를 읽어 여기서 옮겨 두었다.
+export { DocPlace };
 
 /**
  * 턴 사이(States · Thread 보드 `.ra-turn + .ra-turn` · restart 02b-6) — 턴 상자 사이 48, `--gap-turn`의 값이다(간격은 변수를 읽지 않고 눈금으로

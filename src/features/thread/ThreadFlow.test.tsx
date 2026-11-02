@@ -194,6 +194,32 @@ describe("Runtime 이름으로 말하는 흐름", () => {
     const docs = /<div data-created-docs="true" class="([^"]*)"/.exec(markup)?.[1].split(" ");
     expect(docs).toEqual(expect.arrayContaining(["mt-2", "gap-2"]));
   });
+
+  // Thread 보드 「턴 끝」 · MainCards(restart 02b-6) — spec 폴더에 문서를 쓴 턴은 작업 로그에 문서 줄(문서 글리프 · 「생성됨 overview.md」 · 셈 없음)이 서고,
+  // 답 아래에 그 문서 카드가 선다. 줄과 카드가 같은 문서를 같은 차례로 말한다.
+  it("spec 폴더에 문서를 쓴 턴은 로그의 문서 줄과 답 아래 문서 카드가 함께 선다", () => {
+    const lines = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-work.jsonl", import.meta.url)), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as RecordLine);
+    const model = foldThread(lines);
+    threadUiStore.setState((state) => ({
+      ...state,
+      expanded: Object.fromEntries(model.turns.map((turn) => [turnKey("t", turn.key), true])),
+    }));
+    try {
+      const markup = renderToStaticMarkup(
+        <DocPlace.Provider value={{ specRoot: "~/.atelier/works/refund-partial-amount/spec", open: () => {} }}>
+          <ThreadFlow thread="t" model={model} runtime="Claude Code" />
+        </DocPlace.Provider>,
+      );
+      const docLines = [...markup.matchAll(/<div role="group" aria-label="([^"]*)"[^>]*><div class="[^"]*"><svg[^>]*data-glyph="doc"/g)].map((one) => one[1]);
+      expect(docLines).toEqual(["생성됨 overview.md", "생성됨 plan.md"]);
+      expect([...markup.matchAll(/data-doc-card="([^"]*)"/g)].map((one) => one[1])).toEqual(["overview.md", "01-fix/plan.md"]);
+    } finally {
+      threadUiStore.setState((state) => ({ ...state, expanded: {} }));
+    }
+  });
 });
 
 // 답 아래 사용량 줄(01b-7 · 스토리 66 · 캔버스 Cards 보드 「답 아래 줄」) — 마지막 답에만 복사 단추 옆에 선다. 바탕은 엔진이 쓴 두 턴 기록이다.
