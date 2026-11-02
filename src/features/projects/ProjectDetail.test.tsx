@@ -80,8 +80,8 @@ const THREADS = [
   chat("t1", minutesAgo(26 * 60), { title: "ACP v2 변경점 조사", project: "atelier" }),
 ];
 const SERVICES = [
-  { slug: "atelier-app", name: "Atelier 앱", projects: ["atelier"] },
-  { slug: "admin", name: "관리자 콘솔", projects: ["front", "legacy-admin"] },
+  { slug: "atelier-app", name: "Atelier 앱", projects: ["atelier"], problems: [] },
+  { slug: "admin", name: "관리자 콘솔", projects: ["front", "legacy-admin"], problems: [] },
 ] as unknown as Service[];
 
 function render(slug: string) {

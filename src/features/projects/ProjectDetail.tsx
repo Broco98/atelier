@@ -1,18 +1,19 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { shallow, useStore } from "@tanstack/react-store";
-import { AlignLeft, Copy, FolderOpen, GitBranch, Layers, MessageSquare, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { AlignLeft, Copy, FolderOpen, GitBranch, Layers, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { placeDay, placeWhen } from "@/components/catalog/place-list";
 import {
   PLACE_FACT,
   PLACE_FACT_LABEL,
   PLACE_FACT_VALUE,
-  PLACE_ICON_BUTTON,
   PlaceButton,
   PlaceDetail,
+  PlaceDetailMenu,
   PlaceFact,
   PlaceFacts,
   PlaceLede,
+  PlaceLedeEditor,
   PlaceSection,
   PlaceWarn,
 } from "@/components/catalog/PlaceDetail";
@@ -21,9 +22,7 @@ import { copyText } from "@/components/shell/copy-text";
 import { navItem } from "@/components/shell/nav-items";
 import { openInFinder } from "@/components/shell/open-in-finder";
 import { StatusMark } from "@/components/shell/status-mark";
-import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InlineRename } from "@/components/ui/inline-rename";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger } from "@/components/ui/select";
 import { showToast } from "@/components/ui/toast";
@@ -146,15 +145,17 @@ function ProjectBody({ project }: { project: ProjectView }) {
         <>
           <PlaceButton label="작업공간 만들기" onClick={() => start("work")} />
           <PlaceAdd label="새 채팅" onClick={() => start("thread")} />
-          <DetailMenu project={project} onAct={act} />
+          <PlaceDetailMenu label={`${project.name} 메뉴`} items={detailMenu(project)} icons={MENU_ICONS} onAct={act} />
         </>
       }
       after={removing.dialog}
     >
       {renaming && <p className="mb-2 text-xs text-fg-tertiary">{renameHint(project)}</p>}
       {describing ? (
-        <LedeEditor
+        <PlaceLedeEditor
           text={project.description}
+          placeholder="이 Project가 무엇인지 한두 줄로 적어 두세요"
+          note="Runtime이 이 Project를 이해할 때 읽어요"
           onSave={(description) => patch({ description }, "설명을 저장하지 못했어요")}
           onDone={() => setDescribing(false)}
         />
@@ -224,7 +225,7 @@ function ProjectBody({ project }: { project: ProjectView }) {
   );
 }
 
-/** ⋯ 항목의 글리프 — 고치기(연필 · 글 줄), 그리고 목록 줄의 셋(열린 폴더 · 복사 · 지우기). */
+/** 머리 ⋯(`detailMenu`) 항목의 글리프 — 고치기(연필 · 글 줄), 그리고 목록 줄의 셋(열린 폴더 · 복사 · 지우기). */
 const MENU_ICONS: Record<DetailAct, typeof Pencil> = {
   rename: Pencil,
   describe: AlignLeft,
@@ -232,82 +233,6 @@ const MENU_ICONS: Record<DetailAct, typeof Pencil> = {
   "copy-path": Copy,
   remove: Trash2,
 };
-
-/**
- * 머리의 ⋯(`detailMenu`). **「이름 바꾸기」 · 「설명 고치기」로 닫히면 포커스를 ⋯로 돌리지 않는다**(`finalFocus`) — 막 선 입력 칸이 포커스를
- * 받는데, ⋯로 돌아가면 입력 칸이 곧바로 blur되어 이름은 「다른 곳 = 저장」으로 닫힌다(채팅 머리의 「…」와 같은 까닭 — `ThreadMenu`).
- */
-function DetailMenu({ project, onAct }: { project: ProjectView; onAct: (what: DetailAct) => void }) {
-  const editing = useRef(false);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger aria-label={`${project.name} 메뉴`} className={PLACE_ICON_BUTTON}>
-        <MoreHorizontal aria-hidden className="size-3.75" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        width="place"
-        finalFocus={() => {
-          if (!editing.current) return true;
-          editing.current = false;
-          return false;
-        }}
-      >
-        {detailMenu(project).map((item) => {
-          const Icon = MENU_ICONS[item.act];
-          return (
-            <DropdownMenuItem
-              key={item.act}
-              onClick={() => {
-                editing.current = item.act === "rename" || item.act === "describe";
-                onAct(item.act);
-              }}
-            >
-              <Icon />
-              <span>{item.label}</span>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/**
- * 설명 고치기(스토리 118) — 설명 자리가 칸이 되고(열자마자 쓴다) 아래 「취소 · 저장」. **Esc는 그만두기다** — 친 글을 버리고 아무것도 고치지
- * 않는다. 저장이 실패하면(`false`) 칸이 그대로 남는다.
- */
-function LedeEditor({ text, onSave, onDone }: { text: string; onSave: (text: string) => Promise<boolean>; onDone: () => void }) {
-  const [draft, setDraft] = useState(text);
-  const save = async () => {
-    if (await onSave(draft)) onDone();
-  };
-  return (
-    <div className="mb-5 max-w-170">
-      <textarea
-        autoFocus
-        rows={3}
-        aria-label="설명"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onDone();
-        }}
-        placeholder="이 Project가 무엇인지 한두 줄로 적어 두세요"
-        className="block w-full resize-none rounded-xl border border-border-heavy bg-surface px-3 py-2.5 text-sm leading-5.5 text-fg outline-none placeholder:text-fg-placeholder focus-ring"
-      />
-      <div className="mt-2.5 flex items-center gap-1.5">
-        <p className="mr-auto text-xs text-fg-tertiary">Runtime이 이 Project를 이해할 때 읽어요</p>
-        <Button variant="ghost" size="top" onClick={onDone}>
-          취소
-        </Button>
-        <Button size="top" onClick={() => void save()}>
-          저장
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 /**
  * 기준 브랜치 카드(스토리 119–121 · 125) — 위 카드 한 칸의 겉 그대로이고, 누르면 목록이 「로컬」 · 「원격 — origin」 묶음으로 선다(아래 「새 작업공간의

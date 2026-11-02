@@ -35,8 +35,8 @@ describe("머리 줄", () => {
     expect(slot).toBeGreaterThan(controls);
   });
 
-  // **창의 머리는 머리 줄 하나다**(ui-refresh 결정 5) — 화면 몸 맨 위의 줄(제목 · 잰 시각 · 할 일)은 `<header>`가 아니다(`ListParts`의 맨 위 줄과
-  // 같다). 몸에 `<header>`가 서면 보조 기술의 머리 랜드마크가 둘이 되고 L3(`frame` · `frame-sidebar`의 「머리는 머리 줄 하나」)가 빨갛다 —
+  // **창의 머리는 머리 줄 하나다**(ui-refresh 결정 5) — 화면 몸 맨 위의 줄(제목 · 잰 시각 · 할 일)은 `<header>`가 아니다(공용 목록 틀
+  // `PlaceList`의 맨 위 줄과 같다). 몸에 `<header>`가 서면 보조 기술의 머리 랜드마크가 둘이 되고 L3(`frame` · `frame-sidebar`의 「머리는 머리 줄 하나」)가 빨갛다 —
   // 03-11이 Processes 몸 머리를 `<header>`로 들였다(02a-15). 앱 소스(주석 빼고)에서 `<header`를 그리는 곳은 머리 줄과, 그것을 본뜨는 검사
   // 도우미(`screen-head-inline`)뿐이다.
   it("앱에서 `<header>`를 그리는 것은 머리 줄 하나다 — 화면 몸의 머리 줄은 `<header>`가 아니다", () => {

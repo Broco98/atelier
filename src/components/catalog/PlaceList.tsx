@@ -16,7 +16,7 @@ import type { PlaceSort } from "./place-list";
 //     표(`PlaceTable`) ─ 열 머리 36 · 12 · 활성 칸만 화살표, 줄 64 · 0.5 선 · 아이콘 15 · 이름 14(보드 `.pl-th` · `.pl-row`)
 //   자리(`PlaceStage`) ─ 목록과 상세가 한 자리를 번갈아 쓴다. 목록은 언마운트하지 않는다 — 찾는 글 · 정렬 · 스크롤이 그대로다
 //
-// 한때(03) 같은 짝의 판 · 찾기 칸 · 표가 `ListParts`였다(줄 48 · 경로 칸 · 판 안 위 30 · 옆 40). Services 목록이 이 틀로 옮길 때까지 그쪽이 남는다.
+// 한때(03) 같은 짝의 판 · 찾기 칸 · 표가 `ListParts`였다(줄 48 · 경로 칸 · 판 안 위 30 · 옆 40). Services 목록이 이 틀로 옮기며(restart 03-3) 걷었다.
 
 /** 표의 칸 — 이름(옆 글 포함) · 시각 · 오른쪽 동작. 머리 줄과 몸 줄이 같은 격자다(보드 `--pl-cols` · `column-gap: 12px`). */
 export const PLACE_COLUMNS = "grid grid-cols-[minmax(0,1fr)_132px_108px] items-center gap-x-3";

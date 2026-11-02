@@ -520,44 +520,47 @@ describe("Library의 주소", () => {
   });
 });
 
-// Service(03 구현 스펙 §14). 목록은 고른 것으로 넘기지 않는다 — Works와 달리(Projects처럼) 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
+// Service(03 구현 스펙 §14 · restart 03-3). 목록은 고른 것으로 넘기지 않는다 — Works와 달리(Projects처럼) 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
+// `/services`는 틀 라우트다 — 목록과 상세가 한 자리를 번갈아 쓴다(상세가 선 동안 목록은 그 틀 안에 숨는다). 고치기 화면 둘은 그 틀 밖의 따로 선 화면이다.
 describe("Service의 주소", () => {
   it("`/services`는 목록 그대로 서고 마지막 자리로 적힌다", async () => {
     const { router, history } = setup(["/services"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/services");
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/services/");
+    expect(router.state.matches.map((match) => match.routeId)).toEqual(expect.arrayContaining(["/services", "/services/"]));
     expect(history.length).toBe(1);
     expect(shellStore.state.lastPlace).toBe("/services");
   });
 
-  it("`/services/<slug>`는 그 Service의 상세다 — 한글 slug도 그대로다", async () => {
+  it("`/services/<slug>`는 그 Service의 상세다 — 목록의 틀 안에 서고, 한글 slug도 그대로다", async () => {
     const { router } = setup(["/services/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4"]);
     await router.load();
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/services/$slug");
+    expect(router.state.matches.map((match) => match.routeId)).toEqual(expect.arrayContaining(["/services", "/services/$slug"]));
     const matches = router.state.matches;
     expect(matches[matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
-  // 고치기 화면 둘(03 구현 스펙 §13) — 관계 편집은 그 Service 아래, 새 Service는 목록 아래 고정 주소다. 둘 다 상세의 자식이 아닌 따로 선 화면이다.
-  it("`/services/<slug>/edit`는 그 Service의 관계 편집이다 — 상세 위에 겹쳐 서지 않는다", async () => {
+  // 고치기 화면 둘(03 구현 스펙 §13) — 파일로 고치기는 그 Service 아래, 새 Service는 목록 아래 고정 주소다. 둘 다 목록 · 상세의 틀 밖에 따로 선 화면이다.
+  it("`/services/<slug>/edit`는 그 Service의 파일로 고치기다 — 목록 · 상세의 틀 밖이다", async () => {
     const { router } = setup(["/services/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4/edit"]);
     await router.load();
     const ids = router.state.matches.map((match) => match.routeId);
-    expect(ids).toContain("/services/$slug_/edit");
+    expect(ids).toContain("/services_/$slug/edit");
+    expect(ids).not.toContain("/services");
     expect(ids).not.toContain("/services/$slug");
     expect(router.state.matches[router.state.matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
-  it("`/services/new`는 새 Service다 — slug가 new인 Service의 상세가 아니다", async () => {
+  it("`/services/new`는 새 Service다 — slug가 new인 Service의 상세가 아니고, 목록의 틀 밖이다", async () => {
     const { router } = setup(["/services/new"]);
     await router.load();
     const ids = router.state.matches.map((match) => match.routeId);
-    expect(ids).toContain("/services/new");
+    expect(ids).toContain("/services_/new");
+    expect(ids).not.toContain("/services");
     expect(ids).not.toContain("/services/$slug");
   });
 
-  it("상세에서 점선 Service로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Service로 간다", async () => {
+  it("상세에서 함께 쓰는 Service로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Service로 간다", async () => {
     const { router, history } = setup(["/services/a"]);
     await router.load();
     await router.navigate({ to: "/services/$slug", params: { slug: "b" } });

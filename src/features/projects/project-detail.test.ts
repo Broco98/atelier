@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Service } from "@/features/services/types";
 import type { ThreadSummary } from "@/features/thread/types";
 import { projectSections } from "./project-detail";
 
@@ -26,7 +27,7 @@ const work = (slug: string, projects: string[], over: { title?: string; branch?:
   ...(over.service !== undefined && { service: over.service }),
 });
 
-const service = (slug: string, projects: string[], name = slug) => ({ slug, name, projects });
+const service = (slug: string, projects: string[], name = slug, problems: Service["problems"] = []) => ({ slug, name, projects, problems });
 
 describe("작업공간 묶음", () => {
   it("그 Project를 고치는 작업공간이 이름 · 브랜치 · 그 작업공간 채팅의 마지막 줄 시각으로 서고, 최근 활동 순이다", () => {
@@ -91,5 +92,12 @@ describe("Service 묶음", () => {
     expect(projectSections("atelier", works, threads, services).services).toEqual([
       { slug: "atelier-app", name: "atelier-app", desc: "Project 1개", at: null },
     ]);
+  });
+
+  // restart 03-3 — Service의 Project 수는 등록된 것만이다(Services 목록 · Service 상세와 같은 수 — 보드 legacy-admin 상세의 「관리자 콘솔 · Project 2개」).
+  it("Service의 Project 수는 등록된 것만 센다", () => {
+    const unknown = [{ line: 3, kind: "unknownProject" as const, project: "legacy-api", message: "등록되지 않은 Project예요" }];
+    const services = [service("admin", ["front", "legacy-api", "legacy-admin"], "관리자 콘솔", unknown)];
+    expect(projectSections("legacy-admin", [], [], services).services.map((row) => row.desc)).toEqual(["Project 2개"]);
   });
 });

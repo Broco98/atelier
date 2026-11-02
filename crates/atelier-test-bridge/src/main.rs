@@ -61,6 +61,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
     // Service(03 구현 스펙 §8)는 파일이라 코어를 진짜로 탄다 — `commands.rs`와 같은 입구다.
     ("list_services", |_| ok(atelier_core::list_services(&data_root()))),
+    // ⋯ 「경로 복사」가 읽는 Service 파일들의 폴더(restart 03-3) — 데이터 루트의 `services`를 홈 `~`로 접은 글이다.
+    ("services_folder", |_| ok(Ok(atelier_core::collapse_home(&atelier_core::services_in(&data_root()))))),
     ("get_service", |a| ok(atelier_core::service_detail(&data_root(), &text(a, "slug")?))),
     ("update_service", |a| {
         ok(atelier_core::update_service(

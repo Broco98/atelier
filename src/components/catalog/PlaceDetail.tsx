@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, CircleAlert, Plus } from "lucide-react";
+import { ArrowLeft, CircleAlert, MoreHorizontal, Plus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/toast";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -19,8 +20,8 @@ import { PlaceFix } from "./PlaceList";
 //     위 카드(`PlaceFacts`) ─ 네 칸 · 사이 8 · 칸마다 이름 12 · 값 13/19(보드 `.pl-facts` · `.pl-fact`)
 //     묶음(`PlaceSection`) ─ 머리 36 · 13 · 500 · 수 · 끝에 +(26), 위 28 · 아래 0.5 선. 줄은 목록과 같은 격자의 46(`PlaceRow`의 `sub`)
 //
-// 한때(03) 상세는 「← 목록」 알약 · 제목 · 설명 묶음 | 오른쪽 칸 270(기준 브랜치 · 경로) 두 단이었다(`DetailParts`의 `DetailPanel`). Service 상세가 이
-// 틀로 옮길 때(03-3)까지 그쪽이 남는다.
+// 한때(03) 상세는 「← 목록」 알약 · 제목 · 설명 묶음 | 오른쪽 칸 270(기준 브랜치 · 경로 · 함께 쓰는 Service) 두 단이었다(`DetailParts`의
+// `DetailPanel`). Project 상세(03-2)와 Service 상세(03-3)가 이 틀로 옮겼다.
 
 /**
  * 상세 판 — 「← 목록」, 머리(이름 · `actions`), 그 아래 몸(`children` — 설명 · 경고 · 위 카드 · 묶음). 토스트 자리는 목록과 같은 자리다(상세가 선 동안
@@ -69,6 +70,55 @@ export function PlaceDetail({
 /** 이름 아래 설명 한 줄(보드 `.pl-lede`) — 비어도 자리(아래 20)는 남는다: 위 카드가 설명이 있든 없든 같은 틈에 선다. */
 export function PlaceLede({ children }: { children?: ReactNode }) {
   return <p className="mb-5 max-w-170 text-sm leading-5.5 whitespace-pre-wrap text-fg-secondary">{children}</p>;
+}
+
+/**
+ * 설명 고치기(Project 스토리 118 · restart 03-2 · 03-3) — 설명 자리가 칸이 되고(열자마자 쓴다) 아래 「취소 · 저장」. 보드 상세에는 고치는 자리가 없다 —
+ * ⋯ 「설명 고치기」가 연다. **Esc는 그만두기다** — 친 글을 버리고 아무것도 고치지 않는다. 저장이 실패하면(`false`) 칸이 그대로 남는다. `note`는 왼쪽
+ * 아래 한 줄(이 설명을 누가 읽는지)이다.
+ */
+export function PlaceLedeEditor({
+  text,
+  placeholder,
+  note,
+  onSave,
+  onDone,
+}: {
+  text: string;
+  placeholder: string;
+  note: string;
+  onSave: (text: string) => Promise<boolean>;
+  onDone: () => void;
+}) {
+  const [draft, setDraft] = useState(text);
+  const save = async () => {
+    if (await onSave(draft)) onDone();
+  };
+  return (
+    <div className="mb-5 max-w-170">
+      <textarea
+        autoFocus
+        rows={3}
+        aria-label="설명"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onDone();
+        }}
+        placeholder={placeholder}
+        className="block w-full resize-none rounded-xl border border-border-heavy bg-surface px-3 py-2.5 text-sm leading-5.5 text-fg outline-none placeholder:text-fg-placeholder focus-ring"
+      />
+      <div className="mt-2.5 flex items-center gap-1.5">
+        <p className="mr-auto text-xs text-fg-tertiary">{note}</p>
+        <Button variant="ghost" size="top" onClick={onDone}>
+          취소
+        </Button>
+        <Button size="top" onClick={() => void save()}>
+          저장
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /** 상세 경고(보드 `.pl-warn` · PlaceSheet 「폴더를 찾을 수 없는 Project」) — 한 줄과 끝의 할 일(링크 색 글 단추). 할 일은 ⋯ 안이 아니라 여기서 바로 닿는다. */
@@ -157,3 +207,58 @@ export function PlaceButton({ label, onClick, className }: { label: string; onCl
 /** 머리 · 줄의 ⋯ 같은 상세의 아이콘 단추(보드 `.ra-tbtn` — 28 · 둥글기 4 · `fg-secondary`, 지나거나 펼치면 `fill-hover` 면과 `fg`). */
 export const PLACE_ICON_BUTTON =
   "icon-button icon-button-ctl text-fg-secondary transition-colors quiet-hover focus-ring aria-expanded:bg-fill-hover aria-expanded:text-fg";
+
+/** 그 자리를 입력 칸으로 바꾸는 ⋯ 항목 — 고르면 포커스가 그 칸에 남아야 한다. */
+const EDITS: ReadonlySet<string> = new Set(["rename", "describe"]);
+
+/**
+ * 상세 머리의 ⋯(보드 Places 상세 머리의 `.ra-tbtn` — 항목은 그려지지 않았다) — 항목은 화면이 준다(Project `detailMenu` · Service `serviceDetailMenu`).
+ * 메뉴 카드는 단추 오른쪽 끝에 맞춘 208 폭이다. **「이름 바꾸기」(`rename`) · 「설명 고치기」(`describe`)로 닫히면 포커스를 ⋯로 돌리지 않는다**
+ * (`finalFocus`) — 막 선 입력 칸이 포커스를 받는데, ⋯로 돌아가면 입력 칸이 곧바로 blur되어 이름은 「다른 곳 = 저장」으로 닫힌다(채팅 머리의 「…」와
+ * 같은 까닭 — `ThreadMenu`).
+ */
+export function PlaceDetailMenu<A extends string>({
+  label,
+  items,
+  icons,
+  onAct,
+}: {
+  label: string;
+  items: readonly { act: A; label: string }[];
+  icons: Record<A, LucideIcon>;
+  onAct: (act: A) => void;
+}) {
+  const editing = useRef(false);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label={label} className={PLACE_ICON_BUTTON}>
+        <MoreHorizontal aria-hidden className="size-3.75" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        width="place"
+        finalFocus={() => {
+          if (!editing.current) return true;
+          editing.current = false;
+          return false;
+        }}
+      >
+        {items.map((item) => {
+          const Icon: LucideIcon = icons[item.act];
+          return (
+            <DropdownMenuItem
+              key={item.act}
+              onClick={() => {
+                editing.current = EDITS.has(item.act);
+                onAct(item.act);
+              }}
+            >
+              <Icon />
+              <span>{item.label}</span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
