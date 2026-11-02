@@ -27,7 +27,7 @@ const view: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(permission)[0]
  */
 const 들어섬 = ["word-in", "chip-in", "card-rise", "row-in", "morph-in", "morph-out", "jump-in"];
 
-const 카드 = (page: Page) => page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true });
+const 카드 = (page: Page) => page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true });
 const 결정줄 = (page: Page) => page.getByRole("main").locator("[data-decision]");
 
 /**

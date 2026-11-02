@@ -29,7 +29,7 @@ import { lineOf, linesThrough, record, seqOf, summaryOf, threadOf } from "./thre
 import { formatMemory } from "@/features/processes/metrics";
 
 // 02 티켓 13a — 흐름 「틀과 사이드바」(02 구현 스펙 §3 · §4 · §5 · Testing Decisions). **어느 주소에서나 같은 머리 줄 하나와 흰 판 하나에
-// 사이드바와 본문이 서고**, 사이드바 위 줄 세 행(새 Thread · 내 차례 · Library)과 ⌘N, Work 줄의 상태 표시 하나가 그 Work의 Thread와 셸
+// 사이드바와 본문이 서고**, 사이드바 위 줄 두 행(새 Thread · 내 차례)과 ⌘N, Work 줄의 상태 표시 하나가 그 Work의 Thread와 셸
 // 가운데 가장 센 것이며, Work 묶음 +가 「작업공간 만들기」로 새 Thread를 열고, 사람 메뉴가 지금 화면들과 메모리 합계를 들고, 머리 카드였던 화면들이
 // 머리 줄에 제 이름과 할 일을 세운다.
 //
@@ -67,7 +67,7 @@ async function boxOf(target: Locator) {
 
 // ─── 머리 줄과 흰 판 ───────────────────────────────────────────────────────────────────────────────────────────────
 
-// **틀은 하나다**(02 구현 스펙 §3 「틀이 하나다」). 한때 두 벌이었다 — Thread 화면들(`/` · `/threads/<id>` · `/library`)의 `PlainFrame`과
+// **틀은 하나다**(02 구현 스펙 §3 「틀이 하나다」). 한때 두 벌이었다 — Thread 화면들(`/` · `/threads/<id>`)의 `PlainFrame`과
 // 나머지 화면의 `Frame`. 이제 앱 셸이 그리는 한 틀에 모든 화면이 선다: 크롬(`surface-shell`) 맨 위 44 머리 줄 하나에 신호등 자리 · 셸
 // 컨트롤 · 지금 화면의 자리가 서고, 그 아래 크롬 왼쪽 끝 + 5에 사이드바가, 그 오른쪽 끝에서 흰 판 하나(오 · 아래 5, 0.5 `border-panel`,
 // 둥글기 12, 위 그림자 `shadow-panel`)가 선다. **사이드바는 판 밖 크롬 위다**(03 구현 스펙 §3 · 스토리 1 · 2 · 3) — 바탕도 선도 없이 머리 줄 아래에서
@@ -85,7 +85,6 @@ const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown
     ready: (page) => page.getByRole("main", { name: thread.title, exact: true }),
     head: true,
   },
-  { name: "Library", url: "/library", ready: (page) => page.getByRole("main", { name: "Library", exact: true }), head: true },
   { name: "Projects", url: "/projects", ready: (page) => page.getByRole("table", { name: "Project 목록", exact: true }), head: true },
   {
     name: "Project 상세",
@@ -238,12 +237,12 @@ const ASKED = lineOf(permission, "permission", "asked");
 /** 승인을 묻고 기다리는 Thread — 나를 기다린다(내 차례). */
 const asking = threadOf("20261025-090100", permission, { live: true, lastSeq: ASKED.seq });
 
-// **위 줄은 세 행이다**(02 구현 스펙 §4 「위 줄 세 행」) — 새 Thread · 내 차례 · Library, 행 모양은 다른 사이드바 줄과 같은 30 · 간격 31이고 첫
+// **위 줄은 두 행이다**(02 구현 스펙 §4 — 01a-1이 Library를 걷었다) — 새 Thread · 내 차례, 행 모양은 다른 사이드바 줄과 같은 30 · 간격 31이고 첫
 // 행이 머리 줄 바로 밑 + 2에 선다(03 구현 스펙 §3 · 스토리 4 — 사이드바가 판 밖으로 나오며 위 안쪽이 12에서 2가 됐다. 한때 그 자리에
 // 「전체 | 내 차례」 마디가 섰다). 「새 채팅」 끝에는 그 키 ⌘N이 옅게(12 · 3단계 색 `fg-tertiary`)
 // 행 안쪽 오른쪽 끝에 선다 — 보이는 글은 「새 채팅 ⌘N」이지만 이름은 「새 채팅」이고 키는 `aria-keyshortcuts`가 말한다. 「내 차례」 끝에는
 // 나를 기다리는 Thread 수가 파랗게(12/500 `mine`) 서고 이름에 함께 든다(「내 차례 1」). 0이면 비는 것은 `thread-sidebar.spec.ts`가 잰다.
-test("위 줄 세 행이 머리 줄 밑 + 2부터 30 · 간격 31로 서고 — 새 Thread 끝에 ⌘N이 옅게, 내 차례 끝에 기다리는 수가 파랗게 선다", async ({
+test("위 줄 두 행이 머리 줄 밑 + 2부터 30 · 간격 31로 서고 — 새 Thread 끝에 ⌘N이 옅게, 내 차례 끝에 기다리는 수가 파랗게 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -255,13 +254,12 @@ test("위 줄 세 행이 머리 줄 밑 + 2부터 30 · 간격 31로 서고 — 
   await expect(첫화면(page)).toBeVisible({ timeout: 20_000 });
   const 새Thread = 위줄(page, "새 채팅");
   const 내차례 = 위줄(page, "내 차례 1");
-  const Library = 위줄(page, "Library");
   await expect(내차례).toBeVisible();
 
   const header = await boxOf(page.locator("header"));
-  const rows = await Promise.all([새Thread, 내차례, Library].map((one) => boxOf(one.locator(".."))));
-  expect(rows.map((one) => one.height), "행 높이").toEqual([30, 30, 30]);
-  expect(rows.map((one) => one.y - header.bottom), "머리 줄 밑에서 — 2 · 간격 31").toEqual([2, 33, 64]);
+  const rows = await Promise.all([새Thread, 내차례].map((one) => boxOf(one.locator(".."))));
+  expect(rows.map((one) => one.height), "행 높이").toEqual([30, 30]);
+  expect(rows.map((one) => one.y - header.bottom), "머리 줄 밑에서 — 2 · 간격 31").toEqual([2, 33]);
 
   // ⌘N — 옅은 12 글자가 행 버튼 안쪽 오른쪽 끝에 서고, 이름에는 안 든다.
   await expect(새Thread).toHaveAttribute("aria-keyshortcuts", "Meta+N");
@@ -285,9 +283,7 @@ test("위 줄 세 행이 머리 줄 밑 + 2부터 30 · 간격 31로 서고 — 
 //
 // **씨앗을 단 새 Thread에서도 먹는다**(02 코드 리뷰 S1) — +로 연 「새 작업공간」(`/?new=work`)와 그 Work를 고른 새 Thread(`/?work=<slug>`)도 `/`라,
 // 한때 가드가 거기서 키를 삼켜 Work 칩이 그대로 남았다. 거기서는 위 줄 「새 채팅」이 고른 줄이 아니고(눌러도 그 자리일 때만 고른 줄이다 —
-// 가드와 같은 물음 `isBlankNewThread`), ⌘N이 씨앗을 걷어 Work 칩이 기억한 스위치 쪽으로 돌아오며 그 행이 고른 줄이 된다. 같은 함수를 부르는
-// 행을 눌러도 같다. 기억은 먼저 「작업공간 없이 대화」로 골라 둔다 — 기본값(「새 작업공간」)이면 `/?new=work`의 씨앗과 걷힌 뒤가 같은 글이라 걷힌
-// 것이 칩에 안 보인다(03 구현 스펙 §5 · S2 — 씨앗 › 기억 › 「새 작업공간」).
+// 가드와 같은 물음 `isBlankNewThread`), ⌘N이 씨앗을 걷어 Work 칩이 사라지며 그 행이 고른 줄이 된다. 같은 함수를 부르는 행을 눌러도 같다.
 test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal · 씨앗을 단 새 Thread에서 새 Thread를 열고, 확인 창 · 팔레트가 떠 있으면 안 연다", async ({
   page,
 }) => {
@@ -312,26 +308,23 @@ test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal · 씨앗�
   await 새Thread로간다("셸에 포커스가 선 Terminal");
 
   // 씨앗을 단 새 Thread 둘 — 칩이 씨앗을 말하는 것이 앵커다(이미 첫 화면이다). 고른 줄은 행 버튼을 품은 상자의 `selected-row`다(`SidebarItem`).
-  const 워크칩 = (name: string) => page.getByRole("button", { name: `어디서 일할지 ${name}`, exact: true });
+  const 트레이 = page.locator('[data-slot="composer-tray"]');
   const 새Thread줄 = 위줄(page, "새 채팅").locator("..");
-  await 워크칩("새 작업공간").click();
-  await page.getByRole("menuitemradio", { name: "작업공간 없이 대화" }).click();
-  await expect(워크칩("작업공간 없이 대화"), "앵커: 스위치를 「작업공간 없이 대화」로 기억한다").toBeVisible();
   for (const [from, chip] of [
-    ["/?new=work", "새 작업공간"],
-    [`/?work=${plainWork.slug}`, plainWork.title],
+    ["/?new=work", 트레이.locator('[data-slot="new-work-chip"]')],
+    [`/?work=${plainWork.slug}`, 트레이.locator('[data-slot="work-chip"]')],
   ] as const) {
     for (const how of ["⌘N", "「새 채팅」"] as const) {
       await page.goto(from);
       await expect(첫화면(page)).toBeVisible();
-      await expect(워크칩(chip), `${from} — 씨앗`).toBeVisible();
+      await expect(chip, `${from} — 씨앗`).toBeVisible();
       await expect(새Thread줄, `${from} — 고른 줄이 아니다`).not.toHaveClass(/\bselected-row\b/);
       if (how === "⌘N") await 새Thread로간다(from);
       else {
         await 위줄(page, "새 채팅").click();
         await expect(page, `${from}에서 ${how}`).toHaveURL("/");
       }
-      await expect(워크칩("작업공간 없이 대화"), `${from}에서 ${how} — 씨앗이 걷혔다`).toBeVisible();
+      await expect(chip, `${from}에서 ${how} — 씨앗이 걷혔다`).toHaveCount(0);
       await expect(새Thread줄, `${from}에서 ${how} — 고른 줄`).toHaveClass(/\bselected-row\b/);
     }
   }
@@ -365,41 +358,31 @@ test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal · 씨앗�
 });
 
 // **「내 차례」를 켠 동안 위 줄의 고른 줄은 그 하나다**(02 구현 스펙 §4 — 「그동안 행은 고른 모양이다. 다시 누르거나 다른 행을 고르면
-// 돌아온다」). 지금 주소의 행(새 Thread · Library)은 고른 모양을 내려놓고, 그 둘 중 하나를 누르면 거르기가 풀려 그 행이 고른 줄이다. 다시
-// 눌러 끄는 길과 기다리는 순서 목록은 `thread-waiting.spec.ts`가 잰다.
-test("「내 차례」를 켠 동안 새 Thread · Library는 고른 모양을 내려놓고, 둘 중 하나를 누르면 거르기가 풀려 그 행이 고른 줄이다", async ({
+// 돌아온다」). 지금 주소의 행(새 Thread)은 고른 모양을 내려놓고, 그 행을 누르면 거르기가 풀려 그 행이 고른 줄이다. 다시 눌러 끄는 길과 기다리는 순서 목록은 `thread-waiting.spec.ts`가 잰다.
+test("「내 차례」를 켠 동안 새 Thread는 고른 모양을 내려놓고, 그 행을 누르면 거르기가 풀려 그 행이 고른 줄이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto("/");
   await expect(첫화면(page)).toBeVisible({ timeout: 20_000 });
-  const [새Thread, 내차례, Library] = [위줄(page, "새 채팅"), 위줄(page, "내 차례"), 위줄(page, "Library")];
-  /** 세 행의 면 — 면은 색 전환(`transition-colors`)으로 바뀌어, 바뀐 뒤에는 전환이 끝날 때까지 기다려 읽는다. */
-  const 면들 = async () => [await 면(새Thread), await 면(내차례), await 면(Library)];
+  const [새Thread, 내차례] = [위줄(page, "새 채팅"), 위줄(page, "내 차례")];
+  /** 두 행의 면 — 면은 색 전환(`transition-colors`)으로 바뀌어, 바뀐 뒤에는 전환이 끝날 때까지 기다려 읽는다. */
+  const 면들 = async () => [await 면(새Thread), await 면(내차례)];
   const 고른면 = await 면(새Thread);
   const 빈면 = "rgba(0, 0, 0, 0)";
   // 앵커: 첫 화면에서는 새 Thread가 고른 줄이다 — 고른 면이 빈 면과 다르다.
   expect(고른면, "새 Thread의 고른 면").not.toBe(빈면);
-  expect([await 면(내차례), await 면(Library)]).toEqual([빈면, 빈면]);
+  expect(await 면(내차례)).toBe(빈면);
 
   await 내차례.click();
   await expect(내차례).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(면들, { message: "켠 동안 — 내 차례만 고른 줄" }).toEqual([빈면, 고른면, 빈면]);
+  await expect.poll(면들, { message: "켠 동안 — 내 차례만 고른 줄" }).toEqual([빈면, 고른면]);
 
-  // Library를 누르면 거르기가 풀리고 Library가 고른 줄이다.
-  await Library.click();
-  await expect(page).toHaveURL("/library");
-  await expect(내차례).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(면들).toEqual([빈면, 빈면, 고른면]);
-
-  // 다시 켜면 Library가 내려놓고, 새 Thread를 누르면 풀려 첫 화면이다.
-  await 내차례.click();
-  await expect(내차례).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(면들, { message: "켠 동안 Library가 내려놓는다" }).toEqual([빈면, 고른면, 빈면]);
+  // 새 Thread를 누르면 거르기가 풀리고 새 Thread가 다시 고른 줄이다.
   await 새Thread.click();
   await expect(page).toHaveURL("/");
   await expect(내차례).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(면들).toEqual([고른면, 빈면, 빈면]);
+  await expect.poll(면들).toEqual([고른면, 빈면]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -471,9 +454,9 @@ test("Work 줄은 그 Work의 Thread와 셸 가운데 가장 센 상태 하나�
 
 // ─── Work 묶음 + ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-// **Work 묶음 머리 끝의 +는 「작업공간 만들기」다**(02 구현 스펙 §4 · S5) — 새 Thread를 열고 Work 칩을 「새 작업공간」으로 둔 채 입력창에 놓는다(`/?new=work`).
-// 머리를 접어도 선다. 목록의 Tab 정류장이 아니다(핀과 같다 — 키보드의 길은 ⌘N 뒤 Work 칩). **Work가 없으면** 머리 아래에 안내 한 줄이
-// 선다(S6 — 12 · 3단계 색) — 그때도 +가 새 Work의 길이다. 칩의 갈래 · 고른 것이 첫 말과 함께 가는 것은 `thread-work-chip.spec.ts`가 잰다.
+// **Work 묶음 머리 끝의 +는 「작업공간 만들기」다**(02 구현 스펙 §4 · S5) — 새 Thread를 열어 「새 작업공간」 칩을 세운다(`/?new=work`). 머리를 접어도
+// 선다. 목록의 Tab 정류장이 아니다(핀과 같다). **Work가 없으면** 머리 아래에 안내 한 줄이 선다(S6 — 12 · 3단계 색) — 그때도 +가 새 Work의 길이다.
+// ×로 빼는 것 · 고른 것이 첫 말과 함께 가는 것은 `thread-work-chip.spec.ts`가 잰다.
 test("Work 묶음 머리 끝 +가 「작업공간 만들기」로 새 Thread를 열고 — 머리를 접어도 서며 Tab 정류장이 아니다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/processes");
@@ -493,7 +476,7 @@ test("Work 묶음 머리 끝 +가 「작업공간 만들기」로 새 Thread를 
 
   await plus.click();
   await expect(page).toHaveURL("/?new=work");
-  await expect(page.getByRole("button", { name: "어디서 일할지 새 작업공간", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "새 작업공간 빼기", exact: true })).toBeVisible();
   await expect(첫화면(page)).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -502,8 +485,8 @@ test("Work가 없으면 Work 묶음 머리 아래에 안내 한 줄이 12 · 3�
   await installFixtureBackend(page, { list_works: [] });
   await page.goto("/processes");
   const plus = 사이드바(page).getByRole("button", { name: "작업공간 만들기", exact: true });
-  const 머리 = 사이드바(page).getByRole("button", { name: /^Work( \d+)?$/ });
-  const 안내 = 사이드바(page).getByText("아직 작업공간이 없어요. 말로 시작하면 Host가 작업공간으로 묶어 줘요.", { exact: true });
+  const 머리 = 사이드바(page).getByRole("button", { name: /^작업공간( \d+)?$/ });
+  const 안내 = 사이드바(page).getByText("아직 작업공간이 없어요. 말로 시작하면 Runtime이 작업공간으로 묶어 줘요.", { exact: true });
   await expect(안내).toBeVisible();
   expect(await 칠한값(안내, "font-size", "color"), "안내 글자").toEqual(["12px", await 토큰색(page, "--fg-tertiary")]);
   expect((await boxOf(안내)).y, "안내는 머리 아래").toBeGreaterThanOrEqual((await boxOf(머리)).bottom);

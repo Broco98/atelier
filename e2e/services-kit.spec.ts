@@ -26,15 +26,15 @@ import type { ProjectView } from "@/features/projects/types";
 import type { Service, ServiceDetail, ServiceDraft } from "@/features/services/types";
 
 // 03 구현 스펙 Testing 「Service(`F4-KitSpace`)」 — Service 흐름 하나. 상황 모음판의 칸이 곧 경우다: 목록 · 「새 Service ⌄」 메뉴 · 상세(그래프 · 넣기 ·
-// 빼기와 되돌리기 · 함께 쓰는 Service · Work · 새 Work · Host와 고치기) · 빈 Service · 지우기와 되돌리기, 그리고 파일 고치기 화면(관계 편집 · 직접
+// 빼기와 되돌리기 · 함께 쓰는 Service · Work · 새 Work · 대화로 고치기) · 빈 Service · 지우기와 되돌리기, 그리고 파일 고치기 화면(관계 편집 · 직접
 // 만들기 — 두 칸 자리 · 커서 줄 ↔ 조각 · 줄 끝 문제 · 알약 · 저장 꺼짐 · slug 따라옴 · -2 · 버릴지 묻기).
 //
 // 이 층에는 core가 없다 — 고치기(`update_service`)의 답은 값을 기억하지 않고, 검사(`check_service`)는 글마다 시험이 둔 답이다. 그래서 재는 것은
 // 「무엇이 나갔나」(IPC와 그 인자)와 「받은 답을 어떻게 그렸나」다. 파일 글이 그대로 남는지 · 검사가 맞는지는 core 단위 표(L1)가 잰다.
 //
-// 다른 흐름이 재는 칸은 여기서 다시 재지 않는다 — 「입력창에서 고름」(빈 Service 칩 · 범위 줄)은 트레이 흐름, 「대화로 만듦」 결과 카드 · 「그
-// Service에 있던 대화」 줄은 대화 속 Service 흐름이 잰다. 「작업공간 화면에서 붙이기」 칸은 다음 판(Work 화면)이다. 시작 단추(새 Work · Host와
-// 고치기 · Host와 만들기)는 여는 주소까지 재고, 그 씨앗이 칩 · 입력 글로 서는 것은 트레이 흐름이 잰다.
+// 다른 흐름이 재는 칸은 여기서 다시 재지 않는다 — 「입력창에서 고름」(빈 범위 칩 · 범위 줄)은 트레이 흐름, 「대화로 만듦」 결과 카드 · 「그
+// Service에 있던 대화」 줄은 대화 속 Service 흐름이 잰다. 「작업공간 화면에서 붙이기」 칸은 다음 판(Work 화면)이다. 시작 단추(새 Work · 대화로
+// 고치기 · 대화로 만들기)는 여는 주소까지 재고, 그 씨앗이 칩 · 입력 글로 서는 것은 트레이 흐름이 잰다.
 
 const [결제, 원장도구] = SERVICES;
 const [billing, ledger] = PROJECTS;
@@ -86,7 +86,7 @@ test.describe("목록과 만들기", () => {
     // 손으로 깨뜨린 파일도 목록에 선다 — 이름 뒤 「문제 있음」(스토리 185). 문제 없는 줄에는 서지 않는다.
     await expect(page.getByRole("link", { name: "깨진 묶음 문제 있음", exact: true })).toBeVisible();
     await expect(목록(page).getByText("문제 있음")).toHaveCount(1);
-    await expect(본문(page, "Service").getByText("Service는 Project를 묶어요. Agent는 Service 안의 Project를 함께 읽어요.", { exact: true })).toBeVisible();
+    await expect(본문(page, "Service").getByText("Service는 Project를 묶어요. Runtime은 Service 안의 Project를 함께 읽어요.", { exact: true })).toBeVisible();
 
     // 찾기 — 이름에도, 적힌 Project에도 걸린다.
     const 찾기 = page.getByRole("searchbox", { name: "Service 찾기", exact: true });
@@ -102,7 +102,7 @@ test.describe("목록과 만들기", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Service가 없으면 「아직 Service가 없어요」와 「새 Service」가 서고, 그 메뉴는 「Host와 만들기 · 기본」 · 「직접 만들기」 둘이다", async ({ page }) => {
+  test("Service가 없으면 「아직 Service가 없어요」와 「새 Service」가 서고, 그 메뉴는 「대화로 만들기 · 기본」 · 「직접 만들기」 둘이다", async ({ page }) => {
     await installFixtureBackend(page, { list_services: [] });
     await page.goto("/services");
 
@@ -114,12 +114,12 @@ test.describe("목록과 만들기", () => {
     await expect(새Service).toHaveCount(2);
     await 새Service.last().click();
 
-    await expect(메뉴(page).getByRole("menuitem")).toHaveText([/^Host와 만들기.*기본$/, /^직접 만들기/]);
+    await expect(메뉴(page).getByRole("menuitem")).toHaveText([/^대화로 만들기.*기본$/, /^직접 만들기/]);
     // 접근 이름은 머리 글자만, 설명은 따로다(03 코드 리뷰 P13).
-    await expect(항목(page, "Host와 만들기")).toHaveAccessibleDescription("Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요");
+    await expect(항목(page, "대화로 만들기")).toHaveAccessibleDescription("Project를 읽고 초안을 내요 — 승인하면 만들어져요");
     await expect(항목(page, "직접 만들기")).toHaveAccessibleDescription("Service 파일을 빈 틀로 열어요 — 이름과 Project를 적어요");
 
-    // 「Host와 만들기」 — Work 없는 새 대화에 맡기는 말을 넣어 연다(S16). 보내기는 사람이 한다.
+    // 「대화로 만들기」 — Work 없는 새 대화에 맡기는 말을 넣어 연다(S16). 보내기는 사람이 한다.
     await 메뉴(page).getByRole("menuitem").first().click();
     await expect(첫화면(page)).toBeVisible();
     expect(씨앗(page)).toEqual({
@@ -171,8 +171,8 @@ test.describe("상세", () => {
     await expect(화면머리(page)).toHaveText(`Service/${결제.name}`);
     const 본문칸 = 본문(page, "Service 상세");
     await expect(본문칸.getByRole("heading", { level: 1 })).toHaveText(결제.name);
-    // 만든 이 줄 — Host가 만들었으면 H 얼굴과 「Host와 만듦」, 만든 때는 날 단위다(파일의 `createdAt`이 날짜).
-    await expect(본문칸.getByText("Host와 만듦", { exact: true })).toBeVisible();
+    // 만든 이 줄 — 대화로 만들었으면 「대화로 만듦」, 만든 때는 날 단위다(파일의 `createdAt`이 날짜).
+    await expect(본문칸.getByText("대화로 만듦", { exact: true })).toBeVisible();
     await expect(본문칸.getByText("2일 전", { exact: true })).toBeVisible();
     await expect(본문칸.getByText("Project 2", { exact: true })).toBeVisible();
 
@@ -306,7 +306,7 @@ test.describe("상세", () => {
     const 본문칸 = 본문(page, "Service 상세");
 
     const 설명 = 본문칸.getByRole("region", { name: "설명", exact: true });
-    await expect(설명.getByText("Agent가 이 Service에서 일할 때 처음 읽어요", { exact: true })).toBeVisible();
+    await expect(설명.getByText("Runtime이 이 Service에서 일할 때 처음 읽어요", { exact: true })).toBeVisible();
     // Esc는 그만두기다 — 친 글을 버리고 아무것도 고치지 않는다(Project 상세의 설명 칸과 같은 칸 — 03 코드 리뷰 D1). 아래 「그 칸만 고친다」가
     // 나간 고치기를 모두 센다.
     await 설명.getByRole("button", { name: "설명 고치기", exact: true }).click();
@@ -334,7 +334,7 @@ test.describe("상세", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("머리의 「작업공간 만들기」는 이 Service를 쥔 「새 작업공간」으로, 「Host와 고치기」는 이 Service를 쥔 Work 없는 대화에 고쳐 달라는 말을 넣어 첫 화면을 연다", async ({
+  test("머리의 「작업공간 만들기」는 이 Service를 쥔 「새 작업공간」으로, 「대화로 고치기」는 이 Service를 쥔 Work 없는 대화에 고쳐 달라는 말을 넣어 첫 화면을 연다", async ({
     page,
   }) => {
     await installFixtureBackend(page);
@@ -346,7 +346,7 @@ test.describe("상세", () => {
     expect(씨앗(page)).toEqual({ new: "work", service: 결제.slug });
 
     await page.goBack();
-    await 본문칸.getByRole("button", { name: "Host와 고치기", exact: true }).click();
+    await 본문칸.getByRole("button", { name: "대화로 고치기", exact: true }).click();
     await expect(첫화면(page)).toBeVisible();
     expect(씨앗(page)).toEqual({ new: "thread", service: 결제.slug, say: `${결제.name} Service를 고치고 싶어요. ` });
     // 시작 단추는 열기만 한다 — 보내기는 사람이 한다.
@@ -544,7 +544,7 @@ test.describe("파일 고치기 화면", () => {
     await expect(판.getByText(/^고친 줄/)).toHaveCount(0);
     await expect(알약(page)).toHaveText("문제 없어요");
     await expect(판.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
-    await expect(판.getByText("Project는 billing · ledger 중에서 — Host에게 말로 부탁해도 이 파일이 바뀌어요", { exact: true })).toBeVisible();
+    await expect(판.getByText("Project는 billing · ledger 중에서 — 대화로 부탁해도 이 파일이 바뀌어요", { exact: true })).toBeVisible();
 
     // 처음 커서 — projects 줄(S14). 그 조각의 줄(3–5)과 카드의 관계 그래프 조각이 짝지어지고 꼬리표 「3–5행」이 선다.
     await expect(편집기(page)).toBeFocused();

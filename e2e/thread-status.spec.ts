@@ -11,7 +11,7 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 // 기록 줄 이벤트가 사이드바 줄을 바꾸고 그 줄을 열면 읽은 자리가 나가는 한 바퀴다.
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — 「파일 쓰기를 매번 묻기로 물어 허락받은 턴」(`thread-permission`), 진짜 claude 2.1.309가
-// 「알아서」로 돌던 명령을 사람이 멈춘 턴(`thread-stopped`, v1 티켓 44), 「새 채팅 두 턴」(`thread-two-turns`)의 둘째 턴이 도는 중에 앱이
+// 「묻지 않음」으로 돌던 명령을 사람이 멈춘 턴(`thread-stopped`, v1 티켓 44), 「새 채팅 두 턴」(`thread-two-turns`)의 둘째 턴이 도는 중에 앱이
 // 꺼진 꼴. 제목은 기록에서 읽는다.
 //
 // **상태는 줄 오른쪽 끝의 표시 하나다**(02 티켓 05 · 구현 스펙 §4 · S11 — `StatusMark`). 내 차례는 「내 차례」 알약, 작업 중은 스피너(그림
@@ -90,7 +90,7 @@ test("사이드바 Thread 줄이 내 차례 · 작업 중 · 새 결과 · 실�
   // 줄을 열어 답한다 — 답 줄이 오면 다시 작업 중이다. 턴이 끝나지 않았으니 읽은 자리는 아직 적지 않는다.
   await 줄(page, asking).click();
   await expect(page).toHaveURL(`/threads/${asking.id}`);
-  await page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();
+  await page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args.thread))
     .toEqual([asking.id]);

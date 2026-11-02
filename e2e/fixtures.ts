@@ -1281,7 +1281,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `list_services`를 갈아 끼운다. 비운 곳마다의 「지워짐」 · 「되돌림」 줄은 기록(`thread-service-deleted`)으로 온다.
   thread_delete_service: { service: SERVICES[0], unlinked: { works: [], threads: [] } } satisfies DeletedService,
   thread_restore_service: { service: SERVICES[0], relinked: { works: [], threads: [] } } satisfies RestoredService,
-  // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
+  // 그 Work의 지금 물어보는 정도(v1 티켓 31) — `?work=`로 연 새 Thread의 물어보는 정도 칩이 읽는다.
   thread_work_mode: "always",
   // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
   thread_rename: {

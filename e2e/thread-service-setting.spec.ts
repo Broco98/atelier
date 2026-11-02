@@ -7,7 +7,7 @@ import { PAYMENTS, REFUND, SCOPE_BY_SERVICE, SCOPES, SETTLEMENT, TOOLS, WORLD, W
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
 // 03 티켓 13 흐름 「대화 속 Service와 설정」(캔버스 v52 F4-KitChat) — **Host가 다루는 Project로 Service를 붙일 때 물을 땐 지금의 질문 카드로
-// 묻고(답하면 한 줄로 접힌다), 「알아서」면 묻지 않고 회색 한 줄만 남기며, Service가 바뀔 때마다 흐름에 그 한 줄이 선다. 대화로 한 설정은 결과
+// 묻고(답하면 한 줄로 접힌다), 「묻지 않음」면 묻지 않고 회색 한 줄만 남기며, Service가 바뀔 때마다 흐름에 그 한 줄이 선다. 대화로 한 설정은 결과
 // 카드 한 장이고 「열기」가 그 화면으로 간다. git이 아닌 폴더는 화면 추가 창과 같은 질문 카드로 묻는다. Work 없는 대화의 머리 줄은 「흐린
 // Service / 이름」이고, Work 화면 머리 줄의 흐린 Service는 Service 메뉴를 연다**(03 구현 스펙 §9 · §10 · §11 · §12 · 티켓 05 · 06 · 07 · 08 · 12).
 // 상황 모음판의 칸이 곧 경우다 — 같은 것을 두 번 재지 않는다.
@@ -15,10 +15,10 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 //   여기서 잰다     Service 질문 카드(머리 · 물음 · 선택지 · 「나중에」 · 키) · 답한 뒤 접힌 줄 · Service 줄 다섯(넣음 · 바꿈 · 뺌 · 지워짐 · 되돌림)과
 //                   줄이 오면 따라오는 머리 줄 · 결과 카드 넷과 「열기」 · 「관계 보기」(목록에 없으면 꺼짐) · Project 추가 질문 카드와 답한 뒤 ·
 //                   머리 줄 셋(Work 없음 · Service 없음 / Work 없음 · Service 있음 / Work 화면 · Service 메뉴) · Work 만들기 카드의 Service 줄
-//   다른 spec이 잰다 트레이의 Service 칩 · 범위 줄(흐름 「트레이」 — `thread-tray`) · Work 만들기 카드의 나머지와 받아들인 뒤(`thread-work`) ·
+//   다른 spec이 잰다 트레이의 범위 칩 · 범위 줄(흐름 「트레이」 — `thread-tray`) · Work 만들기 카드의 나머지와 받아들인 뒤(`thread-work`) ·
 //                   지우기 확인 창 · 토스트(흐름 「Service」 — 13c) · 「지우기를 부탁받음」(Host의 말 — 진짜 앱 손 점검, 13d)
 //
-// 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Host가 물은 Service 카드(`thread-service-ask`) · 「알아서」 붙임(`thread-service-attached`) · 사람이
+// 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Host가 물은 Service 카드(`thread-service-ask`) · 「묻지 않음」 붙임(`thread-service-attached`) · 사람이
 // 칩으로 붙이고 뺀 대화(`thread-service`) · 이은 Service가 지워지고 되돌려진 대화(`thread-service-deleted`) · 대화로 한 설정 넷(`thread-setting`) ·
 // git이 아닌 폴더의 추가(`thread-project-add`). Work 만들기 카드의 Service 줄만 축복한 장면이 없어, Work 만들기 기록(`thread-work`)의 물음 줄에
 // L1(`thread_work.rs` 「thread의 service는 work 만들기 카드에 서고 …」)이 잰 그 칸 하나를 더한다. 세계는 그 기록의 세계와 이름이 같은 시안의
@@ -85,7 +85,7 @@ const asking = record("thread-service-ask");
 const SERVICE_ASKED = lineOf(asking, "question", "asked");
 const SERVICE_REQUEST = (SERVICE_ASKED.payload as { requestId: string }).requestId;
 
-test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Host · 질문」 카드가 추천 · 다른 후보 · Service 없이를 세우고, ↵ · ↓↵ · 3 · esc가 그 답으로 가며, 답하면 한 줄로 접힌다", async ({
+test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Claude Code · 질문」 카드가 추천 · 다른 후보 · Service 없이를 세우고, ↵ · ↓↵ · 3 · esc가 그 답으로 가며, 답하면 한 줄로 접힌다", async ({
   page,
 }) => {
   const view = threadOf("20261025-090000", asking, { live: true, lastSeq: SERVICE_ASKED.seq });
@@ -97,7 +97,7 @@ test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Host ·
   const card = page.getByRole("group", { name: "어느 Service에서 할까요?", exact: true });
   await expect(card).toBeVisible();
   await expect(입력칸(page)).toHaveCount(0);
-  await expect(card).toContainText("Host · 질문");
+  await expect(card).toContainText("Claude Code · 질문");
   await expect(card).toContainText("Service를 고르면 그 안의 Project만 읽어요 · 나중에 바꿀 수 있어요");
   await expect(card.getByRole("button")).toHaveText([
     "1결제 서비스추천web-app · api-server",
@@ -159,7 +159,7 @@ const deleted = record("thread-service-deleted");
 /** 그 기록의 n번째 Service 줄. */
 const serviceLine = (lines: readonly RecordLine[], nth: number) => seqOf(lines, "service", nth);
 
-test("Service 줄 다섯 — 「알아서」 넣음 · 사람이 바꿈 · 뺌 · 지워짐 · 되돌림이 흐름 가운데 회색 한 줄로 서고(이름만 굵게), 줄이 오면 머리 줄의 Service가 따라온다", async ({
+test("Service 줄 다섯 — 「묻지 않음」 넣음 · 사람이 바꿈 · 뺌 · 지워짐 · 되돌림이 흐름 가운데 회색 한 줄로 서고(이름만 굵게), 줄이 오면 머리 줄의 Service가 따라온다", async ({
   page,
 }) => {
   const auto = threadOf("20261025-100000", attached, { lastSeq: attached[attached.length - 1].seq });
@@ -171,7 +171,7 @@ test("Service 줄 다섯 — 「알아서」 넣음 · 사람이 바꿈 · 뺌 �
     { view: gone, lines: deleted },
   ]);
 
-  // 「알아서」 모드 — 묻지 않고 넣고 한 줄만(「**결제 서비스** Service에 넣었어요 — web-app · api-server를 읽어요」). 붙인 범위는 다음 말부터라
+  // 「묻지 않음」 모드 — 묻지 않고 넣고 한 줄만(「**결제 서비스** Service에 넣었어요 — web-app · api-server를 읽어요」). 붙인 범위는 다음 말부터라
   // 그 턴 뒤(턴 사이)에 선다. 줄은 대화 열 가운데 13 · 옅은 글자, 이름만 본문색 500이다(F4-KitChat `.sysl`).
   await openThread(page, auto);
   const line = Service줄(page);
@@ -300,7 +300,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
   // 「고르기 ↵」 하나다(미루면 Host가 할 일이 없다 — 03 결정 「12」).
   const card = page.getByRole("group", { name: ADD_QUESTION, exact: true });
   await expect(card).toBeVisible();
-  await expect(card).toContainText("Host · 질문");
+  await expect(card).toContainText("Claude Code · 질문");
   await expect(card.getByRole("button")).toHaveText(["1git init 하고 추가추천빈 레포를 만들고 기준 브랜치 main", "2추가하지 않기", /^고르기/]);
   await expect(card.getByRole("button", { name: /^나중에/ })).toHaveCount(0);
   // 기다리는 동안 — Service 카드와 같다: 턴 머리줄이 무엇을 기다리는지 말하고, 사이드바의 그 줄은 「내 차례」다.

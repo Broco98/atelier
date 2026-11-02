@@ -9,7 +9,7 @@ import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **엔진이 Work의 PR을 읽어 남긴 `pr` 줄이 흐름에 PR 카드로 서고, 요약 카드의 PR 줄(「변경 사항」
 // 아래 — 02 §7 · S18)이 CI를 문장으로 보인다**(v1 티켓 36 · 구현 스펙 §12 S24 · §15 · 스토리 124–127). 처음 보인 PR은 「CI 확인 중」, CI가 실패하면 카드가 하나 더 서고 실패
-// 문장과 「Host에게 고쳐 달라고 하기」가, 병합되면 「병합됨」이 선다. 카드가 열린 동안 PR은 60초마다 다시 읽는다.
+// 문장과 「고쳐 달라고 하기」가, 병합되면 「병합됨」이 선다. 카드가 열린 동안 PR은 60초마다 다시 읽는다.
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다 — Work에 이은 Thread의 턴이 끝난 뒤 처음 보인 PR · 카드의 읽기가 본 CI 실패 · 병합됨(`thread-pr`,
 // `thread_pr.rs`). 카드 · 줄의 글과 요약 카드가 받는 PR(`thread_work_prs`)은 그 줄에서 읽는다(스토리 137).
@@ -75,7 +75,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
     "CI 확인 중",
   ];
   for (const said of meta) await expect(opened).toContainText(said);
-  await expect(opened.getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true })).toHaveCount(0);
+  await expect(opened.getByRole("button", { name: "고쳐 달라고 하기", exact: true })).toHaveCount(0);
 
   // CI가 실패했다 — 카드가 하나 더 서고, 마지막 카드에 실패한 검사와 고쳐 달라는 버튼이 선다. 요약 카드의 PR 줄은 엔진의 줄로 바뀌고
   // (`gh`를 다시 부르지 않는다) 그 아래 실패 문장이 선다.
@@ -91,8 +91,8 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   await expect(카드(page)).toContainText(`${failedNames.join(", ")} 검사가 실패했어요.`);
   expect(await callCount(page, "thread_work_prs")).toBe(1);
 
-  // 「Host에게 고쳐 달라고 하기」는 입력창을 채울 뿐이다 — 보내는 것은 사람이다.
-  await failed.getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true }).click();
+  // 「고쳐 달라고 하기」는 입력창을 채울 뿐이다 — 보내는 것은 사람이다.
+  await failed.getByRole("button", { name: "고쳐 달라고 하기", exact: true }).click();
   await expect(입력칸(page)).toHaveValue(`PR #${FAILED.number}의 CI에서 ${failedNames.join(", ")} 검사가 실패했어요. 원인을 찾아 고쳐 줘.`);
   expect(await ipcCallArgs(page, "thread_send", "text")).toEqual([]);
 
@@ -120,7 +120,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   const merged = PR카드(page).last();
   await expect(merged).toHaveAttribute("data-pr-state", MERGED.state);
   await expect(merged.getByRole("button")).toHaveCount(0);
-  await expect(흐름(page).getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true })).toHaveCount(0);
+  await expect(흐름(page).getByRole("button", { name: "고쳐 달라고 하기", exact: true })).toHaveCount(0);
   await expect(PR줄(page)).toHaveText(/병합됨 · /);
   await expect(PR줄(page).locator('[data-pr-icon="merged"]')).toHaveCount(1);
   expect(await unknownIpcCalls(page)).toEqual([]);

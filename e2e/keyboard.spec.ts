@@ -295,7 +295,7 @@ test("사이드바 work 목록은 ↑↓로 구획 머리와 행을 지나고, �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// nav는 「새 채팅」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19, 02 티켓 04 — 「내 차례」가 마디에서 nav로 왔다). 지금
+// nav는 「새 채팅」 · 「내 차례」 둘이다(v1 티켓 07, 02 티켓 04 — 「내 차례」가 마디에서 nav로 왔다, 01a-1 — Library를 걷었다). 지금
 // 화면들로 가는 옛 main nav 넷은 사람 메뉴로 갔다(S27).
 test("nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -303,9 +303,7 @@ test("nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", as
   await 탭으로(page, page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }));
   await 간다(page, "ArrowUp", "new-thread");
   await 간다(page, "ArrowDown", "mine");
-  await 간다(page, "ArrowDown", "library");
-  await 간다(page, "ArrowDown", "library");
-  await 간다(page, "ArrowUp", "mine");
+  await 간다(page, "ArrowDown", "mine");
   await 간다(page, "ArrowUp", "new-thread");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/");

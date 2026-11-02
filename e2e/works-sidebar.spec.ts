@@ -1556,11 +1556,20 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
   // 재는 자리가 여기다. 위 검사가 첫 넘침에서 건 밴드를 좁힌 뒤의 넘침에서도 걸어야 그 말이
   // 처음으로 실측된다: 고정 지속시간(기각안 「마퀴 — 완전 CSS」)은 거리가 늘면 속도가 함께
   // 늘어서 두 자리가 같은 값을 못 낸다. 이 줄들이 없으면 그 기각안이 전부 초록으로 들어온다.
-  await page.waitForTimeout(450);
-  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
-  const 속도 = await speedOf(긴제목);
-  expect(속도).toBeGreaterThan(속도밴드[0]);
-  expect(속도).toBeLessThan(속도밴드[1]);
+  //
+  // **다시 가리켜 재는 까닭** — WebKit이 첫 프레임을 받기 전(`pending`)의 전이는 목표가 1/64px만 바뀌어도 출발점을 끝값으로 잡아 다시 걸린다. 끌어
+  // 좁힌 폭에서 그 틈에 들면 제목이 끝으로 튀어 속도가 0으로 읽힌다(실측 — `getAnimations`의 `startTime`이 268ms 늦었다, 이 파일을 돌리면 절반쯤 났다).
+  // 다시 재는 것은 이 틈 하나를 넘기 위해서고, 고정 지속시간은 몇 번을 재도 밴드에 들지 않으므로 잡는 힘은 그대로다.
+  await expect(async () => {
+    await page.mouse.move(700, 400);
+    await expect.poll(() => shiftOf(긴제목)).toBe(0);
+    await 긴제목.hover();
+    await page.waitForTimeout(450);
+    expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
+    const 속도 = await speedOf(긴제목);
+    expect(속도).toBeGreaterThan(속도밴드[0]);
+    expect(속도).toBeLessThan(속도밴드[1]);
+  }).toPass({ timeout: 15_000 });
 
   await expect
     .poll(async () => Math.abs((await shiftOf(긴제목)) + (hover넘침 + TITLE_FADE)) <= 2, {
@@ -1959,8 +1968,8 @@ test("nav 행은 30 · radius-row · 400 · 아이콘 16이고, 고른 행 · �
     expect.poll(async () => (await 칠한값(row, "color"))[0]).toBe(color);
 
   // 배경은 이름 버튼이 아니라 바깥 상자(행)가 든다(`SidebarItem`). 지금 화면이 새 Thread라 그 행이 고른 행이다 — 위 줄은 「새
-  // Thread」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19 · 02 티켓 04, 지금 화면들은 사람 메뉴로 갔다).
-  const navButton = (page: Page, label: "새 채팅" | "Library") =>
+  // Thread」 · 「내 차례」 둘이다(v1 티켓 07 · 02 티켓 04, 지금 화면들은 사람 메뉴로 갔다).
+  const navButton = (page: Page, label: "새 채팅" | "내 차례") =>
     page.locator("aside nav").getByRole("button", { name: label, exact: true });
   const 고른nav = navButton(page, "새 채팅").locator("xpath=..");
   await expect(고른nav).toHaveClass(/selected-row/);
@@ -1985,7 +1994,7 @@ test("nav 행은 30 · radius-row · 400 · 아이콘 16이고, 고른 행 · �
   // 고른 행은 올려도 그 면이다. 지나는 행은 쉴 때 면이 없다가(앵커) 올리면 같은 면이 서고, 글자는 쉬는 글자 그대로다.
   await 고른nav.hover();
   await 면이된다(고른nav, 면);
-  const 지나는nav = navButton(page, "Library").locator("xpath=..");
+  const 지나는nav = navButton(page, "내 차례").locator("xpath=..");
   await expect(지나는nav).not.toHaveClass(/selected-row/);
   await 글자가된다(지나는nav, 쉬는글자);
   expect(await 칠한값(지나는nav, "background-color")).not.toEqual([면]);

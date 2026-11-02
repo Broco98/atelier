@@ -138,7 +138,7 @@ test("셸이 0개면 창은 뜨고 셸 줄이 없다", async ({ page }) => {
 // 말은 메모리에만 있어 사라지고 답하지 않은 승인은 거둬진다 — 그래서 셋을 센다. 셈은 Thread 엔진이 앱 전체(지금 열지 않은 Thread도)에서
 // 한 번에 답한다(`thread_quit_counts`). 기본 답은 0이라 위의 셸 검사들은 Thread 줄 없이 그대로 돈다.
 
-test("Thread: 턴이 도는 Agent · 대기 중인 말 · 답하지 않은 승인이 셸 줄 아래 한 줄로 적힌다", async ({ page }) => {
+test("Thread: 도는 턴 · 대기 중인 말 · 답하지 않은 승인이 셸 줄 아래 한 줄로 적힌다", async ({ page }) => {
   await installFixtureBackend(page, {
     pty_close_checks: { 1: BUSY_SHELL },
     thread_quit_counts: { running: 2, queued: 3, approvals: 1 },
@@ -150,9 +150,9 @@ test("Thread: 턴이 도는 Agent · 대기 중인 말 · 답하지 않은 승�
 
   const dialog = quitDialog(page);
   await expect(dialog).toContainText("셸 1 · 명령이 도는 셸 1");
-  await expect(dialog).toContainText("턴이 도는 Agent 2 · 대기 중인 말 3 · 답하지 않은 승인 1");
+  await expect(dialog).toContainText("도는 턴 2 · 대기 중인 말 3 · 답하지 않은 승인 1");
   // 두 줄이 다 창의 설명이다 — 읽기 도구가 제목 다음에 둘 다 읽는다.
-  await expect(dialog).toHaveAccessibleDescription(/셸 1 · 명령이 도는 셸 1\s+턴이 도는 Agent 2 · 대기 중인 말 3 · 답하지 않은 승인 1/);
+  await expect(dialog).toHaveAccessibleDescription(/셸 1 · 명령이 도는 셸 1\s+도는 턴 2 · 대기 중인 말 3 · 답하지 않은 승인 1/);
   expect(await callCount(page, "thread_quit_counts")).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -165,7 +165,7 @@ test("Thread: 셸이 0개여도 Thread 줄은 선다 — 하나라도 있으면 
   await fireQuitRequest(page);
 
   const dialog = quitDialog(page);
-  await expect(dialog).toHaveAccessibleDescription("턴이 도는 Agent 0 · 대기 중인 말 2 · 답하지 않은 승인 0");
+  await expect(dialog).toHaveAccessibleDescription("도는 턴 0 · 대기 중인 말 2 · 답하지 않은 승인 0");
   await expect(dialog).not.toContainText("셸");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

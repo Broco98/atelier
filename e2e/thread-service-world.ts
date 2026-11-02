@@ -1,9 +1,7 @@
 import type { ProjectView } from "@/features/projects/types";
-import type { SearchResults } from "@/features/search/types";
 import type { ReadingScope } from "@/features/services/scope";
 import type { Service, ServiceDetail } from "@/features/services/types";
 import type { WorkView } from "@/features/works/types";
-import { answerByArg, SEARCH_RESULTS } from "./fixtures";
 import { workView } from "./thread-records";
 
 // 03 흐름 「트레이」(`thread-tray` · `thread-work-chip`) · 「대화 속 Service와 설정」(`thread-service-setting`)의 **세계** — 캔버스 v52
@@ -74,15 +72,26 @@ const scopeOf = (of: Service | null, registered = WORLD_PROJECTS.length): Readin
   };
 };
 
+/** Project 범위 하나 — 고른 그 Project만 읽는다(구현 스펙 「01a — 범위와 새 채팅」). */
+const scopeOfProject = (slug: string): ReadingScope => ({
+  service: null,
+  project: { slug, name: slug },
+  projects: [{ slug, name: slug, why: "project" }],
+  worked: [],
+  kind: "project",
+  registered: WORLD_PROJECTS.length,
+});
+
 /**
- * 범위 다섯 — 갈래 넷(03 §5 · F4-KitComposer 「범위 줄」: 전부 · Service · 빈 Service · 등록된 Project 없음)에, Service 갈래가 이 세계의 Project 있는
- * Service 둘(결제 서비스 · 사내 도구)이라 다섯이다.
+ * 범위 여섯 — 갈래 다섯(03 §5 · F4-KitComposer 「범위 줄」: 전부 · Service · 빈 Service · Project · 등록된 Project 없음)에, Service 갈래가 이 세계의
+ * Project 있는 Service 둘(결제 서비스 · 사내 도구)이라 여섯이다.
  */
 export const SCOPES = {
   all: scopeOf(null),
   payments: scopeOf(PAYMENTS),
   tools: scopeOf(TOOLS),
   settlement: scopeOf(SETTLEMENT),
+  apiServer: scopeOfProject("api-server"),
   none: scopeOf(null, 0),
 } satisfies Record<string, ReadingScope>;
 
@@ -93,7 +102,7 @@ export const SCOPE_BY_SERVICE: Record<string, ReadingScope> = {
   [SETTLEMENT.slug]: SCOPES.settlement,
 };
 
-/** Work 넷 — 시안 「최근 작업공간」의 그 이름 · Service다. 마지막은 Service가 없다. */
+/** Work 넷 — 마지막은 Service가 없다. */
 const work = (slug: string, title: string, linked: Service | null): WorkView => ({
   ...workView({ slug, title, branch: `fix/${slug}`, projects: linked ? linked.projects.slice(0, 1) : [] }),
   ...(linked && { service: linked.slug }),
@@ -106,19 +115,12 @@ export const WORLD_WORKS: WorkView[] = [
   work("docs-move", "문서 사이트 이전", null),
 ];
 
-/** 빈 질의 검색의 Work 줄 — 최근 Work 메뉴가 이 차례로 선다(`recentWorks`). */
-export const RECENT_HITS: SearchResults = {
-  hits: WORLD_WORKS.map(({ slug, title }) => ({ kind: "work" as const, slug, title, archived: false })),
-};
-
 /**
- * 이 세계의 답 — 세 spec이 `installFixtureBackend`의 덮어쓰기로 깐다. Project · Service · Work 목록이 이 세계이고, 빈 질의 검색(최근 Work
- * 메뉴)이 이 세계의 Work를 싣는다(질의가 있으면 fixture의 검색 답). 흐름 하나만 쓰는 답(입력창이 쥔 Service로 센 범위 · Service 상세)은 그
- * spec이 이 위에 더 덮는다.
+ * 이 세계의 답 — 세 spec이 `installFixtureBackend`의 덮어쓰기로 깐다. Project · Service · Work 목록이 이 세계다. 흐름 하나만 쓰는 답(입력창이 쥔
+ * 범위로 센 범위 · Service 상세)은 그 spec이 이 위에 더 덮는다.
  */
 export const WORLD = {
   list_projects: WORLD_PROJECTS,
   list_services: WORLD_SERVICES,
   list_works: WORLD_WORKS,
-  search: answerByArg("query", { "": RECENT_HITS }, { otherwise: SEARCH_RESULTS }),
 };

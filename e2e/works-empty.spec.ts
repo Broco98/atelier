@@ -22,7 +22,7 @@ const CASES = [
     when: "프로젝트는 있고 작업이 없으면",
     overrides: { list_works: [] },
     물음: "아직 작업공간이 없어요",
-    설명: /^작업은 Claude Code에서 시작돼요\./,
+    설명: /^작업공간은 Claude Code에서 시작돼요\./,
     할일: 'atelier로 "새 작업공간" 시작해줘',
   },
   {

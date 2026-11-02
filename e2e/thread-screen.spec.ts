@@ -30,12 +30,12 @@ import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 //   여기서 잰다     머리 줄(이름 · Work 이름 · 제자리 바꾸기 · 「…」 · 요약 고정 토글 · 읽기만이면 꺼짐)
 //                   요약 카드(칸 차례 · 「＋」 없음 · 소스 「모두 보기」 · 「변경 사항」 → 넓힌 카드 · 열 비켜나기 · Work 없는 Thread의 칸 ·
 //                   Thread마다 기억 · 첫 화면에 없음)
-//                   승인 카드의 늘 허용 갈래(이은 Work면 「이 작업공간에서」) · 입력창 자리 카드의 겉 · 대기 「지금 보내기」 · 작업 중 점 ·
+//                   승인 카드의 늘 허용 갈래(이은 Work면 「이 작업공간의 모든 편집 허용」) · 입력창 자리 카드의 겉 · 대기 「지금 보내기」 · 작업 중 점 ·
 //                   Thread 화면이 서기 전에 「새 채팅」으로 돌아온 첫 화면
 //   다른 spec이 잰다 Host 답 머리 없음 · 도구 없는 턴의 구분선 사라짐(`thread`) · 승인 단추 글자 ·
-//                   ↵ · esc · 숫자 키 없음 · 답한 질문 한 줄(`thread-approval`) · Thread 안에 고르는 Work 칩 없음(`thread-work`) · 넓힌
-//                   카드의 줄 · 480 · 작은 카드 앞 16(`thread-work-card`) · 첫 화면 Work 칩의 스위치 · 기억(`thread-work-chip`) · 트레이의
-//                   두 자리 · 잠긴 칩 · Service 칩 · 범위 줄(03 흐름 「트레이」 — `thread-tray`) · Work 없는 Thread 머리 줄의 Service(03 흐름
+//                   ↵ · esc · 숫자 키 없음 · 답한 질문 한 줄(`thread-approval`) · 넓힌
+//                   카드의 줄 · 480 · 작은 카드 앞 16(`thread-work-card`) · 씨앗이 세우는 Work 칩(`thread-work-chip`) · 트레이의
+//                   두 자리 · 잠긴 칩 · 범위 칩 · 범위 줄(03 흐름 「트레이」 — `thread-tray`) · Work 없는 Thread 머리 줄의 Service(03 흐름
 //                   「대화 속 Service와 설정」 — `thread-service-setting`)
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Work 만들기 턴(`thread-work`), PR을 남긴 Work의 턴(`thread-pr`), 답만 한 턴과 도구를
@@ -374,7 +374,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작업공간에서 편집은 늘 허용」이고, 고르면 다시 묻지 않기로 적어 답한다. 카드는 입력창 자리의 한 겉이다", async ({
+test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작업공간의 모든 편집 허용」이고, 고르면 다시 묻지 않기로 적어 답한다. 카드는 입력창 자리의 한 겉이다", async ({
   page,
 }) => {
   // Work를 만든 뒤 Host가 spec 폴더에 첫 문서를 쓰려고 묻기 바로 앞이다.
@@ -384,23 +384,22 @@ test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작�
   const 열폭 = (await 상자(입력창(page))).width;
 
   await streamLines(page, view.id, [ASKED]);
-  const card = page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true });
+  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true });
   await expect(card).toBeVisible();
   // 늘 허용을 둘 자리는 이은 Work다(S18) — 단추 글이 그 자리를 말한다. 고르면 그 허락을 Atelier가 적어 두고(`remember`) 이번 요청에는
   // 「이번만」으로 답한다(`cardChoices` — Claude의 Session 허락으로 넘기지 않는다).
-  await expect(card.getByRole("button")).toHaveText([/^아니요, 다르게/, "이 작업공간에서 편집은 늘 허용", /^이번만 허용/]);
+  await expect(card.getByRole("button")).toHaveText([/^아니요, 다르게/, "이 작업공간의 모든 편집 허용", /^이번만 허용/]);
   // 입력창 자리 카드의 한 겉(02 §10 · 스토리 68) — 1px 테두리 · 그림자 없음 · 폭이 입력창(열 737)과 같다.
   expect((await 상자(card)).width).toBe(열폭);
   expect(await 모양(card, ["border-top-width", "box-shadow"])).toEqual({ "border-top-width": "1px", "box-shadow": "none" });
 
   await page.waitForTimeout(ARMING_MS);
-  await card.getByRole("button", { name: "이 작업공간에서 편집은 늘 허용", exact: true }).click();
+  await card.getByRole("button", { name: "이 작업공간의 모든 편집 허용", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args))
     .toEqual([
       {
         thread: view.id,
-        who: "host",
         request: (ASKED.payload as { requestId: string }).requestId,
         option: "allow_once",
         remember: true,
@@ -485,13 +484,11 @@ test("첫 말을 보낸 뒤 Thread 화면이 서기 전에 「새 채팅」으�
   await expect.poll(() => caught.length).toBeGreaterThan(0);
   await page.locator("aside[data-sidebar]").getByRole("button", { name: "새 채팅", exact: true }).click();
 
-  // 빈 첫 화면 — 물음 · 비운 입력창 · 트레이의 Work 칩(처음 고른 곳 — 기억이 없으면 「새 작업공간」, 03 §5 S2)이 서고, 보낸 말과 「생각 중」은
-  // 없다.
+  // 빈 첫 화면 — 물음 · 비운 입력창이 서고(씨앗이 없어 작업공간 없는 채팅의 안내다), 보낸 말과 「생각 중」은 없다.
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible();
-  await expect(입력칸(page)).toHaveAttribute("placeholder", "만들 기능이나 고칠 문제를 적어 주세요");
+  await expect(입력칸(page)).toHaveAttribute("placeholder", "무엇이든 요청하세요");
   await expect(입력칸(page)).toHaveValue("");
-  await expect(page.getByRole("button", { name: "어디서 일할지 새 작업공간", exact: true })).toBeVisible();
   await expect(흐름(page).getByText(first.text, { exact: true })).toHaveCount(0);
   await expect(흐름(page).getByText("생각 중", { exact: true })).toHaveCount(0);
   release();

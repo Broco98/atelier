@@ -159,14 +159,14 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect.poll(() => 대화끝(page)).toBe(480);
   await expect(사이드바).toBeHidden();
 
-  // Host가 그 문서를 쓰는 중이다 — 보기의 머리와 카드의 줄에 「Host가 쓰는 중」이 선다. 다시 읽은 글은 바뀐 블록만 칠한다.
+  // Host가 그 문서를 쓰는 중이다 — 보기의 머리와 카드의 줄에 「쓰는 중」이 선다. 다시 읽은 글은 바뀐 블록만 칠한다.
   const writing: WorkWritingEvent = {
     work: MADE.slug,
     writing: [{ path: OVERVIEW, thread: view.id }],
   };
   await fireEvent(page, WORK_WRITING_EVENT, writing);
-  await expect(보기(page, "doc").locator('[data-writer="host"]')).toHaveText("Host가 쓰는 중");
-  await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).toContainText("Host가 쓰는 중");
+  await expect(보기(page, "doc").locator(`[data-writer="${view.id}"]`)).toHaveText("쓰는 중");
+  await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).toContainText("쓰는 중");
   const rewritten = `${WRITTEN[OVERVIEW]}\n## 정한 것\n\n거절한다.\n`;
   await replaceAnswer(page, "read_spec_file", answerByArg("path", { ...WRITTEN, [OVERVIEW]: rewritten }));
   await fireEventToAll(page, "works:changed", null);

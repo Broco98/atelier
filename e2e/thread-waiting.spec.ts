@@ -14,8 +14,8 @@ import type { ThreadView } from "@/features/thread/types";
 // Work 없는 Thread에서 파일 쓰기를 매번 묻기로 물은 턴(`thread-permission`), 다 읽은 「새 채팅 두 턴」(`thread-two-turns`). 기다리기 시작한
 // 때(물음 줄의 시각)가 차례다 — Project 물음이 승인 물음보다 1초 먼저다.
 //
-// 「내 차례」는 한때 맨 위 「전체 | 내 차례」 마디의 칸이었다 — 02 티켓 04가 마디를 걷어 위 줄(새 Thread · 내 차례 · Library)의 한 행이
-// 됐다. 켜고 끄는 것은 그 행 하나이고(`aria-pressed`, 이름 「내 차례 N」), 「전체」는 끈 상태다. 새 Thread · Library로 돌아오는 길과 켠
+// 「내 차례」는 한때 맨 위 「전체 | 내 차례」 마디의 칸이었다 — 02 티켓 04가 마디를 걷어 위 줄(새 Thread · 내 차례)의 한 행이
+// 됐다. 켜고 끄는 것은 그 행 하나이고(`aria-pressed`, 이름 「내 차례 N」), 「전체」는 끈 상태다. 새 Thread로 돌아오는 길과 켠
 // 동안의 위 줄 면은 틀과 사이드바 spec(`frame-sidebar.spec.ts`)이 잰다. 목록의 줄은 제목 한 줄과 끝의 「내 차례」 알약이다(02 티켓 05 —
 // 한때 둘째 줄이 기다리는 것을 말했다).
 
@@ -87,7 +87,7 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
 
   // 답하면 그 Thread가 차례에서 빠지고 수가 준다 — 다음 ⌘J는 남은 Thread다.
   await page
-    .getByRole("group", { name: "Host가 이 작업공간에 없는 Project를 고치려고 해요", exact: true })
+    .getByRole("group", { name: "Claude Code가 이 작업공간에 없는 Project를 고치려고 해요", exact: true })
     .getByRole("button", { name: `${ASK.project}을 이 작업공간에 붙이고 고치기`, exact: true })
     .click();
   await expect
@@ -100,7 +100,7 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
   await expect(page).toHaveURL(`/threads/${loose.id}`);
 
   // 마지막 물음에 답하면 수가 걷히고 목록은 비었다는 한 줄이다.
-  await page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();
+  await page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args.thread))
     .toEqual([loose.id]);

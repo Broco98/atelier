@@ -122,13 +122,13 @@ test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소�
     return box.y + box.height / 2;
   };
   const 소제목 = (head: Locator) => 가운데(head.locator("span").first());
-  const nav끝줄 = nav.getByRole("button", { name: "Library", exact: true });
+  const nav끝줄 = nav.getByRole("button", { name: "내 차례", exact: true });
   const 고정행 = workRow(page, pinnedWork.slug);
   await expect(작업머리).toBeVisible();
   // 앵커: 고정 구획이 서 있다 — 그 머리가 목록의 첫 머리이고 그 아래 첫 행이 고정 work이다.
   await expect(고정머리).toBeVisible();
 
-  // 띠가 없으면 소제목은 nav 바로 다음이다. nav의 끝 줄은 「Library」다(v1 티켓 19).
+  // 띠가 없으면 소제목은 nav 바로 다음이다. nav의 끝 줄은 「내 차례」다.
   expect((await 소제목(고정머리)) - (await 가운데(nav끝줄)), "고정 소제목 — nav 끝 줄에서 42").toBe(42);
 
   await markAttention(page, { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "커밋할까요?" } });

@@ -239,7 +239,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(이름칸(page)).toHaveAttribute("placeholder", "예: web-app");
     await expect(추가창(page).getByRole("button", { name: "이 컴퓨터의 폴더 추가", exact: true })).toBeVisible();
     await expect(
-      추가창(page).getByText("Project는 git 레포 하나예요. Service로 묶으면 Agent가 함께 읽고, 작업공간은 고칠 Project에만 worktree를 만들어요.", {
+      추가창(page).getByText("Project는 git 레포 하나예요. Service로 묶으면 Runtime이 함께 읽고, 작업공간은 고칠 Project에만 worktree를 만들어요.", {
         exact: true,
       }),
     ).toBeVisible();
