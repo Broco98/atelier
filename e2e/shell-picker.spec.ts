@@ -23,6 +23,10 @@ import {
 //
 // 재는 것은 `shell-origin.spec.ts`와 같이 `pty_spawn`에 실린 **cwd**다 — 픽스처의 답은 자리와
 // 무관해서 답으로는 어디서 떴는지가 안 갈린다.
+//
+// **작업공간 화면의 `+`는 「새 탭」 메뉴다**(restart 02a-8) — 맨 윗줄이 「새 채팅」(⌘T)이고, 구분선 아래 셸 줄이 선다: 프로젝트가 둘
+// 이상이면 머리 「새 셸」 아래 「모든 프로젝트」 · 프로젝트 줄, 하나 이하면 「새 셸」 한 줄이다. 메뉴는 늘 열린다. 그래서 「맨 윗줄」은
+// 「새 채팅」이고, 한때 메뉴 없이 바로 열던 0 · 1개 work의 `+`도 메뉴를 연다. `/terminal`의 `+`(「셸 열기」)는 그대로다.
 
 const [singleWork, plainWork, multiWork] = WORKS;
 
@@ -33,6 +37,8 @@ const shells = (page: Page) => page.locator('[data-tab="shell"]');
 const menu = (page: Page) => page.getByRole("menu");
 // **계산된 이름으로 집는다 — `exact`다.** 옅은 경로가 이름에 섞이면 이 로케이터가 못 찾는다.
 const allItem = (page: Page) => menu(page).getByRole("menuitem", { name: "모든 프로젝트", exact: true });
+/** 「새 탭」 메뉴의 맨 윗줄 — 「새 채팅」(⌘T). */
+const topItem = (page: Page) => menu(page).getByRole("menuitem", { name: "새 채팅", exact: true });
 const projectItem = (page: Page, project: string) =>
   menu(page).getByRole("menuitem", { name: project, exact: true });
 
@@ -57,23 +63,26 @@ async function expectOnlyTabName(page: Page, name: string): Promise<void> {
   await expect(shells(page).locator("button[aria-label$=' 닫기']")).toHaveAttribute("aria-label", `${name} 닫기`);
 }
 
-test("`+` → 「모든 프로젝트」에 포커스가 있고 옆에 경로가 옅게 보인다 · Enter → 앞말 없는 셸이 그 자리에서 뜬다", async ({
+test("`+` → 「새 채팅」에 포커스가 있고 그 아래 「모든 프로젝트」 옆에 경로가 옅게 보인다 · ↓ · Enter → 앞말 없는 셸이 그 자리에서 뜬다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await openMenu(page);
 
-  // 맨 윗줄이다 — 항목의 순서가 [모든 프로젝트 · 프로젝트들]이다(UI개선 결정 18).
+  // 맨 윗줄이 「새 채팅」이고 그 아래 셸 줄의 차례가 [모든 프로젝트 · 프로젝트들]이다(UI개선 결정 18 · restart 02a-8).
   const items = menu(page).getByRole("menuitem");
-  await expect(items).toHaveCount(1 + multiWork.worktrees.length);
-  await expect(items.first()).toHaveAccessibleName("모든 프로젝트");
-  await expect(allItem(page)).toBeFocused();
+  await expect(items).toHaveCount(2 + multiWork.worktrees.length);
+  await expect(items.first()).toHaveAccessibleName("새 채팅");
+  await expect(items.nth(1)).toHaveAccessibleName("모든 프로젝트");
+  await expect(topItem(page)).toBeFocused();
 
   // 경로의 마지막 마디 + `/` — 픽스처 경로에서 파생한다.
   const all = allProjectsOf(multiWork);
   const hint = `${all.slice(all.lastIndexOf("/") + 1)}/`;
   await expect(allItem(page).getByText(hint, { exact: true })).toBeVisible();
 
+  await page.keyboard.press("ArrowDown");
+  await expect(allItem(page)).toBeFocused();
   await page.keyboard.press("Enter");
 
   await expect(menu(page)).toHaveCount(0);
@@ -84,12 +93,14 @@ test("`+` → 「모든 프로젝트」에 포커스가 있고 옆에 경로가 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("`+` → ↓ → Enter → 첫 프로젝트의 워크트리에서 `프로젝트 · 이름` 칸이 선다", async ({ page }) => {
+test("`+` → ↓↓ → Enter → 첫 프로젝트의 워크트리에서 `프로젝트 · 이름` 칸이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await openMenu(page);
   const [first] = multiWork.worktrees;
-  await expect(allItem(page)).toBeFocused();
+  await expect(topItem(page)).toBeFocused();
 
+  await page.keyboard.press("ArrowDown");
+  await expect(allItem(page)).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(menu(page).getByRole("menuitem", { name: first.project, exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
@@ -106,12 +117,12 @@ test("`+` → ↑ → 맨 아랫줄로 돈다 · ↓ → 다시 맨 윗줄", asy
   await installFixtureBackend(page);
   await openMenu(page);
   const last = multiWork.worktrees[multiWork.worktrees.length - 1];
-  await expect(allItem(page)).toBeFocused();
+  await expect(topItem(page)).toBeFocused();
 
   await page.keyboard.press("ArrowUp");
   await expect(menu(page).getByRole("menuitem", { name: last.project, exact: true })).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(allItem(page)).toBeFocused();
+  await expect(topItem(page)).toBeFocused();
 });
 
 // 닫힌 뒤 포커스가 어디 있어야 하는지를 **표에 함께 적는다** — 한 갈래만 포커스를 재면 나머지
@@ -133,10 +144,11 @@ for (const [how, close, focusBackToPlus] of [
     false,
   ],
 ] as const) {
-  test(`\`+\` → ${how} → 메뉴가 닫히고 셸이 안 뜬다`, async ({ page }) => {
+  test(`\`+\` → ${how} → 메뉴가 닫히고 셸도 새 채팅 탭도 안 선다`, async ({ page }) => {
     await installFixtureBackend(page);
     await openMenu(page);
-    await expect(allItem(page)).toBeFocused();
+    await expect(topItem(page)).toBeFocused();
+    const chats = await page.locator('[data-tab="new-chat"]').count();
 
     await close(page);
 
@@ -146,6 +158,7 @@ for (const [how, close, focusBackToPlus] of [
     // **0을 재는 검사라 기다림이 없으면 너무 일찍 초록이다.** 고른 셸이 설 틈을 준다.
     await page.waitForTimeout(500);
     await expect(shells(page)).toHaveCount(0);
+    await expect(page.locator('[data-tab="new-chat"]')).toHaveCount(chats);
     expect(await spawnedCwds(page)).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -161,7 +174,7 @@ test("마우스로 연 메뉴에서도 맨 윗줄이 켜진 채 선다", async (
   // 포인터를 메뉴 밖으로 치운다 — 호버가 켠 줄이 섞이면 무엇을 쟀는지 갈리지 않는다.
   await page.mouse.move(0, 0);
 
-  await expect(allItem(page)).toBeFocused();
+  await expect(topItem(page)).toBeFocused();
   const items = menu(page).getByRole("menuitem");
   await expect(items.first()).toHaveAttribute("data-highlighted");
   await expect(items.nth(1)).not.toHaveAttribute("data-highlighted");
@@ -174,12 +187,12 @@ test("`+` → End·Home은 끝줄로 가고, 글자를 치면 그 글자로 시�
   await installFixtureBackend(page);
   await openMenu(page);
   const last = multiWork.worktrees[multiWork.worktrees.length - 1];
-  await expect(allItem(page)).toBeFocused();
+  await expect(topItem(page)).toBeFocused();
 
   await page.keyboard.press("End");
   await expect(projectItem(page, last.project)).toBeFocused();
   await page.keyboard.press("Home");
-  await expect(allItem(page)).toBeFocused();
+  await expect(topItem(page)).toBeFocused();
 
   await page.keyboard.press(last.project[0]);
   await expect(projectItem(page, last.project)).toBeFocused();
@@ -192,8 +205,8 @@ test("`+` → End·Home은 끝줄로 가고, 글자를 치면 그 글자로 시�
 });
 
 // 스토리 50 — **바깥 누르기는 닫기만 한다**(S9). 위 「바깥 클릭」은 빈자리를 눌러 이것을 못 잰다 — 거기엔
-// 눌릴 것이 없다. 여기서는 **누를 수 있는 것**을 누른다. 사이드바의 다른 work 행(누르면 그 work의
-// Thread로 간다 — v1 티켓 37)과 셸 컨트롤 줄의 검색 버튼(누르면 팔레트가 뜬다)이다. 검색 버튼 줄은 `z-20`이라 쌓임 순서가
+// 눌릴 것이 없다. 여기서는 **누를 수 있는 것**을 누른다. 사이드바의 다른 work 행(누르면 그 작업공간의
+// 채팅 탭으로 간다 — v1 티켓 37 · restart 02a-8)과 셸 컨트롤 줄의 검색 버튼(누르면 팔레트가 뜬다)이다. 검색 버튼 줄은 `z-20`이라 쌓임 순서가
 // 다르다 — 메뉴의 가림막이 그 위에 서는지를 따로 잰다.
 //
 // **자리는 메뉴를 열기 전에 잰다.** 열린 동안에는 메뉴의 가림막이 화면을 덮어 `locator.click()`이
@@ -217,7 +230,7 @@ for (const [what, target, pressed] of [
     await expect(target(page)).toBeVisible();
     const at = await pointIn(target(page), "middle");
     await page.locator('[data-tab="new"]').click();
-    await expect(allItem(page)).toBeFocused();
+    await expect(topItem(page)).toBeFocused();
 
     await page.mouse.click(at.x, at.y);
 
@@ -235,23 +248,26 @@ for (const [what, target, pressed] of [
   });
 }
 
-// 묻는 조건은 그대로다 — 프로젝트가 둘 이상일 때만(UI개선 결정 18). 0·1개 work은 들어갈 때 셸이
-// 하나 서므로(UI개선 결정 30은 멀티 프로젝트만이다) **그 칸이 선 뒤에** 누른다 — 그래야 `+`가 둘째다.
-// pty가 앉기까지는 안 기다린다: 셸은 칸이 열린 순서로 시작하는 것이 앱의 몫이다(`openShell` 머리말).
+// 셸 줄이 갈리는 조건은 그대로다 — 프로젝트가 둘 이상일 때만 「모든 프로젝트」 · 프로젝트 줄이다(UI개선 결정 18). 하나 이하면 셸 줄은
+// 「새 셸」 한 줄이고 머리가 없다(restart 02a-8 — 한때 메뉴 없이 바로 열었다). 0·1개 work은 들어갈 때 셸이 하나 서므로(UI개선 결정 30은 멀티
+// 프로젝트만이다) **그 칸이 선 뒤에** 누른다 — 그래야 고른 셸이 둘째다. pty가 앉기까지는 안 기다린다: 셸은 칸이 열린 순서로 시작하는 것이
+// 앱의 몫이다(`openShell` 머리말).
 for (const [label, work, cwd] of [
   ["1개", singleWork, singleWork.worktrees[0].path],
   ["0개", plainWork, parentPath(plainWork.specDir)],
 ] as const) {
-  test(`프로젝트 ${label} work에서 \`+\`는 메뉴 없이 바로 연다`, async ({ page }) => {
+  test(`프로젝트 ${label} work에서 \`+\`의 셸 줄은 「새 셸」 한 줄이고 그 자리에서 연다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(`/works/${work.slug}?tab=terminal`);
     await expect(shells(page)).toHaveCount(1);
 
     await page.locator('[data-tab="new"]').click();
+    await expect(menu(page).getByRole("menuitem")).toHaveText(["새 채팅", "새 셸"].map((name) => new RegExp(`^${name}`)));
+    await expect(menu(page).getByRole("menuitem", { name: "모든 프로젝트" })).toHaveCount(0);
+    await menu(page).getByRole("menuitem", { name: "새 셸", exact: true }).click();
 
     await awaitSpawned(page, 2);
     await expect(menu(page)).toHaveCount(0);
-    await expect(page.locator("[data-popover]")).toHaveCount(0);
     expect(await spawnedCwds(page)).toEqual([cwd, cwd]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });

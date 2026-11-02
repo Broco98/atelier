@@ -1,23 +1,15 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import {
-  awaitSpawned,
-  callCount,
-  installFixtureBackend,
-  middle,
-  moveOntoHalf,
-  startSplitDrag,
-  unknownIpcCalls,
-  셸입력,
-} from "./harness";
+import { awaitSpawned, callCount, installFixtureBackend, middle, unknownIpcCalls, 셸입력 } from "./harness";
 
 // 끌기 제스처의 **끝나는 길**(UI개선 티켓 03 · UI개선 스펙 S5). 제스처는 기능 폴더 밖 공용 모듈이
 // 쥐고(`src/lib/pointer-drag.ts`), 이 파일은 그 모듈이 어느 화면에서 부르든 지켜야 하는 것을
 // 셸 탭 하나로 잰다 — 놓음 · `pointercancel` · 문턱 전 뗌 · Esc 넷이 **같은 정리**를 한다.
 //
-// 놓일 자리와 분할 계산은 `works-split.spec.ts`의 몫이라 여기서 다시 안 본다. 이 층이어야
-// 하는 이유는 그쪽과 같다: 창 포인터 리스너·body 표시·클릭 삼킴은 이벤트가 있어야 선다.
+// 놓일 자리(탭 줄의 틈)는 `tab-order.spec.ts`의 몫이라 여기서 다시 안 본다. 이 층이어야 하는 이유는 창 포인터 리스너·body
+// 표시·클릭 삼킴이 이벤트가 있어야 서기 때문이다. 한때 끈 탭을 본문 절반 겹판에 놓아 분할을 켰다 — restart 02a-13이 분할과 겹판을
+// 걷어, 끝나는 길은 본문 위로 끌고 가 재고 「분할이 안 섰다」는 걷었다.
 
 const [, plainWork] = WORKS;
 
@@ -50,31 +42,45 @@ async function openTerminal(page: Page) {
 }
 
 /**
- * 셸을 띄운 뒤 본문을 문서로 돌려 **셸 탭이 꺼진 채** 출발한다 — 켜지는 것이 클릭이 살아
- * 있다는 모습이라, 이미 켜져 있으면 눌려도 모습이 안 바뀐다.
+ * 셸을 띄운 뒤 ⌘T로 새 채팅 탭을 켜 **셸 탭이 꺼진 채** 출발한다 — 켜지는 것이 클릭이 살아 있다는 모습이라, 이미 켜져 있으면 눌려도
+ * 모습이 안 바뀐다. 작업공간 화면의 ⌘T는 셸 안에서도 새 채팅 탭이다(restart 02a-8 — 한때 spec 칸을 눌렀다).
  */
-async function openTerminalOnSpec(page: Page) {
+async function openTerminalElsewhere(page: Page) {
   await openTerminal(page);
-  await page.locator('[data-tab="spec"]').click();
+  await page.keyboard.press("Meta+t");
+  await expect(page.locator('[data-tab="new-chat"]')).toHaveCount(1);
   await expect(shellName(page)).toHaveAttribute("aria-pressed", "false");
 }
 
-/** 셸 탭을 눌러 문턱을 넘긴다. **표시가 섰는지 먼저 본다** — 안 서면 아래 「걷혔다」가 빈 초록이다. */
+/**
+ * 셸 탭을 눌러 문턱을 넘긴다. **표시가 섰는지 먼저 본다** — 안 서면 아래 「걷혔다」가 빈 초록이다. 12px는 문턱(5px)을 넉넉히 넘기면서
+ * 누른 탭 밖으로는 안 나가는 거리다. 돌려주는 것은 누른 자리다.
+ */
 async function startDrag(page: Page) {
-  const from = await startSplitDrag(page, await shellNameBox(page));
-  expect(await dragging(page)).toBe(true);
+  const from = middle(await shellNameBox(page));
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y);
+  await expect.poll(() => dragging(page)).toBe(true);
   return from;
+}
+
+/** 끄는 포인터를 본문 한가운데로 민다 — 탭 줄 밖, 놓아도 받을 자리가 없는 곳이다. */
+async function moveOntoBody(page: Page) {
+  const box = await page.locator("main").first().boundingBox();
+  if (!box) throw new Error("본문의 상자를 못 읽었다");
+  const at = middle(box);
+  await page.mouse.move(at.x, at.y);
 }
 
 test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
   test("놓음", async ({ page }) => {
     await openTerminal(page);
     await startDrag(page);
-    await moveOntoHalf(page, "right");
+    await moveOntoBody(page);
     await page.mouse.up();
 
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
-    expect(await dragging(page)).toBe(false);
+    await expect.poll(() => dragging(page)).toBe(false);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -85,8 +91,7 @@ test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
     await startDrag(page);
     await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointercancel")));
 
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
-    expect(await dragging(page)).toBe(false);
+    await expect.poll(() => dragging(page)).toBe(false);
     await page.mouse.up();
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -94,7 +99,7 @@ test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
   // 문턱 전에 떼면 **표시가 애초에 안 선다** — 그리고 그 눌림은 그냥 클릭이다(탭이 켜진다).
   // 떼기 전을 한 번 보는 것은 「뗀 뒤에 걷혔다」와 「선 적이 없다」가 둘 다 false라서다.
   test("문턱 전에 뗌", async ({ page }) => {
-    await openTerminalOnSpec(page);
+    await openTerminalElsewhere(page);
 
     const from = middle(await shellNameBox(page));
     await page.mouse.move(from.x, from.y);
@@ -113,34 +118,31 @@ test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
     await startDrag(page);
     await page.keyboard.press("Escape");
 
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
-    expect(await dragging(page)).toBe(false);
+    await expect.poll(() => dragging(page)).toBe(false);
     await page.mouse.up();
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });
 
-// Esc는 **끌기를 취소하고 아무것도 안 부른다.** 본문 절반 위에서 눌러도 분할이 안 서고,
-// 셸에도 안 샌다.
+// Esc는 **끌기를 취소하고 아무것도 안 부른다.** 본문 위에서 눌러도 셸에 안 샌다.
 //
 // **포커스를 xterm에 손으로 돌려놓는다.** 탭을 누르는 순간 포커스는 xterm을 떠난다 — macOS WebKit(실물 WKWebView와
 // 이 층)은 버튼을 누르는 mousedown에서 포커스를 옮기지 않는 대신 비운다(`body`로 간다 — `shell-focus.ts` 머리말).
 // 그대로 두면 Esc가 애초에 셸로 갈 길이 없어 「안 샌다」가 빈 초록이다. 그래서 셸로 샐 수 있는 가장 나쁜 자리
 // (숨은 입력칸)에 포커스를 둔 채 잰다.
-test("셸 탭을 본문 절반 위에서 Esc로 놓으면 분할도 셸 입력도 없다", async ({ page }) => {
+test("셸 탭을 본문 위에서 Esc로 놓으면 셸 입력이 없다", async ({ page }) => {
   await openTerminal(page);
   await startDrag(page);
-  await moveOntoHalf(page, "right");
+  await moveOntoBody(page);
   await 셸입력(page).focus();
   const before = await callCount(page, "pty_write");
+  const url = page.url();
 
   await page.keyboard.press("Escape");
-  // 겹판이 걷힌 뒤라 같은 자리에서 떼도 받을 것이 없다.
-  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+  await expect.poll(() => dragging(page)).toBe(false);
   await page.mouse.up();
 
-  await expect(page).not.toHaveURL(/split=/);
-  await expect(page.locator("[data-column]")).toHaveCount(0);
+  expect(page.url()).toBe(url);
   expect(await callCount(page, "pty_write")).toBe(before);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -149,14 +151,13 @@ test("셸 탭을 본문 절반 위에서 Esc로 놓으면 분할도 셸 입력�
 // 버튼이라 브라우저가 `click`을 낸다. 제스처가 그 한 번을 삼킨다.
 //
 test("끌었다 셸 탭 위에서 떼면 그 탭이 켜지지 않는다", async ({ page }) => {
-  await openTerminalOnSpec(page);
+  await openTerminalElsewhere(page);
 
   const from = await startDrag(page);
-  await moveOntoHalf(page, "right");
+  await moveOntoBody(page);
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();
 
-  await expect(page).not.toHaveURL(/split=/);
   await expect(page).not.toHaveURL(/tab=terminal/);
   await expect(shellName(page)).toHaveAttribute("aria-pressed", "false");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -165,11 +166,11 @@ test("끌었다 셸 탭 위에서 떼면 그 탭이 켜지지 않는다", async 
 // Esc로 취소한 끌기도 **문턱을 넘은 끌기**다 — 그 뒤 출발한 탭 위에서 떼도 탭이 안 켜진다.
 // 취소가 「아무 일도 안 일어난다」인데 뗀 순간 탭이 켜지면 한 일이 생긴다.
 test("Esc로 취소한 뒤 셸 탭 위에서 떼도 그 탭이 켜지지 않는다", async ({ page }) => {
-  await openTerminalOnSpec(page);
+  await openTerminalElsewhere(page);
 
   const from = await startDrag(page);
   await page.keyboard.press("Escape");
-  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+  await expect.poll(() => dragging(page)).toBe(false);
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();
 

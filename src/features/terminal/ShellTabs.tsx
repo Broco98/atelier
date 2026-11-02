@@ -799,9 +799,10 @@ function PlusButton({
         // 때도 같은 면이다(ui-refresh 결정 18). 손으로 같은 조합을 다시 적지 않는다(`state-scale` 검사).
         //
         // `relative`는 칸 상자 **위에** 서려는 것이다. 칸 상자는 링이 설 자리(`focus-ring-room`)만큼 테두리가 바깥으로
-        // 나와 있고 제가 `relative`라 위치 잡힌 층에 그려지는데, 그 테두리가 이 버튼의 왼쪽 2px(위 `-ml-0.5`) 위에 걸친다 —
-        // 이 버튼이 같은 층에 서지 않으면 그 2px을 누른 손을 칸 상자가 받는다.
-        "relative -ml-0.5 shrink-0 text-fg-secondary focus-ring",
+        // 4px 나와 있고 제가 `relative`라 위치 잡힌 층에 그려지는데, 그 테두리가 줄 틈(2) 너머 이 버튼의 왼쪽 2px 위에 걸친다 —
+        // 이 버튼이 같은 층에 서지 않으면 그 2px을 누른 손을 칸 상자가 받는다. 한때 줄 틈이 4라 `-ml-0.5`로 반을 덜었다 — 틈이 2가 된
+        // 뒤에도 남아 `+`가 칸에 맞붙었다(restart 02a-17이 걷었다).
+        "relative shrink-0 text-fg-secondary focus-ring",
         full ? "icon-button icon-button-ctl opacity-40" : "icon-button-quiet icon-button-ctl active:bg-fill-hover",
         className,
       )}

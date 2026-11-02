@@ -1,5 +1,4 @@
 import { expect, test } from "./evidence";
-import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import {
   awaitSpawned,
@@ -20,6 +19,7 @@ import {
   줄표시,
   프로세스셸상태,
   행버튼,
+  새채팅탭으로비킨다,
 } from "./harness";
 
 const [pinnedWork, plainWork] = WORKS;
@@ -30,11 +30,11 @@ const [pinnedWork, plainWork] = WORKS;
 // 이 층이 유일한 그물인 것 셋:
 //   1. 바이트가 **진짜 xterm 파서**를 지나 핸들러를 때린다 — 프런트에서 이벤트를 흉내 내면
 //      「핸들러가 붙었나」를 한 글자도 못 잰다.
-//   2. **배경 칸도 받는다** — 아래 검사들은 전부 spec을 보는 중(= 그 셸이 DOM에서 빠진 중)에
+//   2. **배경 칸도 받는다** — 아래 검사들은 전부 새 채팅 탭을 보는 중(= 그 셸이 DOM에서 빠진 중)에
 //      바이트를 넣는다. 핸들러가 이펙트에 붙어 있으면 그 순간 아무 일도 안 일어난다.
 //   3. 그 신호가 스토어를 한 바퀴 돌아 **띠와 탭까지** 간다.
 //
-// **spec 탭으로 옮겨 두는 것은 안 본 완료를 세우기 위해서이기도 하다**(결정 7) — 보고 있는 셸에
+// **새 채팅 탭으로 옮겨 두는 것은 안 본 완료를 세우기 위해서이기도 하다**(결정 7 — 한때 spec 탭이었다, restart 02a-13) — 보고 있는 셸에
 // 도착한 완료는 그 순간 「봤다」가 되어 화면에 안 선다.
 
 /** 이스케이프 시작. 소스에 제어문자를 그대로 박지 않는다 — 편집기와 diff에서 안 보인다. */
@@ -42,11 +42,8 @@ const ESC = "\x1b";
 /** 벨 한 번. OSC를 끝내는 문자이기도 하다(BEL 종결). */
 const BEL = "\x07";
 
-/** 셸을 살려 둔 채 **안 보는 자리**로 간다 — 그 칸은 배경 칸이 된다(결정 21). */
-const 눈을뗀다 = async (page: Page) => {
-  await page.locator('[data-tab="spec"]').click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
-};
+/** 셸을 살려 둔 채 **안 보는 자리**(새 채팅 탭)로 간다 — 그 칸은 배경 칸이 된다(결정 21 · `새채팅탭으로비킨다`). */
+const 눈을뗀다 = 새채팅탭으로비킨다;
 
 test("접두사 없는 OSC 9는 안 본 완료를 세우고 그 본문을 그대로 보인다", async ({ page }) => {
   await stubNotifications(page);
@@ -185,7 +182,7 @@ test("벨은 아는 에이전트가 도는 칸에서만 삼켜진다", async ({ 
   await expect(띠(page).locator("button[aria-label]")).toHaveCount(1);
 
   // 어느 칸인지까지 못박는다 — 수만 보면 첫 칸이 부르고 둘째 칸이 조용해도 초록이다.
-  // **탭 줄은 spec을 보는 중에도 그 자리에 있다**(본문 카드의 머리라 문서를 볼 때도 같은 줄이 선다).
+  // **탭 줄은 새 채팅 탭을 보는 중에도 그 자리에 있다**(본문 카드의 머리라 어느 탭을 볼 때도 같은 줄이 선다).
   const tabs = page.locator('[data-tab="shell"] button[aria-pressed]');
   await expect(tabs.nth(0)).not.toHaveAttribute("aria-label", /확인할 것/);
   await expect(tabs.nth(1)).toHaveAttribute("aria-label", /확인할 것/);

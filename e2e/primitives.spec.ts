@@ -195,7 +195,7 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
   await 링이선다(page, 셸탭, "셸 탭");
 
   // spec 트리의 경로 복사 — 키보드로 그 행(트리의 정류장)에 간 뒤 옮긴다. 포커스로는 안 뜨던 버튼이 그 행에 포인터가 오면 뜬다.
-  await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
+  await page.goto(`/works/${pinnedWork.slug}`);
   const 패널 = page.locator("aside:not([data-sidebar])");
   const 트리행 = 패널.locator('[data-roving="overview.md"]');
   await 탭으로(page, 트리행);
@@ -271,7 +271,7 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   await page.goto("/settings/terminal");
 
   // 머리 줄의 글자 버튼 — `Button`의 `top`(28 · `radius-lg` — 머리 줄의 아이콘 단추와 같은 높이, 02 결정 「머리 줄은 한 결이다(03 뒤)」).
-  // 머리 줄에 서는 단추는 모두 28이다(창 컨트롤 · 작업 ⋯ · 분할과 같다). 한때 머리 카드의 24 · `radius-md`였다. 설정의 「저장」이 그 단이다.
+  // 머리 줄에 서는 단추는 모두 28이다(창 컨트롤 · 작업 ⋯ · 요약 카드와 같다). 한때 머리 카드의 24 · `radius-md`였다. 설정의 「저장」이 그 단이다.
   const 버튼반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   expect(버튼반경, "radius-lg").toBe("10px");
   const 작은반경 = await 토큰값(page, "border-top-left-radius", "--radius-md");
@@ -313,11 +313,11 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
     "검색칸",
   ).toEqual(["32px", 버튼반경, await 토큰색(page, "--fill-soft")]);
 
-  // 머리 줄의 아이콘 버튼 — 작업 ⋯와 분할도 아이콘 버튼 기본(`size-control` 28 · `radius-lg` — `ShellHead`의 `headButton`)이다. 둘은
-  // 세로선을 사이에 두고 한 줄에 서고, 머리 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다. 한때 머리
-  // 카드의 DS `.at-ib.xs`(24 · `radius-md`)였다.
+  // 머리 줄의 아이콘 버튼 — 작업 ⋯와 요약 카드도 아이콘 버튼 기본(`size-control` 28 · `radius-lg` — `ShellHead`의 `headButton`)이다. 머리
+  // 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다. 한때 머리 카드의 DS `.at-ib.xs`(24 · `radius-md`)였고,
+  // 작업 ⋯ 곁에 「분할」이 섰다(restart 02a-13이 걷었다 — 그 자리에 「요약 카드」가 선다, 02a-9 · 02a-10).
   await page.goto(`/works/${plainWork.slug}`);
-  for (const name of ["작업공간 메뉴", "분할"]) {
+  for (const name of ["작업공간 메뉴", "요약 카드"]) {
     expect(
       await 칠한값(화면머리(page).getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
       name,

@@ -24,10 +24,10 @@ import {
   unknownIpcCalls,
   workRow,
   writeShell,
-  사람메뉴로간다,
-  사람메뉴항목,
-  사람줄,
+  가는곳으로간다,
+  위칸줄,
   호버카드,
+  새셸을누른다,
 } from "./harness";
 
 // **글꼴이 오는 사이에 사람이 무엇을 해도, 연 셸은 전부 뜬다**(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는
@@ -171,7 +171,7 @@ test("떼어진 채 뜬 셸이 처음 보일 때 PTY 격자가 화면 격자로 
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
 
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
   await releaseFonts();
   await expectEveryTabStarted(page, 2);
@@ -215,10 +215,10 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
 
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect(tabs(page)).toHaveCount(1);
 
@@ -230,15 +230,13 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   expect(workCwd, "첫 spawn이 work 셸이 아니다").not.toEqual(topCwd);
 
   // 두고 온 work 셸은 그 work 행의 호버 카드가 센다 — 「셸 1개」(02 S9 — 줄 끝은 상태 표시 하나의 자리라 셸 수가 카드로 갔다). 최상위
-  // 셸은 사람 메뉴의 `Terminal` 줄이 따로 센다(`1` — v1 티켓 07).
+  // 셸은 위 칸의 `Terminal` 줄이 따로 센다(`1` — restart 02a-3, 한때 사람 메뉴의 줄).
   await workRow(page, plainWork.slug).hover();
   await expect(호버카드(page)).toContainText(`${plainWork.title}`);
   await expect(호버카드(page)).toContainText("셸1개");
   await page.mouse.move(800, 400);
   await expect(호버카드(page)).toHaveCount(0);
-  await 사람줄(page).click();
-  await expect(사람메뉴항목(page).filter({ hasText: /^Terminal/ })).toContainText("1");
-  await page.keyboard.press("Escape");
+  await expect(위칸줄(page, "Terminal")).toContainText("1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -251,10 +249,10 @@ test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 �
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
   // 두고 오는 셸은 사람이 연 칸이다 — 저절로 뜬 첫 칸은 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7).
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
 
-  await 사람메뉴로간다(page, "Projects");
+  await 가는곳으로간다(page, "Projects");
   await expect(page).not.toHaveURL("/terminal");
   await expect(tabs(page)).toHaveCount(0);
 
@@ -278,7 +276,7 @@ test("글꼴이 오기 전에 닫은 칸은 안 뜨고, 남은 칸만 뜬다", a
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
 
   // 안 켜진 첫 칸을 닫는다.
@@ -302,7 +300,7 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
 
   await releaseFonts();
@@ -329,7 +327,7 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
 
   await releaseFonts();
@@ -359,7 +357,7 @@ test("안 본 칸의 셸이 못 뜨면 그 칸을 볼 때 이유가 보이고, �
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
 
   await releaseFonts();
@@ -390,7 +388,7 @@ for (const replied of [true, false]) {
     const releaseFonts = await holdTerminalFonts(page);
     await page.goto("/terminal", { waitUntil: "domcontentloaded" });
     await expect(tabs(page)).toHaveCount(1);
-    await page.locator('[data-tab="new"]').click();
+    await 새셸을누른다(page);
     await expect(tabs(page)).toHaveCount(2);
     await releaseFonts();
     if (replied) await expectEveryTabStarted(page, 2);
@@ -456,7 +454,7 @@ for (const [before, arrange, shown] of [
     const releaseFonts = await holdTerminalFonts(page);
     await page.goto("/terminal", { waitUntil: "domcontentloaded" });
     await expect(tabs(page)).toHaveCount(1);
-    await page.locator('[data-tab="new"]').click();
+    await 새셸을누른다(page);
     await expect(tabs(page)).toHaveCount(2);
     await releaseFonts();
     await arrange(page);
@@ -485,7 +483,7 @@ test("한 번도 안 연 칸의 셸이 OSC 9로 부르면 띠·알림·배지가
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(2);
   await releaseFonts();
   await expectEveryTabStarted(page, 2);
@@ -520,11 +518,11 @@ test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 
   await expect(tabs(page)).toHaveCount(1);
   // **두 칸을 연다.** 저절로 뜬 첫 칸은 설정으로 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7) — 떼어진 채
   // 뜨는 두 셸은 사람이 연 두 칸이고, pty 번호는 그대로 1 · 2다.
-  await page.locator('[data-tab="new"]').click();
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
+  await 새셸을누른다(page);
   await expect(tabs(page)).toHaveCount(3);
 
-  await 사람메뉴로간다(page, "Settings");
+  await 가는곳으로간다(page, "Settings");
   await expect(page).toHaveURL("/settings/terminal");
   const terminal = page.getByRole("group", { name: "터미널 설정", exact: true });
   await terminal.getByRole("textbox", { name: "터미널 글꼴 크기", exact: true }).fill("22");
@@ -540,7 +538,7 @@ test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 
   await expectEveryTabStarted(page, 2);
 
   // 셋째 칸 — 붙은 채 새 크기로 열려 제 격자로 뜬다.
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expectEveryTabStarted(page, 3);
   const fresh = (await ptyGrids(page)).get(3);
   expect(fresh, "셋째 칸의 격자를 못 읽었다").toBeDefined();

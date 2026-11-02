@@ -42,9 +42,11 @@ const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"]
 const 버튼 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
 /**
  * 몸의 머리 — 화면 이름(h1) · 잰 시각 · [조용한 셸 모두 닫기](restart 03-11 · 시안 Processes `.pr-head`). 한때 [조용한 셸 모두 닫기]는 틀의 머리
- * 줄(`화면머리`)의 할 일이었다 — 지금 틀의 머리 줄에는 이름만 선다.
+ * 줄(`화면머리`)의 할 일이었다 — 지금 틀의 머리 줄에는 이름만 선다. 그 줄은 h1의 부모다 — `<header>`가 아니다(창의 머리는 머리 줄 하나 —
+ * ui-refresh 결정 5, restart 02a-15b. 한때 몸 머리가 `<header>`라 그것으로 집었다).
  */
-const 몸머리 = (page: Page) => page.getByRole("main", { name: "Processes", exact: true }).locator("header");
+const 몸머리 = (page: Page) =>
+  page.getByRole("main", { name: "Processes", exact: true }).getByRole("heading", { name: "Processes", level: 1 }).locator("..");
 
 /** 한 묶음의 줄들 — 깊이와 접근성 이름. 화면에 선 차례 그대로다. */
 async function 줄들(scope: Locator): Promise<Array<{ level: string | null; name: string | null }>> {

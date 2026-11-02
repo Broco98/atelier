@@ -7,10 +7,11 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  사람메뉴로간다,
+  가는곳으로간다,
   openShell,
   unknownIpcCalls,
   writeShell,
+  새채팅탭으로비킨다,
   셸입력,
   작업화면으로,
   칸들,
@@ -50,7 +51,7 @@ const toWork = (page: Page, work: (typeof WORKS)[number]) => 작업화면으로(
  */
 async function toTerminal(page: Page): Promise<void> {
   const spawned = await callCount(page, "pty_spawn");
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect
     .poll(() => callCount(page, "pty_spawn"), { message: "최상위 터미널에 셸이 저절로 안 떴다" })
@@ -109,15 +110,15 @@ test("키를 친 셸은 떠나도 남고, 첫 입력을 백엔드에 한 번 알
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("같은 work의 spec 탭으로만 바꾸면 떠남이 아니다", async ({ page }) => {
+// 같은 work 안의 다른 칸은 떠남이 아니다 — 한때 그 칸이 spec 탭이었다. restart 02a-13이 spec 탭을 걷어 셸 아닌 칸으로 새 채팅 탭(02a-8)을 쓴다.
+test("같은 work의 새 채팅 탭으로만 바꾸면 떠남이 아니다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
 
   // 터미널 패인이 내려간다 — 그래도 owner는 그대로다.
-  await page.locator('[data-tab="spec"]').click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
-  await expect(page.locator('[data-tab="spec"]')).toHaveAttribute("aria-pressed", "true");
+  await 새채팅탭으로비킨다(page);
+  await expect(page.locator('[data-tab="new-chat"] button[aria-pressed]')).toHaveAttribute("aria-pressed", "true");
   // 셸 칸으로 돌아온다. 닫혔다면 돌아오는 화면이 셸 0개라 새 셸이 저절로 떴을 것이다.
   await 칸들(page).click();
   await expect(page).toHaveURL(/tab=terminal/);
