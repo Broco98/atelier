@@ -1,7 +1,8 @@
 import { particle } from "@/lib/particle";
 import { type DecisionEntry, type PendingPermission, type PermissionOption } from "./fold";
 import { nonEmpty, type Json } from "./json";
-import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFields, type DiffPiece } from "./tool-view";
+import { toolFields } from "./tool-fields";
+import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, type DiffPiece } from "./tool-view";
 
 // 승인 카드의 화면 값(v1 티켓 24 · 02 구현 스펙 §10 · 캔버스 v35 Screen-Live 단계 4) — 답하지 않은 권한 요청(`PendingPermission`)을
 // 카드의 값(머리 한 줄 · 물음 · 어디서 한 줄 · 명령이나 diff), 선택지, 키 하나의 고르기로 옮기고, 사람이 고른 것(`DecisionEntry`)을
@@ -60,8 +61,8 @@ const OTHER_ACT = "도구 쓰기";
 
 /** 요청이 하려는 일 — MCP 도구면 「MCP 도구 쓰기」, 모르는 kind면 「도구 쓰기」다. */
 function actOf(toolCall: Json): string {
-  const fields = toolFields(toolCall);
-  return mcpOf(fields) ? MCP_ACT : (ACTS[fields.kind] ?? OTHER_ACT);
+  const { mcp, kind } = toolFields(toolCall);
+  return mcp ? MCP_ACT : (ACTS[kind] ?? OTHER_ACT);
 }
 
 /**
@@ -71,8 +72,7 @@ function actOf(toolCall: Json): string {
 export function describeApproval(request: PendingPermission, name: string, place: string | null): ApprovalView {
   // 흐름의 도구 줄이 이긴다(머리말) — 호스트가 채운 요지는 빈 칸만 채운 것이라, 겹치는 칸은 도구 줄의 원문이 더 정확하다.
   const call: Json = { ...request.toolCall, ...(request.tool?.call ?? {}) };
-  const fields = toolFields(call);
-  const { rawInput, title, kind, toolName } = fields;
+  const { rawInput, title, kind, toolName, mcp } = toolFields(call);
   const rule = request.policy === null ? [] : [`「${request.policy}」`];
   const asked = (act: string, question: string) => ({
     head: [name, act, ...rule].join(" · "),
@@ -83,7 +83,6 @@ export function describeApproval(request: PendingPermission, name: string, place
 
   if (request.planReview) return { ...base, kind: "plan", ...asked("계획 구현", "이 계획대로 구현해도 될까요?") };
   const act = actOf(call);
-  const mcp = mcpOf(fields);
   if (mcp) return { ...base, kind: "other", ...asked(act, "이 MCP 도구를 써도 될까요?"), subject: `${mcp.server} · ${mcp.tool}` };
   const path = pathOf(call, rawInput);
   switch (kind) {

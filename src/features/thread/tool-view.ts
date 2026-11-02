@@ -1,6 +1,7 @@
 import { spoken, type ToolEntry } from "./fold";
 import { folderName } from "@/features/projects/project-add";
 import { isObject, nonEmpty, type Json } from "./json";
+import { toolFields } from "./tool-fields";
 
 // 도구 줄의 화면 값(v1 티켓 05 · 캔버스 WorkLog 보드) — 접은 도구 호출(`ToolEntry`)을 문구 · 안의 것(명령 출력 · diff · MCP 보낸 값과
 // 받은 값)으로 옮기는 **순수 함수**다. 그리는 것은 `WorkLog.tsx`다.
@@ -78,29 +79,6 @@ export interface ToolView {
   text: string | null;
 }
 
-/** 도구 호출 원문에서 갈래를 가르는 칸들 — 도구 줄과 승인 카드가 같은 칸을 같은 규칙으로 읽는다. */
-export interface ToolFields {
-  meta: Json;
-  claudeCode: Json;
-  toolName: string | null;
-  rawInput: Json;
-  title: string | null;
-  kind: string;
-}
-
-export function toolFields(call: Json): ToolFields {
-  const meta = isObject(call._meta) ? call._meta : {};
-  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
-  return {
-    meta,
-    claudeCode,
-    toolName: nonEmpty(claudeCode.toolName),
-    rawInput: isObject(call.rawInput) ? call.rawInput : {},
-    title: nonEmpty(call.title),
-    kind: typeof call.kind === "string" ? call.kind : "other",
-  };
-}
-
 /** 동사 셋 — 하는 중 · 끝남 · 실패. 거절된 줄은 「~하지 않음」이다(`refused`). */
 interface Verbs {
   running: string;
@@ -155,8 +133,7 @@ export function describeTool(tool: ToolEntry): ToolView {
   const call = tool.call;
   const state: ToolState =
     call.status === "completed" ? "done" : call.status === "failed" ? "failed" : tool.cut ? "cut" : "running";
-  const fields = toolFields(call);
-  const { meta, claudeCode, toolName, rawInput, title, kind } = fields;
+  const { meta, toolName, mcp, subagent, rawInput, title, kind } = toolFields(call);
   const content = Array.isArray(call.content) ? call.content.filter(isObject) : [];
   const contentText = content
     .map((item) => (item.type === "content" && isObject(item.content) && item.content.type === "text" ? item.content.text : null))
@@ -176,10 +153,10 @@ export function describeTool(tool: ToolEntry): ToolView {
   };
   const base = { state, waiting: tool.asking, group: null, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null };
 
-  const mcp = mcpOf(fields);
   if (mcp) {
+    const { input } = mcp;
     const name = `${mcp.server}.${mcp.tool}`;
-    const sent = Object.keys(rawInput).length > 0 ? pretty(rawInput) : "";
+    const sent = Object.keys(input).length > 0 ? pretty(input) : "";
     const received = mcpOutput(call, contentText);
     const box = { name, sent, received, receivedCode: /^[[{]/.test(received.trim()) };
     if (name === LIST_PROJECTS) {
@@ -190,27 +167,25 @@ export function describeTool(tool: ToolEntry): ToolView {
     // 카드가 선 동안 서는 줄이다 — 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다(`fold.ts`). 거절된 제안만 이 줄로 남는다.
     if (name === PROPOSE_WORK) return { ...base, glyph: "other", phrase: say(ASK, "작업공간 만들기를", false), mcp: box };
     if (name === START_EDITING) {
-      return { ...base, glyph: "edit", phrase: say(START, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
+      return { ...base, glyph: "edit", phrase: say(START, nonEmpty(input.project) ?? "Project", false), mcp: box };
     }
     if (name === LIST_SERVICES) return { ...base, glyph: "read", phrase: say(CHECK, "Service 목록", false), mcp: box };
     // 묻지 않고 붙이면 곧 「Service 고름」이고, 질문 카드가 서면 그동안 「Service 고르는 중」이다 — 사람이 고르면 접힌 줄이 이 줄의 자리를 대신한다.
     if (name === SET_SERVICE) return { ...base, glyph: "other", phrase: say(PICK, "Service", false), mcp: box };
     if (name === ADD_PROJECT) {
-      const path = nonEmpty(rawInput.path);
+      const path = nonEmpty(input.path);
       const folder = path === null ? null : nonEmpty(folderName(path));
-      return { ...base, glyph: "other", phrase: say(ADD, nonEmpty(rawInput.name) ?? folder ?? "Project", false), mcp: box };
+      return { ...base, glyph: "other", phrase: say(ADD, nonEmpty(input.name) ?? folder ?? "Project", false), mcp: box };
     }
-    if (name === EDIT_PROJECT) return { ...base, glyph: "other", phrase: say(FIX, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
-    if (name === CREATE_SERVICE) return { ...base, glyph: "other", phrase: say(MAKE, serviceSubject(rawInput.name), false), mcp: box };
-    if (name === EDIT_SERVICE) return { ...base, glyph: "other", phrase: say(FIX, serviceSubject(rawInput.service), false), mcp: box };
+    if (name === EDIT_PROJECT) return { ...base, glyph: "other", phrase: say(FIX, nonEmpty(input.project) ?? "Project", false), mcp: box };
+    if (name === CREATE_SERVICE) return { ...base, glyph: "other", phrase: say(MAKE, serviceSubject(input.name), false), mcp: box };
+    if (name === EDIT_SERVICE) return { ...base, glyph: "other", phrase: say(FIX, serviceSubject(input.service), false), mcp: box };
     return { ...base, glyph: "mcp", phrase: say(MCP, name, true), mcp: box };
   }
 
   const fallbackText = state === "failed" && contentText !== "" ? contentText : null;
-  const subagent = isObject(claudeCode.subagent) ? claudeCode.subagent : null;
   if (subagent) {
-    const type = nonEmpty(subagent.subagentType);
-    return { ...base, glyph: "other", phrase: say(SUBAGENT, type ?? "서브에이전트", false), text: contentText || null };
+    return { ...base, glyph: "other", phrase: say(SUBAGENT, subagent.type ?? "서브에이전트", false), text: contentText || null };
   }
   if (toolName === "Skill" && nonEmpty(rawInput.skill)) {
     return { ...base, glyph: "read", phrase: say(SKILL, nonEmpty(rawInput.skill), true), text: fallbackText };
@@ -302,16 +277,6 @@ function listedCount(received: string): number | null {
   } catch {
     return null;
   }
-}
-
-/** MCP 호출의 서버 · 도구 — Claude `mcp__<서버>__<도구>`, codex-acp `rawInput{server, tool}`. MCP가 아니면 null. */
-export function mcpOf({ toolName, rawInput, meta, title }: ToolFields): { server: string; tool: string } | null {
-  const named = toolName?.match(/^mcp__(.+?)__(.+)$/);
-  if (named) return { server: named[1], tool: named[2] };
-  const server = nonEmpty(rawInput.server);
-  const tool = nonEmpty(rawInput.tool);
-  if (server && tool && (meta.is_mcp_tool_call === true || title?.startsWith("mcp.") === true)) return { server, tool };
-  return null;
 }
 
 /** MCP 호출의 받은 값 — 글 내용, 또는 `rawOutput`(MCP `CallToolResult`). JSON이면 들여 써서 보인다. */

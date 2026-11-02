@@ -111,7 +111,8 @@ pub(crate) enum Act {
 impl Act {
     /// ACP 도구 요지에서 읽는다. 편집의 경로는 `locations[].path`와 입력의 `file_path` · `notebook_path` · `path`다 — 상대 경로는
     /// 그대로 둔다(엔진이 Session의 작업 폴더에서 푼다). 명령은 입력의 `command`(글 또는 낱말 목록)다. 앱 기능 도구는 종류가 없어
-    /// Claude 변환기가 실은 도구 이름으로 가른다 — 제목은 보지 않는다. `Task`의 제목은 모델이 쓴 글이다.
+    /// Claude 변환기가 실은 도구 이름으로 가른다 — 제목은 보지 않는다. `Task`의 제목은 모델이 쓴 글이다. codex-acp의 요청에는 제목도
+    /// 입력도 없어 표준 값으로 가를 수 없다 — 같은 `toolCallId`로 앞서 온 도구 줄을 읽는 것은 Codex 판정(restart 01c-7)의 몫이다.
     pub(crate) fn of(tool_call: &Value) -> Self {
         let input = &tool_call["rawInput"];
         match tool_call["kind"].as_str() {

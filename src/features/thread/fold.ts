@@ -5,9 +5,10 @@ import { readingText, registeredText } from "@/features/services/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import { prLineOf, type PrLine } from "./pr";
 import { innerCalls } from "./subagent";
+import { toolFields } from "./tool-fields";
 import {
   cardOfChoice,
-  cardOfToolName,
+  cardOfMcp,
   isToolCard,
   isToolCardAsk,
   isToolChoice,
@@ -1148,11 +1149,13 @@ function quoteOf(value: unknown): Quote | null {
   return { file, start, end, text: quoted };
 }
 
-/** 도구 호출의 Claude Code 도구 이름 — `_meta.claudeCode.toolName`, 없으면 제목. */
+/**
+ * 일이 아닌 도구 줄을 가르는 이름 — Claude 도구 이름, 없으면 제목(`tool-fields.ts`). 대화 정리(`Compact conversation`)는 두 Runtime이 같은 제목으로
+ * 알리지만, 제목을 먼저 읽지 않는다 — Claude 서브에이전트의 설명이 같은 글일 수 있다.
+ */
 function toolNameOf(call: Json): string | null {
-  const meta = isObject(call._meta) ? call._meta : {};
-  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
-  return text(claudeCode.toolName) ?? text(call.title);
+  const { toolName, title } = toolFields(call);
+  return toolName ?? title;
 }
 
 /** Claude Code의 계획 파일에 쓰는 도구 줄인가 — 편집 도구이고, 다루는 파일(`locations` · 입력의 `file_path`)이 모두 계획 파일이다. */
@@ -1164,9 +1167,9 @@ function writesPlanFile(call: Json): boolean {
   return paths.length > 0 && paths.every((path) => PLAN_FILE.test(path));
 }
 
-/** 사람에게 카드로 묻는 Thread 도구의 줄이면 그 카드 종류(v1 티켓 30 · 32) — Claude Code의 MCP 도구 이름(`_meta.claudeCode.toolName`, 없으면 제목)으로 가린다. */
+/** 사람에게 카드로 묻는 Thread 도구의 줄이면 그 카드 종류(v1 티켓 30 · 32) — MCP 이름(`tool-fields.ts`, 표준 값 먼저)으로 가린다. */
 function cardOfTool(tool: ToolEntry): ToolCard | null {
-  return cardOfToolName(toolNameOf(tool.call));
+  return cardOfMcp(toolFields(tool.call).mcp);
 }
 
 function newTool(key: string, toolCallId: string, call: Json, at: string): ToolEntry {

@@ -26,7 +26,8 @@ import {
 } from "./fold";
 import { createdDocs } from "./expanded";
 import { changedFiles } from "./log";
-import { describeTool, phraseText, toolFields } from "./tool-view";
+import { toolFields } from "./tool-fields";
+import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05) — 기록 줄 → 턴 · 도구 줄 · 시스템 줄. seam은 순수 함수 `foldThread` 하나다: 처음 읽은 기록도
@@ -1405,6 +1406,105 @@ describe("서브에이전트의 안쪽 도구", () => {
     const failed = update(4, 4, { sessionUpdate: "tool_call_update", toolCallId: AGENT, status: "failed" });
     const stopped: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "cancelled", cancelledByUs: true, durationMs: 4000 } };
     expect(said(agentOf(foldThread([...running, failed, stopped])))).toEqual(["cargo test 중단함"]);
+  });
+});
+
+// 표준 값만 있는 도구 줄(01c-2 · 스토리 41) — Codex는 `_meta.claudeCode`를 싣지 않는다. 엔진이 쓴 Claude 기록의 도구 줄을 ACP 칸만 남긴 꼴로 바꿔
+// 접어도 화면 값 · 카드 · 작업 로그가 같아야 한다. MCP 호출은 codex-acp 2.2.2가 싣는 꼴(제목 `mcp.<서버>.<도구>` · `kind: execute` ·
+// `rawInput{server, tool, arguments}` · 받은 값은 `rawOutput`, `spec/research/runtime-실측/codex-excerpts.jsonl`)로, 그 밖의 도구는 `_meta.claudeCode`만
+// 뗀다. codex-acp가 함께 싣는 `_meta.is_mcp_tool_call`도 싣지 않는다 — ACP 칸만으로 읽혀야 한다. 서브에이전트는 ACP에 칸이 없어 바꾸지 않는다.
+describe("표준 값만 있는 도구 줄", () => {
+  type Body = Record<string, unknown>;
+  const claudeOf = (body: Body): Body => {
+    const meta = (body._meta ?? {}) as Body;
+    return (meta.claudeCode ?? {}) as Body;
+  };
+  const standardOnly = (lines: readonly RecordLine[]): RecordLine[] => {
+    const mcp = new Map<string, { server: string; tool: string; input: unknown }>();
+    const subagents = new Set<string>();
+    return lines.map((line) => {
+      const payload = line.payload as Body;
+      const body = (line.kind === "update" ? payload.update : null) as Body | null;
+      if (!body || (body.sessionUpdate !== "tool_call" && body.sessionUpdate !== "tool_call_update")) return line;
+      const id = String(body.toolCallId);
+      const claude = claudeOf(body);
+      if (claude.subagent !== undefined) subagents.add(id);
+      if (subagents.has(id)) return line;
+      const { _meta, ...rest } = body;
+      const { claudeCode: _claude, ...otherMeta } = (_meta ?? {}) as Body;
+      const named = typeof claude.toolName === "string" ? /^mcp__(.+?)__(.+)$/.exec(claude.toolName) : null;
+      if (body.sessionUpdate === "tool_call" && named) mcp.set(id, { server: named[1], tool: named[2], input: rest.rawInput });
+      const called = mcp.get(id);
+      let standard: Body = { ...rest, ...(Object.keys(otherMeta).length > 0 && { _meta: otherMeta }) };
+      if (called) {
+        const { content, rawInput: _input, title: _title, kind: _kind, ...kept } = standard;
+        const texts = Array.isArray(content) ? content.map((piece: { content: { text: string } }) => piece.content.text) : [];
+        const output = texts.length === 0 ? {} : body.status === "failed"
+          ? { rawOutput: { result: null, error: { message: texts.join("\n") } } }
+          : { rawOutput: { result: { content: texts.map((text) => ({ type: "text", text })) }, error: null } };
+        standard = {
+          ...kept,
+          ...(body.sessionUpdate === "tool_call" && { kind: "execute", title: `mcp.${called.server}.${called.tool}` }),
+          rawInput: { server: called.server, tool: called.tool, arguments: called.input },
+          ...output,
+        };
+      }
+      return { ...line, payload: { ...payload, update: standard } };
+    });
+  };
+  /** 접은 값에서 도구 줄의 원문(`call`)을 그 화면 값으로 바꾼 것 — 원문은 Runtime마다 다르고, 견줄 것은 그려지는 모양이다. */
+  const shape = (model: ThreadModel): unknown =>
+    JSON.parse(
+      JSON.stringify(model, (_key, value: unknown) => {
+        const tool = value as ToolEntry | null;
+        return tool !== null && typeof tool === "object" && tool.kind === "tool" && "call" in tool && "toolCallId" in tool
+          ? { ...tool, call: describeTool(tool) }
+          : value;
+      }),
+    );
+  const records = readdirSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/", import.meta.url)))
+    .filter((name) => name.startsWith("thread-"))
+    .map((name) => name.replace(/\.jsonl$/, ""));
+
+  it("Claude 기록의 도구 줄을 ACP 칸만 남긴 꼴로 바꿔도 같은 모양으로 접힌다 — 화면 값 · 카드 · 작업 로그", () => {
+    const changed = records.filter((name) => JSON.stringify(standardOnly(record(name))) !== JSON.stringify(record(name)));
+    expect(changed.length).toBeGreaterThan(0);
+    for (const name of records) {
+      const lines = record(name);
+      expect(shape(foldThread(standardOnly(lines))), name).toEqual(shape(foldThread(lines)));
+    }
+  });
+
+  it("작업공간 제안 카드의 결정 줄이 codex-acp 꼴 도구 줄의 자리에 선다", () => {
+    const choices = (lines: readonly RecordLine[]) =>
+      foldThread(lines).turns.flatMap((turn) => turn.entries.flatMap((entry) => (entry.kind === "work-choice" ? [entry.toolCallId] : [])));
+    const working = record("thread-work");
+    expect(choices(working)).toEqual(["toolu_01V5q2jp2YGwNSrG5b4kMztD"]);
+    expect(choices(standardOnly(working))).toEqual(["toolu_01V5q2jp2YGwNSrG5b4kMztD"]);
+  });
+
+  it("codex-acp 꼴 앱 기능 도구 줄은 보낸 값(`arguments`)으로 말한다", () => {
+    const model = foldThread([
+      { seq: 1, at: at(1), kind: "sent", payload: { text: "web-app을 고쳐 줘" } },
+      update(2, 2, {
+        sessionUpdate: "tool_call",
+        toolCallId: "exec-1",
+        kind: "execute",
+        title: "mcp.atelier-thread.start_editing",
+        status: "in_progress",
+        rawInput: { server: "atelier-thread", tool: "start_editing", arguments: { project: "web-app" } },
+      }),
+      update(3, 3, {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "exec-1",
+        status: "completed",
+        rawOutput: { result: { content: [{ type: "text", text: "web-app에서 고친다" }] }, error: null },
+      }),
+    ]);
+    const tool = model.turns[0].entries.find((entry): entry is ToolEntry => entry.kind === "tool");
+    const view = tool && describeTool(tool);
+    expect(view && phraseText(view.phrase)).toBe("web-app 고치기 시작함");
+    expect(view?.mcp).toEqual({ name: "atelier-thread.start_editing", sent: '{\n  "project": "web-app"\n}', received: "web-app에서 고친다", receivedCode: false });
   });
 });
 

@@ -12,6 +12,7 @@ import type {
   WorkProjectChoice,
 } from "./fold";
 import { isObject, nonEmpty, text, type Json } from "./json";
+import type { McpCall } from "./tool-fields";
 import type { ProjectAddAnswer } from "./types";
 
 // Thread 도구 카드의 표(03 코드 리뷰 D2) — Thread 도구가 「카드를 세우고 기다리는 길」로 사람에게 묻는 카드(Work 만들기 · Work 밖 Project · Service 질문 ·
@@ -45,7 +46,7 @@ interface ChoiceAt {
 
 /** 표의 한 줄. */
 interface ToolCardRow<C extends ToolCard> {
-  /** 카드를 세우는 Thread 도구 — Claude Code의 MCP 도구 이름이다. 답한 뒤 이 도구 줄은 결정 줄이 대신한다. */
+  /** 카드를 세우는 Thread 도구 — 앱 기능 도구 서버(`SERVER`)의 도구 이름이다. 답한 뒤 이 도구 줄은 결정 줄이 대신한다. */
   tool: string;
   /** 결정 줄의 `kind`. */
   choice: ToolCardShapes[C]["choice"]["kind"];
@@ -68,7 +69,7 @@ const PROJECT_ADD_CHOICES: readonly ProjectAddAnswer[] = ["init", "root", "as-is
 const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
   // Work 만들기 제안(v1 티켓 30) — 「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」.
   work: {
-    tool: "mcp__atelier-thread__propose_work",
+    tool: "propose_work",
     choice: "work-choice",
     ask: proposalOf,
     answer: (_asked, payload, at) => {
@@ -88,7 +89,7 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
   },
   // Project 고치기 시작(v1 티켓 32 — Work에 없는 Project면 묻는다) — 「web-app을 이 작업공간에 붙임」 · 「… 읽기만 하기로 함」 · 「… 고치지 않기로 함」.
   project: {
-    tool: "mcp__atelier-thread__start_editing",
+    tool: "start_editing",
     choice: "project-choice",
     ask: outsideOf,
     answer: (_asked, payload, at) => ({
@@ -104,7 +105,7 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
   },
   // Service 붙이기(03 티켓 08 — 「묻지 않음」이 아니면 묻는다) — 「✓ 어느 Service에서 할까요? · 결제 서비스」.
   service: {
-    tool: "mcp__atelier-thread__set_service",
+    tool: "set_service",
     choice: "service-choice",
     ask: serviceAskOf,
     answer: (_asked, payload, at) => ({
@@ -120,7 +121,7 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
   },
   // Project 추가(03 티켓 12 — git이 아닌 폴더 · 하위 폴더면 묻는다) — 「✓ notes는 git 저장소가 아니에요. 어떻게 할까요? · git init 하고 추가」.
   "project-add": {
-    tool: "mcp__atelier-thread__add_project",
+    tool: "add_project",
     choice: "project-add-choice",
     ask: projectAddOf,
     answer: (asked, payload, at) => ({
@@ -157,9 +158,13 @@ export function isToolCardAsk(ask: { card: unknown }): ask is ToolCardAsk {
   return isToolCard(ask.card);
 }
 
-/** 그 Thread 도구(Claude Code의 MCP 도구 이름)가 세우는 카드의 갈래 — 카드를 세우는 도구가 아니면 null이다. */
-export function cardOfToolName(name: string | null): ToolCard | null {
-  return KINDS.find((card) => TOOL_CARDS[card].tool === name) ?? null;
+/** 앱 기능 도구 서버 — 엔진이 Runtime에 넘기는 이름(`thread_tools::SERVER_NAME`)이다. */
+const SERVER = "atelier-thread";
+
+/** 그 MCP 호출(`tool-fields.ts`)이 세우는 카드의 갈래 — 앱 기능 도구 서버의 카드를 세우는 도구가 아니면 null이다. Runtime을 가리지 않는다. */
+export function cardOfMcp(mcp: McpCall | null): ToolCard | null {
+  if (mcp?.server !== SERVER) return null;
+  return KINDS.find((card) => TOOL_CARDS[card].tool === mcp.tool) ?? null;
 }
 
 /** 카드의 결정 줄이면 그 카드의 갈래. */

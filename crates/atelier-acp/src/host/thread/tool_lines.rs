@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::seat::ends_turn;
 use crate::runtime::{RuntimeEvent, Sink};
-use crate::thread_tools::app_tool;
+use crate::thread_tools::{app_tool, SERVER_NAME};
 
 /// 도구 줄을 기다리는 한도 — 줄이 늦는 것은 부하 탓이라 보통은 곧바로 온다.
 const LIMIT: Duration = Duration::from_secs(5);
@@ -67,11 +67,21 @@ impl ToolLines {
     }
 }
 
-/// Thread 도구의 도구 줄이면 그 도구 이름 — Runtime의 도구 이름은 `mcp__<서버>__<도구>`다(Claude Code). ACP 제목도 같은 글이다.
+/// Thread 도구의 도구 줄이면 그 도구 이름 — 표준 값을 먼저 읽는다(restart 01c-2): 제목이 `mcp.<서버>.<도구>`이고 `rawInput`의 `server` ·
+/// `tool`이 그 둘이다(codex-acp 2.2.2). 없으면 Claude 변환기가 실은 도구 이름(`_meta.claudeCode.toolName`), 그것도 없으면 제목을
+/// `mcp__<서버>__<도구>`로 읽는다(Claude Code — 변환기는 MCP 도구의 제목을 도구 이름 그대로 짓는다).
+///
+/// 판정(`policy::Act::of`)은 이 길을 쓰지 않는다 — 제목과 입력은 모델이 쓴 글일 수 있고, 여기서 틀려도 차례만 어긋난다.
 fn thread_tool(raw: &Value) -> Option<String> {
     let update = &raw["update"];
     if update["sessionUpdate"] != "tool_call" {
         return None;
+    }
+    let input = &update["rawInput"];
+    if let (Some(server), Some(tool), Some(title)) = (input["server"].as_str(), input["tool"].as_str(), update["title"].as_str()) {
+        if title == format!("mcp.{server}.{tool}") {
+            return (server == SERVER_NAME).then(|| tool.to_owned());
+        }
     }
     let name = update["_meta"]["claudeCode"]["toolName"].as_str().or_else(|| update["title"].as_str())?;
     app_tool(name).map(str::to_owned)
@@ -122,5 +132,28 @@ mod tests {
         let started = Instant::now();
         lines.wait_for("rename_thread", Duration::from_millis(100));
         assert!(started.elapsed() >= Duration::from_millis(100));
+    }
+
+    /// codex-acp 2.2.2가 싣는 MCP 도구 줄 — `_meta.claudeCode`가 없고 ACP 칸만 있다(`spec/research/runtime-실측/codex-excerpts.jsonl`).
+    fn standard_call(title: &str, server: &str, tool: &str) -> RuntimeEvent {
+        RuntimeEvent::Update(json!({"sessionId": "s", "update": {
+            "sessionUpdate": "tool_call", "toolCallId": "exec-1", "kind": "execute", "title": title, "status": "in_progress",
+            "rawInput": {"server": server, "tool": tool, "arguments": {}}}}))
+    }
+
+    #[test]
+    fn 표준_값만_있는_도구_줄로도_받는다() {
+        let lines = Arc::new(ToolLines::default());
+        let sink = lines.watching(Arc::new(|_| {}));
+        let waiting = Arc::clone(&lines);
+        let started = Instant::now();
+        let waited = std::thread::spawn(move || waiting.wait_for("get_work", Duration::from_secs(10)));
+        std::thread::sleep(Duration::from_millis(50));
+        sink(standard_call("mcp.other.get_work", "other", "get_work"));
+        sink(standard_call("mcp.atelier-thread.list_projects", "atelier-thread", "get_work"));
+        assert!(!waited.is_finished(), "다른 서버의 줄 · 제목과 입력이 어긋난 줄로는 받지 않는다");
+        sink(standard_call("mcp.atelier-thread.get_work", "atelier-thread", "get_work"));
+        waited.join().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(5), "한도까지 기다리지 않는다");
     }
 }
