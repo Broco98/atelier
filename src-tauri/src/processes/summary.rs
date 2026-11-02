@@ -9,10 +9,11 @@
 //! - **합계** = 앱 본체 + 이 실행의 모든 셸과 자손(셸 도우미 포함) + 고아 · 예외 · 다른 인스턴스 — 판정이 묶음에 넣은 것 전부다(restart
 //!   03-6 — 고장 난 프로세스도 아틀리에 숫자에 보여야 한다. 한때는 예외 · 다른 인스턴스 · 고아를 뺐다). 고아의 수는 따로 센다 — 요약
 //!   카드가 확정 고아와 출처 불명을 화면 스냅샷에서 센다. 이 밖의 같은 uid 프로세스는 「다른 앱」이다(`apps` — 화면 스냅샷만 읽는다).
-//! - **앱 본체** = Rust 본체 + 웹뷰(WebContent) 프로세스(프로세스 스펙 S39). WebContent는 부모가 launchd라 트리로 안 잡힌다 — 웹뷰에게
-//!   pid를 묻는다(`WebContent`, 묻는 길은 `webview.rs`의 비공개 SPI). 못 물었거나 못 읽었으면 Rust 본체만 세고 「웹뷰 제외」를
-//!   싣는다. **GPU와 Networking 프로세스는 세지 않는다** — 그래서 활성 상태 보기가 앱에 묶어 보이는 합과 차이가 난다(요약 카드의
-//!   툴팁이 그렇게 말한다).
+//! - **앱 본체** = Rust 본체 + 웹뷰(WebContent) 프로세스(프로세스 스펙 S39) + 앱이 책임지는 WebKit 도우미(GPU · Networking — restart
+//!   03-8). WebContent는 부모가 launchd라 트리로 안 잡힌다 — 웹뷰에게 pid를 묻는다(`WebContent`, 묻는 길은 `webview.rs`의 비공개 SPI).
+//!   못 물었거나 못 읽었으면 Rust 본체만 세고 「웹뷰 제외」를 싣는다. GPU와 Networking은 물을 길이 없어 책임 프로세스로 찾는다
+//!   (`webkit`) — 못 찾으면(그 함수가 없다 · 셸에서 띄운 개발 빌드) 세지 않고 「다른 앱」에 남는다. 그때 활성 상태 보기가 앱에 묶어 보이는
+//!   합과 차이가 난다(요약 카드의 툴팁이 그렇게 말한다).
 //! - **CPU** — 합계에 드는 것의 CPU%를 더한 것(맥 전체 = 100 — restart 03-5). 배경 표본의 앞 표본과 견준다(`Background`의 미터 — 화면의
 //!   것과 따로).
 //! - **맥 전체**(`machine::Machine`) — 같은 표본에서 읽은 맥 전체 CPU% · 메모리 · 코어 수(restart 03-5). 추이의 한 선이다.
@@ -42,7 +43,7 @@ use serde::Serialize;
 use super::machine::{self, Machine};
 use super::metrics::{CpuMeter, Measured, Readings};
 use super::verdict::Verdict;
-use super::Identity;
+use super::{webkit, Identity, Snapshot};
 
 /// 배경 표본의 박자(프로세스 스펙 S37 — 배경 10초, 화면 2초). 프런트가 요약을 묻는 박자도 같다(`SUMMARY_EVERY_MS`).
 pub const EVERY: Duration = Duration::from_secs(10);
@@ -122,17 +123,39 @@ pub struct Summary {
     pub record_head: Option<u64>,
 }
 
-/// **앱 본체의 신원** — Rust 본체와 웹뷰의 WebContent 프로세스(S39). 둘 다 못 알 수 있다(macOS 밖 · 웹뷰가 아직 안 떴다).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// **앱 본체의 신원** — Rust 본체와 웹뷰의 WebContent 프로세스(S39), 그리고 앱이 책임지는 WebKit 도우미(GPU · Networking — restart
+/// 03-8). 모두 못 알 수 있다(macOS 밖 · 웹뷰가 아직 안 떴다 · 책임 프로세스를 묻는 함수가 없다).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Body {
     pub rust: Option<Identity>,
     pub web_content: Option<Identity>,
+    /// 앱이 책임지는 WebKit 도우미 — 웹뷰 줄에 WebContent와 함께 선다(`webkit::helpers`). WebContent와 판정이 줄로 세운 것은 안 든다.
+    pub webkit: Vec<webkit::Helper>,
 }
 
 impl Body {
-    /// 앱 본체의 신원 중 아는 것 — Rust 본체, WebContent.
-    pub fn ids(&self) -> impl Iterator<Item = Identity> {
-        self.rust.into_iter().chain(self.web_content)
+    /// **앱 본체를 세운다** — Rust 본체와 웹뷰가 이름 댄 WebContent에 앱이 책임지는 WebKit 도우미를 더한다(restart 03-8). 도우미는 우리
+    /// 트리(판정의 줄 · 이 실행의 셸 · Rust 본체 · WebContent) 밖의 것만 고른다 — 한 프로세스가 두 줄에 서면 줄의 합이 합계를 넘는다.
+    /// 책임 프로세스는 `responsible`에게 묻는다(앱은 `webkit::responsible_for`). Rust 본체를 모르면 견줄 앱이 없어 찾지 않는다.
+    pub fn of(
+        snapshot: &Snapshot,
+        verdict: &Verdict,
+        shells: &[Identity],
+        rust: Option<Identity>,
+        web_content: Option<Identity>,
+        responsible: impl Fn(u32) -> Option<u32>,
+    ) -> Body {
+        let bare = Body { rust, web_content, webkit: Vec::new() };
+        let Some(app) = rust else {
+            return bare;
+        };
+        let webkit = webkit::helpers(snapshot, app.pid, &targets(verdict, shells, &bare), responsible);
+        Body { webkit, ..bare }
+    }
+
+    /// 앱 본체의 신원 중 아는 것 — Rust 본체, WebContent, WebKit 도우미.
+    pub fn ids(&self) -> impl Iterator<Item = Identity> + '_ {
+        self.rust.into_iter().chain(self.web_content).chain(self.webkit.iter().map(|helper| helper.id))
     }
 }
 
@@ -144,8 +167,9 @@ pub fn targets(verdict: &Verdict, shells: &[Identity], body: &Body) -> BTreeSet<
     verdict.rows().map(|proc| proc.id).chain(shells.iter().copied()).chain(body.ids()).collect()
 }
 
-/// 읽은 것끼리의 합. 하나도 못 읽었으면 없다 — 모르는 것을 0이라 하지 않는다(화면의 `sumMetrics`와 같은 규칙).
-fn sum_read<T: std::iter::Sum<T>>(values: impl Iterator<Item = Option<T>>) -> Option<T> {
+/// 읽은 것끼리의 합. 하나도 못 읽었으면 없다 — 모르는 것을 0이라 하지 않는다(화면의 `sumMetrics`와 같은 규칙). 화면 스냅샷의 웹뷰 줄도
+/// 이 규칙으로 더한다(`screen::BodyRows`).
+pub(super) fn sum_read<T: std::iter::Sum<T>>(values: impl Iterator<Item = Option<T>>) -> Option<T> {
     let read: Vec<T> = values.flatten().collect();
     (!read.is_empty()).then(|| read.into_iter().sum())
 }
@@ -423,7 +447,7 @@ mod tests {
     }
 
     fn rust_only(app: Identity) -> Body {
-        Body { rust: Some(app), web_content: None }
+        Body { rust: Some(app), web_content: None, ..Body::default() }
     }
 
     /// 아무 묶음도 없는 판정.
@@ -451,6 +475,7 @@ mod tests {
         let body = Body {
             rust: Some(Identity { pid: 42, started_us: 4_200 }),
             web_content: Some(Identity { pid: 77, started_us: 7_700 }),
+            ..Body::default()
         };
         let readings = HashMap::from([(body.rust.unwrap(), reading(410 * MB)), (body.web_content.unwrap(), reading(200 * MB))]);
         let cpu = HashMap::from([(body.rust.unwrap(), 2.5), (body.web_content.unwrap(), 1.5)]);
@@ -517,6 +542,7 @@ mod tests {
         let body = Body {
             rust: Some(Identity { pid: 42, started_us: 4_200 }),
             web_content: Some(Identity { pid: 77, started_us: 7_700 }),
+            ..Body::default()
         };
         let verdict = Verdict {
             descendants: BTreeMap::from([("G-1", vec![&gitstatusd, &vite, &esbuild]), ("G-2", vec![])]),
@@ -590,7 +616,7 @@ mod tests {
     fn the_app_body_is_the_rust_body_and_the_web_content() {
         let rust = Identity { pid: 42, started_us: 4_200 };
         let web = Identity { pid: 77, started_us: 7_700 };
-        let both = Body { rust: Some(rust), web_content: Some(web) };
+        let both = Body { rust: Some(rust), web_content: Some(web), ..Body::default() };
         let read_both = memory_only(HashMap::from([(rust, reading(410 * MB)), (web, reading(200 * MB))]));
 
         let counted = Totals::of(&empty(), &[], &both, &read_both);
@@ -608,6 +634,52 @@ mod tests {
 
         let nothing = Totals::of(&empty(), &[], &both, &Measured::default());
         assert_eq!((nothing.app, nothing.webview_excluded), (None, true));
+    }
+
+    /// **앱 본체에 앱이 책임지는 WebKit 도우미가 든다**(restart 03-8 · 스토리 128). 웹뷰가 이름 댄 WebContent 곁에 GPU · Networking 같은
+    /// 도우미가 서고, 아틀리에 합계와 앱 본체가 그 몫을 센다 — 합계에 드는 신원이다. 이미 판정이 줄로 세운 것과 WebContent는 도우미로 다시
+    /// 안 선다(한 프로세스가 두 줄에 서지 않게). 책임 프로세스를 묻는 함수가 없으면(심볼이 없다) 도우미가 없다 — 그것들은 합계 밖에 남아
+    /// 「다른 앱」에 든다. 앱 자신의 신원을 모르면(Rust 본체를 못 읽었다) 견줄 앱이 없어 찾지 않는다.
+    #[test]
+    fn the_app_body_counts_the_webkit_helpers_the_app_is_responsible_for() {
+        use crate::processes::{apps, webkit, Snapshot};
+
+        let app = row(42, 1, "atelier");
+        let page = row(77, 1, &format!("{}Page", webkit::PREFIX));
+        let render = row(78, 1, &format!("{}Render", webkit::PREFIX));
+        let relay = row(79, 1, &format!("{}Relay", webkit::PREFIX));
+        let vite = row(200, 100, "node");
+        let snapshot = Snapshot { uid: 501, procs: vec![app.clone(), page.clone(), render.clone(), relay.clone(), vite.clone()], skipped: 0 };
+        let verdict = Verdict { descendants: BTreeMap::from([("G-1", vec![&vite])]), ..empty() };
+        let responsible = |pid: u32| (pid != 200).then_some(42);
+
+        let body = Body::of(&snapshot, &verdict, &[], Some(app.id), Some(page.id), responsible);
+        let kinds: Vec<&str> = body.webkit.iter().map(|helper| helper.kind.as_str()).collect();
+        assert_eq!(kinds, ["Relay", "Render"], "앱이 책임지는 WebKit 도우미가 앱 본체에 안 섰거나, WebContent · 판정의 줄이 도우미로 다시 섰다");
+        assert_eq!(
+            targets(&verdict, &[], &body),
+            BTreeSet::from([app.id, page.id, render.id, relay.id, vite.id]),
+            "WebKit 도우미가 합계에 드는 신원이 아니다"
+        );
+        let measured = memory_only(HashMap::from([
+            (app.id, reading(400 * MB)),
+            (page.id, reading(200 * MB)),
+            (render.id, reading(60 * MB)),
+            (relay.id, reading(30 * MB)),
+            (vite.id, reading(300 * MB)),
+        ]));
+        let totals = Totals::of(&verdict, &[], &body, &measured);
+        assert_eq!((totals.app, totals.total), (Some(690 * MB), Some(990 * MB)), "앱 본체와 합계가 WebKit 도우미의 몫을 안 셌다");
+
+        let unbound = Body::of(&snapshot, &verdict, &[], Some(app.id), Some(page.id), |_| None);
+        assert!(unbound.webkit.is_empty(), "책임 프로세스를 모르는데 도우미가 섰다");
+        let ours = targets(&verdict, &[], &unbound);
+        let theirs: Vec<Identity> = apps::targets(&snapshot, &ours).iter().map(|proc| proc.id).collect();
+        assert_eq!(theirs, [render.id, relay.id], "함수가 없을 때 WebKit 도우미가 「다른 앱」에 안 남았다");
+        assert_eq!(Totals::of(&verdict, &[], &unbound, &measured).app, Some(600 * MB));
+
+        let nameless = Body::of(&snapshot, &verdict, &[], None, Some(page.id), responsible);
+        assert!(nameless.webkit.is_empty(), "앱 자신을 모르는데 도우미를 찾았다");
     }
 
     /// **추이 고리는 1시간치다**(프로세스 결정 10 · 티켓 30 AC). 360개를 넘으면 가장 오래된 것부터 버린다 — 늘 마지막 360개가 오래된

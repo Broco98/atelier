@@ -39,6 +39,7 @@ import {
 } from "./process-tree";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
+import { webviewParts } from "./summary-card";
 import {
   ColumnHead,
   CoresContext,
@@ -293,7 +294,7 @@ function ProcessesPage() {
                       </div>
                     </Section>
                   )}
-                  {/* 아틀리에 앱 — 앱 본체(Rust)와 웹뷰(WebContent). 아틀리에 합계의 앱 본체가 이 둘이다(restart 03-6). */}
+                  {/* 아틀리에 앱 — 앱 본체(Rust)와 웹뷰(WebContent · WebKit 도우미). 아틀리에 합계의 앱 본체가 이 둘이다(restart 03-6 · 03-8). */}
                   {snapshot && <AppSection snapshot={snapshot} fold={folds.section("app")} />}
                   {/* 고아 · 다른 인스턴스 · 예외(티켓 31) — 셸이 없어도 선다(앱을 막 켰는데 지난 실행이 남긴 것). */}
                   {strays && <StraySections strays={strays} folds={folds} />}
@@ -340,14 +341,15 @@ function shareMetrics(share: { cpu: number | null; memory: number | null }): Pro
 }
 
 /**
- * **아틀리에 앱**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰(WebContent)의 줄. 아틀리에 합계의 앱 본체가 이
- * 둘이다(S39). 판정의 행이 아니라(판정은 앱 자신을 안 가른다) 스냅샷의 `body`에서 선다. 동작은 없다 — 앱 자신을 끝내는 길이 아니다.
- * 웹뷰를 못 물었거나 못 읽었으면 그 줄의 숫자가 「—」다.
+ * **아틀리에 앱**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰의 줄. 웹뷰 줄은 WebContent와 앱이 책임지는 WebKit
+ * 도우미(GPU · Networking — restart 03-8)의 합이고, 글자가 함께 센 갈래를 적는다(`webviewParts`). 아틀리에 합계의 앱 본체가 이 둘이다(S39).
+ * 판정의 행이 아니라(판정은 앱 자신을 안 가른다) 스냅샷의 `body`에서 선다. 동작은 없다 — 앱 자신을 끝내는 길이 아니다. 웹뷰를 못
+ * 물었거나 못 읽었고 도우미도 없으면 그 줄의 숫자가 「—」다.
  */
 function AppSection({ snapshot, fold }: { snapshot: ProcessSnapshot; fold: ReturnType<Folds["section"]> }) {
   const rows = [
     { key: "rust", name: "앱 본체", note: "Rust", metrics: snapshot.body.rust },
-    { key: "webview", name: "웹뷰", note: "WebContent", metrics: snapshot.body.webview },
+    { key: "webview", name: "웹뷰", note: webviewParts(snapshot.body.webkit), metrics: snapshot.body.webview },
   ];
   return (
     <Section icon={AppWindowMac} title="아틀리에 앱" note={processCount(rows.length)} fold={fold}>

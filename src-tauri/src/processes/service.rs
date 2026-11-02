@@ -24,7 +24,7 @@ use super::screen::{self, PoolShell, ScreenSnapshot};
 use super::snapshot::{self, EnvScope};
 use super::summary::{self, Background, Body, Point, Summary, WebContentAnswer};
 use super::verdict::{self, Inputs, Occasion, ShellEntry};
-use super::{clock, Identity, ThisRun};
+use super::{clock, webkit, Identity, ThisRun};
 
 /// **서비스가 풀을 보는 창** — PTY 풀이 구현한다. 셸을 띄우고 닫는 일은 여기 없다: 읽기에 드는 둘만 연다.
 pub trait ShellListing: Send + Sync {
@@ -109,7 +109,8 @@ impl ProcessService {
             occasion: Occasion::Normal,
         });
         let asked = self.background.web_content.identity(snapshot::identity_of);
-        let body = Body { rust: snapshot::identity_of(std::process::id()), web_content: asked.id };
+        let shells: Vec<Identity> = listed.iter().filter_map(|shell| shell.process).collect();
+        let body = Body::of(&snapshot, &verdict, &shells, snapshot::identity_of(std::process::id()), asked.id, webkit::responsible_for);
         // 우리 트리는 포트까지, 그 밖의 같은 uid 프로세스(다른 앱)는 메모리 · CPU만 읽어 한 표본에 합친다(restart 03-6).
         let ours = screen::targets(&verdict, &listed, &body);
         let theirs = apps::targets(&snapshot, &ours);
@@ -163,7 +164,7 @@ impl ProcessService {
             occasion: Occasion::Normal,
         });
         let asked = self.background.web_content.identity(snapshot::identity_of);
-        let body = Body { rust: snapshot::identity_of(std::process::id()), web_content: asked.id };
+        let body = Body::of(&snapshot, &verdict, &shells, snapshot::identity_of(std::process::id()), asked.id, webkit::responsible_for);
         let readings = metrics::read(summary::targets(&verdict, &shells, &body));
         let measured = self.background.measure(Instant::now(), readings, machine::read());
         let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
@@ -360,6 +361,8 @@ mod tests {
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
         let asked = body.find("self.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
         assert!(listed < asked && asked < ours, "WebContent를 셸 목록({listed}) 앞이나 우리 트리를 가른 뒤({ours})에 묻는다 — {asked}");
+        let helpers = body.find("asked.id, webkit::responsible_for);").expect("앱 본체에 앱이 책임지는 WebKit 도우미를 찾아 더한다");
+        assert!(asked < helpers && helpers < ours, "WebKit 도우미를 WebContent 앞({asked})이나 우리 트리를 가른 뒤({ours})에 찾는다 — {helpers}");
         let theirs = body.find("apps::targets(&snapshot, &ours)").expect("다른 앱은 같은 표의 우리 트리 밖이다");
         let usage = body
             .find("readings.absorb(metrics::read_usage(theirs.iter().map(|proc| proc.id)));")
@@ -403,6 +406,8 @@ mod tests {
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
         let asked = body.find("self.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
         assert!(listed < asked && asked < read, "WebContent를 셸 목록({listed}) 앞이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
+        let helpers = body.find("asked.id, webkit::responsible_for);").expect("앱 본체에 앱이 책임지는 WebKit 도우미를 찾아 더한다");
+        assert!(asked < helpers && helpers < read, "WebKit 도우미를 WebContent 앞({asked})이나 지표를 읽은 뒤({read})에 찾는다 — {helpers}");
         let sampled = body.find("self.background.measure(Instant::now(), readings, machine::read())").expect(
             "배경의 미터로 CPU%를 짓고, 맥 전체를 같은 표본으로 넣는다",
         );

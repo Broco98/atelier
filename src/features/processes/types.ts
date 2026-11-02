@@ -104,7 +104,7 @@ export interface AtelierTotals {
   total: number | null;
   /** 합계에 드는 것의 CPU%를 더한 것(맥 전체 = 100). 첫 표본이거나 못 쟀으면 `null`(「—」). */
   cpu: number | null;
-  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
+  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent · WebKit 도우미 — restart 03-8) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
   app: number | null;
   /** 앱 본체에 웹뷰(WebContent)를 안 셌다(프로세스 스펙 S39) — 요약 카드가 「웹뷰 제외」를 붙인다. */
   webviewExcluded: boolean;
@@ -137,12 +137,19 @@ export interface ProcessSnapshot {
 }
 
 /**
- * **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — Rust `processes::screen::BodyRows`. 앱 본체(Rust)와 웹뷰(WebContent)의
- * 지표다. 아틀리에 합계의 앱 본체(`AtelierTotals.app`)가 이 둘이다. 웹뷰를 못 물었거나 못 읽었으면 그 줄이 빈다(「—」).
+ * **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — Rust `processes::screen::BodyRows`. 앱 본체(Rust)와 웹뷰(WebContent ·
+ * WebKit 도우미 — restart 03-8)의 지표다. 아틀리에 합계의 앱 본체(`AtelierTotals.app`)가 이 둘이다. 웹뷰를 못 물었거나 못 읽었고 도우미도
+ * 없으면 그 줄이 빈다(「—」).
  */
 export interface BodyRows {
   rust: ProcessMetrics;
+  /** WebContent와 앱이 책임지는 WebKit 도우미(GPU · Networking — restart 03-8)의 합. */
   webview: ProcessMetrics;
+  /**
+   * 웹뷰 줄에 함께 센 WebKit 도우미의 갈래(`GPU` · `Networking`) — 이 표본에서 읽은 것만, 갈래 순(Rust `webkit::Helper::kind`). 책임
+   * 프로세스를 묻는 함수가 없거나 앱이 제 책임 프로세스가 아니면(셸에서 띄운 개발 빌드) 빈다 — 그 도우미는 「다른 앱」에 있다.
+   */
+  webkit: string[];
 }
 
 /**

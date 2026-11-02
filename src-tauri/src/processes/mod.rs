@@ -31,6 +31,8 @@
 //! - 맥 전체(`machine`)는 부작용 층이다(restart 03-5). 이 맥 한 대의 CPU tick과 메모리, 코어 수를 읽는다 — 화면의 분모가 맥 전체(100)다.
 //!   지표처럼 macOS에서만 읽고 다른 OS는 없음이다(화면의 「측정 안 됨」). CPU%는 프로세스의 CPU 시간과 같은 미터가 같은 앞 표본과
 //!   견준다(`metrics::CpuMeter`).
+//! - 웹뷰 도우미(`webkit`)는 앱이 책임지는 WebKit 도우미(GPU · Networking)를 고른다(restart 03-8). 책임 프로세스를 묻는 libsystem 함수를
+//!   `dlsym`으로 묶는다 — 없으면 아무것도 못 고르고 그것들은 「다른 앱」에 남는다. 고르기는 순수 함수다.
 //!
 //! - 셸 키(`shell_key`)는 셸 키 `<세대>-<PTY 번호>`를 짓고 읽는 규칙 한 벌이다 — 판정 · 화면 · 훅 상태 파일(`shells`)이 모두 이
 //!   규칙으로 가른다. 이 실행의 세대(`shell_key::generation`)도 여기 산다. 시계(`clock`)는 이 앱이 적는 시각의 벽시계 하나다.
@@ -67,6 +69,7 @@ pub(crate) mod summary;
 #[cfg(all(test, target_os = "macos"))]
 pub(crate) mod testkit;
 pub(crate) mod verdict;
+pub(crate) mod webkit;
 
 /// 셸이 자손에게 물려주는 표식의 변수 이름. 값이 셸 키(`<세대>-<PTY 번호>`, `shell_key`)다.
 ///
