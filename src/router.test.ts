@@ -561,7 +561,7 @@ describe("앱으로 돌아가기", () => {
   it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
     const { router, history } = setup(["/works/work-b"]);
     await router.load();
-    rememberView("work-b", { tab: "terminal", split: null, file: null, code: null });
+    rememberView("work-b", { tab: "terminal", split: null, file: null, code: null, thread: null });
 
     await router.navigate({ to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });
@@ -794,8 +794,8 @@ describe("화면 탭의 주소", () => {
     expect(router.state.location.search).toEqual({ file: "overview.md", tab: "terminal" });
 
     await router.navigate(pick("work-a", "spec"));
-    // spec은 주소에 안 적는다 — 값이 없으면 spec이라는 규칙이 이미 있다(결정 14).
-    expect(router.state.location.search).toEqual({ file: "overview.md" });
+    // 문서 탭은 **임시로** `tab=spec`이라 적는다(restart 02a-4 — 값이 없는 주소는 이제 채팅이다. 02a-13이 문서 탭을 걷는다).
+    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "spec" });
   });
 
   it("`?tab=terminal`로 들어오면 그대로 열린다", async () => {

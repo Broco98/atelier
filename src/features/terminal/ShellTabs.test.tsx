@@ -14,6 +14,7 @@ import {
   markFailed,
   MAX_SHELLS,
   NO_SHELLS,
+  openChatTab,
   openShell,
   setAttention,
   setRunning,
@@ -78,6 +79,7 @@ function render(
     fixed = [] as readonly FixedTab[],
     showing = true,
     actions = undefined as React.ReactNode,
+    chatTitle = (thread: string) => `채팅 ${thread}`,
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -90,6 +92,7 @@ function render(
       fixed={fixed}
       showing={showing}
       actions={actions}
+      chatTitle={chatTitle}
       onSelect={() => {}}
       onClose={() => {}}
       onRename={() => {}}
@@ -176,6 +179,34 @@ describe("줄에 서는 것과 그 순서", () => {
     // 결정 8. `/terminal`에는 문서가 없어 ⌘1부터가 셸이다 — **화면마다 갈리는 것은 맨 앞
     // 한 칸뿐**이라는 성질을 이 줄이 그대로 진다.
     expect(kindsOf(render(opened(2).state, { spec: null }))).toEqual(["shell", "shell", "new"]);
+  });
+});
+
+// restart 02a-4 — 채팅이 작업공간 화면의 탭이 되었다. 채팅 탭은 셸 · 파일 탭과 같은 묶음에 서고 그 차례 그대로다. 이름 바꾸기 · 닫기 ·
+// 끌기는 02a-5가 짓는다 — 이 판의 칸은 누르면 켜질 뿐이다.
+describe("채팅 탭", () => {
+  const X = "20261010-100000";
+
+  it("묶음의 차례 그대로 셸 칸 사이에 서고, 이름은 그 채팅의 이름이다", () => {
+    const { state } = opened(1);
+    const withChat = opened(1, undefined, openChatTab(state, WORK, X)).state;
+    const cells = cellsOf(render(withChat, { chatTitle: (thread) => (thread === X ? "실패 신호 구현" : "?") }));
+    expect(cells.map((cell) => cell.kind)).toEqual(["spec", "shell", "chat", "shell", "new"]);
+    expect(cells[2].markup).toContain("실패 신호 구현");
+  });
+
+  it("본문이 그 채팅이면 켜진 칸이 그 채팅 하나다 — 문서를 보는 동안은 꺼진다", () => {
+    const state = openChatTab(opened(2).state, WORK, X);
+    const on = (markup: string) => cellsOf(markup).filter((cell) => cell.markup.includes('aria-pressed="true"'));
+    expect(on(render(state)).map((cell) => cell.kind)).toEqual(["chat"]);
+    expect(on(render(state, { spec: { ...SPEC, on: true }, showing: false })).map((cell) => cell.kind)).toEqual(["spec"]);
+  });
+
+  it("말풍선 글리프가 서고 닫는 버튼은 아직 없다", () => {
+    const cell = cellsOf(render(openChatTab(NO_SHELLS, WORK, X)))[1];
+    expect(cell.kind).toBe("chat");
+    expect(cell.markup).toContain(renderToStaticMarkup(<MessageSquare className="x" />).match(/<path[^>]*>/)![0]);
+    expect(cell.markup).not.toContain("닫기");
   });
 });
 

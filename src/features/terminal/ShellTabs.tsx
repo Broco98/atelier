@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { Copy, CopyX, File, FileCode, FolderOpen, Pencil, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
+import { Copy, CopyX, File, FileCode, FolderOpen, MessageSquare, Pencil, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import {
   ContextMenu,
@@ -63,7 +63,9 @@ interface TabPress {
 }
 
 /**
- * `spec` **바로 뒤에** 서는 고정 칸 하나(three-axes 결정 9 · S21) — 화면이 목록으로 넘긴다. `chat` 탭이 이 자리에 선다.
+ * `spec` **바로 뒤에** 서는 고정 칸 하나(three-axes 결정 9 · S21) — 화면이 목록으로 넘긴다. 한때 `chat` 탭이 이 자리에 설 계획이었는데,
+ * restart 02a-4가 채팅 탭을 **묶음의 칸**으로 세웠다(`ChatTab` — 셸 · 파일 탭과 같은 규칙으로 끌리고 닫힌다, 구현 스펙 「02a」). 지금 넘기는
+ * 화면은 없다.
  *
  * **묶음의 칸이 아니라서 셸 칸의 성질을 하나도 안 갖는다.** 숫자 키를 받지 않고(⌘1은 `spec`, ⌘2~9는 묶음 — 번호는 묶음의
  * 칸끼리만 센다), 분할에 들지 않고(끄는 자리가 없다 — 분할은 늘 `spec ▏ 묶음의 지금 탭`), 순서를 바꾸지 않고, `×`가 없다. 모양과 켜짐을
@@ -125,6 +127,12 @@ interface ShellTabsProps {
    * 사이드바 셸 목록이 걷히기 전까지 같은 이름의 prop이 같은 것을 갈랐다.
    */
   showing: boolean;
+  /**
+   * **채팅 탭**의 이름(restart 02a-4) — 칸은 채팅 id만 들고(`BundleTab`), 이름은 채팅 목록이 안다. 이 줄은 채팅 기능을 모르는 그림이라
+   * 부르는 쪽(작업공간 화면)이 목록에서 읽어 준다. **필수다** — 빠뜨리면 칸이 조용히 엉뚱한 이름으로 선다. 채팅 탭이 서지 않는 화면
+   * (`/terminal` — `openChatTab`이 최상위 터미널을 안 받는다)도 준다.
+   */
+  chatTitle: (thread: string) => string;
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
   /**
@@ -232,6 +240,7 @@ function ShellTabs({
   spec,
   fixed = [],
   showing,
+  chatTitle,
   onSelect,
   onClose,
   onRename,
@@ -539,6 +548,17 @@ function ShellTabs({
         )}
       >
         {tabs.map((tab) => {
+          if (tab.kind === "chat") {
+            return (
+              <ChatTab
+                key={tab.id}
+                tab={tab}
+                title={chatTitle(tab.thread)}
+                active={showing && tab.id === activeId}
+                onSelect={tabHandlers.onSelect}
+              />
+            );
+          }
           if (tab.kind === "code") {
             return (
               <CodeTab
@@ -1207,6 +1227,50 @@ const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose, 
       >
         <X className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
+    </div>
+  );
+});
+
+interface ChatTabProps {
+  tab: Extract<BundleTab, { kind: "chat" }>;
+  /** 그 채팅의 이름 — 부르는 쪽이 채팅 목록에서 읽어 준다(`chatTitle`). */
+  title: string;
+  /** 본문이 지금 이 채팅을 보여주는가. 켜진 칸 표시가 그때만 선다. */
+  active: boolean;
+  onSelect: (id: number) => void;
+}
+
+/**
+ * **채팅 탭** 칸 하나(restart 02a-4) — 셸 · 파일 탭과 같은 묶음에 서고, 폭(최대 180 · 바닥 44) · 켜짐 면 · 좁아지면 이름이 글리프로
+ * 물러나는 규칙이 파일 탭과 같다. 글리프는 말풍선이다(시안 Main · Shell 「탭 상태」의 `ic-message-square`).
+ *
+ * **누르면 켜질 뿐이다** — 닫기 `×` · 더블클릭 이름 바꾸기 · 우클릭 메뉴 · 끌기는 02a-5가 짓는다. 그래서 누름이 끌기를 걸지 않는다:
+ * 끌기를 걸면 본문 절반에 놓아 분할을 켜는 길이 열리는데, 그 길의 받는 쪽(`tabDragOf`)이 채팅 칸을 아직 모른다. 줄의 틈 셈은 이 칸도
+ * 센다(`measureStrip` — `data-tab`을 단 자식이 곧 묶음의 칸이다).
+ *
+ * 정체는 표식(`data-thread`)으로 싣는다 — 칸 표식(`data-tab`)은 종류다(파일 탭의 `data-code`와 같은 나눔).
+ */
+const ChatTab = memo(function ChatTab({ tab, title, active, onSelect }: ChatTabProps) {
+  return (
+    <div
+      data-tab="chat"
+      data-thread={tab.thread}
+      className={cn(
+        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-lg text-chat-meta transition-colors",
+        active ? "tab-on font-medium" : "text-fg-secondary hover:bg-fill-soft hover:text-fg",
+      )}
+    >
+      {/* 켜짐은 `aria-pressed`로 말한다 — 셸 · 파일 탭과 같은 어휘다(스토리 87). */}
+      <button
+        type="button"
+        aria-pressed={active}
+        tabIndex={0}
+        onClick={() => onSelect(tab.id)}
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-left focus-ring @max-[88px]:justify-center"
+      >
+        <MessageSquare className={cn("size-3.5 shrink-0", active ? "text-fg-secondary" : "text-fg-tertiary")} />
+        <span className="min-w-0 truncate @max-[88px]:sr-only">{title}</span>
+      </button>
     </div>
   );
 });

@@ -1,19 +1,27 @@
 import { useCallback, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
 import { worksApi } from "@/features/works/api";
+import { threadQuery, useThreads } from "@/features/thread/hooks";
+import { lastSaid } from "@/features/thread/preview";
+import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
+import { landingOf } from "@/features/thread/work-threads";
 import {
   bundleSearch,
+  chatHome,
+  chatSearch,
   codeRefOf,
   codeSearch,
   columnSearch,
   fileSearch,
+  openingSearch,
   recallSearch,
   rememberView,
   tabSearch,
 } from "./-work-search";
-import type { ColumnTab, SplitSide, ViewTab } from "./-work-search";
+import type { BundleShown, ColumnTab, SplitSide, ViewTab } from "./-work-search";
 import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/lib/pointer-drag";
 import { slugOfOwner } from "@/features/terminal/shell-registry";
@@ -25,9 +33,10 @@ import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store
 function WorksView({
   slug,
   file = null,
-  tab = "spec",
+  tab = "chat",
   split = null,
   code = null,
+  thread = null,
 }: {
   slug: string | null;
   file?: string | null;
@@ -35,6 +44,8 @@ function WorksView({
   split?: SplitSide | null;
   /** 주소가 말하는 파일 탭(`<프로젝트>/<경로>`) — 본문(`tab=code`)이나 분할의 묶음 열에 선 것이다(git-integration S12). */
   code?: string | null;
+  /** 주소가 말하는 채팅 탭의 채팅 — 본문(`tab=chat`)이나 분할의 묶음 열에 선 것이다(restart 02a-4). */
+  thread?: string | null;
 }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
@@ -98,12 +109,29 @@ function WorksView({
     [navigate, slug],
   );
 
+  /**
+   * **채팅 탭 열기**(restart 02a-4) — 「파일 탭 열기」와 한 벌이다. 그 채팅 탭으로 가고, 묶음에 없으면 끝에 열리고 있으면 그 탭이 지금
+   * 탭이 된다(그 일은 주소를 받은 화면이 한다 — 주소가 정본이다). 탭 줄 · 단축키의 손짓이라 replace다(결정 13).
+   */
+  const openChatTab = useCallback(
+    (next: string) => {
+      if (slug === null) return;
+      void navigate({
+        to: "/works/$slug",
+        params: { slug },
+        search: (prev: object) => chatSearch(prev, next),
+        replace: true,
+      });
+    },
+    [navigate, slug],
+  );
+
   // 분할 전환 — 켜기·끄기·좌우 맞바꾸기 · 열 고르기가 전부 여기다(결정 97). **열과 묶음 열을 함께 받는다**:
-  // 열의 `×`는 분할을 끄면서 **남는 쪽**을 정하고(결정 89), 토글은 지금 열을 그대로 넘긴다. 묶음 열에 설 파일 탭
+  // 열의 `×`는 분할을 끄면서 **남는 쪽**을 정하고(결정 89), 토글은 지금 열을 그대로 넘긴다. 묶음 열에 설 묶음의 지금 탭
   // (`bundle`)은 화면만 안다 — 묶음은 메모리에 산다(git-integration 티켓 07, `columnSearch`).
   // 축을 한 navigate로 옮기는 것은 두 번 옮기면 한 틱에 겹쳐 앞의 것이 버려지기 때문이다.
   const selectSplit = useCallback(
-    (next: SplitSide | null, column: ColumnTab, bundle: string | null) => {
+    (next: SplitSide | null, column: ColumnTab, bundle: BundleShown) => {
       if (slug === null) return;
       void navigate({
         to: "/works/$slug",
@@ -118,7 +146,7 @@ function WorksView({
   // 묶음의 지금 탭이 묶음 쪽에서 바뀌었다 — 지금 탭을 닫아 이웃이 켜졌거나, 셸이 스스로 끝났거나, 끌어 놓은 칸이 켜졌다
   // (git-integration 결정 30). 본문이나 묶음 열이 그 탭을 따라간다. 고칠 것을 `prev`에서만 읽는 까닭은 `bundleSearch` 머리말에 있다.
   const followBundle = useCallback(
-    (bundle: string | null) => {
+    (bundle: BundleShown) => {
       if (slug === null) return;
       void navigate({
         to: "/works/$slug",
@@ -140,9 +168,9 @@ function WorksView({
   // 이 층은 두 기능 폴더를 다 부를 수 있어 여기서 slug를 되뽑는다(`slugOfOwner`). slug가 없으면
   // (최상위 터미널의 빈 글자) 갈 work이 없다 — 아무것도 안 한다.
   //
-  // 묶음 열에 설 파일 탭(`bundle`)은 놓은 쪽이 안다 — 파일 탭을 끌었으면 그 파일, 셸이면 없고, 문서 칸이면 묶음의 지금 탭이다.
+  // 묶음 열에 설 탭(`bundle`)은 놓은 쪽이 안다 — 파일 탭을 끌었으면 그 파일, 셸이면 셸, 문서 칸이면 묶음의 지금 탭이다.
   const dropInto = useCallback(
-    (source: DragSource, next: SplitSide, bundle: string | null) => {
+    (source: DragSource, next: SplitSide, bundle: BundleShown) => {
       const target = slugOfOwner(source.owner);
       if (target === null) return;
       const column = tabOfDrag(source.kind);
@@ -179,8 +207,40 @@ function WorksView({
   // 때문이다 — 화면을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab, 분할 토글,
   // 드래그로 여럿인데, 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다.
   useEffect(() => {
-    if (slug !== null && exists) rememberView(slug, { tab, split, file, code });
-  }, [slug, exists, tab, split, file, code]);
+    if (slug !== null && exists) rememberView(slug, { tab, split, file, code, thread });
+  }, [slug, exists, tab, split, file, code, thread]);
+
+  // **작업공간을 처음 여는 규칙**(restart 02a-4) — 어느 채팅인지 모르는 채팅 탭(값이 없는 주소 — 기본 값이 채팅이다)에 닿으면 가장 최근
+  // 채팅 탭 하나를 세우고 주소를 고친다. 채팅이 없는 작업공간은 **임시로** spec이다(02a-8이 새 채팅 탭으로 바꾼다 — `openingSearch`).
+  // 「가장 최근」은 사이드바 작업공간 줄과 같은 규칙이다(`landingOf` — 마지막 말의 때). 그 말은 이미 읽어 둔 기록에서 이 순간에
+  // 센다 — 기록 줄마다 이 화면이 다시 그려지지 않게 구독하지 않는다. 주소만 고치므로 replace다.
+  //
+  // 채팅 목록을 아직 못 읽었으면 기다린다 — 「채팅이 없다」로 읽으면 채팅이 있는 작업공간이 spec으로 열린다. 읽기가 실패하면 빈
+  // 목록으로 친다.
+  const { data: threads, isPending: threadsPending } = useThreads();
+  const opening = slug !== null && exists && tab === "chat" && thread === null && !threadsPending;
+  useEffect(() => {
+    if (!opening || slug === null) return;
+    const records = threadRecordStore.state;
+    const landing = landingOf(threads ?? [], slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    void navigate({
+      to: "/works/$slug",
+      params: { slug },
+      search: (prev: object) => openingSearch(prev, landing),
+      replace: true,
+    });
+  }, [opening, slug]);
+
+  // **켜진 채팅 탭이 이 작업공간을 떠났다**(restart 02a-4) — 그 작업공간이 보관되거나 지워졌으면(코어의 `gone`) 그 채팅의 `/threads/:id`로
+  // 옮긴다. 그 채팅은 읽기만 되는 채팅으로 거기 선다. 판단은 목록이 아니라 그 채팅의 값으로 한다(`chatHome`) — 목록은 방금 만든 작업공간을
+  // 아직 모를 수 있다. 다른 작업공간에 이은 채팅이나 열 수 없는 채팅을 가리키는 주소도 그 채팅의 주소로 보낸다 — 그 자리가 다시 맞는
+  // 곳으로 보내거나 까닭을 말한다.
+  const { data: chatView, isError: chatMissing } = useQuery({ ...threadQuery(thread ?? ""), enabled: thread !== null });
+  const chatLeft = slug !== null && thread !== null && (chatMissing || (chatView !== undefined && chatHome(chatView) !== slug));
+  useEffect(() => {
+    if (!chatLeft || thread === null) return;
+    void navigate({ to: "/threads/$id", params: { id: thread }, replace: true });
+  }, [chatLeft, thread]);
 
   // **그 work을 열었다고 코어에 적는다**(결정 12·14). 팔레트의 작업 층이 이 순서로 선다.
   //
@@ -220,6 +280,9 @@ function WorksView({
     // 목록이 아직 오는 중이면 판단을 미룬다. 방금 만들어진 항목이 목록에 반영되기 전에
     // "사라졌다"고 오판하면 사용자를 엉뚱한 데로 보낸다.
     if (isPending || isFetching) return;
+    // **채팅 탭이 켜져 있으면 다른 작업공간으로 넘기지 않는다**(restart 02a-4) — 그 채팅이 갈 곳은 위 「켜진 채팅 탭이 이 작업공간을
+    // 떠났다」가 코어의 값으로 정한다. 목록이 방금 이은 작업공간을 아직 모르는 동안 엉뚱한 작업공간으로 가지 않는다.
+    if (thread !== null) return;
     // 주소가 실제 화면과 어긋나 있다. 둘 중 하나다 —
     //  (a) 무선택 주소인데 목록이 뒤늦게 채워졌다 (빈 상태로 열어둔 채 밖에서 작업을 시작한 경우)
     //  (b) 주소가 가리키는 작업이 사라졌다 (지워졌거나 잘못된 링크)
@@ -227,7 +290,7 @@ function WorksView({
     if (next === slug) return; // 목록이 비어 여전히 무선택 — 고칠 것이 없다
     goTo(next, true);
     // goTo는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다
-  }, [slug, exists, isPending, isFetching, works]);
+  }, [slug, exists, isPending, isFetching, works, thread]);
 
   return (
     <WorksPage
@@ -239,6 +302,8 @@ function WorksView({
       onSelectTab={selectTab}
       code={code}
       onOpenCode={openCodeTab}
+      thread={thread}
+      onOpenChat={openChatTab}
       split={split}
       onSelectSplit={selectSplit}
       onFollowBundle={followBundle}

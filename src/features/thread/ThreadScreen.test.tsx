@@ -8,9 +8,11 @@ import { scopeKey } from "@/features/services/hooks";
 import type { ReadingScope, ScopeOf } from "@/features/services/scope";
 import { applyEngineEvent, checkEngine } from "./engine-store";
 import { threadQuery } from "./hooks";
+import { worksQuery } from "@/features/works/hooks";
+import { workFixture } from "@/features/works/work-fixture";
 import { fillDraft, mergeLines, NEW_THREAD, setDraft, setQueue, takeFill } from "./thread-store";
 import { seedOf, withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
-import { NewThreadScreen, ThreadScreen } from "./ThreadScreen";
+import { NewThreadScreen, ThreadScreen, WorkChat } from "./ThreadScreen";
 import type { RecordLine, ThreadView } from "./types";
 
 // 엔진은 앱 명령으로만 닿는다 — 확인을 붙들어 두는 시험이 그 답을 정한다.
@@ -345,5 +347,40 @@ describe("새 채팅 화면", () => {
     const html = drawNew({ link: { kind: "new-work" }, project: "api-server" });
     expect(html).toContain('aria-label="범위: api-server"');
     expect(html).toContain('aria-label="새 작업공간 빼기"');
+  });
+});
+
+// restart 02a-4 — 작업공간의 채팅은 작업공간 화면의 채팅 탭에 선다. 머리 줄은 작업공간의 것이라 채팅은 머리 없이 본문만 꽂히고(`PlainFrame`의
+// 머리는 셸 머리 줄에 포털해 겹친다), 요약 카드를 여닫는 단추는 **임시로** 탭 본문 오른쪽 위에 선다(02a-9가 창 머리로 옮긴다).
+describe("작업공간의 채팅 탭", () => {
+  const work = workFixture();
+  const linked: ThreadView = { ...chat, id: "20261010-120000", work: work.slug };
+
+  function drawTab(view: ThreadView): string {
+    const client = new QueryClient();
+    client.setQueryData(worksQuery().queryKey, [work]);
+    client.setQueryData(threadQuery(view.id).queryKey, view);
+    mergeLines(view.id, blessed);
+    return renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <WorkChat thread={view.id} />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("제 카드 없이 흐름과 입력창만 선다", () => {
+    const html = drawTab(linked);
+    expect(html).not.toContain("<main");
+    expect(html).toContain("hello from turn");
+    expect(html).toContain('aria-label="보낼 말"');
+  });
+
+  it("요약 카드가 열린다 — 단추가 그 열림을 말한다", () => {
+    const html = drawTab(linked);
+    expect(html).toMatch(/<section[^>]*aria-label="요약"/);
+    const toggle = /<button\b[^>]*aria-label="요약 고정"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(toggle).toContain('aria-pressed="true"');
   });
 });

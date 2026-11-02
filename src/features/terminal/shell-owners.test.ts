@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedCodeTabOwners, vanishedOwners } from "./shell-owners";
+import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedNonShellTabOwners, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
-import { markOwnerless, NO_SHELLS, openCodeTab, openShell, ownerOf, topTerminal } from "./shell-registry";
+import { markOwnerless, NO_SHELLS, openChatTab, openCodeTab, openShell, ownerOf, topTerminal } from "./shell-registry";
 import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 
 // 티켓 12 — **주인 확인**(프로세스 결정 4 · 프로세스 스펙 S13). MCP로 아카이브 · 삭제된 work은 다른 프로세스가 한 일이라
@@ -103,9 +103,9 @@ describe("파일 탭이 남은 사라진 owner", () => {
   );
 
   it("목록에서 빠진 slug의 owner 중 파일 탭이 선 것만 나온다 — 셸 없이 파일 탭만 선 묶음도", () => {
-    expect(vanishedCodeTabOwners(state, listed("da"), NOTHING_HELD)).toEqual([ownerOf("ga"), ownerOf("na")]);
-    expect(vanishedCodeTabOwners(state, listed("ga", "da"), NOTHING_HELD)).toEqual([ownerOf("na")]);
-    expect(vanishedCodeTabOwners(state, listed("ga", "na", "da"), NOTHING_HELD)).toEqual([]);
+    expect(vanishedNonShellTabOwners(state, listed("da"), NOTHING_HELD)).toEqual([ownerOf("ga"), ownerOf("na")]);
+    expect(vanishedNonShellTabOwners(state, listed("ga", "da"), NOTHING_HELD)).toEqual([ownerOf("na")]);
+    expect(vanishedNonShellTabOwners(state, listed("ga", "na", "da"), NOTHING_HELD)).toEqual([]);
   });
 
   it.each<[string, ListResult | undefined]>([
@@ -113,11 +113,17 @@ describe("파일 탭이 남은 사라진 owner", () => {
     ["로딩", { status: "pending" }],
     ["결과가 아직 없다", undefined],
   ])("%s이면 판단하지 않는다", (_, result) => {
-    expect(vanishedCodeTabOwners(state, result, NOTHING_HELD)).toEqual([]);
+    expect(vanishedNonShellTabOwners(state, result, NOTHING_HELD)).toEqual([]);
   });
 
   // UI 아카이브 · 삭제는 회수(`closeShellsOf`)에서 제 손으로 뺀다 — 그동안 앉은 재조회는 그 owner를 건너뛴다.
   it("제외 창에 든 owner는 뺀다", () => {
-    expect(vanishedCodeTabOwners(state, listed(), holding(ownerOf("ga")))).toEqual([ownerOf("na")]);
+    expect(vanishedNonShellTabOwners(state, listed(), holding(ownerOf("ga")))).toEqual([ownerOf("na")]);
+  });
+
+  // restart 02a-4 — 채팅 탭도 프로세스가 없는 칸이다. 채팅 탭만 선 묶음도 찾는다.
+  it("채팅 탭만 선 묶음도 나온다", () => {
+    const chats = openChatTab(NO_SHELLS, ownerOf("ra"), "20261010-100000");
+    expect(vanishedNonShellTabOwners(chats, listed(), NOTHING_HELD)).toEqual([ownerOf("ra")]);
   });
 });

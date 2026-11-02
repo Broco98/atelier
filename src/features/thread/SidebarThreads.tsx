@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { threadIdOf } from "@/lib/path-prefix";
 import {
   SIDEBAR_GLYPH,
@@ -17,6 +17,7 @@ import { StatusMark } from "@/components/shell/status-mark";
 import { cn } from "@/lib/utils";
 import { threadRowKey } from "@/features/works/work-sections";
 import { useChanged } from "./arrival";
+import { useOpenChat } from "./chat-door";
 import { threadQuery, useThreads, useWaiting } from "./hooks";
 import { markOf, seenOf, statusOf } from "./status";
 import { linesOf, threadRecordStore } from "./thread-store";
@@ -74,12 +75,13 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
 }
 
 /**
- * Thread 줄들이 함께 읽는 것 — 지금 보는 Thread(주소)와 누르면 그 Thread로 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
+ * Thread 줄들이 함께 읽는 것 — 켜진 채팅(주소)과 누르면 그 채팅으로 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
+ * 켜진 채팅은 `/threads/:id`와 작업공간 화면의 채팅 탭(`thread=`) 둘이다(restart 02a-4 — `threadIdOf`). 누르면 살아 있는 작업공간의 채팅은
+ * 그 작업공간의 채팅 탭을 세우고 켠다(`useOpenChat`).
  */
 function useRowKit(): { current: string | null; open: (thread: ThreadSummary) => void } {
-  const navigate = useNavigate();
-  const current = useRouterState({ select: (state) => threadIdOf(state.location.pathname) });
-  const open = (thread: ThreadSummary) => void navigate({ to: "/threads/$id", params: { id: thread.id } });
+  const current = useRouterState({ select: (state) => threadIdOf(state.location) });
+  const open = useOpenChat();
   return { current, open };
 }
 

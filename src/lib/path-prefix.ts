@@ -30,11 +30,16 @@ export function workSlugOf(pathname: string): string | null {
 }
 
 /**
- * 주소가 가리키는 Thread의 id(v1 구현 스펙 §13 — `/threads/<id>`). 새 Thread(`/`)와 다른 화면에서는 `null`이다. 사이드바 줄의 켜짐과 ⌘J의
- * 「다음 내 차례」(v1 티켓 42)가 같은 이것을 딛는다 — id는 시각 글자(`20261010-100000`)라 디코드할 것이 없다.
+ * 주소가 가리키는 **켜진 채팅**의 id. 두 자리다 — 채팅 화면(`/threads/<id>`, v1 구현 스펙 §13)과 작업공간 화면의 채팅 탭(`/works/<slug>`의
+ * `thread=<id>`, restart 02a-4). 새 채팅(`/`)과 다른 화면에서는 `null`이다. 사이드바 줄의 켜짐과 ⌘J의 「다음 내 차례」(v1 티켓 42)가 같은
+ * 이것을 딛는다 — id는 시각 글자(`20261010-100000`)라 디코드할 것이 없다.
+ *
+ * `thread=`는 채팅 탭이 서 있을 때만 주소에 있다 — 셸 · 파일 탭 · 문서로 가는 길이 그 키를 걷는다(`-work-search.ts`의 `tabSearch`). 그래서
+ * 여기서 `tab`을 다시 견주지 않는다: 이 모듈은 의존이 없는 잎이라 주소의 탭 규칙을 들이지 않는다.
  */
-export function threadIdOf(pathname: string): string | null {
+export function threadIdOf({ pathname, search }: { pathname: string; search: Readonly<Record<string, unknown>> }): string | null {
   const prefix = "/threads/";
-  if (!pathname.startsWith(prefix)) return null;
-  return pathname.slice(prefix.length).split("/")[0] || null;
+  if (pathname.startsWith(prefix)) return pathname.slice(prefix.length).split("/")[0] || null;
+  if (workSlugOf(pathname) === null) return null;
+  return typeof search.thread === "string" && search.thread !== "" ? search.thread : null;
 }

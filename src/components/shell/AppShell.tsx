@@ -7,6 +7,7 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogOpen, dialogStore } from "@/components/ui/confirm-store";
 import { useThreadFeeds, waitingNow } from "@/features/thread/hooks";
 import { jumpTarget } from "@/features/thread/waiting";
+import { useOpenChat } from "@/features/thread/chat-door";
 import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { countThreadsForQuit } from "@/features/thread/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
@@ -303,16 +304,21 @@ function AppShell() {
   //
   // **그 셸이 닫혔으면 토스트로 끝낸다**(fail-closed) — 먼저 부른 다른 셸로 대신 가지도, 옛 자리로 옮기지도 않는다.
   const goToShell = useGoToShell();
+  const openChat = useOpenChat();
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!recallHotkey(e)) return;
       if (dialogOpen() || searchOpen) return;
       e.preventDefault();
       const target = recalledShell();
-      const order = waitingNow(queryClient).map((one) => one.thread.id);
-      const jump = jumpTarget(order, threadIdOf(router.state.location.pathname), target?.kind === "go");
+      const waiting = waitingNow(queryClient);
+      const order = waiting.map((one) => one.thread.id);
+      // 지금 자리는 켜진 채팅이다 — 작업공간 화면의 채팅 탭(`thread=`)도 든다(restart 02a-4 · `threadIdOf`).
+      const jump = jumpTarget(order, threadIdOf(router.state.location), target?.kind === "go");
       if (jump?.kind === "thread") {
-        void navigate({ to: "/threads/$id", params: { id: jump.id } });
+        // 그 채팅의 자리로 간다 — 살아 있는 작업공간의 채팅은 그 작업공간의 채팅 탭이다(`useOpenChat`).
+        const thread = waiting.find((one) => one.thread.id === jump.id)?.thread;
+        if (thread) openChat(thread);
         return;
       }
       if (jump === null || target === null) return;
@@ -324,7 +330,7 @@ function AppShell() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goToShell, searchOpen, queryClient, router, navigate]);
+  }, [goToShell, searchOpen, queryClient, router, openChat]);
 
   // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 칸 「새 채팅」과 ⌘N(아래)이 함께 부른다. 가는 곳은
   // **씨앗 없는 새 Thread**(`/`)다 — 이미 거기면 아무것도 하지 않는다(같은 주소가 히스토리에 한 칸 더 쌓이지 않게 — 위 칸 `onSelect`와 같은

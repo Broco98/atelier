@@ -183,6 +183,7 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       defaultCwd={null}
       spec={{ on: !켜짐, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} }}
       showing={켜짐}
+      chatTitle={() => ""}
       onSelect={() => {}}
       onClose={() => {}}
       onRename={() => {}}

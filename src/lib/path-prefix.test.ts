@@ -38,12 +38,27 @@ describe("workSlugOf — 주소에서 slug를 읽는다", () => {
   });
 });
 
-// 지금 보는 Thread — 사이드바 줄의 켜짐과 ⌘J의 「다음 내 차례」(v1 티켓 42)가 같은 이것을 읽는다.
-describe("threadIdOf — 주소에서 Thread id를 읽는다", () => {
-  it("Thread 주소를 읽고, 그 밖의 화면에는 없다", () => {
-    expect(threadIdOf("/threads/20261010-100000")).toBe("20261010-100000");
-    expect(threadIdOf("/")).toBeNull();
-    expect(threadIdOf("/threads/")).toBeNull();
-    expect(threadIdOf("/works/finance")).toBeNull();
+// 켜진 채팅 — 사이드바 줄의 켜짐과 ⌘J의 「다음 내 차례」(v1 티켓 42)가 같은 이것을 읽는다. restart 02a-4부터 작업공간의 채팅은 작업공간 화면의
+// 채팅 탭에 서고 주소의 `thread=`가 그 채팅이다.
+describe("threadIdOf — 주소에서 켜진 채팅을 읽는다", () => {
+  const at = (pathname: string, search: Record<string, unknown> = {}) => threadIdOf({ pathname, search });
+
+  it("채팅 주소를 읽고, 그 밖의 화면에는 없다", () => {
+    expect(at("/threads/20261010-100000")).toBe("20261010-100000");
+    expect(at("/")).toBeNull();
+    expect(at("/threads/")).toBeNull();
+    expect(at("/works/finance")).toBeNull();
+  });
+
+  it("작업공간 화면의 채팅 탭은 주소의 `thread=`다", () => {
+    expect(at("/works/finance", { tab: "chat", thread: "20261010-100000" })).toBe("20261010-100000");
+    expect(at("/works/finance", { tab: "terminal" })).toBeNull();
+    expect(at("/works/finance", { thread: "" })).toBeNull();
+  });
+
+  // `thread=`는 작업공간 화면의 것이다 — 다른 화면의 주소에 같은 이름이 실려 와도 채팅이 켜지지 않는다.
+  it("작업공간 밖 화면의 `thread=`는 읽지 않는다", () => {
+    expect(at("/", { thread: "20261010-100000" })).toBeNull();
+    expect(at("/projects/billing", { thread: "20261010-100000" })).toBeNull();
   });
 });

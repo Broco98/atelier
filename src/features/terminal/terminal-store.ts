@@ -60,6 +60,7 @@ import {
   NO_QUIET_NOTICE,
   quietCloseNotice,
   quietShellsOf,
+  openChatTab,
   removeCodeTab,
   removeShell,
   runningOfId,
@@ -73,7 +74,7 @@ import {
   shellOpenNotice,
   shellsOf,
   slugOfOwner,
-  withoutCodeTabsOf,
+  withoutNonShellTabsOf,
   withShellActive,
 } from "./shell-registry";
 import type {
@@ -94,7 +95,7 @@ import { dropBrokenMouseReports, traceDroppedMouseReports } from "./mouse-report
 import { reclaimOnLeave } from "./shell-leave";
 import { nextRecall, recallTarget } from "./shell-recall";
 import type { RecallTarget } from "./shell-recall";
-import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedCodeTabOwners, vanishedOwners } from "./shell-owners";
+import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedNonShellTabOwners, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
 import { attachWebgl, closeWebgl, failWebgl, loseWebgl, NO_WEBGL_SEATS } from "./shell-webgl";
 import type { WebglSeats } from "./shell-webgl";
@@ -336,6 +337,14 @@ export function selectShell(id: number): void {
  */
 export function showCodeTab(owner: ShellOwner, target: CodeTarget): void {
   terminalStore.setState((state) => openCodeTab(state, owner, target));
+}
+
+/**
+ * 그 화면에 **채팅 탭**을 세우고 켠다 — 이미 있으면 그 칸을 켠다(`openChatTab`, restart 02a-4). 부르는 자리는 주소다: 주소가 채팅 탭을
+ * 가리키면 work 화면이 이것으로 묶음을 맞춘다(`showCodeTab`과 같다).
+ */
+export function showChatTab(owner: ShellOwner, thread: string): void {
+  terminalStore.setState((state) => openChatTab(state, owner, thread));
 }
 
 /** 파일 탭을 **확인 없이** 닫는다(스토리 37 · 50). 셸 칸이면 아무 일도 없다 — 셸은 `requestCloseShell`로 닫는다. */
@@ -1088,7 +1097,7 @@ onNotifySettingsChanged(notifyTick);
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
  * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
  *
- * 그 화면 묶음의 **파일 탭도 함께 뺀다**(git-integration 판 01 — `withoutCodeTabsOf`). 셸이 다 빠져도 파일 탭이 남으면 묶음과 켜진
+ * 그 화면 묶음의 **파일 탭 · 채팅 탭도 함께 뺀다**(git-integration 판 01 · restart 02a-4 — `withoutNonShellTabsOf`). 셸이 다 빠져도 파일 탭이 남으면 묶음과 켜진
  * 칸이 그 탭을 든 채 남아, 지운 work의 slug로 새 work이 서면 옛 탭이 새 work의 탭 줄에 선다. 파일 탭은 프로세스가 없어 순서와
  * 상관없이 확인 없이 빠진다.
  *
@@ -1098,7 +1107,7 @@ onNotifySettingsChanged(notifyTick);
  */
 export function closeShellsOf(owner: ShellOwner): void {
   for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id, "archive");
-  terminalStore.setState((state) => withoutCodeTabsOf(state, owner));
+  terminalStore.setState((state) => withoutNonShellTabsOf(state, owner));
 }
 
 /**
@@ -1141,15 +1150,15 @@ export function holdOwner(owner: ShellOwner): () => void {
  *    않는다(프로세스 결정 4의 기각).
  * 4. 남긴 것이 있으면 토스트를 세운다(`showOwnerless`).
  *
- * 그 앞에 **사라진 work의 파일 탭을 뺀다**(git-integration 판 01 — `vanishedCodeTabOwners`). 파일 탭은 프로세스가 없어 물을 것이
+ * 그 앞에 **사라진 work의 파일 탭 · 채팅 탭을 뺀다**(git-integration 판 01 · restart 02a-4 — `vanishedNonShellTabOwners`). 파일 탭은 프로세스가 없어 물을 것이
  * 없다. 셸 없이 파일 탭만 선 묶음도 여기서 걷힌다.
  *
  * **물음을 기다린 뒤 다시 본다.** 그사이 사람이 UI로 아카이브를 시작했거나(제외 창) 셸이 닫혔을 수 있다 — 기다리기 전에
  * 고른 목록을 그대로 믿으면 사람이 확인한 셸이 주인 잃은 셸로 선다.
  */
 export async function settleOwners(result: ListResult | undefined): Promise<void> {
-  const strayTabs = vanishedCodeTabOwners(terminalStore.state, result, heldOwners);
-  if (strayTabs.length > 0) terminalStore.setState((state) => strayTabs.reduce(withoutCodeTabsOf, state));
+  const strayTabs = vanishedNonShellTabOwners(terminalStore.state, result, heldOwners);
+  if (strayTabs.length > 0) terminalStore.setState((state) => strayTabs.reduce(withoutNonShellTabsOf, state));
   const gone = vanishedOwners(terminalStore.state, result, heldOwners);
   const ids = terminalStore.state.shells
     .filter((shell) => gone.includes(shell.owner) && !judging.has(shell.id))

@@ -14,12 +14,16 @@ import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
+import { threadQuery, threadsQuery } from "@/features/thread/hooks";
+import { mergeLines } from "@/features/thread/thread-store";
+import type { RecordLine, ThreadSummary, ThreadView } from "@/features/thread/types";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import {
   MAX_SHELLS,
   NO_SHELLS,
+  openChatTab,
   openCodeTab,
   openShell,
   ownerOf,
@@ -107,11 +111,17 @@ function render(
   tab: ViewTab = "spec",
   split: SplitSide | null = null,
   bodies: Record<string, string> = {},
+  chat: { view: ThreadView; lines: RecordLine[] } | null = null,
 ): string {
   const client = new QueryClient();
   client.setQueryData(worksQuery().queryKey, [{ ...work, ...overrides }]);
   for (const [path, body] of Object.entries(bodies)) {
     client.setQueryData(specFileQuery(work.slug, path).queryKey, body);
+  }
+  if (chat) {
+    client.setQueryData(threadQuery(chat.view.id).queryKey, chat.view);
+    client.setQueryData(threadsQuery().queryKey, [summaryOf(chat.view)]);
+    mergeLines(chat.view.id, chat.lines);
   }
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
@@ -125,6 +135,8 @@ function render(
           onSelectTab={() => {}}
           code={null}
           onOpenCode={() => {}}
+          thread={chat?.view.id ?? null}
+          onOpenChat={() => {}}
           split={split}
           onSelectSplit={() => {}}
           onFollowBundle={() => {}}
@@ -1067,6 +1079,8 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
             onSelectTab={() => {}}
             code={null}
             onOpenCode={() => {}}
+            thread={null}
+            onOpenChat={() => {}}
             split={null}
             onSelectSplit={() => {}}
             onFollowBundle={() => {}}
@@ -1118,13 +1132,14 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
   // 어느 갈래가 뒤집혀도 반드시 빨개진다.
   //
   // 묶음의 칸(셸 칸 · 파일 탭 — git-integration 결정 31)은 그 칸의 종류를 싣는다 — 종류는 레지스트리가 id로 안다.
+  // 채팅 탭은 아직 끌리지 않는다(restart 02a-4 — 끌기는 02a-5가 짓는다).
   it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 묶음의 칸을 그 종류로 가른다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
       `onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
         const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
-        if (kind) armDrag({ kind, owner, shellId }, from);
+        if (kind && kind !== "chat") armDrag({ kind, owner, shellId }, from);
       }}`,
     )).toBe(1);
   });
@@ -1143,6 +1158,88 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
 // **이 화면의 셸 조회는 이 work의 주인 키를 딛는다**(셸 주인이 slug다 — ui-refresh 결정 23). **소유자를 짓는 자리마다**
 // 못박는다. 눈에 보이는 둘(탭 줄·분할 열 머리)은 위에서 값으로 재고, 여기 남은 둘은 렌더로 못 본다 — 하나는 이펙트가
 // 읽는 셀렉터이고 하나는 버튼을 눌러야 서는 확인 대화 안이다. 리터럴 하나를 통째로 세면 파싱이 없어 샐 자리도 없다.
+// restart 02a-4 — 작업공간의 채팅이 채팅 탭에 선다. 탭 줄에서 셸 · 파일 탭과 같은 묶음에 서고, 켜지면 본문 카드가 그 채팅이다(머리는 탭 줄,
+// 몸은 채팅의 흐름과 입력창). 탭은 주소가 정본이라 묶음은 이 시험이 심는다 — 주소를 따라 묶음을 맞추는 일은 화면의 효과라 정적 마크업에서
+// 돌지 않는다.
+describe("WorksPage 채팅 탭", () => {
+  const chat: ThreadView = {
+    id: "20261010-100000",
+    title: "실패 신호 구현",
+    createdAt: "2026-10-10T10:00:00.000+09:00",
+    work: work.slug,
+    mode: null,
+    runtime: "claude-code",
+    sessionId: "세션",
+    cwd: "/home/works/some-work",
+    additionalDirectories: [],
+    model: null,
+    effort: null,
+    lastRead: 0,
+    lastSeq: 1,
+    askLevel: "always",
+    live: false,
+    queue: [],
+    readOnly: null,
+    flowing: null,
+  };
+  const said: RecordLine[] = [];
+
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+    terminalStore.setState(() => openChatTab(NO_SHELLS, ownerOf(work.slug), chat.id));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    terminalStore.setState(() => NO_SHELLS);
+  });
+
+  const kindsOf = (markup: string) =>
+    markup
+      .split('data-tab="')
+      .slice(1)
+      .map((chunk) => ({ kind: chunk.slice(0, chunk.indexOf('"')), on: chunk.includes('aria-pressed="true"') }));
+
+  it("채팅 탭이 `spec` 뒤 묶음에 그 채팅의 이름으로 서고, 켜져 있다", () => {
+    const row = tabRowOf(render({}, "chat", null, {}, { view: chat, lines: said }));
+    expect(kindsOf(row)).toEqual([
+      { kind: "spec", on: false },
+      { kind: "chat", on: true },
+      { kind: "new", on: false },
+    ]);
+    expect(row).toContain("실패 신호 구현");
+  });
+
+  it("본문 카드가 그 채팅이다 — 머리는 탭 줄이고 몸은 입력창이 선 채팅이다", () => {
+    const markup = render({}, "chat", null, {}, { view: chat, lines: said });
+    const main = markup.slice(markup.indexOf("<main"));
+    expect(main).toMatch(/^<main[^>]*aria-label="채팅"/);
+    expect(main).toContain("data-tab-row");
+    expect(main).toContain('aria-label="보낼 말"');
+    // 문서 카드가 아니다 — 경로 줄이 없다.
+    expect(pathBarOf(markup)).toBe("");
+  });
+
+  // 임시 `tab=spec`(02a-13이 걷는다) — 채팅 탭이 있어도 spec 탭이 켜지고 문서가 선다.
+  it("spec 탭을 켜면 문서가 서고 채팅 칸은 꺼진다", () => {
+    const markup = render({}, "spec", null, {}, { view: chat, lines: said });
+    expect(kindsOf(tabRowOf(markup)).filter((cell) => cell.on).map((cell) => cell.kind)).toEqual(["spec"]);
+    expect(pathBarOf(markup)).not.toBe("");
+  });
+});
+
+/** 채팅 화면의 값에서 목록 요약을 짓는다 — 탭 줄이 채팅 이름을 목록에서 읽는다. */
+function summaryOf(view: ThreadView): ThreadSummary {
+  return {
+    id: view.id,
+    title: view.title,
+    createdAt: view.createdAt,
+    work: view.work,
+    lastRead: view.lastRead,
+    readOnly: view.readOnly,
+    broken: null,
+  };
+}
+
 describe("WorksPage 셸 조회가 이 work의 것이다", () => {
   const worksPage = source("WorksPage.tsx");
 
@@ -1265,7 +1362,8 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     // 탭의 `×`도 **같은 함수**로 온다. 두 길이 갈리면 한쪽만 확인 창을 거치는데, 화면으로는
     // 「가끔 안 묻는다」로만 보인다 — 결정 92가 `closeShell`을 밖으로 안 내보낸 그 이유다.
     // 셸이 아닌 칸(파일 탭)만 확인 없이 닫는다(git-integration 스토리 37) — 셸 칸은 여전히 이 함수다.
-    expect(worksPage).toContain("else void requestCloseShell(id);");
+    // 채팅 탭은 이 길로 오지 않는다(restart 02a-4 — 채팅 탭을 닫는 길은 02a-5가 짓는다).
+    expect(worksPage).toContain('else if (kind === "shell") void requestCloseShell(id);');
   });
 });
 
@@ -1526,6 +1624,8 @@ function renderEmpty(projects: ProjectView[] = []): string {
           onSelectTab={() => {}}
           code={null}
           onOpenCode={() => {}}
+          thread={null}
+          onOpenChat={() => {}}
           split={null}
           onSelectSplit={() => {}}
           onFollowBundle={() => {}}

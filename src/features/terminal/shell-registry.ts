@@ -149,14 +149,18 @@ export interface Shell {
 /**
  * **묶음**의 칸 하나(CONTEXT 「묶음」 · git-integration 판 01 S10) — 탭의 종류와 그 칸이 가리키는 것만 든다.
  *
- * 종류는 둘이다 — 셸과 **파일 탭**(`code`, CONTEXT 「파일 탭」). 셸 칸의 데이터(상태 · 이름 · 키 …)는 지금처럼
- * `ShellsState.shells`에 살고, 칸은 그 셸을 id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을 갈아 끼우는 리듀서(`patch`)가
- * 두 자리를 고쳐야 한다. 파일 탭은 데이터가 정체(`CodeTarget`)뿐이라 칸이 직접 든다. 02판이 `diff`를 더한다.
+ * 종류는 셋이다 — 셸, **파일 탭**(`code`, CONTEXT 「파일 탭」), **채팅 탭**(`chat`, restart 02a-4 · CONTEXT 「채팅 탭」). 셸 칸의
+ * 데이터(상태 · 이름 · 키 …)는 지금처럼 `ShellsState.shells`에 살고, 칸은 그 셸을 id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을
+ * 갈아 끼우는 리듀서(`patch`)가 두 자리를 고쳐야 한다. 파일 탭은 데이터가 정체(`CodeTarget`)뿐이라 칸이 직접 들고, 채팅 탭도
+ * 정체(채팅 id)만 든다 — 채팅의 이름 · 기록은 채팅 쪽 캐시와 스토어에 산다.
  *
  * **id는 종류를 가리지 않고 한 줄에서 발급한다**(`nextId`). 켜진 칸(`activeByOwner`) · 끌기 · 탭 줄의 콜백이 모두 수 하나로
  * 칸을 부르므로, 번호가 종류마다 따로 돌면 셸 3과 파일 탭 3이 같은 칸으로 읽힌다.
  */
-export type BundleTab = { kind: "shell"; id: number } | ({ kind: "code"; id: number } & CodeTarget);
+export type BundleTab =
+  | { kind: "shell"; id: number }
+  | ({ kind: "code"; id: number } & CodeTarget)
+  | { kind: "chat"; id: number; thread: string };
 
 /**
  * 파일 탭이 가리키는 것 — 그 work의 **프로젝트**와 그 워크트리 기준 **경로**(조각은 `/`). 이 둘이 파일 탭의 정체다 —
@@ -543,17 +547,42 @@ export function hasBundleTab(state: ShellsState, id: number): boolean {
  * 셸 상한(`atCap`)은 안 본다: 상한은 프로세스의 수라 셸만 센다(스토리 46).
  */
 export function openCodeTab(state: ShellsState, owner: ShellOwner, target: CodeTarget): ShellsState {
+  return openTab(
+    state,
+    owner,
+    (tab) => tab.kind === "code" && tab.project === target.project && tab.path === target.path,
+    (id) => ({ kind: "code", id, project: target.project, path: target.path }),
+  );
+}
+
+/**
+ * 그 화면 묶음에 **채팅 탭**을 연다(restart 02a-4) — 파일 탭과 같은 규칙이다. 같은 채팅의 칸이 이미 있으면 그 칸을 켜고, 없으면
+ * 묶음 **끝에** 붙이고 켠다. 최상위 터미널(`""`)은 받지 않는다 — 채팅 탭은 작업공간 화면에만 선다.
+ */
+export function openChatTab(state: ShellsState, owner: ShellOwner, thread: string): ShellsState {
+  return openTab(
+    state,
+    owner,
+    (tab) => tab.kind === "chat" && tab.thread === thread,
+    (id) => ({ kind: "chat", id, thread }),
+  );
+}
+
+/** 프로세스 없는 칸(파일 탭 · 채팅 탭)을 여는 한 벌 — 같은 정체면 그 칸을 켜고, 없으면 끝에 붙이고 켠다. 최상위 터미널은 안 받는다. */
+function openTab(
+  state: ShellsState,
+  owner: ShellOwner,
+  same: (tab: BundleTab) => boolean,
+  make: (id: number) => BundleTab,
+): ShellsState {
   if (slugOfOwner(owner) === null) return state;
   const tabs = bundleOf(state, owner);
-  const same = tabs.find(
-    (tab) => tab.kind === "code" && tab.project === target.project && tab.path === target.path,
-  );
-  if (same) return activateShell(state, same.id);
+  const found = tabs.find(same);
+  if (found) return activateShell(state, found.id);
   const id = state.nextId;
-  const tab: BundleTab = { kind: "code", id, project: target.project, path: target.path };
   return {
     ...state,
-    bundles: { ...state.bundles, [owner]: [...tabs, tab] },
+    bundles: { ...state.bundles, [owner]: [...tabs, make(id)] },
     activeByOwner: { ...state.activeByOwner, [owner]: id },
     nextId: id + 1,
   };
@@ -573,21 +602,22 @@ export function removeCodeTab(state: ShellsState, id: number): ShellsState {
 }
 
 /**
- * 그 화면 묶음의 **파일 탭을 모두** 뺀다 — 그 work이 아카이브 · 삭제되어 화면이 사라질 때다. 셸은 프로세스라 셸을 닫는 길
- * (`removeShell`)로 빠지고, 파일 탭은 물을 것이 없어 여기서 한꺼번에 빠진다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
+ * 그 화면 묶음의 **셸이 아닌 칸을 모두** 뺀다 — 파일 탭과 채팅 탭(restart 02a-4)이다. 그 work이 아카이브 · 삭제되어 화면이 사라질
+ * 때다. 셸은 프로세스라 셸을 닫는 길(`removeShell`)로 빠지고, 나머지 칸은 프로세스가 없어 물을 것이 없으니 여기서 한꺼번에 빠진다.
+ * 채팅 탭을 빼도 채팅은 남는다 — 칸은 화면 위의 자리일 뿐이다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
  *
  * 묶음이 비면 키째 걷힌다 — 남기면 지운 work의 slug로 새 work이 설 때 옛 탭이 그 줄에 서고, 켜진 칸도 그것을 가리킨다.
- * 파일 탭이 없으면 받은 상태 그대로다.
+ * 셸이 아닌 칸이 없으면 받은 상태 그대로다.
  */
-export function withoutCodeTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
+export function withoutNonShellTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
   return bundleOf(state, owner)
-    .filter((tab) => tab.kind === "code")
+    .filter((tab) => tab.kind !== "shell")
     .reduce((next, tab) => withoutTab(next, owner, tab.id), state);
 }
 
 /**
- * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로 답한다
- * (지금 탭이 파일 탭이면 그쪽은 `null`이다).
+ * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든 채팅 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로
+ * 답한다(지금 탭이 셸이 아니면 그쪽은 `null`이다).
  */
 export function activeTabOf(state: ShellsState, owner: ShellOwner): BundleTab | null {
   const id = activeIdOf(state, owner);
@@ -603,14 +633,15 @@ export function bundleTabOf(state: ShellsState, owner: ShellOwner, id: number): 
 }
 
 /**
- * 지금 탭이 셸이 되게 한다 — 이미 셸이거나 묶음에 셸이 없으면 받은 상태 그대로다. 지금 탭이 파일 탭이면 **묶음의 첫 셸**을
- * 켠다.
+ * 지금 탭이 셸이 되게 한다 — 이미 셸이거나 묶음에 셸이 없으면 받은 상태 그대로다. 지금 탭이 파일 탭 · 채팅 탭이면 **묶음의 첫
+ * 셸**을 켠다.
  *
- * 주소가 「본문은 셸이다」(`tab=terminal`)라고 말하는데 묶음의 지금 탭이 파일 탭인 자리가 있다 — 파일 탭을 연 뒤 뒤로가기로
+ * 주소가 「본문은 셸이다」(`tab=terminal`)라고 말하는데 묶음의 지금 탭이 셸이 아닌 자리가 있다 — 파일 탭 · 채팅 탭을 연 뒤 뒤로가기로
  * 셸 화면 주소에 돌아왔을 때다. 주소에는 어느 셸인지가 없어(결정 33) 고를 것이 묶음의 차례뿐이다.
  */
 export function withShellActive(state: ShellsState, owner: ShellOwner): ShellsState {
-  if (activeTabOf(state, owner)?.kind !== "code") return state;
+  const active = activeTabOf(state, owner);
+  if (active === null || active.kind === "shell") return state;
   const shell = bundleOf(state, owner).find((tab) => tab.kind === "shell");
   return shell ? activateShell(state, shell.id) : state;
 }

@@ -49,12 +49,15 @@ import {
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
+  showChatTab,
   showCodeTab,
   showShellTab,
   terminalStore,
 } from "@/features/terminal/terminal-store";
+import { useThreads } from "@/features/thread/hooks";
+import { WorkChat } from "@/features/thread/ThreadScreen";
 import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
-import type { ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
+import type { BundleShown, ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { columnOf, dropSplit, otherTab } from "./split-view";
@@ -90,19 +93,24 @@ interface WorksPageProps {
   // `onOpenCode`가 「파일 탭 열기」다 — 트리는 replace, 링크는 push다.
   code: string | null;
   onOpenCode: (project: string, path: string, push: boolean) => void;
+  // 본문이나 분할의 묶음 열에 선 **채팅 탭**의 채팅(restart 02a-4) — `code`와 같은 결이다: 단일 뷰면 `tab`이 `chat`일 때만, 분할이면
+  // 묶음 열이 채팅 탭일 때 찬다. 묶음(메모리)은 이 값을 따라 그 탭을 열고 켠다. `onOpenChat`이 「채팅 탭 열기」다 — 탭을 고르는 손짓이라
+  // 기록을 안 쌓는다(결정 13).
+  thread: string | null;
+  onOpenChat: (thread: string) => void;
   // 분할도 주소가 정본이다(결정 97). `null`이면 단일 뷰다.
   //
   // **바꾸는 콜백이 열을 함께 받는다**: 열의 `×`는 분할을 끄면서 남는 쪽을 정하고
   // (결정 89), 헤더 토글은 지금 열을 그대로 넘긴다. 둘을 따로 옮기면 한 틱에 겹친다. 묶음 열에 설 파일 탭(`bundle`)도
   // 함께다 — 그것은 묶음(메모리)만 안다(git-integration 티켓 07).
   split: SplitSide | null;
-  onSelectSplit: (split: SplitSide | null, column: ColumnTab, bundle: string | null) => void;
+  onSelectSplit: (split: SplitSide | null, column: ColumnTab, bundle: BundleShown) => void;
   // 묶음의 지금 탭이 묶음 쪽에서 바뀌었다(닫기의 이웃 · 셸의 끝 · 끌어 놓기) — 본문이나 묶음 열이 그 탭을 따라가게 주소를
-  // 고친다. `bundle`은 그 탭이 파일 탭이면 `<프로젝트>/<경로>`, 셸이면 `null`이다.
-  onFollowBundle: (bundle: string | null) => void;
+  // 고친다. `bundle`은 그 탭이 주소에 남기는 것이다 — 파일 탭이면 그 파일, 채팅 탭이면 그 채팅, 셸이면 종류만(`BundleShown`).
+  onFollowBundle: (bundle: BundleShown) => void;
   // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립해야 해서**(결정 101)
-  // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다. `bundle`은 묶음 열에 설 파일 탭이다(위 `onSelectSplit`).
-  onDropInto: (source: DragSource, split: SplitSide, bundle: string | null) => void;
+  // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다. `bundle`은 묶음 열에 설 묶음의 지금 탭이다(위 `onSelectSplit`).
+  onDropInto: (source: DragSource, split: SplitSide, bundle: BundleShown) => void;
 }
 
 /**
@@ -153,24 +161,31 @@ export function codeTabClosedByTab(
   return active?.kind === "code" ? active.id : null;
 }
 
-/** 묶음의 지금 탭을 한 글자로 — 화면이 「지금 탭이 바뀌었나」를 값으로 견주는 자리(`WorksPage`의 주소 따라가기)가 쓴다. */
-function shownTabKey(tab: BundleTab | null): string | null {
-  if (tab === null) return null;
-  return tab.kind === "code" ? codeRefOf(tab) : SHELL_SHOWN;
+/** 묶음의 지금 탭이 주소에 남기는 것(`BundleShown`) — 파일 탭이면 그 파일, 채팅 탭이면 그 채팅, 셸이거나 칸이 없으면 셸이다. */
+function shownOf(tab: BundleTab | null): BundleShown {
+  if (tab?.kind === "code") return { kind: "code", code: codeRefOf(tab) };
+  if (tab?.kind === "chat") return { kind: "chat", thread: tab.thread };
+  return SHELL;
+}
+
+/** 지금 탭이 셸이다 — 어느 셸인지는 주소에 없으므로(결정 33) 한 값으로 접는다. 회차를 넘어 같은 값이다. */
+const SHELL: BundleShown = { kind: "shell" };
+
+/**
+ * `BundleShown`을 한 글자로 — 화면이 「지금 탭이 바뀌었나」를 값으로 견주는 자리(`WorksPage`의 주소 따라가기)가 쓴다. 셸은 `shell:`,
+ * 채팅은 `chat:<id>`다 — 파일 탭의 `<프로젝트>/<경로>`는 콜론으로 시작하는 프로젝트 이름이 없어 둘과 겹치지 않는다.
+ */
+function shownKeyOf(shown: BundleShown): string {
+  return shown.kind === "code" ? shown.code : shown.kind === "chat" ? `chat:${shown.thread}` : "shell:";
 }
 
 /**
- * 그 화면 묶음 열에 설 **파일 탭**(`<프로젝트>/<경로>`) — 묶음의 지금 탭이 파일 탭이면 그것이고, 셸이거나 칸이 없으면 `null`이다
- * (git-integration 결정 32 — 묶음 열에는 묶음의 지금 탭이 선다). 분할을 켜거나 칸을 끌어 놓는 순간에 읽는다: 문서를 보는 중에도
- * 묶음의 지금 탭은 기억으로 남아 있어, 분할을 켜면 그 탭이 옆 열에 선다.
+ * 그 화면 묶음 열에 설 **묶음의 지금 탭**(git-integration 결정 32 — 묶음 열에는 묶음의 지금 탭이 선다). 분할을 켜거나 칸을 끌어 놓는
+ * 순간에 읽는다: 문서를 보는 중에도 묶음의 지금 탭은 기억으로 남아 있어, 분할을 켜면 그 탭이 옆 열에 선다.
  */
-function bundleRefOf(state: ShellsState, owner: ShellOwner | null): string | null {
-  const active = owner === null ? null : activeTabOf(state, owner);
-  return active?.kind === "code" ? codeRefOf(active) : null;
+function bundleShownOf(state: ShellsState, owner: ShellOwner | null): BundleShown {
+  return shownOf(owner === null ? null : activeTabOf(state, owner));
 }
-
-/** 지금 탭이 셸이다 — 어느 셸인지는 주소에 없으므로(결정 33) 한 값으로 접는다. `<프로젝트>/<경로>`와 겹칠 수 없는 글자다. */
-const SHELL_SHOWN = "shell:";
 
 function WorksPage({
   sidebarOpen,
@@ -181,6 +196,8 @@ function WorksPage({
   onSelectTab,
   code,
   onOpenCode,
+  thread,
+  onOpenChat,
   split,
   onSelectSplit,
   onFollowBundle,
@@ -331,8 +348,15 @@ function WorksPage({
   // **파일 탭**은 본문에 서거나(git-integration 티켓 04) 분할의 **묶음 열**에 선다(티켓 07 · 결정 32 — 묶음 열에는 묶음의 지금
   // 탭이 선다). 그때 터미널 카드는 spec으로 갈 때와 같이 내려간다 — 셸 프로세스와 화면 버퍼는 스토어에 산다(결정 20 · 21).
   const codeTarget = code !== null && (tab === "code" || split !== null) ? codeTargetOf(code) : null;
+  // **채팅 탭**(restart 02a-4)도 본문에 서거나 분할의 묶음 열에 선다 — 파일 탭과 같은 결이다. 주소의 `code`와 `thread`는 함께 서지
+  // 않는다(묶음의 지금 탭은 하나다 — `chatSearch` · `codeSearch`). 단일 뷰의 채팅 탭은 `thread`가 아직 없을 수 있다 — 어느 채팅인지
+  // 모르는 주소에 닿은 한 틱이고, 주소를 쥔 쪽이 작업공간을 처음 여는 규칙으로 고친다(`-works-view`).
+  const chatThread = codeTarget === null && (tab === "chat" || split !== null) ? thread : null;
   const specStands = split !== null || tab === "spec";
-  const terminalStands = (split !== null && codeTarget === null) || tab === "terminal";
+  const terminalStands = (split !== null && codeTarget === null && chatThread === null) || tab === "terminal";
+  // 주소가 묶음 쪽 본문(단일 뷰의 셸 · 파일 탭 · 채팅 탭이나 분할의 묶음 열)에 세우라고 말하는 것 — 열에 포커스가 들 때 그대로 넘긴다.
+  const addressShown: BundleShown =
+    codeTarget !== null ? { kind: "code", code: codeRefOf(codeTarget) } : chatThread !== null ? { kind: "chat", thread: chatThread } : SHELL;
   const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
 
   // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
@@ -437,10 +461,14 @@ function WorksPage({
       }
       const next = shellForNav(tabs, activeIdOf(state, owner), nav, 2);
       if (next === null) return;
-      // 고른 칸이 파일 탭이면 그 파일로 간다 — 켜는 일은 주소를 받은 자리가 한다(아래 주소 따라가기).
+      // 고른 칸이 파일 탭이면 그 파일로, 채팅 탭이면 그 채팅으로 간다 — 켜는 일은 주소를 받은 자리가 한다(아래 주소 따라가기).
       const picked = bundleTabOf(state, owner, next);
       if (picked?.kind === "code") {
         onOpenCode(picked.project, picked.path, false);
+        return;
+      }
+      if (picked?.kind === "chat") {
+        onOpenChat(picked.thread);
         return;
       }
       selectShell(next);
@@ -448,7 +476,7 @@ function WorksPage({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab, onOpenCode]);
+  }, [panelWork, onSelectTab, onOpenCode, onOpenChat]);
 
   /**
    * ⌘W — **켜진 탭을 닫는다**(결정 13).
@@ -493,9 +521,9 @@ function WorksPage({
   }, [tabOwner, tab]);
 
   /**
-   * **주소 → 묶음**(git-integration S12 — 주소가 정본이다). 주소가 파일 탭을 가리키면 그 탭이 묶음의 지금 탭이다 — 묶음에
-   * 없으면 끝에 연다(스토리 60: 뒤로가기 · work 기억 · 링크가 닫힌 파일을 가리킬 수 있다). 주소가 「본문은 셸이다」라고
-   * 말하는데(`tab=terminal` · 분할의 묶음 열) 지금 탭이 파일 탭이면 셸을 켠다.
+   * **주소 → 묶음**(git-integration S12 — 주소가 정본이다). 주소가 파일 탭 · 채팅 탭(restart 02a-4)을 가리키면 그 탭이 묶음의 지금
+   * 탭이다 — 묶음에 없으면 끝에 연다(스토리 60: 뒤로가기 · work 기억 · 링크가 닫힌 탭을 가리킬 수 있다 — 사이드바의 채팅 줄이 탭을 세우는
+   * 길도 이것이다). 주소가 「본문은 셸이다」라고 말하는데(`tab=terminal` · 분할의 묶음 열) 지금 탭이 셸이 아니면 셸을 켠다.
    *
    * **주소가 바뀔 때만 돈다** — 묶음이 바뀌었다고 돌면 방금 닫은 파일 탭을 주소가 아직 가리키는 한 틱에 그 탭을 되살린다.
    * 묶음 쪽에서 난 변화를 주소로 옮기는 것은 아래 효과의 일이다.
@@ -503,8 +531,9 @@ function WorksPage({
   useEffect(() => {
     if (tabOwner === null) return;
     if (codeTarget) showCodeTab(tabOwner, codeTarget);
+    else if (chatThread !== null) showChatTab(tabOwner, chatThread);
     else if (tab === "terminal" || split !== null) showShellTab(tabOwner);
-  }, [tabOwner, tab, code, split]);
+  }, [tabOwner, tab, code, thread, split]);
 
   /**
    * **묶음 → 주소.** 묶음의 지금 탭이 묶음 쪽에서 바뀌면 — 지금 탭을 닫아 이웃이 켜졌거나(결정 30), 셸이 스스로 끝나 빠졌다
@@ -518,19 +547,19 @@ function WorksPage({
    * 지금 탭은 한 글자로 접어 구독한다 — 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 다시 그려지지 않게. **의존성이 그 값과
    * 소유자뿐인 것은 의도다** — 주소(`tab` · `code`)가 바뀌어서 돌면 방금 사람이 옮긴 주소를 옛 지금 탭으로 되돌린다.
    */
-  const shownKey = useStore(terminalStore, (state) =>
-    tabOwner === null ? null : shownTabKey(activeTabOf(state, tabOwner)),
-  );
+  const shownKey = useStore(terminalStore, (state) => {
+    const active = tabOwner === null ? null : activeTabOf(state, tabOwner);
+    return active === null ? null : shownKeyOf(shownOf(active));
+  });
   const shown = useRef({ owner: tabOwner, key: shownKey });
   useEffect(() => {
     const before = shown.current;
     shown.current = { owner: tabOwner, key: shownKey };
-    if (before.owner !== tabOwner || before.key === shownKey || shownKey === null) return;
+    if (before.owner !== tabOwner || before.key === shownKey || shownKey === null || tabOwner === null) return;
     if (tab === "spec" && split === null) return;
-    const bundle = shownKey === SHELL_SHOWN ? null : shownKey;
     // 주소가 이미 그 탭을 말한다 — 주소를 따라 켜진 탭이다(위 「주소 → 묶음」).
-    if (bundle === code) return;
-    onFollowBundle(bundle);
+    if (shownKey === shownKeyOf(addressShown)) return;
+    onFollowBundle(bundleShownOf(terminalStore.state, tabOwner));
   }, [tabOwner, shownKey]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다** — 트리의 "지금
@@ -589,9 +618,9 @@ function WorksPage({
   // 선 것의 종류다(`columnSearch`).
   const focusColumn = useCallback(
     (next: ColumnTab) => {
-      if (next !== columnOf(tab)) onSelectSplit(split, next, code);
+      if (next !== columnOf(tab)) onSelectSplit(split, next, addressShown);
     },
-    [tab, split, code, onSelectSplit],
+    [tab, split, addressShown, onSelectSplit],
   );
 
   /**
@@ -617,7 +646,7 @@ function WorksPage({
   const changeSplit = useCallback(
     (next: SplitSide | null, column: ColumnTab) => {
       collapseOnSplit(next);
-      onSelectSplit(next, column, bundleRefOf(terminalStore.state, tabOwner));
+      onSelectSplit(next, column, bundleShownOf(terminalStore.state, tabOwner));
     },
     [collapseOnSplit, onSelectSplit, tabOwner],
   );
@@ -662,7 +691,7 @@ function WorksPage({
       if (source.kind !== "spec" && source.shellId !== null) selectShell(source.shellId);
       const next = dropSplit(source.kind, half);
       collapseOnSplit(next);
-      onDropInto(source, next, bundleRefOf(terminalStore.state, source.owner));
+      onDropInto(source, next, bundleShownOf(terminalStore.state, source.owner));
     },
     [collapseOnSplit, onDropInto],
   );
@@ -754,9 +783,27 @@ function WorksPage({
     </Suspense>
   );
 
-  // 분할이 실제로 서는가 — 문서와 묶음 열(셸이든 파일 탭이든)의 본문이 다 설 때만이다(아래 `splitView`). 탭 줄이 어느 카드의
-  // 머리인지가 이것으로 갈린다.
-  const splitting = split !== null && Boolean(specBody) && Boolean(codeBody || terminalBody);
+  // 채팅 탭의 몸 — 채팅의 흐름과 입력창이다(restart 02a-4 · `WorkChat`). 머리는 탭 줄이라 채팅은 머리 없이 몸만 꽂는다. 채팅마다 새로
+  // 선다(`key`) — 굴린 자리 · 펼친 줄이 다른 채팅으로 따라가지 않게(`/threads/:id`와 같다).
+  const chatBody = selected && chatThread !== null && <WorkChat key={chatThread} thread={chatThread} />;
+
+  // 채팅 탭의 이름 — 칸은 채팅 id만 든다. 이름은 채팅 목록(사이드바와 같은 캐시)에서 읽는다: 이름이 없으면 「새 채팅」, 깨진 채팅이면
+  // 「열 수 없는 채팅」이다(사이드바 채팅 줄과 같은 말 — `ThreadRow`). 목록에 아직 없으면 「채팅」이다.
+  const { data: threads } = useThreads();
+  const chatTitle = useCallback(
+    (id: string) => {
+      const summary = threads?.find((one) => one.id === id);
+      if (!summary) return "채팅";
+      return summary.broken ? "열 수 없는 채팅" : summary.title || "새 채팅";
+    },
+    [threads],
+  );
+
+  // 분할이 실제로 서는가 — 문서와 묶음 열(셸이든 파일 탭이든 채팅 탭이든)의 본문이 다 설 때만이다(아래 `splitView`). 탭 줄이 어느
+  // 카드의 머리인지가 이것으로 갈린다.
+  const splitting = split !== null && Boolean(specBody) && Boolean(codeBody || chatBody || terminalBody);
+  // 묶음 열의 종류 — 열 머리 표식(`data-column`)과 그 열을 닫는 `×`의 이름이 읽는다.
+  const bundleColumnKind = codeTarget ? "code" : chatThread !== null ? "chat" : "terminal";
 
   // 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
   // (`Works / 제목`)은 그때 사라졌고, work 제목은 지금 머리 줄이 말한다(아래 `head`).
@@ -770,7 +817,7 @@ function WorksPage({
   // 머리는 화면 이름이다(아래 `body`).
   const tabRow = panelWork ? (
     <ShellTabs
-      data-column={splitting ? (codeTarget ? "code" : "terminal") : undefined}
+      data-column={splitting ? bundleColumnKind : undefined}
       state={shellState}
       owner={ownerOf(panelWork.slug)}
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
@@ -793,7 +840,12 @@ function WorksPage({
       // 본문이 묶음을 보여줄 때 — 셸이든 파일 탭이든 — 켜진 칸이 선다. 주소가 셸을 말해도 **켜진 셸이 없으면** 본문은 「아직
       // 셸이 없어요」다(git-integration 판 01): 묶음에 켤 셸이 없어 지금 탭이 파일 탭으로 남았고(`withShellActive`), 자동 셸도
       // 안 뜨는 work(프로젝트 둘 이상)이다. 그 파일 탭을 켜면 본문과 켜진 칸이 다른 것을 말한다.
-      showing={codeTarget !== null || (terminalStands && activeShellOf(shellState, ownerOf(panelWork.slug)) !== null)}
+      showing={
+        codeTarget !== null ||
+        chatThread !== null ||
+        (terminalStands && activeShellOf(shellState, ownerOf(panelWork.slug)) !== null)
+      }
+      chatTitle={chatTitle}
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
       // 보고 있는 work의 것이기 때문이다.
@@ -808,14 +860,21 @@ function WorksPage({
           onOpenCode(picked.project, picked.path, false);
           return;
         }
+        // 채팅 탭이면 그 채팅으로 간다(restart 02a-4) — 켜는 것은 주소를 받은 자리다(주소 → 묶음).
+        if (picked?.kind === "chat") {
+          onOpenChat(picked.thread);
+          return;
+        }
         selectShellWithFocus(id);
         onSelectTab("terminal");
       }}
       // 셸은 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다. 파일 탭은 **확인 없이** 닫는다(git-integration
       // 스토리 37) — 프로세스가 없다. 그 판정은 레지스트리가 칸의 종류로 한다(`removeCodeTab`은 셸 칸을 안 뺀다).
       onClose={(id) => {
-        if (bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id)?.kind === "code") closeCodeTab(id);
-        else void requestCloseShell(id);
+        const kind = bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id)?.kind;
+        if (kind === "code") closeCodeTab(id);
+        // 채팅 탭을 닫는 길은 02a-5가 짓는다 — 이 판의 채팅 칸에는 `×`가 없다.
+        else if (kind === "shell") void requestCloseShell(id);
       }}
       // 셸 탭 메뉴(codex-ds 스펙 §9 · S7 · S8). 붙인 이름은 메모리에만 있다. 작업 폴더는 그 셸이 뜬 곳을 참조 표기(끝에 `/`)로 쓴다.
       onRename={renameShell}
@@ -843,11 +902,11 @@ function WorksPage({
       //
       // 묶음의 칸은 **그 칸의 종류**를 싣는다 — 셸 칸이든 파일 탭이든 줄의 틈에 놓이고(git-integration 결정 31), 본문
       // 절반이 받는 것은 받는 쪽이 종류로 거른다(`tabDragOf`). 종류는 레지스트리가 id로 안다(`onSelect`와 같다). 누르는
-      // 사이 그 칸이 빠졌으면 걸 끌기가 없다.
+      // 사이 그 칸이 빠졌으면 걸 끌기가 없다. 채팅 탭은 아직 끌리지 않는다(02a-5) — 칸이 누름을 알리지 않지만, 여기서도 거른다.
       onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
         const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
-        if (kind) armDrag({ kind, owner, shellId }, from);
+        if (kind && kind !== "chat") armDrag({ kind, owner, shellId }, from);
       }}
       // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
       // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
@@ -863,7 +922,7 @@ function WorksPage({
       actions={
         splitting ? (
           <Hint
-            text={`${codeTarget ? codePath[codePath.length - 1] : "terminal"} 열 닫기`}
+            text={`${codeTarget ? codePath[codePath.length - 1] : chatThread !== null ? chatTitle(chatThread) : "terminal"} 열 닫기`}
             announce="name"
             type="button"
             tabIndex={0}
@@ -989,7 +1048,17 @@ function WorksPage({
           </ColumnInside>
         ),
       }
-    : {
+    : chatThread !== null
+      ? {
+          // 채팅 열(restart 02a-4) — 머리는 탭 줄, 몸은 채팅이다. 열 이름은 본문 채팅 카드와 같다.
+          label: "채팅",
+          children: (
+            <ColumnInside tab="terminal" head={tabRow} onFocus={focusColumn}>
+              {chatBody}
+            </ColumnInside>
+          ),
+        }
+      : {
         label: "터미널",
         tone: "terminal",
         children: (
@@ -1032,6 +1101,12 @@ function WorksPage({
     <Card as="main" label={codeRefOf(codeTarget)} className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
       {codeBar}
       {codeBody}
+    </Card>
+  ) : selected && tab === "chat" ? (
+    // 채팅 카드 — 채팅 탭의 본문이다(restart 02a-4). 머리는 탭 줄이고 몸은 채팅(`WorkChat`)이다. 어느 채팅인지 모르는 한 틱(주소를
+    // 고치는 중)에는 몸이 비어 있다.
+    <Card as="main" label="채팅" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      {chatBody}
     </Card>
   ) : selected ? (
     <Card as="main" label="문서" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>

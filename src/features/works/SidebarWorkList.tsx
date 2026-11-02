@@ -13,6 +13,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { useThreads, useWorkMarks } from "@/features/thread/hooks";
 import { lastSaid } from "@/features/thread/preview";
 import { WorkThreads } from "@/features/thread/SidebarThreads";
+import { useOpenChat } from "@/features/thread/chat-door";
 import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
 import { landingOf, threadCounts, threadsOf } from "@/features/thread/work-threads";
 import { useMoveWork, useSetWorkPinned, useSetWorkTitle, useWorks } from "./hooks";
@@ -86,6 +87,7 @@ function SidebarWorkList({
   const { data: works = [] } = useWorks();
   const { data: threads = [] } = useThreads();
   const navigate = useNavigate();
+  const openChat = useOpenChat();
   const setPinned = useSetWorkPinned();
   const setTitle = useSetWorkTitle();
   const [pinnedOpen, setPinnedOpen] = useState(
@@ -134,9 +136,10 @@ function SidebarWorkList({
   const openSlug = useRouterState({
     select: (state) => workSlugOf(state.location.pathname),
   });
-  // 지금 보는 Thread(v1 티켓 37) — 펼친 Work 아래 그 줄이 켜지고(줄이 스스로 단다), 접힌 Work 안이면 그 Work 줄이 켜진다.
+  // 켜진 채팅(v1 티켓 37) — 펼친 Work 아래 그 줄이 켜지고(줄이 스스로 단다), 접힌 Work 안이면 그 Work 줄이 켜진다. 작업공간 화면의 채팅
+  // 탭(`thread=`)도 켜진 채팅이다(restart 02a-4 — `threadIdOf`).
   const openThread = useRouterState({
-    select: (state) => threadIdOf(state.location.pathname),
+    select: (state) => threadIdOf(state.location),
   });
   const threadWork = openThread === null ? null : (threads.find((thread) => thread.id === openThread)?.work ?? null);
 
@@ -153,7 +156,9 @@ function SidebarWorkList({
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const listed = (slug: string | null) => slug !== null && works.some((work) => work.slug === slug);
   const threadShown = threadWork !== null && nestedOf(threadWork).length > 0;
-  const selectedSlug = listed(openSlug) ? openSlug : listed(threadWork) && !threadShown ? threadWork : null;
+  // 펼친 Work 아래 켜진 채팅의 줄이 섰으면 그 줄이 켜지고 Work 줄은 꺼진다 — 채팅 탭은 Work 화면 주소(`openSlug`)에 서지만 지금 보는
+  // 것은 그 채팅이다(restart 02a-4). 접혀 있으면 Work 줄이 켜진다.
+  const selectedSlug = threadShown ? null : listed(openSlug) ? openSlug : listed(threadWork) ? threadWork : null;
   // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행(펼친 Work 아래 지금 보는 Thread의 줄도), 고른 것이 없거나 접힌
   // 구획에 있으면 첫 머리다. ↑↓는 목록 상자가 받는다(아래 `data-worklist`).
   const roving = useRoving(
@@ -259,8 +264,10 @@ function SidebarWorkList({
     if (pointer) quiet.current = slug;
     const records = threadRecordStore.state;
     const landing = landingOf(threads, slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
-    if (landing.kind === "thread") void navigate({ to: "/threads/$id", params: { id: landing.id } });
-    else void navigate({ to: "/", search: { work: landing.work } });
+    // 그 채팅은 이 작업공간의 채팅 탭에 선다(restart 02a-4 — `useOpenChat`). 채팅이 없으면 그 Work의 새 채팅이다(02a-8이 새 채팅 탭으로 바꾼다).
+    const thread = landing.kind === "thread" ? threads.find((one) => one.id === landing.id) : undefined;
+    if (thread) openChat(thread);
+    else void navigate({ to: "/", search: { work: slug } });
   };
 
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다

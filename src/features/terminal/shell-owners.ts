@@ -56,21 +56,21 @@ export function vanishedOwners(
 }
 
 /**
- * 목록에서 **slug가 사라졌는데 파일 탭이 남은** owner들(git-integration 판 01). 파일 탭은 프로세스가 없어 물을 것이 없다 — 터미널
- * 스토어가 곧바로 묶음에서 뺀다(`withoutCodeTabsOf`). 묶음을 보고 찾는다: 셸 없이 파일 탭만 선 묶음은 셸 owner만 보는
- * `vanishedOwners`에 안 걸린다.
+ * 목록에서 **slug가 사라졌는데 셸이 아닌 칸(파일 탭 · 채팅 탭)이 남은** owner들(git-integration 판 01 · restart 02a-4). 그 칸들은
+ * 프로세스가 없어 물을 것이 없다 — 터미널 스토어가 곧바로 묶음에서 뺀다(`withoutNonShellTabsOf`). 묶음을 보고 찾는다: 셸 없이 파일
+ * 탭 · 채팅 탭만 선 묶음은 셸 owner만 보는 `vanishedOwners`에 안 걸린다.
  *
  * 무엇이 사라졌는가의 판정은 `vanishedOwners`와 같다 — 성공한 결과만 보고, 최상위 터미널은 안 나오고, 제외 창의 owner는
  * 뺀다(UI 아카이브 · 삭제는 회수 `closeShellsOf`에서 제 손으로 뺀다).
  */
-export function vanishedCodeTabOwners(
+export function vanishedNonShellTabOwners(
   state: ShellsState,
   result: ListResult | undefined,
   held: HeldOwners,
 ): ShellOwner[] {
   const isGone = goneJudge(result, held);
   return Object.entries(state.bundles)
-    .filter(([owner, tabs]) => isGone(owner) && tabs.some((tab) => tab.kind === "code"))
+    .filter(([owner, tabs]) => isGone(owner) && tabs.some((tab) => tab.kind !== "shell"))
     .map(([owner]) => owner);
 }
 

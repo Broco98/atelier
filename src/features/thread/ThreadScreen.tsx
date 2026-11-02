@@ -290,7 +290,7 @@ function withActions(
   return mode.kind === "ask" ? { ...mode, onLevel } : { ...mode, onPick };
 }
 
-/** Thread 하나(`/threads/<id>`). */
+/** Thread 하나(`/threads/<id>`) — 작업공간 밖 채팅과, 작업공간이 보관되거나 지워져 읽기만 되는 채팅이다(restart 02a-4 — 살아 있는 작업공간의 채팅은 그 작업공간 화면의 채팅 탭에 선다). */
 export function ThreadScreen({ thread }: { thread: string }) {
   const navigate = useNavigate();
   const { data: view, error, isPending } = useThread(thread);
@@ -298,6 +298,78 @@ export function ThreadScreen({ thread }: { thread: string }) {
   const [renaming, setRenaming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const name = view?.title || "채팅";
+  const card = useThreadCard(thread, view);
+  const { gone, cardWork } = card;
+  // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Service가 있으면 「흐린 Service /」(03 §10 — 누르면 그 Service 상세).
+  const { data: scope } = useReadingScope({ thread });
+  const crumb = view ? headService(view.work, scope) : null;
+  // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
+  const renameName =
+    view && !gone
+      ? {
+          editing: renaming,
+          onStart: () => setRenaming(true),
+          onEnd: () => setRenaming(false),
+          onCommit: (title: string) => {
+            setProblem(null);
+            rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
+          },
+          label: "채팅 이름",
+        }
+      : undefined;
+  return (
+    <PlainFrame
+      label={name}
+      lead={
+        cardWork ? (
+          <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => card.setCardOpen(true)} />
+        ) : crumb ? (
+          <ServiceCrumb name={crumb.name} onOpen={() => void navigate({ to: "/services/$slug", params: { slug: crumb.slug } })} />
+        ) : undefined
+      }
+      title={{ name, rename: renameName }}
+      end={
+        view ? (
+          <>
+            <ThreadMenu key={thread} rename={renameName?.onStart ?? null} />
+            {card.hasCard && <SummaryToggle open={card.cardOpen} onToggle={card.toggle} />}
+          </>
+        ) : undefined
+      }
+    >
+      <ThreadPane thread={thread} view={view} error={error} isPending={isPending} card={card} problem={problem} />
+    </PlainFrame>
+  );
+}
+
+/**
+ * **작업공간 화면의 채팅 탭**(restart 02a-4 · 구현 스펙 「02a — 채팅 탭은 새로 짓는다」) — 작업공간 화면이 채팅 탭의 본문 카드에 꽂는다.
+ * 머리 없이 본문만 선다: 머리 줄은 작업공간의 것이고, `PlainFrame`의 머리는 셸 머리 줄에 포털해 작업공간의 머리와 겹친다. 이름 바꾸기와
+ * 「…」는 탭이 맡는다(02a-5).
+ *
+ * **요약 단추는 임시로 탭 본문 오른쪽 위에 선다**(02a-9가 창 머리로 옮긴다) — 열림은 채팅 화면과 같은 지역 상태다(`useThreadCard` —
+ * 채팅마다 기억한다). 단추가 그 자리를 쓰므로 카드는 단추 아래에 선다.
+ */
+export function WorkChat({ thread }: { thread: string }) {
+  const { data: view, error, isPending } = useThread(thread);
+  const card = useThreadCard(thread, view);
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <ThreadPane thread={thread} view={view} error={error} isPending={isPending} card={card} problem={null} under />
+      {card.hasCard && (
+        <div className="absolute top-2 right-2 z-20">
+          <SummaryToggle open={card.cardOpen} onToggle={card.toggle} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 채팅의 **요약 카드 자리** — 열림(채팅마다 기억한다, S22)과 넓힌 카드가 연 것(v1 티켓 35). 채팅 화면과 작업공간의 채팅 탭이 함께 쓴다.
+ * 02a-9가 이 값을 작업공간 화면으로 올린다.
+ */
+function useThreadCard(thread: string, view: ThreadView | undefined) {
   const work = view?.work ?? null;
   // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 「보관됨」이며, 지워진 Work에는 카드가 없다.
   const gone = view?.readOnly ?? null;
@@ -309,6 +381,39 @@ export function ThreadScreen({ thread }: { thread: string }) {
   const [opened, setOpened] = useState<Opened | null>(null);
   const expanded = cardWork !== null && gone !== "archived" && cardOpen && opened !== null;
   useFoldSidebar(expanded);
+  // 요약 고정 토글 — 닫으면 넓힌 것도 걷힌다.
+  const toggle = () => {
+    if (cardOpen) setOpened(null);
+    setCardOpen(!cardOpen);
+  };
+  return { gone, cardWork, hasCard, cardOpen, setCardOpen, opened, setOpened, expanded, toggle };
+}
+
+type ThreadCard = ReturnType<typeof useThreadCard>;
+
+/**
+ * 채팅의 본문 — 흐름 · 입력창과 요약 카드 자리다. 채팅 화면(`ThreadScreen`)은 `PlainFrame`의 본문 카드에, 작업공간의 채팅 탭(`WorkChat`)은
+ * 작업공간 화면의 탭 본문 카드에 꽂는다. `under`면 카드가 탭 본문 오른쪽 위의 요약 단추 아래에 선다(임시 — 02a-9).
+ */
+function ThreadPane({
+  thread,
+  view,
+  error,
+  isPending,
+  card,
+  problem,
+  under = false,
+}: {
+  thread: string;
+  view: ThreadView | undefined;
+  error: Error | null;
+  isPending: boolean;
+  card: ThreadCard;
+  problem: string | null;
+  under?: boolean;
+}) {
+  const navigate = useNavigate();
+  const { gone, cardWork, hasCard, cardOpen, setCardOpen, opened, setOpened, expanded } = card;
   // 대화 속 문서 카드(스토리 102)가 여는 길 — 이은 Work의 spec 폴더(절대 경로)를 알아야 그 턴이 쓴 문서를 가린다. 보관된 Work는 목록에
   // 없어 카드가 서지 않는다.
   const { data: works } = useWorks();
@@ -340,110 +445,68 @@ export function ThreadScreen({ thread }: { thread: string }) {
         .catch(() => undefined)
         .then((changes) => setOpened(changesOf(pr.project, changes)));
     },
-    [cardWork, queryClient, setCardOpen],
+    [cardWork, queryClient, setCardOpen, setOpened],
   );
-  // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Service가 있으면 「흐린 Service /」(03 §10 — 누르면 그 Service 상세).
-  const { data: scope } = useReadingScope({ thread });
-  const crumb = view ? headService(view.work, scope) : null;
-  // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
-  const renameName =
-    view && !gone
-      ? {
-          editing: renaming,
-          onStart: () => setRenaming(true),
-          onEnd: () => setRenaming(false),
-          onCommit: (title: string) => {
-            setProblem(null);
-            rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
-          },
-          label: "채팅 이름",
-        }
-      : undefined;
+  if (!view) {
+    return (
+      <GuidePlace>
+        <p className="text-chat-meta text-fg-tertiary">
+          {isPending ? "채팅을 여는 중이에요" : `채팅을 열지 못했어요 — ${String(error)}`}
+        </p>
+      </GuidePlace>
+    );
+  }
   return (
-    <PlainFrame
-      label={name}
-      lead={
-        cardWork ? (
-          <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} />
-        ) : crumb ? (
-          <ServiceCrumb name={crumb.name} onOpen={() => void navigate({ to: "/services/$slug", params: { slug: crumb.slug } })} />
-        ) : undefined
-      }
-      title={{ name, rename: renameName }}
-      end={
-        view ? (
-          <>
-            <ThreadMenu key={thread} rename={renameName?.onStart ?? null} />
-            {hasCard && (
-              <SummaryToggle
-                open={cardOpen}
-                onToggle={() => {
-                  if (cardOpen) setOpened(null);
-                  setCardOpen(!cardOpen);
-                }}
-              />
-            )}
-          </>
-        ) : undefined
-      }
-    >
-      {view ? (
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {/* 대화는 판 폭 그대로이고 열 · 입력창이 카드를 비켜난다(`Beside`). 카드가 넓으면 대화는 왼쪽 480에 남는다 — 폭은 두 갈래 모두
-              적어 둔다. 폭이 늘 길이라야 넓어지고 접히는 동안 패널 박자로 옮겨 간다. */}
-          <div
-            className={cn("flex min-h-0 flex-1 flex-col", PANEL_MOTION, "transition-[width] motion-reduce:transition-none")}
-            style={{ width: expanded ? THREAD_BESIDE : "100%" }}
-          >
-            <DocPlace.Provider value={docPlace}>
-              <ThreadBody
-                key={thread}
-                view={view}
-                problem={problem}
-                beside={hasCard && cardOpen}
-                toasts={!expanded}
-                onShowChanges={showChanges}
-              />
-            </DocPlace.Provider>
-          </div>
-          {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
-              넓어지면 자리가 왼쪽 480까지 자라 카드가 그것을 채운다. 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이 굴러야
-              한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). */}
-          {hasCard && cardOpen && (
-            <div
-              className={cn(
-                "pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end",
-                PANEL_MOTION,
-                "transition-[left] motion-reduce:transition-none",
-              )}
-              style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
-            >
-              {cardWork === null ? (
-                <LooseSummaryCard key={thread} thread={thread} />
-              ) : gone === "archived" ? (
-                <ArchivedSummaryCard key={thread} slug={cardWork} />
-              ) : (
-                <WorkSummaryCard
-                  key={thread}
-                  thread={thread}
-                  slug={cardWork}
-                  onNewThread={() => void navigate({ to: "/", search: { work: cardWork } })}
-                  opened={expanded ? opened : null}
-                  onOpen={setOpened}
-                  onClose={() => setOpened(null)}
-                />
-              )}
-            </div>
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* 대화는 판 폭 그대로이고 열 · 입력창이 카드를 비켜난다(`Beside`). 카드가 넓으면 대화는 왼쪽 480에 남는다 — 폭은 두 갈래 모두
+          적어 둔다. 폭이 늘 길이라야 넓어지고 접히는 동안 패널 박자로 옮겨 간다. */}
+      <div
+        className={cn("flex min-h-0 flex-1 flex-col", PANEL_MOTION, "transition-[width] motion-reduce:transition-none")}
+        style={{ width: expanded ? THREAD_BESIDE : "100%" }}
+      >
+        <DocPlace.Provider value={docPlace}>
+          <ThreadBody
+            key={thread}
+            view={view}
+            problem={problem}
+            beside={hasCard && cardOpen}
+            toasts={!expanded}
+            onShowChanges={showChanges}
+          />
+        </DocPlace.Provider>
+      </div>
+      {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
+          넓어지면 자리가 왼쪽 480까지 자라 카드가 그것을 채운다. 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이 굴러야
+          한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). 작업공간의 채팅 탭에서는 요약 단추(28) 아래 8에서
+          선다(`under` — 임시, 02a-9). */}
+      {hasCard && cardOpen && (
+        <div
+          className={cn(
+            "pointer-events-none absolute right-2 bottom-2 z-10 flex flex-col items-end",
+            under ? "top-11" : "top-2",
+            PANEL_MOTION,
+            "transition-[left] motion-reduce:transition-none",
+          )}
+          style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
+        >
+          {cardWork === null ? (
+            <LooseSummaryCard key={thread} thread={thread} />
+          ) : gone === "archived" ? (
+            <ArchivedSummaryCard key={thread} slug={cardWork} />
+          ) : (
+            <WorkSummaryCard
+              key={thread}
+              thread={thread}
+              slug={cardWork}
+              onNewThread={() => void navigate({ to: "/", search: { work: cardWork } })}
+              opened={expanded ? opened : null}
+              onOpen={setOpened}
+              onClose={() => setOpened(null)}
+            />
           )}
         </div>
-      ) : (
-        <GuidePlace>
-          <p className="text-chat-meta text-fg-tertiary">
-            {isPending ? "채팅을 여는 중이에요" : `채팅을 열지 못했어요 — ${String(error)}`}
-          </p>
-        </GuidePlace>
       )}
-    </PlainFrame>
+    </div>
   );
 }
 
