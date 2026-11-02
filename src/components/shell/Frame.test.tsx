@@ -1,7 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Folder } from "lucide-react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Card, Frame, type PanelSlot } from "./Frame";
+
+// 머리(이름 · 할 일 · 패널 토글)는 앱 셸의 머리 줄로 포털을 탄다 — 정적 렌더는 포털을 못 그려, 머리를 제자리 머리 줄에 곧장 세운다
+// (`screen-head-inline`).
+vi.mock("@/components/shell/ShellHead", async (actual) =>
+  (await import("@/components/shell/screen-head-inline")).inlineScreenHead(actual),
+);
 
 // **앱 틀이 8 틈으로 뜬 둥근 카드들로 나뉜다**(restart 스펙 「02a」 · 스토리 79 · 티켓 02a-2 · 시안 Shell · Main). 흰 판 한 장과 칸 사이
 // 선이 걷히고, 사이드바 밖의 영역(본문 · 작업 패널 · 옆 칸 · 레일)이 저마다 카드로 선다. seam은 그린 꼴(markup)이다 —
@@ -63,20 +69,14 @@ describe("옆 칸 카드", () => {
   });
 });
 
-// 레일(칸이 둘 이상일 때만 선다)도 본문 카드 오른쪽에 8 틈을 두고 위아래 꽉 찬 카드다(시안 `.ra-rail` — 둥글기 `radius-rail` 6 · 면 surface ·
-// 0.5 링). 칸 묶음이 따로 흰 면을 두르지 않는다 — 카드가 곧 그 면이다. 레일 안의 칸 모양과 서는 화면은 02a-14가 맞춘다.
-describe("레일 카드", () => {
+// 레일과 작업공간의 spec 패널은 이 틀이 그리지 않는다(restart 02a-14) — 앱 셸의 작업공간 도구 기둥(`WorkTools`)이 화면을 넘어 들고, 작업공간
+// 화면은 머리 줄의 패널 토글만 이 틀에 건넨다(`panelToggle`). 토글은 오른쪽 맨 끝에 서서 기둥의 패널을 가리킨다. 레일 카드의 겉과 칸은
+// `Rail.test.tsx`가 잰다.
+describe("밖에 선 패널의 토글", () => {
   const markup = renderToStaticMarkup(
     <Frame
-      head={{ icon: Folder, name: "atelier" }}
-      rail={{
-        items: [
-          { id: "spec", label: "spec", icon: Folder },
-          { id: "files", label: "files", icon: Folder },
-        ],
-        active: "spec",
-        onPick: () => {},
-      }}
+      head={{ icon: Folder, name: "atelier", end: <button type="button" aria-label="요약 카드" /> }}
+      panelToggle={{ name: "작업공간 패널", open: false, onToggle: () => {}, controls: "work-panel" }}
     >
       <Card as="main" label="문서">
         <p>문서</p>
@@ -84,14 +84,13 @@ describe("레일 카드", () => {
     </Frame>,
   );
 
-  it("본문 카드와 8 틈을 둔 위아래 꽉 찬 카드이고, 칸 묶음은 따로 면을 두르지 않는다", () => {
-    const rail = classOf(tagOf(markup, /<div[^>]*>(?=<div role="group" aria-label="레일")/));
-    expect(rail, "레일 카드를 찾지 못했다").toEqual(
-      expect.arrayContaining(["ml-2", "rounded-rail", "bg-surface", "shadow-hairline", "w-(--size-prail)", "shrink-0"]),
-    );
-    expect(rail.filter((one) => one.startsWith("after:"))).toEqual([]);
-    const group = classOf(tagOf(markup, /<div role="group" aria-label="레일"[^>]*>/));
-    expect(group.filter((one) => /^(rounded|shadow|bg)-/.test(one))).toEqual([]);
+  it("머리 줄 오른쪽 맨 끝에 서서 밖의 패널을 가리키고, 틀에는 패널 칸도 레일도 없다", () => {
+    const buttons = markup.match(/<button[^>]*>/g) ?? [];
+    expect(buttons[buttons.length - 1]).toContain('aria-label="작업공간 패널 펼치기"');
+    expect(buttons[buttons.length - 1]).toContain('aria-controls="work-panel"');
+    expect(buttons[buttons.length - 1]).toContain('aria-expanded="false"');
+    expect(markup).not.toContain("<aside");
+    expect(markup).not.toContain('aria-label="레일"');
   });
 });
 

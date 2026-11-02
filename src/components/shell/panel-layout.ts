@@ -51,7 +51,7 @@ export const TAB_ROW_COLUMN = "min-w-min [&>:not(:has([data-tab-row]))]:contain-
  *
  * **값은 DS 패널 폭 `size-panel`(340)이다**(codex-ds 스펙 S4 — 「폭 기본은 DS, 범위는 지금 것」). 그래서 저장된 폭은 범위(아래 `PANEL_MIN_WIDTH` ·
  * `PANEL_MAX_WIDTH`) 안이면 그대로 선다 — 기본만 바뀐다. 수로 적는 것은 폭 훅이 수를 받아서다(`--size-panel`과 같은 값 — 그려진 기본 폭을 e2e
- * `frame.spec`이 그 토큰과 맞댄다). 레일의 L3 진열대(`e2e/rail-fixture.tsx`)도 이 수를 읽는다. 앞의 330은 사용자가 끌어서
+ * `frame.spec`이 그 토큰과 맞댄다). 작업공간 도구 기둥(`WorkTools`)의 폭 훅이 이 수를 읽는다. 앞의 330은 사용자가 끌어서
  * 고른 폭이었다(2026-08-17, 실측 326.38px을 반올림 — 296은 좁아 경로와 파일 이름의 꼬리가 잘렸고, 한 번 420으로 올렸다가 사람이
  * 다시 줄였다). DS 값이 그 자리를 이었다.
  */
@@ -161,9 +161,9 @@ export const SIDEBAR_ID = "app-sidebar";
  * 앞에서 다시 시작한다(⌘B · ⌘Enter로 접은 자리). 토글은 상자의 id를 `aria-controls`로 가리키는 첫 요소다 — 오른쪽 패널은 레일 칸도
  * 같은 id를 가리키는데 패널 토글이 DOM에서 앞이다.
  *
- * **blur를 기다리지 않고 접힌 그 커밋에서 옮긴다**(레이아웃 이펙트). 포커스가 이벤트 없이 떨어지는 길이 있다 — 작업 패널은 접힐 때
- * 트리를 새로 세워(`WorkPanel`의 `treeGeneration`) 포커스를 쥔 행이 문서에서 빠지고, 빠진 요소는 blur를 쏘지 않는다. 접힌 커밋의
- * 레이아웃 이펙트에서는 그 행이 아직 문서에 있고 포커스도 쥐고 있다(`inert`가 포커스를 빼는 것은 다음 그리기 때다). 포커스가 상자
+ * **blur를 기다리지 않고 접힌 그 커밋에서 옮긴다**(레이아웃 이펙트). 포커스가 이벤트 없이 떨어지는 길이 있다 — 한때 작업 패널은 접힐
+ * 때 트리를 새로 세워(`treeGeneration` — restart 02a-14가 걷었다) 포커스를 쥔 행이 문서에서 빠졌고, 빠진 요소는 blur를 쏘지 않는다. 접힌
+ * 커밋의 레이아웃 이펙트에서는 포커스를 쥔 행이 아직 포커스를 쥐고 있다(`inert`가 포커스를 빼는 것은 다음 그리기 때다). 포커스가 상자
  * 밖에 있었으면(토글을 눌러 접었거나 셸에서 ⌘Enter) 그대로 둔다. L3 `keyboard.spec`이 두 패널에서 잰다.
  */
 export function useFoldedFocus<T extends HTMLElement>(open: boolean): RefObject<T | null> {

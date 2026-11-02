@@ -30,8 +30,9 @@ interface WorktreeChange {
  * - 이 work 셸의 「도는 중」이 끝날 때 — 에이전트가 턴을 마쳤다(결정 9의 「턴 끝」). 그 work의 워크트리 전부(걸린 폴더의 한 겹은
  *   빼고 — 결정 37).
  *
- * 예비 신호의 나머지 둘은 여기 없다 — 칸을 열면 트리 쿼리가 켜지며 읽고(`staleTime` 0), 새로고침 버튼은 칸 머리에 선다
- * (`FilesRefresh`). 여기 셋과 새로고침 버튼은 같은 무효화 문을 지나 몰려도 합쳐진다(`./hooks`의 `invalidateMerging`).
+ * 예비 신호의 나머지는 여기 없다 — 트리가 서면 트리 쿼리가 켜지며 읽는다(`staleTime` 0). 한때 files 칸 머리에 새로고침 버튼이 섰다
+ * (restart 02a-14가 칸과 함께 걷었다 — 문 `refreshWorktrees`는 남았다). 여기 셋은 같은 무효화 문을 지나 몰려도 합쳐진다(`./hooks`의
+ * `invalidateMerging`).
  */
 export function useFollowWorktreeChanges(): void {
   const queryClient = useQueryClient();

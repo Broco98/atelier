@@ -58,8 +58,9 @@ export function invalidateWorkChanges(queryClient: QueryClient, slug: string): P
 }
 
 /**
- * 새로고침 버튼(스토리 16) — 그 work의 워크트리 데이터를 모두 다시 읽는다. 펼쳐 둔 걸린 폴더의 한 겹까지다. 버튼은 files 칸이
- * 보일 때만 서서, 다시 읽는 것은 보이는(켜진) 쿼리뿐이다 — 숨은 것은 낡음 표시만 남아 보이는 순간 읽힌다.
+ * 새로고침의 문(스토리 16) — 그 work의 워크트리 데이터를 모두 다시 읽는다. 펼쳐 둔 걸린 폴더의 한 겹까지다. 다시 읽는 것은
+ * 보이는(켜진) 쿼리뿐이다 — 숨은 것은 낡음 표시만 남아 보이는 순간 읽힌다. 한때 files 칸 머리의 새로고침 버튼이 불렀다 — restart
+ * 02a-14가 칸과 함께 버튼을 걷어 지금 부르는 자리가 없다(넓힌 카드의 Project 보기가 다시 세울 수 있다).
  */
 export function refreshWorktrees(queryClient: QueryClient, slug: string): Promise<void> {
   return invalidateMerging(queryClient, { queryKey: worktreeKey(slug) });

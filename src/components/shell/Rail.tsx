@@ -1,130 +1,105 @@
-import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import { createLucideIcon } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
- * 레일의 칸 하나 — 소문자 영어 이름(`spec`, CONTEXT.md 「표기」)이다. 칸은 목록으로 받아 뒤에 더해진다(DS `PanelRail` — 대화는
- * three-axes, files · changes는 git-integration이 더한다).
+ * spec 칸의 아이콘 — 둥근 문서 한 장(restart 02a-14 · 스토리 81 · 시안 Shell 「spec 아이콘」의 적용안 `ic-docs` — 위 짧은 줄, 둥근 모서리
+ * 3.5의 몸, 글줄 둘). lucide에 같은 모양이 없어 시안의 24칸 그림을 그대로 옮겼다. 선 굵기는 앱 기본(`LucideProvider` — 16에서 1.5)을
+ * 받는다 — 시안 그림은 24칸 2이지만 앱의 아이콘 선은 한 자리에서 정한다(`icon-stroke.ts`, DS 묶음도 2.25다).
  */
-export interface RailItem<Id extends string = string> {
-  id: Id;
-  label: string;
-  icon: LucideIcon;
-}
+export const SpecGlyph = createLucideIcon("spec-docs", [
+  ["path", { d: "M8 3.5h8", key: "top" }],
+  ["rect", { x: "4", y: "7.5", width: "16", height: "13", rx: "3.5", key: "sheet" }],
+  ["path", { d: "M8.5 12.25h7", key: "line-1" }],
+  ["path", { d: "M8.5 15.75h4", key: "line-2" }],
+]);
 
 /**
- * 작업 화면의 레일(ui-refresh 결정 9 · 10)이 받는 것 — 칸 묶음 · 고른 칸. 칸을 고르면 `onPick`이 그 칸을 받는다 — 열림과 고른 칸의
- * 주인은 부르는 쪽이고, 고른 뒤의 둘은 `pickRail`이 정한다. 열림과 그것을 뒤집는 패널 토글은 레일이 아니라 패널 칸의 것이다(`Frame`의
- * `PanelSlot` — 레일이 없는 화면(Archive)의 오른쪽 패널도 같은 토글로 여닫는다, codex-ds 결정 32). 토글은 머리 줄에 선다(`PanelToggle`
- * — 둘을 `Frame`이 함께 그린다). 레일은 칸이 둘 이상일 때만 서지만(`railStands`) 토글은 칸 수와 상관없이 머리 줄 오른쪽 맨 끝
- * 같은 자리에 선다(codex-ds 결정 25 · 02 구현 스펙 §3 S2).
+ * 레일 카드의 박자(시안 `.ra-rail` · Motion 「레일이 들고 난다」) — 폭과 왼쪽 틈은 spec 패널과 같은 500ms spring이라(`PANEL_MOTION`) 본문
+ * 폭이 한 박자로 옮겨 가 튀지 않는다. 옅음은 `duration-panel`(220) 기본 곡선이다. **접힐 때만** 보임이 폭이 다 걷힌 뒤(500ms) 꺼진다 —
+ * 서는 쪽은 보임이 곧바로 켜져야 자라는 동안 보인다. 클래스는 글자 그대로 적는다 — Tailwind가 소스의 글자를 읽는다(`panel-layout`의
+ * `FOLD_BEATS`와 같은 까닭). 동작 줄이기면 곧바로다(시안 `.ra-rail { transition: none }`).
  */
-export interface RailProps<Id extends string = string> {
-  items: readonly RailItem<Id>[];
-  active: Id;
-  onPick: (id: Id) => void;
-}
+const RAIL_BEAT = {
+  shown:
+    "transition-[width,margin-left,opacity] duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel)] ease-[var(--ease-spring),var(--ease-spring),var(--ease-default)]",
+  hidden:
+    "transition-[width,margin-left,opacity,visibility] duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel),0s] ease-[var(--ease-spring),var(--ease-spring),var(--ease-default),linear] delay-[0s,0s,0s,var(--duration-panel-open)]",
+} as const;
 
 /**
- * 칸을 고른 뒤의 열림과 고른 칸(ui-refresh 결정 9 · 10). **켜진 칸을 다시 고르면 닫힌다** — 고른 칸은 기억한 채다. 켜짐은 「열렸고
- * 그 칸이 골라졌다」이므로 닫힌 채 고른 칸은 켜진 칸이 아니다: 그 칸으로 연다. 다른 칸이면 그 칸으로 바꾼다. 상태의 주인(작업 화면)이
- * 이 규칙 하나로 고친다 — 칸이 둘인 레일을 세우는 L3 진열대(`e2e/rail-fixture.tsx`)도 같은 규칙을 부른다.
+ * 레일이 받는 것 — 서는가 · 패널이 열렸나 · 칸을 누름 · 가리키는 패널.
  */
-export function pickRail<Id extends string>(now: { open: boolean; active: Id }, next: Id): { open: boolean; active: Id } {
-  if (now.open && now.active === next) return { open: false, active: now.active };
-  return { open: true, active: next };
-}
-
-/**
- * 레일이 서는가 — **칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4). 고를 것이 하나뿐인 줄은 자리만 차지한다. 판정은 칸 목록의
- * 길이다 — 칸이 더해지면(대화 · files · changes) 레일이 다시 선다. 공용 틀(`Frame`)이 이것 하나로 레일 열과 패널 토글의 자리를 함께
- * 가른다 — 둘이 다른 판정을 읽으면 레일 없이 토글만 레일 열 위에 서는 날이 온다.
- */
-export function railStands(items: readonly RailItem[]): boolean {
-  return items.length >= 2;
-}
-
-/**
- * 작업 패널의 몸 하나의 상자 — 레일 칸마다 하나이고, 고른 칸의 몸만 보인다. **안 보이는 몸도 마운트된 채다**(ui-refresh 결정 9) —
- * 칸을 다녀와도 그 몸에서 접어 둔 판 · 폴더가 그대로다. 그래서 `hidden`과 `inert`로 가린다: `hidden`은 preflight의
- * `display: none !important`로 아래 `contents`를 이겨 화면과 접근성 트리에서 빠지고, `inert`는 그 안으로 포커스 · 찾기가 들어가지
- * 못하게 한다(한때 Base UI 탭 패널이 그 둘을 달았다).
- *
- * **제 상자가 없다**(`contents`) — 안의 스크롤 상자가 패널 몸의 직계 flex 자식으로 남아야 해서다(`WorkPanel`의 `SpecTab` 머리말).
- * 표식(`data-panel-view`)은 검사가 몸을 정체성으로 집는 고리다. 작업 화면(`WorkPanel`)과 칸이 둘인 레일의 L3 진열대
- * (`e2e/rail-fixture.tsx`)가 이 상자를 함께 쓴다 — 작업 화면의 몸은 `spec` · `files` 둘이다.
- */
-export function PanelBody<Id extends string>({ view, shown, children }: { view: Id; shown: boolean; children: ReactNode }) {
-  return (
-    <div data-panel-view={view} hidden={!shown} inert={!shown} className="contents">
-      {children}
-    </div>
-  );
-}
-
-/**
- * 레일(ui-refresh 결정 9 · 10 · DS `PanelRail`) — 작업 화면 오른쪽 끝의 카드, 본문 열의 **형제**다. 카드 위끝에서 2 내려 칸 묶음이
- * 선다. 패널이 닫혀도 남는다 — 닫힌 패널을 칸으로 다시 여는 길이 여기다. 패널 토글은 레일이 아니라 머리 줄
- * 오른쪽 끝에 선다(codex-ds 스펙 §4 · 02 구현 스펙 §3 S2).
- *
- * **칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4 — `railStands`). 서지 않을 때는 공용 틀(`Frame`)이 레일을 통째로 그리지
- * 않아 본문 열이 창 끝 틈까지 넓어지고, 패널을 여닫는 길은 머리 줄 오른쪽 끝의 패널 토글 · ⌘Enter다. 작업 화면의 칸이
- * `spec` 하나이던 동안은 서지 않았고, `files`가 더해져 다시 선다.
- *
- * **`aside`도 `nav`도 아니다**(판 04 「지키는 것」 · DS `PanelRail` 「구현 고리」). `aside`는 사이드바와 오른쪽 패널(작업 패널 · spec 목록
- * 패널) 둘뿐이라 e2e가 그 순서를 재고(`tab-row-floor` · `archive-docs`), `nav`는 사이드바 버튼을 집는 고리다(`harness.ts`). 머리 줄 `<header>` 밖이다.
- *
- * **칸은 탭도 라디오도 아니다** — `aria-pressed` 버튼이다. 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0개일 수 있다(DS는 `radiogroup`을
- * 적지만 라디오는 고른 것을 끌 수 없다 — 탭 줄이 `role="tab"`을 안 쓰는 것과 같은 가족이다, `ShellTabs`). 그래서 칸 사이 ←/→ 이동이
- * 없고 Tab으로 옮겨 간다 — 칸마다 `tabIndex`를 명시한다(WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다, `@/lib/roving` 머리말). 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다.
- *
- * **레일 카드다**(restart 02a-2 · 시안 `.ra-rail`) — 본문 카드 · 작업 패널 카드 오른쪽에 8 틈(`ml-2`)을 두고 위아래 꽉 찬 카드로 선다.
- * 둥글기는 레일 카드의 `radius-rail`(6)이고 면 · 링은 다른 카드와 같다(`surface` · `shadow-hairline`). 폭은 DS 줄 폭 `size-prail`(32)이고
- * 안쪽 2 안에 28 칸이 선다. 창 끝 틈 8은 앱 셸의 줄이 든다(`AppShell`). 한때(02 S2) 흰 판 안의 칸으로 왼쪽 선 하나(`PANE_RULE`)로
- * 갈렸다. 판 밖 틈은 창을 끄는 자리가 아니다 — 끄는 자리는 머리 줄 하나다.
- */
-function Rail<Id extends string>({
-  open,
-  items,
-  active,
-  onPick,
-  controls,
-}: RailProps<Id> & {
-  /** 레일이 고르는 패널이 열렸나 — 켜진 칸은 「열렸고 그 칸이 골라졌다」다(아래). 패널 칸의 열림을 `Frame`이 건넨다. */
+export interface RailProps {
+  /** 작업공간이 서 있나 — 아니면 폭 0으로 접힌다(아래 머리말). */
+  shown: boolean;
+  /** spec 패널이 열렸나 — 칸의 켜짐이다. */
   open: boolean;
-  /** 레일이 고르는 패널의 id(`aria-controls`) — `Frame`이 패널 칸과 함께 짓는다. */
-  controls?: string;
-}) {
+  /** 칸을 눌렀다 — spec 패널을 여닫는다(오른쪽 자리의 `toggle spec` — 패널 토글 · ⌘Enter와 같은 일이다). */
+  onPick: () => void;
+  /** 칸이 여닫는 패널의 id(`aria-controls`). */
+  controls: string;
+}
+
+/**
+ * 레일(restart 02a-14 · 스토리 80 · 81 · 82 · 시안 Shell 「레일」 · Main `.ra-rail` · Motion 「레일이 들고 난다」) — 카드 자리 오른쪽 끝의
+ * 세로 카드다. **작업공간의 도구다** — 칸은 `spec` 하나(둥근 문서 아이콘)이고 누르면 spec 패널이 열리고 다시 누르면 닫힌다. 패널이 닫혀도
+ * 레일은 남는다 — 닫힌 패널을 다시 여는 길이 여기다.
+ *
+ * **작업공간에서만 선다.** 앱 셸의 작업공간 도구 자리가 화면이 바뀌어도 이 카드를 그대로 두고(`WorkTools`), 작업공간이 서면 폭 0 → 32로
+ * 자라고 떠나면 spec 패널과 함께 접힌다. 접힌 동안은 보이지도 눌리지도 포커스되지도 않는다(`inert` · 보임은 폭이 다 걷힌 뒤 꺼진다).
+ * 한때 칸이 `spec` · `files` 둘이었고(git-integration 결정 29) 칸이 둘 이상일 때만 섰다(codex-ds 결정 25) — files 칸이 걷혀(파일은 넓힌
+ * 카드의 Project 트리에서 연다, restart 02a-12) 칸은 하나다.
+ *
+ * **레일 카드가 곧 칸 묶음이다**(시안 `.ra-rail` — `role="group"`). 둥글기는 `radius-rail`(6)이고 면 · 링은 다른 카드와 같다(`surface` ·
+ * `shadow-hairline`). 폭은 DS 줄 폭 `size-prail`(32)이고 안쪽 2 안에 28 칸이 선다. 본문 카드 · spec 패널 카드와는 왼쪽 틈 8(`ml-2`)로 갈린다.
+ * 이름은 「레일」이다 — 패널(`작업공간 패널`)과 다르다(같으면 「작업공간 패널」로 집는 자리가 둘이 된다).
+ *
+ * **칸은 탭도 라디오도 아니다** — `aria-pressed` 버튼이다. 켜짐은 「패널이 열렸다」이고 다시 누르면 꺼진다. Tab 정류장임을 `tabIndex`로
+ * 명시한다(WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다, `@/lib/roving` 머리말). 켜짐 면은 칸 뒤에 따로 깔린 면(`data-rail-on` —
+ * 시안 `.ra-rail-ind`, `tool-rail-on`)이 옅음으로 들고 나고, 켜진 칸은 제 면 없이 글리프만 `fg`로 진해진다 — hover해도 그대로다. 꺼진 칸은
+ * `fg-tertiary`이고 hover에 `fill-soft` 면과 `fg`다.
+ *
+ * **`aside`도 `nav`도 아니다**(시안 Shell 「규칙」). `aside`는 사이드바와 오른쪽 패널뿐이고 `nav`는 사이드바 버튼을 집는 고리다. 패널
+ * 토글은 레일이 아니라 머리 줄 오른쪽 끝에 선다(`PanelToggle`).
+ */
+function Rail({ shown, open, onPick, controls }: RailProps) {
   return (
-    <div className="ml-2 flex w-(--size-prail) shrink-0 flex-col items-center rounded-rail bg-surface p-0.5 shadow-hairline">
-      {/* 칸 묶음 — 세그먼트를 세우고 색을 뒤집은 것이다(DS `.at-seg.vert` · codex-ds 결정 29). 면은 레일 카드가 들고(안쪽 2 · 칸 사이 2)
-          칸은 28 · `radius-md`라 카드 폭이 줄 폭(32)이다. 켜진 칸은 패널 트리의 고른 행과 같은 `fill-selected`이고, 꺼진 칸의 hover는
-          `fill-soft`다 — 켜진 칸은 hover해도 그 면 그대로다(DS `.is-on:hover`). 이름은 패널(`작업 패널`)과 다르다 — 같으면
-          「작업공간 패널」로 집는 자리가 둘이 된다. 칸의 모양(켜짐 면 `tool-rail-on` · 칸 사이 4 · 켜짐 표시)은 02a-14가 시안에 맞춘다. */}
-      <div role="group" aria-label="레일" className="flex flex-col gap-0.5">
-        {items.map(({ id, label, icon: Icon }) => {
-          const on = open && id === active;
-          return (
-            <Hint
-              key={id}
-              text={label}
-              announce="name"
-              type="button"
-              onClick={() => onPick(id)}
-              aria-pressed={on}
-              aria-controls={controls}
-              tabIndex={0}
-              className={cn(
-                "flex size-7 items-center justify-center rounded-md transition-colors focus-ring",
-                on ? "bg-fill-selected text-fg" : "text-fg-secondary hover:bg-fill-soft hover:text-fg",
-              )}
-            >
-              <Icon className="size-4" />
-            </Hint>
-          );
-        })}
-      </div>
+    <div
+      role="group"
+      aria-label="레일"
+      data-show={shown}
+      inert={!shown}
+      className={cn(
+        "relative flex shrink-0 flex-col items-center overflow-hidden rounded-rail bg-surface py-0.5 motion-reduce:transition-none",
+        shown
+          ? cn("ml-2 w-(--size-prail) p-0.5 opacity-100 shadow-hairline", RAIL_BEAT.shown)
+          : cn("pointer-events-none invisible ml-0 w-0 px-0 opacity-0 shadow-none", RAIL_BEAT.hidden),
+      )}
+    >
+      <span
+        aria-hidden
+        data-rail-on={open}
+        className={cn(
+          "pointer-events-none absolute top-0.5 left-0.5 size-7 rounded-ctl bg-tool-rail-on transition-opacity motion-reduce:transition-none",
+          open ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <Hint
+        text="spec"
+        announce="name"
+        type="button"
+        onClick={onPick}
+        aria-pressed={open}
+        aria-controls={controls}
+        tabIndex={0}
+        className={cn(
+          "relative mb-1 flex size-7 shrink-0 items-center justify-center rounded-ctl transition-colors focus-ring",
+          open ? "bg-transparent text-fg" : "text-fg-tertiary hover:bg-fill-soft hover:text-fg",
+        )}
+      >
+        <SpecGlyph className="size-4" />
+      </Hint>
     </div>
   );
 }
