@@ -1147,10 +1147,33 @@ onNotifySettingsChanged(notifyTick);
  * in-app-terminal 결정 26은 MCP로 아카이브 · 삭제된 work의 셸을 「알려진 대가」로 남겨 두었다 — 그 길은 이 함수를 안 지난다. 프로세스
  * 결정 4가 이렇게 고쳤다: 앱 루트가 목록 재조회로 알아채(`settleOwners`) 조용한 셸은 닫고, 나머지는 「주인 잃은 셸」로
  * 남겨 알린다. 그 감지가 이 길의 셸을 세지 않게 부르는 쪽이 제외 창을 연다(`holdOwner`).
+ *
+ * **걷기 전에 그 작업공간이 떠났다고 알린다**(`onWorkReclaimed`, restart 02a-15c).
  */
 export function closeShellsOf(owner: ShellOwner): void {
+  for (const listen of reclaimedListeners) listen(owner);
   for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id, "archive");
   terminalStore.setState((state) => withoutNonShellTabsOf(state, owner));
+}
+
+/**
+ * **작업공간이 떠났다**(restart 02a-15c) — UI 아카이브 · 삭제의 회수(`closeShellsOf`)가 그 묶음을 통째로 걷기 직전에 그 owner를 알린다. 그
+ * 작업공간 화면이 듣는다(`WorksPage`): 걷혀 빈 묶음은 마지막 칸이 닫힌 것이 아니라 작업공간이 떠난 것이라 새 채팅 탭을 세우지 않는다. 세우면
+ * 「묶음 → 주소」가 주소를 그 탭으로 옮겨 켜진 채팅 탭(`thread`)이 주소에서 빠지고, 목록이 그 작업공간을 잃는 순간 다른 작업공간으로
+ * 넘어갔다 — 그 채팅의 `/threads/:id`로 가야 한다(구현 스펙 「작업공간이 바뀌는 순간」).
+ *
+ * **회수는 화면이 목록에서 그 작업공간을 잃기 전에 돈다** — 아카이브는 재조회를 기다리지 않는다(`useArchiveWork`). 그래서 화면은 목록이 아니라
+ * 이 알림으로 안다. MCP 길(`settleOwners`)은 목록이 그 작업공간을 잃은 뒤에 걷어 화면이 이미 그 작업공간을 놓았다 — 알릴 것이 없다.
+ *
+ * Set인 것은 StrictMode 때문이다(`onShellOpenRejected`와 같다).
+ */
+const reclaimedListeners = new Set<(owner: ShellOwner) => void>();
+
+export function onWorkReclaimed(listen: (owner: ShellOwner) => void): () => void {
+  reclaimedListeners.add(listen);
+  return () => {
+    reclaimedListeners.delete(listen);
+  };
 }
 
 /**

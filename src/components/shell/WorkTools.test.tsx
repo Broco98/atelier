@@ -144,6 +144,20 @@ describe("작업공간 도구의 기둥", () => {
     expect(open).toEqual(expect.arrayContaining(["max-w-full", "transition-[max-width]", "delay-[var(--duration-panel-open)]"]));
   });
 
+  it("처음 그리는 기둥은 움직이지 않는다 — 앱을 작업공간에서 켜면 레일과 패널이 자라지 않고 선다", () => {
+    // restart 02a-15c — 작업공간 화면은 기둥과 한 커밋에 서지만 값은 레이아웃 이펙트로 닿아(`WorkTools`), 접힌 기둥이 그려지기 전에도 브라우저가
+    // 그 사이의 모양을 셈해 두면 트랜지션이 걸렸다(L3 `shell-cold-start` — 붙은 셸이 `pty_resize`를 거듭 받았다). 기둥을 처음 그리는 동안은
+    // 트랜지션이 없다 — 다른 화면에서 들어오면 이미 접혀 그려진 기둥이라 자란다(Motion 「레일이 들고 난다」). 정적 그림이 곧 처음 그림이다.
+    const stillOf = (tag: string) => tag.match(/style="([^"]*)"/)?.[1] ?? "";
+    const innerTag = (markup: string) => markup.match(/<aside[^>]*>\s*(<div[^>]*>)/)?.[1] ?? "";
+    stand(true);
+    const markup = column();
+    expect(stillOf(asideTag(markup)), "패널 상자").toMatch(/transition:\s*none/);
+    expect(stillOf(innerTag(markup)), "패널 안쪽").toMatch(/transition:\s*none/);
+    expect(stillOf(railTag(markup)), "레일").toMatch(/transition:\s*none/);
+    expect(stillOf(markup.match(/<span[^>]*data-rail-on[^>]*>/)?.[0] ?? ""), "레일 칸의 켜짐 면").toMatch(/transition:\s*none/);
+  });
+
   it("작업공간의 일(아카이브 · 삭제)이 도는 동안 패널의 몸은 누를 수 없다", () => {
     stand(true, true);
     expect(column().match(/<div[^>]*data-work-panel-body[^>]*>/)?.[0]).toMatch(/\binert=""/);
