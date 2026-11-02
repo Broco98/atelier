@@ -483,7 +483,7 @@ mod tests {
         let readings = HashMap::from([(body.rust.unwrap(), reading(410 * MB)), (body.web_content.unwrap(), reading(200 * MB))]);
         let cpu = HashMap::from([(body.rust.unwrap(), 2.5), (body.web_content.unwrap(), 1.5)]);
         let machine = Some(Machine { cpu: Some(37.5), memory: Some(12 * 1024 * MB), cores: 10 });
-        let summary = Summary::of(&verdict, &[], &body, &Measured { readings, cpu, machine, measured_at: 0 }, Some(7));
+        let summary = Summary::of(&verdict, &[], &body, &Measured { readings, cpu, machine, ..Measured::default() }, Some(7));
         assert_eq!(
             serde_json::to_value(summary).unwrap(),
             serde_json::json!({
@@ -803,7 +803,7 @@ mod tests {
     fn the_background_meter_spans_its_own_beat() {
         let background = Background::new(10);
         let app = Identity { pid: 42, started_us: 4_200 };
-        let read = |cpu_ns: u64| Readings { by_id: HashMap::from([(app, Reading { memory: 1, cpu_ns, ports: vec![] })]), skipped: 0 };
+        let read = |cpu_ns: u64| Readings { by_id: HashMap::from([(app, Reading { memory: 1, cpu_ns, ports: vec![] })]), unread: Default::default() };
         let ticks = |busy: u32| Some(machine::Reading { ticks: Some(CpuTicks { user: busy, system: 0, idle: 1_000, nice: 0 }), memory: Some(1) });
         let t0 = Instant::now();
         let first = background.measure(t0, read(0), ticks(0));

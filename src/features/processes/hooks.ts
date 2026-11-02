@@ -1,4 +1,4 @@
-import { keepPreviousData, queryOptions, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 import { processesApi } from "./api";
 
 // **`Processes` 화면의 폴러가 사는 자리다**(프로세스 스펙 「수집」 · 티켓 26). 터미널 폴더 밖에 두는 것은 그 폴더의 시계 규칙
@@ -33,6 +33,19 @@ export const snapshotQuery = queryOptions({
 
 export function useProcessSnapshot() {
   return useQuery(snapshotQuery);
+}
+
+/**
+ * **다시 읽기**(restart 03-9 · 스토리 132) — 박자(2초)를 기다리지 않고 **곧바로 한 번** 스냅샷을 묻는다. 묻는 중인 물음이 있으면 그것을 버리고
+ * 새로 묻는다 — 멎은 물음(답이 안 오는 IPC)을 기다리면 영영 안 풀린다. `cancelRefetch`는 값이 있는 쿼리의 물음만 버리므로(react-query
+ * `Query.fetch`) 값이 한 번도 안 온 채 멎은 첫 물음은 먼저 거둔다(`cancelQueries` — 쿼리를 그 물음 전으로 되돌린다). 버린 물음의 답이 늦게
+ * 와도 쿼리에 안 앉는다. 실패하면 쿼리에 실패가 앉아 멈춤이 남는다(`beatOf`). 화면의 쿼리를 그대로 다시 묻는다 — 보는 쪽을 하나 더 세우면
+ * 박자가 하나 더 걸린다(`useProcessSnapshot`의 머리말).
+ */
+export function readSnapshotNow(client: QueryClient): Promise<void> {
+  const filters = { queryKey: snapshotQuery.queryKey, exact: true };
+  void client.cancelQueries(filters);
+  return client.refetchQueries(filters, { cancelRefetch: true });
 }
 
 /**

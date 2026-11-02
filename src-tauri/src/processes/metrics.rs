@@ -23,6 +23,8 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use serde::Serialize;
+
 use super::machine::{self, CpuTicks, Machine};
 use super::{clock, Identity};
 
@@ -41,10 +43,39 @@ pub struct Reading {
 #[derive(Debug, Default)]
 pub struct Readings {
     pub by_id: HashMap<Identity, Reading>,
-    /// 받은 신원 가운데 못 읽은 수 — 그사이 끝난 것, 좀비, 남의 uid, pid가 남에게 넘어간 것. macOS의 읽기만 센다(실물 검사가 읽는다)
-    /// — 다른 OS는 아무것도 안 읽어 늘 0이다.
+    /// 받은 신원 가운데 못 읽은 수 — 까닭마다(restart 03-9).
+    pub unread: Unread,
+}
+
+/// **못 읽은 것의 수 — 까닭마다**(restart 03-9 · 스토리 133 · 시안 Processes 「3개를 읽지 못했어요 · 권한 없음 2, 그사이 끝남 1」). 받은 신원
+/// 가운데 지표를 못 읽은 것이다. 그 몫은 맥 전체에서 읽은 합을 뺀 「시스템 · 못 읽음」에 든다(`breakdown`). macOS의 읽기만 센다 — 다른 OS는
+/// 아무것도 안 읽어 늘 0이다. 화면 스냅샷이 그대로 싣는다(`screen::ScreenSnapshot::unread`) — 프런트의 `Unread`와 칸 이름으로 잇는다.
+#[derive(Serialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unread {
+    /// 커널이 읽기를 거절했다(`EPERM` — 남의 uid, `sudo` 밑의 것).
+    pub denied: u32,
+    /// 그사이 끝났다 — 없는 pid(`ESRCH`), 좀비, pid가 남에게 넘어간 것.
+    pub gone: u32,
+    /// 그 밖의 까닭 — 커널이 다른 오류를 줬다.
+    pub other: u32,
+}
+
+impl Unread {
+    /// 커널이 읽기를 거절한 오류 번호를 까닭으로 센다.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    pub skipped: u32,
+    fn count(&mut self, errno: Option<i32>) {
+        match errno {
+            Some(libc::EPERM | libc::EACCES) => self.denied += 1,
+            Some(libc::ESRCH) => self.gone += 1,
+            _ => self.other += 1,
+        }
+    }
+
+    fn add(&mut self, other: Unread) {
+        self.denied += other.denied;
+        self.gone += other.gone;
+        self.other += other.other;
+    }
 }
 
 impl Readings {
@@ -54,10 +85,10 @@ impl Readings {
     }
 
     /// 다른 읽기를 이 표본에 합친다 — 화면 스냅샷이 우리 트리(`read`)와 다른 앱(`read_usage`)을 한 미터에 넣는다(restart 03-6). 못 읽은
-    /// 수는 더한다.
+    /// 수는 까닭마다 더한다.
     pub fn absorb(&mut self, other: Readings) {
         self.by_id.extend(other.by_id);
-        self.skipped += other.skipped;
+        self.unread.add(other.unread);
     }
 }
 
@@ -73,6 +104,8 @@ pub struct Measured {
     pub machine: Option<Machine>,
     /// 잰 시각(에포크 ms) — 화면 머리의 「…에 잰 값」(restart 03-5). 읽기를 마친 때다.
     pub measured_at: u64,
+    /// 이 표본에서 못 읽은 것 — 까닭마다(restart 03-9). 읽기가 센 그대로다.
+    pub unread: Unread,
 }
 
 /// 받은 신원의 지표를 읽는다. 실패하지 않는다 — 못 읽은 것은 건너뛰고 센다.
@@ -80,6 +113,9 @@ pub struct Measured {
 /// **읽은 뒤에 신원을 다시 본다.** 판정과 이 읽기 사이에 그 pid가 끝나 남에게 넘어갔으면 읽은 것은 남의 숫자다 — 시작 시각까지
 /// 같아야 그 프로세스다(프로세스 결정 3). 읽기 전에 보면 보고 읽는 사이의 재사용을 못 거른다. 좀비도 여기서 빠진다
 /// (`identity_of`가 좀비를 안 준다).
+///
+/// **못 읽은 것은 까닭마다 센다**(restart 03-9 — `Unread`). 커널이 거절한 것은 그 오류 번호로(권한 없음 · 없는 pid · 그 밖), 읽었는데
+/// 신원이 달라진 것(좀비 · 재사용)은 그사이 끝남으로 센다.
 #[cfg(target_os = "macos")]
 pub fn read(ids: impl IntoIterator<Item = Identity>) -> Readings {
     read_with(ids, true)
@@ -99,20 +135,27 @@ fn read_with(ids: impl IntoIterator<Item = Identity>, ports: bool) -> Readings {
     let (numer, denom) = mac::timebase();
     let mut readings = Readings::default();
     for id in ids {
-        let reading = std::os::raw::c_int::try_from(id.pid).ok().and_then(|pid| {
-            let usage = mac::usage(pid)?;
-            // 포트는 메모리 · CPU를 읽은 것만 훑는다 — 없는 프로세스의 fd를 묻지 않는다.
-            Some(Reading {
-                memory: usage.ri_phys_footprint,
-                cpu_ns: ticks_to_ns(usage.ri_user_time.saturating_add(usage.ri_system_time), numer, denom),
-                ports: if ports { mac::listening_ports(pid) } else { Vec::new() },
-            })
-        });
-        match reading {
-            Some(reading) if super::snapshot::identity_of(id.pid) == Some(id) => {
-                readings.by_id.insert(id, reading);
+        let Ok(pid) = std::os::raw::c_int::try_from(id.pid) else {
+            readings.unread.other += 1;
+            continue;
+        };
+        let usage = match mac::usage(pid) {
+            Ok(usage) => usage,
+            Err(errno) => {
+                readings.unread.count(errno);
+                continue;
             }
-            _ => readings.skipped += 1,
+        };
+        // 포트는 메모리 · CPU를 읽은 것만 훑는다 — 없는 프로세스의 fd를 묻지 않는다.
+        let reading = Reading {
+            memory: usage.ri_phys_footprint,
+            cpu_ns: ticks_to_ns(usage.ri_user_time.saturating_add(usage.ri_system_time), numer, denom),
+            ports: if ports { mac::listening_ports(pid) } else { Vec::new() },
+        };
+        if super::snapshot::identity_of(id.pid) == Some(id) {
+            readings.by_id.insert(id, reading);
+        } else {
+            readings.unread.gone += 1;
         }
     }
     readings
@@ -223,6 +266,7 @@ impl CpuMeter {
             cpu: cpu.procs,
             machine: machine.map(|read| Machine { cpu: cpu.machine, memory: read.memory, cores: self.cores }),
             measured_at: clock::now_ms(),
+            unread: readings.unread,
         }
     }
 }
@@ -249,15 +293,20 @@ mod mac {
         })
     }
 
-    /// 한 pid의 자원 사용(`proc_pid_rusage`, 판 0). 못 읽으면 `None` — 그사이 끝났거나 남의 uid다. **좀비는 읽힌다**(0이 온다 —
-    /// `a_zombie_leaves_only_its_own_metrics_empty`의 실측). 좀비의 칸을 비우는 것은 읽은 뒤 신원을 다시 보는 `read`다.
+    /// 한 pid의 자원 사용(`proc_pid_rusage`, 판 0). 못 읽으면 커널의 오류 번호다 — 그사이 끝났으면 `ESRCH`, 남의 uid면 `EPERM`(못 꺼내면
+    /// `None`). **좀비는 읽힌다**(0이 온다 — `a_zombie_leaves_only_its_own_metrics_empty`의 실측). 좀비의 칸을 비우는 것은 읽은 뒤 신원을
+    /// 다시 보는 `read`다.
     ///
     /// 판 0을 고른 것은 쓰는 칸(`ri_phys_footprint` · `ri_user_time` · `ri_system_time`)이 모두 거기 있고 가장 작아서다. 뒤 판은 같은
     /// 칸 뒤에 다른 것을 더할 뿐이다.
-    pub(super) fn usage(pid: c_int) -> Option<libc::rusage_info_v0> {
+    pub(super) fn usage(pid: c_int) -> Result<libc::rusage_info_v0, Option<i32>> {
         let mut info: libc::rusage_info_v0 = unsafe { std::mem::zeroed() };
         let status = unsafe { libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V0, (&raw mut info).cast()) };
-        (status == 0).then_some(info)
+        if status == 0 {
+            Ok(info)
+        } else {
+            Err(std::io::Error::last_os_error().raw_os_error())
+        }
     }
 
     /// 소켓 fd 정보를 묻는 판(`<sys/proc_info.h>`의 `PROC_PIDFDSOCKETINFO`). libc에 없다.
@@ -389,16 +438,29 @@ mod tests {
         assert_eq!(percent(2 * SEC, SEC, two, 10), None, "CPU 시간이 줄었는데 값을 지었다");
     }
 
-    /// **두 읽기를 한 표본으로 합친다**(restart 03-6 — 우리 트리의 읽기와 다른 앱의 읽기). 읽은 것은 모두 남고 못 읽은 수는 더한다.
+    /// **두 읽기를 한 표본으로 합친다**(restart 03-6 — 우리 트리의 읽기와 다른 앱의 읽기). 읽은 것은 모두 남고 못 읽은 수는 까닭마다
+    /// 더한다(restart 03-9).
     #[test]
     fn two_reads_join_into_one_sample() {
-        use super::{Reading, Readings};
+        use super::{Reading, Readings, Unread};
 
         let reading = |memory: u64| Reading { memory, cpu_ns: memory, ports: vec![] };
-        let mut ours = Readings { by_id: HashMap::from([(id(10, 1), reading(1))]), skipped: 2 };
-        ours.absorb(Readings { by_id: HashMap::from([(id(20, 2), reading(5))]), skipped: 3 });
+        let mut ours =
+            Readings { by_id: HashMap::from([(id(10, 1), reading(1))]), unread: Unread { denied: 2, gone: 0, other: 1 } };
+        ours.absorb(Readings { by_id: HashMap::from([(id(20, 2), reading(5))]), unread: Unread { denied: 1, gone: 3, other: 0 } });
         assert_eq!(ours.by_id, HashMap::from([(id(10, 1), reading(1)), (id(20, 2), reading(5))]));
-        assert_eq!(ours.skipped, 5);
+        assert_eq!(ours.unread, Unread { denied: 3, gone: 3, other: 1 });
+    }
+
+    /// **한 표본의 지표가 못 읽은 수를 싣는다**(restart 03-9 · 스펙 「믿을 수 있는 표시」 — 스냅샷에 못 읽은 수를 싣는다). 읽기가 센 것이
+    /// 그대로 표본에 간다 — 화면 스냅샷이 이것을 와이어에 싣는다.
+    #[test]
+    fn a_sample_carries_what_it_could_not_read() {
+        use super::{Readings, Unread};
+
+        let unread = Unread { denied: 2, gone: 1, other: 0 };
+        let measured = one_core().measure(Instant::now(), Readings { by_id: HashMap::new(), unread }, None);
+        assert_eq!(measured.unread, unread);
     }
 
     /// 화면 박자의 미터 — 코어 하나인 맥이라 프로세스의 CPU%가 「한 코어 = 100」과 같은 숫자다(눈금은 위 검사가 잰다).
@@ -620,7 +682,7 @@ mod real {
         let kid = Kid::spawn("map", &key(42));
         let settled = kid.settle();
         let memory = settled.and_then(|id| read([id]).by_id.get(&id).map(|reading| reading.memory));
-        let resident = settled.and_then(|id| super::mac::usage(id.pid as i32)).map(|usage| usage.ri_resident_size);
+        let resident = settled.and_then(|id| super::mac::usage(id.pid as i32).ok()).map(|usage| usage.ri_resident_size);
 
         // **거두는 것이 단언보다 먼저다.**
         drop(kid);
@@ -680,7 +742,29 @@ mod real {
         let readings = readings.expect("위에서 읽었다");
         assert!(readings.by_id.get(&me).is_some_and(|reading| reading.memory > 0), "좀비 하나에 이 검사 자신의 지표까지 잃었다");
         assert!(!readings.by_id.contains_key(&zombie), "좀비의 지표가 섰다");
-        assert!(readings.skipped >= 1, "좀비를 건너뛰고도 세지 않았다");
+        assert_eq!(readings.unread.gone, 1, "좀비를 건너뛰고도 「그사이 끝남」으로 세지 않았다");
+    }
+
+    /// **못 읽은 것은 까닭마다 센다**(restart 03-9 · 스토리 133 · 시안 Processes 「권한 없음 2, 그사이 끝남 1」). 남의 uid의 프로세스는 커널이
+    /// 읽기를 거절해 「권한 없음」이다 — pid 1은 루트가 띄운다. 끝나고 거둔 자식은 없는 pid라 「그사이 끝남」이다. 앵커는 같이 읽은 이 검사
+    /// 자신이다 — 읽혀 어느 까닭에도 안 든다.
+    #[test]
+    fn what_could_not_be_read_is_counted_by_why() {
+        use super::Unread;
+
+        assert_ne!(unsafe { libc::geteuid() }, 0, "루트로 돌면 남의 uid가 없다 — 이 검사가 재는 것이 없다");
+        let kid = Kid::spawn("sleep", &key(43));
+        let ended = kid.settle();
+        // **거두는 것이 단언보다 먼저다.** 거둔 뒤에 읽어야 없는 pid다.
+        drop(kid);
+
+        let ended = ended.expect("자식이 5초 안에 제 세션을 열지 못했다");
+        let root = Identity { pid: 1, started_us: 0 };
+        let me = me();
+        let readings = read([root, ended, me]);
+
+        assert!(readings.by_id.contains_key(&me), "앵커 — 이 검사 자신을 못 읽었다");
+        assert_eq!(readings.unread, Unread { denied: 1, gone: 1, other: 0 }, "못 읽은 것을 까닭마다 세지 않았다");
     }
 }
 
