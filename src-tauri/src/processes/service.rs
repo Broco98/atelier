@@ -544,6 +544,33 @@ mod tests {
         }
     }
 
+    /// **채팅의 Runtime이 화면의 「채팅」에 선다**(restart 03-7 · 스토리 126). 엔진이 띄운 Runtime처럼 이 검사(앱)의 자식 하나를 이 실행의
+    /// Runtime 키를 물려 띄운다 — 제 세션을 연다(엔진의 `in_new_session`과 같다). 화면 스냅샷이 그 채팅 id 밑에 그 행을 세우고, Runtime 몫에
+    /// 넣고, 우리 트리로 읽어(메모리) 아틀리에 합계에 넣는다. 그 자식이 「다른 앱」이면 이 셋이 모두 빈다.
+    ///
+    /// 자손 따라가기(부모가 먼저 죽은 것 · Codex의 트리)는 판정 표가 잰다(`verdict`의 `each_chat_gets_its_runtime_and_what_it_spawned`) —
+    /// 여기는 수집 → 판정 → 와이어를 실물로 잇는 자리다. 신호는 이 검사가 띄운 자식에게만 간다(`Kid`의 거두기).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_chats_runtime_stands_in_the_screens_chats() {
+        use crate::processes::runtime_key;
+        use crate::processes::testkit::Kid;
+
+        let runtime = Kid::in_chat("sleep", &runtime_key::mint("20261010-100000"));
+        let id = runtime.settle().expect("Runtime 자리의 자식이 자리를 잡는다");
+        let sheet = service().screen();
+        drop(runtime);
+
+        let chat = sheet.verdict.chats.get("20261010-100000").expect("화면의 「채팅」에 그 채팅이 없다");
+        let row = chat.iter().find(|row| row.id == id).expect("그 채팅에 Runtime이 없다");
+        assert!(sheet.verdict.runtimes.contains(&id), "앱이 띄운 Runtime이 Runtime 몫이 아니다");
+        assert!(row.metrics.memory.is_some(), "Runtime을 우리 트리로 안 읽었다 — 「다른 앱」으로 갔다");
+        assert!(
+            sheet.atelier.total.zip(row.metrics.memory).is_some_and(|(total, memory)| total >= memory),
+            "Runtime이 아틀리에 합계에 안 들었다"
+        );
+    }
+
     /// 웹뷰의 답을 차례로 주는 가짜 물음 — 차례가 다 떨어지면 「늦음」이다(메인 스레드가 끝내 안 답한다).
     fn scripted(answers: &[WebContentAnswer]) -> impl Fn() -> WebContentAnswer + Send + Sync + 'static {
         let queue = Mutex::new(answers.iter().copied().collect::<std::collections::VecDeque<_>>());

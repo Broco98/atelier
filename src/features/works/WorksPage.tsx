@@ -59,6 +59,7 @@ import {
   showShellTab,
   terminalStore,
 } from "@/features/terminal/terminal-store";
+import { chatName } from "@/features/thread/chat-name";
 import { useRenameThread, useThreads } from "@/features/thread/hooks";
 import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
 import { lastSaid } from "@/features/thread/preview";
@@ -919,17 +920,9 @@ function WorksPage({
         : [],
     );
 
-  // 채팅 탭의 이름 — 칸은 채팅 id만 든다. 이름은 채팅 목록(사이드바와 같은 캐시)에서 읽는다: 이름이 없으면 「새 채팅」, 깨진 채팅이면
-  // 「열 수 없는 채팅」이다(사이드바 채팅 줄과 같은 말 — `ThreadRow`). 목록에 아직 없으면 「채팅」이다.
+  // 채팅 탭의 이름 — 칸은 채팅 id만 든다. 이름은 채팅 목록(사이드바와 같은 캐시)에서 읽는다 — 사이드바 채팅 줄과 같은 말이다(`chatName`).
   const { data: threads } = useThreads();
-  const chatTitle = useCallback(
-    (id: string) => {
-      const summary = threads?.find((one) => one.id === id);
-      if (!summary) return "채팅";
-      return summary.broken ? "열 수 없는 채팅" : summary.title || "새 채팅";
-    },
-    [threads],
-  );
+  const chatTitle = useCallback((id: string) => chatName(threads?.find((one) => one.id === id)), [threads]);
   // 채팅 탭의 몫(restart 02a-5 — 탭 줄의 `chat`). 칸에서 고친 이름은 채팅 이름 명령으로 간다 — 머리 줄에서 고치던 것과 같은 길이고, 답(바뀐
   // 요약)이 목록과 연 채팅의 이름을 고쳐 사이드바 줄 · 탭이 함께 바뀐다. 못 바꾸면 토스트로 말한다(탭에는 까닭을 적을 자리가 없다).
   // 우클릭 메뉴 앞머리는 채팅의 ⋯ 항목이다 — 정의는 채팅 쪽 한 자리다(`ThreadMenuItems`).

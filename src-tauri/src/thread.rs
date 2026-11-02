@@ -2,8 +2,9 @@
 //! 내보내는 것을 화면의 이벤트 이름과 싣는 꼴로 옮길 뿐이다. Thread의 몸통은 엔진에 있고, 명령은 `commands.rs`가 위임만 한다.
 //!
 //! 엔진은 앱 프로세스에 하나 산다 — 다른 화면으로 가거나 새로고침해도 Agent가 계속 돈다(three-axes S9). 끄는 것은 앱 종료
-//! (`lib.rs`의 종료 훅)다. Processes 화면과 메모리 합계에는 넣지 않는다. three-axes의 Work 안 대화창(`chat_*` 명령 · `chat:*`
-//! 이벤트)은 v1 티켓 08이 걷었다.
+//! (`lib.rs`의 종료 훅)다. 엔진이 띄우는 Runtime에는 그 채팅의 표식을 심게 한다 — `Processes`가 Runtime과 그것이 띄운 것을 「채팅」
+//! 구획에 채팅마다 세우고 아틀리에 합계에 넣는다(restart 03-7). three-axes의 Work 안 대화창(`chat_*` 명령 · `chat:*` 이벤트)은 v1 티켓
+//! 08이 걷었다.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
@@ -37,6 +38,8 @@ pub const WRITING_EVENT: &str = "work:writing";
 ///   `exe`는 진입점이 한 번 읽어 넘긴다(워크플로 §1). 읽지 못했으면 빈 경로라 Session 열기만 그 자리에서 읽히는 오류로 실패한다.
 /// - Session마다 claude가 띄우는 Thread 도구 중계 서버도 **이 실행 파일 자신**의 하위 모드 `thread-tools`다(v1 티켓 15 · S12,
 ///   상수 [`atelier_acp::THREAD_TOOLS_MODE`]). 엔진이 Session의 소켓 경로를 마지막 인자로 붙인다.
+/// - Session마다 띄우는 Runtime에 **그 채팅의 표식**을 심는다(restart 03-7) — 값은 이 실행의 Runtime 키(`processes::runtime_key::mint` —
+///   `<세대>:<채팅 id>`)다. Runtime의 자손이 물려받아, 수집이 부모가 먼저 죽은 dev 서버까지 그 채팅에 묶고 앱 종료가 끝낸다.
 /// - 엔진이 내보내는 것은 `events`로 보낸다 — 앱 핸들이 서기 전(빌더 앞)에 지어지므로, 셋업이 건 [`announce`]가 받아 쏜다.
 ///   보내기는 막히지 않는다: 엔진은 기록의 잠금을 쥔 채 내보내므로 여기서 기다리면 Session이 멎는다.
 pub fn host(exe: PathBuf, events: Sender<HostEvent>) -> ConversationHost {
@@ -47,6 +50,7 @@ pub fn host(exe: PathBuf, events: Sender<HostEvent>) -> ConversationHost {
         let _ = events.send(event);
     })
     .thread_tools(relay)
+    .mark_runtimes(crate::processes::runtime_key::mint)
     .build()
 }
 
@@ -171,6 +175,18 @@ mod tests {
             wire(&missing).1,
             json!({"agent": "codex", "found": false, "loggedIn": null,
                    "missing": [{"name": "node", "install": "brew install node"}]}),
+        );
+    }
+
+    /// **앱의 엔진은 Runtime에 이 실행의 Runtime 키를 심는다**(restart 03-7). 심는 동작은 엔진의 시험(`atelier-acp`의 `runtime_mark.rs`)이
+    /// 가짜 Runtime의 env로 재고, 키의 모양은 `runtime_key`가 잰다 — 여기는 앱이 그 둘을 잇는 자리라 실행으로 못 재 자리로 잰다. 이 줄이
+    /// 빠지면 엔진은 아무 표식도 안 심고, `Processes`의 「채팅」이 비며 채팅이 띄운 dev 서버가 「다른 앱」으로 간다(그 시험들은 모두 초록이다).
+    #[test]
+    fn the_app_engine_marks_its_runtimes_with_this_runs_runtime_key() {
+        let body = crate::tests::body_of(include_str!("thread.rs"), "pub fn host(", "\n}\n");
+        assert!(
+            body.contains(".mark_runtimes(crate::processes::runtime_key::mint)"),
+            "앱의 엔진이 Runtime에 이 실행의 Runtime 키를 안 심는다"
         );
     }
 

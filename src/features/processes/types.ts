@@ -47,6 +47,16 @@ export interface ProcessGroups {
   helpers: ProcessIdentity[];
   orphans: { confirmed: Record<string, ProcessRow[]>; unknown: Record<string, ProcessRow[]> };
   otherInstances: Record<string, ProcessRow[]>;
+  /**
+   * **채팅마다 그 Runtime과 Runtime이 띄운 것**(restart 03-7) — 열쇠는 채팅 id다. 이 실행의 엔진이 띄운 Runtime(그 Runtime 키를 문 앱의
+   * 자식)과 그 자손, 부모가 먼저 죽어 Runtime 키로 묶인 dev 서버가 든다.
+   */
+  chats: Record<string, ProcessRow[]>;
+  /**
+   * **엔진의 몫** — 채팅의 Runtime과 그 프로세스 그룹(MCP · Codex의 app-server). 엔진이 채팅을 닫거나 앱을 끌 때 그룹째 끝내므로 화면은
+   * [끝내기]를 안 세운다. 묶음이 아니라 표시다 — `chats`의 행과 신원으로 짝짓는다.
+   */
+  runtimes: ProcessIdentity[];
 }
 
 /**
@@ -67,7 +77,7 @@ export interface PoolShell {
 
 /**
  * 다른 인스턴스 하나 — **지금 떠 있는 다른 아틀리에 실행**(CONTEXT 「다른 인스턴스」 · 프로세스 스펙 S54 · 티켓 31). 화면이 실행마다
- * 빌드 종류와 버전을 머리로 세우고, 그 밑에 그 실행의 셸 키가 낸 행(`verdict.otherInstances`)을 보인다. 보기만 한다.
+ * 빌드 종류와 버전을 머리로 세우고, 그 밑에 그 실행의 키(셸 · 채팅)가 낸 행(`verdict.otherInstances`)을 보인다. 보기만 한다.
  */
 export interface OtherInstance {
   generation: string;
@@ -75,8 +85,8 @@ export interface OtherInstance {
   build: "dev" | "release" | null;
   /** 앱 버전. `build`와 같이 빈다. */
   version: string | null;
-  /** 이 실행의 셸 키 중 다른 인스턴스 묶음에 행이 선 것. */
-  shellKeys: string[];
+  /** 이 실행의 키(셸 키 · Runtime 키 — restart 03-7) 중 다른 인스턴스 묶음에 행이 선 것. */
+  keys: string[];
 }
 
 /**

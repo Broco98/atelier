@@ -1248,7 +1248,7 @@ mod real {
         let ending = [ShellEntry { key: key.to_string(), process: None, first_input_us: None }];
         let verdict = judge(&Inputs {
             snapshot: &snapshot,
-            run: ThisRun { generation: "test", app_pid: std::os::unix::process::parent_id(), inherited_key: None },
+            run: ThisRun { generation: "test", app_pid: std::os::unix::process::parent_id(), inherited_key: None, inherited_runtime: None },
             shells: &[],
             ending: &ending,
             instances: &[],

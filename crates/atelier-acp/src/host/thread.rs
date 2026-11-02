@@ -1068,7 +1068,7 @@ impl ConversationHost {
         }
         let recorder = &conv.recorder;
         recorder.spawning().map_err(HostError::Record)?;
-        let (launch, mut terms) = match runtime {
+        let (mut launch, mut terms) = match runtime {
             Runtime::ClaudeCode => {
                 // 기본 모드로만 띄운다 — 「계획」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
                 let (level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
@@ -1081,6 +1081,11 @@ impl ConversationHost {
             }
             Runtime::Codex => codex_launch(programs, env, &place),
         };
+        // 이 채팅의 표식(restart 03-7) — Runtime과 그 자손이 물려받아, 앱의 `Processes`가 부모가 먼저 죽은 dev 서버까지 이 채팅으로 묶는다.
+        // 로그인 env의 남의 표식은 이미 걸렀다(`AgentEnv`).
+        if let Some(mint) = &self.runtime_mark {
+            launch.env.insert(crate::RUNTIME_KEY_ENV.into(), mint(thread).into());
+        }
         // 채팅의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
         terms.revive = file.session_id.clone();
         // 열 때마다 새 소켓이다 — 되살린 Session도 앞 프로세스의 소켓은 이미 치웠다. 열지 못하면 여기서 놓여 치워진다.

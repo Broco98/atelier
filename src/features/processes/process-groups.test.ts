@@ -56,8 +56,8 @@ describe("다른 인스턴스", () => {
         "Z-9": [행(690, 1, 6_900)],
       },
       [
-        { generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-1", "H-2"] },
-        { generation: "R", build: "release", version: "0.14.1", shellKeys: ["R-1"] },
+        { generation: "H", build: "dev", version: "0.15.0", keys: ["H-1", "H-2"] },
+        { generation: "R", build: "release", version: "0.14.1", keys: ["R-1"] },
       ],
     );
     expect(instanceGroups(snapshot).map((group) => [group.label, 펼침(group.nodes)])).toEqual([
@@ -83,7 +83,7 @@ describe("다른 인스턴스", () => {
           행(601, 600, 6_010, { metrics: 지표(200 * MiB, 2) }),
         ],
       },
-      [{ generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-1"] }],
+      [{ generation: "H", build: "dev", version: "0.15.0", keys: ["H-1"] }],
     );
     const [group] = instanceGroups(snapshot);
     expect(group.totals).toEqual({ memory: 204 * MiB, cpu: 3, ports: [5173] });

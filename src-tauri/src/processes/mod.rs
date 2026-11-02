@@ -1,10 +1,14 @@
-//! 셸이 띄운 프로세스를 가려내 끝낸다 — 이 맥의 프로세스 표를 읽는 **수집**, 그 값으로 「무엇이 어느
-//! 셸에서 나왔는가」를 가르는 **판정**, 판정이 고른 것에 신호를 보내는 **끝내기**(프로세스 결정 2 · 3).
+//! 셸과 채팅의 Runtime이 띄운 프로세스를 가려내 끝낸다 — 이 맥의 프로세스 표를 읽는 **수집**, 그 값으로 「무엇이 어느
+//! 셸 · 어느 채팅에서 나왔는가」를 가르는 **판정**, 판정이 고른 것에 신호를 보내는 **끝내기**(프로세스 결정 2 · 3 · restart 03-7).
 //!
 //! 셸 그룹과 그 순간의 foreground 그룹에만 신호를 보내면(`pty.rs`의 `groups_of`) claude Bash 도구가
 //! 띄운 dev 서버에는 안 닿는다 — 별도 세션이고 제어 tty가 없다. 그것을 찾는 길이 둘이다: 셸의 PID
 //! 트리, 그리고 셸이 자손에게 물려준 **표식**(셸 env의 셸 키). 부모가 먼저 죽어 launchd 밑으로 넘어간
 //! 것은 트리가 끊겨 표식으로만 잡힌다.
+//!
+//! 채팅의 Runtime도 같다(restart 03-7): 엔진이 Runtime을 띄울 때 **Runtime 키**(`ATELIER_RUNTIME` — `<세대>:<채팅 id>`)를 심고,
+//! 판정이 셸 키와 같은 규칙으로 그 자손을 채팅마다 묶는다. Runtime과 그 프로세스 그룹은 엔진이 끝내므로(채팅 닫기 · 앱 종료) 앱
+//! 종료의 대상에서 빠진다 — 판정의 「엔진의 몫」(`Verdict::runtimes`).
 //!
 //! **층을 가른 것이 요점이다.**
 //! - 수집(`snapshot`)은 부작용 층이다. 프로세스 표를 한 번 읽어 값(스냅샷)으로 만든다. macOS 커널
@@ -33,7 +37,8 @@
 //!   견준다(`metrics::CpuMeter`).
 //!
 //! - 셸 키(`shell_key`)는 셸 키 `<세대>-<PTY 번호>`를 짓고 읽는 규칙 한 벌이다 — 판정 · 화면 · 훅 상태 파일(`shells`)이 모두 이
-//!   규칙으로 가른다. 이 실행의 세대(`shell_key::generation`)도 여기 산다. 시계(`clock`)는 이 앱이 적는 시각의 벽시계 하나다.
+//!   규칙으로 가른다. 이 실행의 세대(`shell_key::generation`)도 여기 산다. Runtime 키(`runtime_key`)는 `<세대>:<채팅 id>`를 짓고
+//!   읽는 규칙 한 벌이다(restart 03-7) — 앱이 엔진에 짓기를 걸고(`thread::host`), 판정 · 화면이 읽는다. 시계(`clock`)는 이 앱이 적는 시각의 벽시계 하나다.
 //! - 프로세스 서비스(`service`)는 **읽기**를 잇는 자리다 — `Processes` 화면의 스냅샷과 배경 표본(요약 · 추이), 정리 기록 읽기. 풀은
 //!   트레이트(`service::ShellListing`) 뒤에서 본다: 이 모듈은 `pty`를 모른다. 앱이 풀과 따로 들고, 명령이 그것을 찾는다.
 //!
@@ -59,6 +64,7 @@ pub(crate) mod instances;
 pub(crate) mod machine;
 pub(crate) mod metrics;
 pub(crate) mod procargs;
+pub(crate) mod runtime_key;
 pub(crate) mod screen;
 pub(crate) mod service;
 pub(crate) mod shell_key;
@@ -73,6 +79,10 @@ pub(crate) mod verdict;
 /// 심는 자리(`pty.rs`의 셸 빌더)와 읽는 자리(수집)가 이 상수 하나로 이어진다. 양쪽에 글자를 박으면
 /// 한쪽 오타가 「표식 없음」으로 조용히 눕는다 — 셸을 닫아도 dev 서버가 남는데 아무 검사도 안 운다.
 pub(crate) const SHELL_KEY_ENV: &str = "ATELIER_SHELL";
+
+/// Runtime의 표식(restart 03-7) — 채팅의 Runtime을 띄울 때 엔진이 심는 변수의 이름이다. 심는 자리가 엔진(`atelier-acp`)이라 그 크레이트의
+/// 상수를 그대로 쓴다 — 읽는 자리(수집)와 이 상수 하나로 이어진다. 값은 Runtime 키(`runtime_key` — `<세대>:<채팅 id>`)다.
+pub(crate) use atelier_acp::RUNTIME_KEY_ENV;
 
 /// 앱이 물려받은 셸 키 — 앱 env의 표식(프로세스 스펙 S6). 앱을 아틀리에 셸에서 띄웠을 때만 있다(설치본
 /// 셸에서 `pnpm tauri dev`). 판정은 이 키를 문 것을 어느 묶음에도 넣지 않는다 — 앱과 함께 뜬 vite가 그렇다.
@@ -98,13 +108,21 @@ pub struct ThisRun<'a> {
     pub app_pid: u32,
     /// 앱이 물려받은 셸 키(`inherited_key`). 앱을 아틀리에 셸에서 띄웠을 때만 있다.
     pub inherited_key: Option<&'a str>,
+    /// 앱이 물려받은 Runtime 키(`runtime_key::inherited`, restart 03-7). 앱을 다른 실행의 채팅이 띄웠을 때만 있다 — 판정이 물려받은 셸 키와
+    /// 같은 규칙으로 막는다.
+    pub inherited_runtime: Option<&'a str>,
 }
 
 impl ThisRun<'static> {
     /// 지금 도는 이 앱의 것. 세 값 모두 뜬 뒤에 안 바뀐다. 세대를 처음 잡는 자리가 아니다 — 판정은 앱이 뜬 뒤에 돌고, 그
     /// 전에 setup의 쓸기가 세대를 잡는다(`shell_key::generation`).
     pub fn current() -> Self {
-        ThisRun { generation: shell_key::generation(), app_pid: std::process::id(), inherited_key: inherited_key() }
+        ThisRun {
+            generation: shell_key::generation(),
+            app_pid: std::process::id(),
+            inherited_key: inherited_key(),
+            inherited_runtime: runtime_key::inherited(),
+        }
     }
 }
 
@@ -146,6 +164,9 @@ pub struct Proc {
     /// **exec 때의 env다.** 뜬 뒤에 바꾼 env는 안 보인다. 시스템 바이너리(`/bin/zsh`, `/bin/sleep`)는
     /// env가 0개로 읽혀 늘 `None`이다 — 그것들은 트리로만 잡힌다(프로세스 결정의 사실 4).
     pub shell_key: Option<String>,
+    /// Runtime의 표식(exec 때의 Runtime 키 — `runtime_key`, restart 03-7). 채팅의 Runtime과 그 자손이 문다. 셸의 표식과 같은 규칙으로 읽는다 —
+    /// exec 때의 env이고, 없거나 못 읽었으면 `None`이다.
+    pub runtime_key: Option<String>,
 }
 
 /// 이 맥의 프로세스 표 한 장.
@@ -175,6 +196,7 @@ mod tests {
         assert_eq!(run.generation, shell_key::generation(), "이 실행의 세대가 셸 키를 짓는 세대가 아니다");
         assert_eq!(run.app_pid, std::process::id(), "앱의 pid가 이 프로세스의 것이 아니다");
         assert_eq!(run.inherited_key, inherited_key(), "앱이 물려받은 셸 키가 env의 표식이 아니다");
+        assert_eq!(run.inherited_runtime, runtime_key::inherited(), "앱이 물려받은 Runtime 키가 env의 표식이 아니다");
 
         let src = include_str!("mod.rs");
         let body = src
@@ -185,7 +207,12 @@ mod tests {
             .expect("닫는 표식이 있다")
             .0;
         assert!(!body.contains("mod tests"), "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다");
-        for wired in ["generation: shell_key::generation()", "app_pid: std::process::id()", "inherited_key: inherited_key()"] {
+        for wired in [
+            "generation: shell_key::generation()",
+            "app_pid: std::process::id()",
+            "inherited_key: inherited_key()",
+            "inherited_runtime: runtime_key::inherited()",
+        ] {
             assert!(body.contains(wired), "이 실행을 지을 때 `{wired}`가 없다 — 판정이 이 앱을 다른 값으로 본다");
         }
     }

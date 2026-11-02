@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { AppWindowMac, EyeOff, Folder, LayoutGrid, SquareTerminal, Unlink } from "lucide-react";
 import { Card, Frame } from "@/components/shell/Frame";
@@ -17,10 +17,15 @@ import {
   requestCloseShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
+import { threadQuery, useThreads } from "@/features/thread/hooks";
+import { runtimeNameOf } from "@/features/thread/runtime";
+import type { ThreadSummary } from "@/features/thread/types";
 import { worksQuery } from "@/features/works/hooks";
 import { StatusIcon } from "@/features/works/status";
 import { askThenEnd } from "./actions";
 import { otherAppRows, systemNote, totalNote } from "./breakdown";
+import ChatSection from "./ChatSection";
+import { chatGroups, engineShareOf } from "./chat-tree";
 import CleanupLogSection from "./CleanupLogSection";
 import { OPEN_AT_FIRST, foldKey, liveFoldKeys, type Folds, type RowFold, type SectionId } from "./folds";
 import { useCleanupLog, useProcessSnapshot } from "./hooks";
@@ -81,7 +86,8 @@ import type { CleanupEvent, PoolShell, ProcessMetrics, ProcessSnapshot } from ".
  * `Processes` 화면(프로세스 결정 8 · 9 · 10). 아틀리에가 띄운 셸과 그 셸에서 뜬 프로세스를 **앱 전체**로 보인다 — 「지금 무엇이
  * 내 컴퓨터를 먹나」에 답하는 화면이다.
  *
- * 셸 묶음(작업 구획)은 work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work
+ * 맨 위는 **채팅**이다(restart 03-7 — `ChatSection`): 채팅마다 그 Runtime과 Runtime이 띄운 것이 선다. 셸 묶음(작업 구획)은 work → 셸 →
+ * 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work
  * 행은 그 트리의 합이다. 맨 위에 요약 타일(티켓 30)과 열 머리가 서고, 작업 구획 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 아틀리에
  * 앱(앱 본체 · 웹뷰 — restart 03-6), 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외(티켓 31 — `StraySections`), 다른 앱과 시스템 · 못
  * 읽음(restart 03-6), 정리 기록(티켓 32 — `CleanupLogSection`), 합계 줄이 차례로 선다. **줄을 더하면 합계다**(restart 03-6 — 합은
@@ -120,6 +126,7 @@ function ProcessesPage() {
   const ownerless = snapshot ? ownerlessGroups({ shells, snapshot }) : [];
   const offscreen = snapshot ? offscreenShells({ shells, snapshot, previous, closed: closedOffscreen }) : [];
   const strays = snapshot ? straysOf(snapshot) : null;
+  const chats = useChats(snapshot);
   // 정리 기록(티켓 32) — 스냅샷이 올 때마다 한 번 묻는다. 첫 스냅샷 전에는 안 묻는다.
   const { data: events = NO_EVENTS } = useCleanupLog(snapshot ? dataUpdatedAt : null);
   // 선 구획과 설 수 있는 줄 — 이 밖의 접힘은 잊는다(비었다가 새로 선 구획은 처음 상태로, 사라진 줄의 키는 다음 스냅샷에서).
@@ -127,6 +134,7 @@ function ProcessesPage() {
     snapshot && strays
       ? {
           sections: sectionsShown({
+            chats: chats.groups.length > 0,
             works: tree.length > 0,
             ownerless: ownerless.length > 0,
             offscreen: offscreen.length > 0,
@@ -199,6 +207,8 @@ function ProcessesPage() {
                   {/* 요약 타일(티켓 30) — 메모리 합계와 추이 · CPU · 셸 · 고아. 셸 수(풀의 셸)도 여기 선다. */}
                   <SummaryCard snapshot={snapshot} />
                   <ColumnHead />
+                  {/* 채팅(restart 03-7) — 맨 위다. 채팅마다 그 Runtime과 Runtime이 띄운 것. */}
+                  <ChatSection groups={chats.groups} share={chats.share} folds={folds} />
                   {tree.length > 0 && (
                     // **작업 구획**(판 06 문구 표 R6) — 셸 묶음의 머리다. 수는 그 안의 셸이다.
                     <Section
@@ -400,6 +410,31 @@ function OthersSection({ snapshot, fold }: { snapshot: ProcessSnapshot; fold: Re
     </Section>
   );
 }
+
+/**
+ * **채팅 구획의 재료**(restart 03-7) — 판정의 채팅 묶음에 채팅 목록(사이드바와 같은 캐시)의 이름 · 차례와 그 채팅의 Runtime 이름을 붙인다
+ * (`chatGroups`). Runtime 이름은 채팅을 연 캐시(`threadQuery` — 사이드바가 모든 채팅을 이 읽기로 읽는다)에서 온다. 목록 요약에는 Runtime이
+ * 없다. 목록에 없거나 깨진 채팅은 읽지 않는다 — 이름은 「채팅」 · 「열 수 없는 채팅」이고 Runtime 이름이 안 선다.
+ */
+function useChats(snapshot: ProcessSnapshot | undefined) {
+  const { data: threads = NO_THREADS } = useThreads();
+  const ids = snapshot
+    ? threads.filter((one) => one.broken === null && one.id in snapshot.verdict.chats).map((one) => one.id)
+    : [];
+  const views = useQueries({ queries: ids.map((id) => threadQuery(id)) });
+  if (!snapshot) return { groups: [], share: NO_SHARE };
+  const runtimeOf = (thread: string) => {
+    const view = views[ids.indexOf(thread)]?.data;
+    return view ? runtimeNameOf(view) : null;
+  };
+  return { groups: chatGroups(snapshot, threads, runtimeOf), share: engineShareOf(snapshot) };
+}
+
+/** 목록 전의 빈 채팅 목록 — 늘 같은 배열이다. */
+const NO_THREADS: ReadonlyArray<ThreadSummary> = [];
+
+/** 스냅샷 전의 빈 엔진 몫. */
+const NO_SHARE: ReadonlySet<string> = new Set();
 
 /** 선 구획 — 구획마다 섰는지에서. */
 function sectionsShown(shown: Readonly<Record<SectionId, boolean>>): ReadonlySet<SectionId> {
