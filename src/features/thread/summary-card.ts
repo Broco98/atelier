@@ -5,8 +5,8 @@ import { failNote, mergedWhen } from "./pr";
 import type { DocWriting } from "./types";
 
 // **요약 카드의 칸을 짓는 순수 함수**(02 구현 스펙 §7 · 캔버스 v35 Screen-Live · Components 「요약 카드」 — v1 Work 카드를 바꿨다). 카드
-// (`SummaryCard.tsx`)는 이것이 지은 칸을 그리기만 한다. 칸은 머리 · 변경 사항(PR 줄) · 결과물 · 소스 차례이고(`summarySections`), Work
-// 없는 Thread는 결과물 · 소스만이다. 변경 · 문서 · PR의 자료는 v1 그대로 읽고, 소스의 Project는 읽는 범위(03 §7 — `reading_scope`)다.
+// (`SummaryCard.tsx`)는 이것이 지은 칸을 그리기만 한다. 칸은 머리 · 변경 사항(PR 줄) · 소스 차례이고(`summarySections`), Work
+// 없는 Thread는 소스만이다. 변경 · 문서 · PR의 자료는 v1 그대로 읽고, 소스의 Project는 읽는 범위(03 §7 — `reading_scope`)다.
 
 /** 변경 칸의 Project 하나 — 그 Project의 +/− 합계와 바뀐 파일들(코어 차례 — 늦게 고친 것이 앞). */
 export interface ChangeGroup {
@@ -115,10 +115,13 @@ function filesOf(items: readonly SpecTreeItem[]): string[] {
   return items.flatMap((item) => (item.kind === "file" ? [item.path] : filesOf(item.children)));
 }
 
-/** Project 칸의 줄 하나 — 고치는 중(worktree가 섰다)인가, 읽기만인가. */
+/**
+ * Project 칸의 줄 하나 — 고치는 중(worktree가 섰다 · `true`)인가, 읽기만(`false`)인가. 보관된 작업공간의 Project는 `null`이다 — 보관이
+ * worktree를 거둬 고치지도 읽지도 않아 줄 끝 말이 없다(SummarySheet 「보관된 작업공간」).
+ */
 export interface ProjectRow {
   project: string;
-  editing: boolean;
+  editing: boolean | null;
 }
 
 /**
@@ -208,28 +211,36 @@ export interface SummaryInput {
   prs: readonly PrRow[];
   docs: readonly DocRow[];
   projects: readonly ProjectRow[];
+  /**
+   * 막 쓴 문서 가운데 아직 빛나는 것(spec 기준 경로) — 쓰는 중인 문서처럼 소스 맨 위에 남는다(SummarySheet 보드의 `litDoc`). 쓰기를 마친
+   * 순간 제자리(「모두 보기」 뒤일 수 있다)로 돌아가면 빛이 보이지 않는다. 빛이 끝나면 부르는 쪽이 비운다.
+   */
+  raised?: ReadonlySet<string>;
 }
 
 /**
  * 요약 카드의 칸 하나(02 §7).
  * - `head`: Work 이름(보관됐으면 「보관됨」이 붙는다)과 「…」.
  * - `changes`: 「변경 사항」 한 줄 — 끝에 Work 합계 +/−(0이면 적지 않는다, S17), 그 아래 PR 줄(S18).
- * - `outputs`: 「결과물」 자리표시(S19 — 결과물 개념은 짓지 않는다).
  * - `sources`: 「소스」 — 셋까지 보이고(`shown`) 나머지(`hidden`)는 「모두 보기」가 그 자리에 편다(S21).
+ *
+ * 한때 `outputs`(「결과물」 · 누를 수 없는 「파일 또는 문서 만들기」 자리표시 — S19)가 변경 사항과 소스 사이에 섰다. SummarySheet 「규격」이
+ * 그 칸을 뺐다(restart 02b-8).
  */
 export type SummarySection =
   | { kind: "head"; title: string; archived: boolean }
   | { kind: "changes"; additions: number; deletions: number; prs: PrRow[] }
-  | { kind: "outputs" }
   | { kind: "sources"; shown: SourceRow[]; hidden: SourceRow[] };
 
 /** 소스가 이 수를 넘으면 나머지는 「모두 보기」 뒤에 접힌다(S21 — 카드 높이를 내용만큼으로 지킨다). */
 export const SOURCES_SHOWN = 3;
 
 /**
- * 요약 카드의 칸 차례(02 §7) — 머리 → 변경 사항 → 결과물 → 소스. **Work 없는 Thread는 결과물 · 소스만이다**(Codex의 프로젝트 없는 채팅).
- * 소스는 spec 문서(트리 차례)가 먼저, 그 뒤에 Project(Work의 차례)다. 소스가 하나도 없으면 그 칸은 서지 않는다 — 「＋」가 없어(S19) 빈
- * 칸에 할 일이 없다. 결과물은 늘 자리표시로 선다.
+ * 요약 카드의 칸 차례(02 §7 · SummarySheet) — 머리 → 변경 사항 → 소스. **Work 없는 Thread는 소스(읽는 범위)만이다**(Codex의 프로젝트 없는
+ * 채팅 — SummarySheet 「작업공간 밖 채팅」). 소스는 spec 문서(트리 차례)가 먼저, 그 뒤에 Project(Work의 차례)다. **쓰는 중인 문서와 막 써서
+ * 빛나는 문서(`raised`)는 소스 맨 위로 올라온다**(SummarySheet 「문서를 쓰는 중」 · 규격 「소스」 — 한때 「모두 보기」 뒤에 숨을 수 있었다).
+ * 올라온 것끼리, 나머지끼리는 트리 차례 그대로다. Work에 이은 Thread는 소스가 하나도 없으면 그 칸이 서지 않는다 — 「＋」가 없어(S19) 빈 칸에
+ * 할 일이 없다. Work 없는 Thread는 소스가 카드의 전부라 빈 칸이 서고 몸이 「읽는 Project가 없어요」를 적는다.
  */
 export function summarySections(input: SummaryInput): SummarySection[] {
   const sections: SummarySection[] = [];
@@ -242,12 +253,15 @@ export function summarySections(input: SummaryInput): SummarySection[] {
       prs: [...input.prs],
     });
   }
-  sections.push({ kind: "outputs" });
+  const up = (doc: DocRow) => doc.writer !== null || (input.raised?.has(doc.path) ?? false);
   const sources: SourceRow[] = [
-    ...input.docs.map((doc) => ({ kind: "doc" as const, ...doc })),
+    ...input.docs.filter(up).map((doc) => ({ kind: "doc" as const, ...doc })),
+    ...input.docs.filter((doc) => !up(doc)).map((doc) => ({ kind: "doc" as const, ...doc })),
     ...input.projects.map((project) => ({ kind: "project" as const, ...project })),
   ];
-  if (sources.length > 0) {
+  // Work 없는 Thread는 소스가 카드의 전부라 읽는 Project가 없어도 빈 칸이 선다 — 카드가 빈 상자로 서지 않는다(한때 결과물 자리표시가 그 자리를
+  // 채웠다). Work에 이은 Thread는 머리 · 변경 사항이 있어 칸을 걷는다.
+  if (sources.length > 0 || !input.work) {
     const fold = sources.length > SOURCES_SHOWN;
     sections.push({
       kind: "sources",

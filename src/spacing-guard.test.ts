@@ -410,11 +410,6 @@ describe("눈금의 사분 단", () => {
       why: "작업공간 패널 트리 — 줄 사이 1(DS `.at-tree`)",
     },
     {
-      file: "src/features/files/FilesTree.tsx",
-      className: "gap-px",
-      why: "넓힌 카드의 Project 트리(워크트리) — spec 트리와 같은 줄 사이 1(DS `.at-tree`)",
-    },
-    {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",
       className: "gap-px",
       why: "spec 레이아웃 편집기 트리 — 줄 사이 1(DS `.at-tree`)",

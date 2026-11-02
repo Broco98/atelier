@@ -503,9 +503,13 @@ describe("모션 토큰", () => {
     "think-shimmer": { 토큰: "think", 곡선: "var(--ease-shimmer)" },
     // 작업 중 점(Codex `_typing-dot-wave`) — 1s `steps(3)` 파도.
     "typing-dots": { 토큰: "wave", 곡선: "var(--ease-wave)" },
-    "writing-pulse": byName["세 점"],
+    // 요약 카드 소스의 쓰는 중 점은 SummarySheet 움직임 「쓰는 중」의 1.6초 되풀이다(restart 02b-8 — 한때 세 점의 박자).
+    "writing-pulse": { 토큰: "writing", 곡선: "var(--ease-default)" },
+    // 요약 카드가 열린다(Motion · restart 02b-8) — 220ms `ease-enter-snappy`, 오른쪽 위 (4, −4) · .98에서.
+    "summary-in": { 토큰: "panel", 곡선: "var(--ease-enter-snappy)" },
     "spin-thread": byName["회전"],
-    "view-in": { 토큰: "panel", 곡선: "var(--ease-panel)" },
+    // 넓힌 카드의 보기는 카드가 넓어지는 박자로 옅음에서 선다(보드 `.ra-vw` · restart 02b-8 — 한때 220ms).
+    "view-in": { 토큰: "panel-open", 곡선: "var(--ease-panel)" },
   };
 
   it("Thread의 움직임 유틸리티가 그 시간 · 곡선 토큰을 읽는다", async () => {

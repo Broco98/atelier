@@ -435,11 +435,14 @@ describe("작업공간의 채팅 탭", () => {
   });
 
   // 스토리 95 — 넓힌 카드는 대화 옆에 선다. 대화는 왼쪽 480(`size-thread-beside`)에 남고 카드가 그 오른쪽을 채운다.
-  it("넓힌 카드가 연 것이 있으면 대화가 왼쪽 480에 남고 카드가 넓어진다", () => {
+  it("넓힌 카드가 연 것이 있으면 대화가 왼쪽 480에 남고 카드가 넓어진다 — 대화 열은 카드를 비키지 않는다", () => {
     const html = drawTab(linked, null, cardOf({ open: true, opened: { kind: "doc", path: "overview.md" } }));
     expect(html).toContain("width:var(--size-thread-beside)");
     expect(html).toContain("left:var(--size-thread-beside)");
     expect(html).toMatch(/<section[^>]*aria-label="요약"[^>]*data-expanded=""/);
+    // 대화 자리가 이미 480이라 비킬 몫이 없다(보드 Main `beside: summaryShown && !wide`) — 몫이 남으면 480 안에서 열이 132로 줄어든다.
+    expect(html).not.toContain("basis-(--size-summary-room)");
+    expect(drawTab(linked, null, cardOf({ open: true }))).toContain("basis-(--size-summary-room)");
   });
 });
 

@@ -26,10 +26,16 @@ const DIM = "text-(--tree-row-dim)";
 // 줄 사이는 1px 틈이다(DS `.at-tree` — 사이드바 · 목록 칸의 행 사이 2보다 촘촘하다). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-px";
 
-// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
-// 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
+// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px(촘촘한 행은 12px — 보드 `.ra-tree-row`의 `8 + 깊이 × 12`). 폴더 행 · 파일
+// 행이 함께 읽는다. 같은 식을 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
 // 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
-export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+export const treeIndent = (depth: number, dense = false) => ({ paddingLeft: 8 + depth * (dense ? 12 : 14) });
+
+// **촘촘한 행**(restart 02b-8 · 보드 `.ra-tree-row` — SummarySheet 「넓힌 카드 — Project」) — 넓힌 카드의 Project 트리(files 트리)가 쓴다. 24 ·
+// 둥글기 `radius-ctl` 4 · 줄 사이 2 · 폴더 행도 본문 글자색이고, 파일 행 앞은 확장자 꼬리표가 아니라 그 첫 글자(`ExtMark`)다. spec 패널의
+// 트리는 그대로(28 · 둥글기 10 · 사이 1)다.
+const DENSE_ROW = "h-6 rounded-ctl";
+const DENSE_ROWS = "flex flex-col gap-0.5";
 
 /**
  * 트리 행이 읽는 항목의 모양 — spec 트리(`SpecTreeItem`)와 files 트리가 같은 행을 쓴다(git-integration 결정 37). `children`은
@@ -50,6 +56,11 @@ export interface RowLook {
   dim?: boolean;
   /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」). */
   note?: string;
+  /**
+   * 이 작업공간에서 바뀐 파일이다 — 이름이 파란 글자이고 행 끝에 파란 점이 선다(보드 `.ra-tree-row[data-changed]` · `.mod`). 넓힌 카드의
+   * Project 트리가 그 Project의 바뀐 파일에 단다 — 누르면 변경을 연다(`treePick`).
+   */
+  changed?: boolean;
 }
 
 interface TreeProps {
@@ -222,6 +233,8 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
    * 안 읽은 폴더(gitignore에 걸린 폴더)가 펼칠 때 한 겹 읽어 그 자리에 「읽는 중」 · 행 · 까닭을 세운다(git-integration 티켓 02).
    */
   folderBody?: (item: T, depth: number) => ReactNode;
+  /** 촘촘한 행으로 그린다(위 `DENSE_ROW` — 넓힌 카드의 Project 트리). 안 받으면 spec 패널의 행이다. */
+  dense?: boolean;
 }
 
 // roving에 든 트리면 정류장 행만 Tab이 앉는다(SpecTree 머리말). `stop`을 안 받은 트리는 행에 아무것도 달지 않는다.
@@ -245,7 +258,9 @@ export function TreeRows<T extends TreeRowItem<T>>({
   onCopy,
   lookOf,
   folderBody,
+  dense = false,
 }: TreeRowsProps<T>) {
+  const rows = dense ? DENSE_ROWS : ROWS;
   return (
     <>
       {items.map((item) => {
@@ -259,11 +274,11 @@ export function TreeRows<T extends TreeRowItem<T>>({
               key={item.path}
               open={expanded}
               onOpenChange={(open) => onOpenChange(item.path, open)}
-              className={ROWS}
+              className={rows}
             >
               <CollapsibleTrigger
-                className={cn(COLLAPSE_ROW, look.dim ? DIM : "text-fg-secondary")}
-                style={treeIndent(depth)}
+                className={cn(COLLAPSE_ROW, dense && DENSE_ROW, look.dim ? DIM : dense ? "text-fg" : "text-fg-secondary")}
+                style={treeIndent(depth, dense)}
                 aria-description={look.note}
                 {...rovingOf(item.path, stop)}
               >
@@ -283,7 +298,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                     디스크의 이름과 어긋나면 안 된다. 판 폴더 이름은 길어서 자른다 */}
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </CollapsibleTrigger>
-              <CollapsibleContent className={ROWS}>
+              <CollapsibleContent className={rows}>
                 {body !== undefined ? (
                   body
                 ) : (
@@ -298,6 +313,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                     onCopy={onCopy}
                     lookOf={lookOf}
                     folderBody={folderBody}
+                    dense={dense}
                   />
                 )}
               </CollapsibleContent>
@@ -326,6 +342,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
             <div
               className={cn(
                 "group flex h-7 items-center rounded-lg pr-1 text-chat-meta transition-colors",
+                dense && DENSE_ROW,
                 item.path === current ? "selected-row font-medium" : "hover:bg-fill-soft",
               )}
             >
@@ -343,17 +360,22 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 }}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
+                  dense && "rounded-ctl pr-2",
                   onCopy && "pr-1.5",
                   look.dim && DIM,
                 )}
-                style={treeIndent(depth)}
+                style={treeIndent(depth, dense)}
                 aria-description={look.note}
                 // 고른 행은 면과 굵기로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
                 // 선 파일 탭의 파일이다.
                 aria-current={item.path === current ? "page" : undefined}
+                data-changed={look.changed ? "" : undefined}
               >
-                <FileGlyph name={item.name} glyph={look.glyph} />
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {dense && !look.glyph ? <ExtMark name={item.name} /> : <FileGlyph name={item.name} glyph={look.glyph} />}
+                <span className={cn("min-w-0 flex-1 truncate", look.changed && "text-(--tree-row-changed)")}>{item.name}</span>
+                {look.changed && (
+                  <span aria-hidden data-changed-dot="" className="size-1.5 shrink-0 rounded-full bg-(--tree-row-changed-dot)" />
+                )}
               </button>
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
@@ -386,6 +408,50 @@ const GLYPH = "size-3.5 shrink-0 text-fg-tertiary";
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
 function FolderGlyph({ glyph: Glyph }: { glyph: LucideIcon | null }) {
   return Glyph && <Glyph className={GLYPH} />;
+}
+
+/**
+ * 촘촘한 행의 확장자 표(보드 `.ra-ext` — 14 칸 · 고정폭 9 · 600). 그 확장자의 첫 글자가 문법 색으로 선다(`md` 이름 · `ts` 강조 · `rs`
+ * 리터럴 · `json` 속성 · `yaml` 변수, 그 밖은 `fg-tertiary`). 같은 말을 하는 확장자는 한 칸으로 읽는다(`tsx` · `js` → `ts` …). 확장자가 없으면
+ * 아무것도 그리지 않는다. 글자는 그림이라 행의 이름에 들지 않는다(`aria-hidden`).
+ */
+const EXT_KIND: Record<string, string> = {
+  md: "md",
+  mdx: "md",
+  ts: "ts",
+  tsx: "ts",
+  js: "ts",
+  jsx: "ts",
+  mjs: "ts",
+  cjs: "ts",
+  rs: "rs",
+  json: "json",
+  toml: "toml",
+  yaml: "yaml",
+  yml: "yaml",
+};
+const EXT_COLOR: Record<string, string> = {
+  md: "text-syntax-name",
+  ts: "text-accent",
+  rs: "text-syntax-literal",
+  json: "text-syntax-attribute",
+  yaml: "text-syntax-variable",
+};
+
+function ExtMark({ name }: { name: string }) {
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (!ext) return null;
+  const kind = EXT_KIND[ext] ?? ext;
+  return (
+    <span
+      aria-hidden
+      data-ext={kind}
+      className={cn("ext-mark", EXT_COLOR[kind] ?? "text-fg-tertiary")}
+    >
+      {ext[0].toUpperCase()}
+    </span>
+  );
 }
 
 // 파일 행의 글리프. 행의 겉이 글리프를 줬으면(spec: 항목이 준 아이콘) **확장자 라벨 대신** 그것이다. 라벨은 글자라 이름

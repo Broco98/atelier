@@ -235,7 +235,7 @@ const shadows = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =
 // 「조금 다른 그림자」로만 남아 눈으로는 안 지켜진다(스펙 레이아웃 화면의 메시지가 한 번 그렇게 남았다).
 describe("그림자 단계", () => {
   it("Codex의 그림자 이름이 `@theme`에 있다", () => {
-    // `modal` · `raised` · `lifted`는 두 겹을 합친 이름이다(`index.css`의 그 주석) — 한 요소에 `shadow-*` 둘을 달면 합치기가 앞의 것을
+    // `modal` · `raised` · `lifted` · `sheet`는 두 겹을 합친 이름이다(`index.css`의 그 주석) — 한 요소에 `shadow-*` 둘을 달면 합치기가 앞의 것을
     // 지운다. 끝의 넷은 02가 더한 Codex 실측이다 — 흰 판 `panel` · 사람 메뉴 `menu` · 요약 카드 `summary` · 입력창 `prompt`.
     expect(shadows).toEqual([
       "hairline",
@@ -250,6 +250,7 @@ describe("그림자 단계", () => {
       "modal",
       "raised",
       "lifted",
+      "sheet",
       "panel",
       "menu",
       "summary",
