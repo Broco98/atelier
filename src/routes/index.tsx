@@ -7,7 +7,7 @@ import { newThreadKey, seedOf, validateNewThreadSearch } from "./-new-thread-sea
 // — 앞 판이 남긴 키(`last-mode`)가 있어도 그대로 둔다(ui-refresh 결정 23, `router.test.ts`).
 //
 // search는 **시작할 곳**(`?work=<slug>` · `?new=work` · `?new=thread`), **범위**(`?service=<slug>` · `?project=<slug>`)와
-// **입력 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 줄 「새 채팅」이 같은 규칙으로 「씨앗 없는 새
+// **입력 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 칸 「새 채팅」이 같은 규칙으로 「씨앗 없는 새
 // Thread인가」를 읽는다(02 코드 리뷰 S1).
 export const Route = createFileRoute("/")({
   component: NewThreadRoute,

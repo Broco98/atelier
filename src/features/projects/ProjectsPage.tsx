@@ -26,7 +26,7 @@ import { useProjectRemoval } from "./ProjectRemoveDialog";
 import { useRelocate } from "./relocate";
 import type { ProjectView } from "./types";
 
-// Projects 목록(03 구현 스펙 §16 · 시안 F1-Projects · F4-ProjMissing · F4-KitProject 「목록 줄」) — 사람 메뉴 「Projects」가 여는 화면이다. 머리 줄
+// Projects 목록(03 구현 스펙 §16 · 시안 F1-Projects · F4-ProjMissing · F4-KitProject 「목록 줄」) — 사이드바 위 칸 「Projects」가 여는 화면이다. 머리 줄
 // 「Projects」, 판 안에 제목 · 찾기 칸 · 「Project 추가」와 표(이름 · 경로 · 기준 브랜치), 표 아래 끌어 놓기 한 줄. 줄을 누르면 상세
 // (`/projects/$slug`)이고, 고치는 일(이름 · 설명 · 기준 브랜치)은 상세가 든다. 제거는 줄 ⋯ 안에만 있다 — 세 갈래 창(`useProjectRemoval`)을 거치고,
 // 지운 뒤 「되돌리기」 토스트가 잠깐 선다. 판 · 찾기 칸 · 표 · 줄의 꼴은 Service 목록과 같은 것이다(`@/components/catalog` — 03 코드 리뷰 D1).

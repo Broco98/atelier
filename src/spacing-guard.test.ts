@@ -393,23 +393,13 @@ describe("눈금의 사분 단", () => {
       className: "gap-y-px",
       why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
     },
-    // 사이드바의 줄 사이 1 · 소제목 사이 — Codex 사이드바를 잰 값(v1 티켓 46 · 시안-비교/46 `참고/codex-사이드바.png`). 줄 30이 31마다
-    // 서고, 소제목(30) 가운데 → 첫 줄 가운데가 34, 마지막 줄 가운데 → 다음 소제목 가운데가 54다. nav 줄 · Work 줄 · Thread 줄이 한 벌이라
-    // 한 파일(`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C).
+    // 사이드바 줄의 글리프와 글자 사이 9 — 시안 `.ra-sr-row`의 `gap: 9px`(restart 02a-3). nav 줄 · Work 줄 · Thread 줄이 한 벌이라 한 파일
+    // (`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C). 한때(v1 티켓 46 – 02a-2) Codex 사이드바를 잰 줄 사이 1 · 소제목 아래 3 · 앞 묶음 뒤
+    // 23이 이 자리의 사분 단이었다.
     {
       file: "src/components/shell/sidebar-look.ts",
-      className: "gap-px",
-      why: "사이드바 줄 목록(`SIDEBAR_ROWS` — nav · Work 구획 · 펼친 Thread · Thread 묶음) — 줄 사이 1(Codex 사이드바의 줄 30 · 간격 31)",
-    },
-    {
-      file: "src/components/shell/sidebar-look.ts",
-      className: "mb-0.75",
-      why: "묶음 소제목(`SIDEBAR_HEADING` — Work 구획 머리 · 「Thread」 · 「기다리는 순서」) — 아래 3. 소제목 가운데 → 첫 줄 가운데 34(15 + 3 + 1 + 15, Codex 「프로젝트」 · 「최근」)",
-    },
-    {
-      file: "src/components/shell/sidebar-look.ts",
-      className: "mt-5.75",
-      why: "앞 묶음 뒤의 소제목(`SIDEBAR_AFTER_SECTION` — `고정` 뒤 `Work` · Work 묶음 뒤 「Thread」) — 위 23. 마지막 줄 가운데 → 다음 소제목 가운데 54(15 + 1 + 23 + 15, Codex 「프로젝트」 → 「최근」)",
+      className: "gap-2.25",
+      why: "사이드바 줄의 글리프 · 글자 사이(`SIDEBAR_GLYPH_GAP` — 위 칸 · Work 줄 · Thread 줄) — 9(시안 `.ra-sr-row`의 `gap: 9px`)",
     },
     // 앱의 조용한 칩 — 좌우 7
     {

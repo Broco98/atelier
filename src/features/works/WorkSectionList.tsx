@@ -3,9 +3,11 @@ import { ChevronDown, ChevronRight, Folder, Pin, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_AFTER_SECTION,
+  SIDEBAR_GLYPH_GAP,
   SIDEBAR_HEADING,
-  SIDEBAR_ROW_SHAPE,
   SIDEBAR_ROWS,
+  SIDEBAR_ROW_SHAPE,
+  SIDEBAR_ROW_TEXT,
   sidebarRowTone,
 } from "@/components/shell/sidebar-look";
 import type { CallingNote, ShellSignal } from "@/components/shell/shell-signal";
@@ -267,15 +269,17 @@ export function WorkSectionList({
           count={main.length}
           onToggle={() => onToggleSection("works")}
         />
-        <span className="absolute top-0 right-1 flex h-7.5 items-center">
+        {/* 시안 Main의 작업공간 묶음 머리(`.ra-sr-label` 끝의 `.ra-tbtn` 20 — restart 02a-3) — 20 · 둥글기 4 · `fg-secondary`, 지나면
+            `fill-hover` 면에 `fg`(조용한 hover — `quiet-hover`), + 글리프 12. 머리 줄 안쪽 8에 끝이 선다. */}
+        <span className="absolute top-0 right-2 flex h-7.5 items-center">
           <button
             type="button"
             aria-label="작업공간 만들기"
             tabIndex={-1}
             onClick={onNewWork}
-            className="icon-button-quiet icon-button-xs text-fg-tertiary focus-ring"
+            className="flex size-5 shrink-0 items-center justify-center rounded-ctl text-fg-secondary transition-colors quiet-hover focus-ring"
           >
-            <Plus className="size-3.5" />
+            <Plus className="size-3" />
           </button>
         </span>
       </div>
@@ -433,12 +437,13 @@ function SectionHeader({
         // 훑고 지나갈 때마다 칠해졌다 지워져 사이드바가 들썩였다. 누를 수 있다는 말은 글자가
         // 진해지는 것과 화살표가 뜨는 것(아래 둘)이 계속 한다. 행과 nav는 배경을 **남긴다** —
         // 그쪽은 누르면 가는 목적지라 긴 목록에서 지금 무엇을 가리키는지가 보여야 한다.
-        "group w-full gap-1 rounded-lg text-left focus-ring",
+        "group w-full gap-1 text-left focus-ring",
         SIDEBAR_HEADING,
+        SIDEBAR_ROW_SHAPE,
         className,
       )}
     >
-      <span className="shrink-0 text-sm text-fg-tertiary transition-colors group-hover:text-fg-secondary">{label}</span>
+      <span className="shrink-0 transition-colors group-hover:text-fg-secondary">{label}</span>
       {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
           트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
           독립 rotate 속성을 쓰고, transform만 걸면 화살표만 뚝 끊긴다. */}
@@ -544,10 +549,11 @@ function WorkRow({
   // 행마다 제목 상자는 하나이고, 찾는 때도 hover 진입·이탈 두 순간뿐이다.
   const titleBoxOf = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-title]");
   // 이름 칸의 자리 — 이름 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다(높이 · 레인과 제목 사이 · 안쪽은 버튼 주석).
-  // **레인이 Codex의 폴더 자리다**(v1 티켓 46) — 행 안쪽 8에 16 칸이 서서 창 끝 + 16, 제목은 그 뒤 8에 서서 창 끝 + 40이다(nav 줄의 아이콘 ·
-  // 글자와 같은 세로줄). 한때 맨 앞에 펼침 단추 칸(22)이 늘 서 있어 제목이 + 59에서 시작했다 — 사용자가 짚은 「줄 글이 왼쪽 끝에서 멀다」다.
-  const nameCell = cn("col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center gap-2 pl-2", SIDEBAR_ROW_SHAPE);
-  // **레인** — 행 왼쪽의 16px 한 칸이고 **늘 폴더다**(02 구현 스펙 §4 · S7 · 시안 Components 「작업공간 — …」 줄의 폴더 16 `fg-icon`). 한때 화면값이
+  // **레인이 폴더 자리다**(v1 티켓 46) — 행 안쪽 8에 15 칸이 서서 창 끝 + 16, 제목은 그 뒤 9에 서서 창 끝 + 40이다(nav 줄의 글리프 · 글자와
+  // 같은 세로줄 — restart 02a-3 · 시안 `.ra-sr-row`). 한때 맨 앞에 펼침 단추 칸(22)이 늘 서 있어 제목이 + 59에서 시작했다 — 사용자가 짚은
+  // 「줄 글이 왼쪽 끝에서 멀다」다.
+  const nameCell = cn("col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center pl-2", SIDEBAR_GLYPH_GAP, SIDEBAR_ROW_SHAPE);
+  // **레인** — 행 왼쪽의 15px 한 칸이고 **늘 폴더다**(02 구현 스펙 §4 · S7 — 크기 · 색은 위 칸 글리프 15 `fg-secondary`와 같다, restart 02a-3). 한때 화면값이
   // 있으면 셸의 점 · 스피너, 없으면 work 상태 아이콘(draft · active · review · done)이 섰다 — 줄의 상태가 왼쪽과 오른쪽 두 자리에 흩어져
   // 있었다. 이제 상태는 오른쪽 표시 하나이고, Work 상태는 호버 카드와 Work 화면이 말한다. 표식(`data-lane`)은 검사가 이 칸을 집는
   // 이름이다(마크업 seam · hover · 폭 드래그).
@@ -557,9 +563,9 @@ function WorkRow({
   const lane = (
     <span
       data-lane=""
-      className={cn("flex size-4 shrink-0 items-center justify-center text-fg-icon", hasThreads && "group-hover:opacity-0")}
+      className={cn("flex size-3.75 shrink-0 items-center justify-center text-fg-secondary", hasThreads && "group-hover:opacity-0")}
     >
-      <Folder className="size-4" />
+      <Folder className="size-3.75" />
     </span>
   );
   return (
@@ -675,7 +681,7 @@ function WorkRow({
             onCommit={(title) => onRenameCommit(work.slug, title)}
             onDone={onRenameEnd}
             returnFocus={() => document.querySelector<HTMLElement>(`[data-work-row="${work.slug}"] > button`)}
-            className="-ml-1 h-6 px-1 text-sm text-fg"
+            className={cn("-ml-1 h-6 px-1 text-fg", SIDEBAR_ROW_TEXT)}
           />
         </div>
       ) : (
@@ -764,7 +770,8 @@ function WorkRow({
             data-title=""
             className={cn(
               // 굵기는 400이다 — nav 항목도 400이다(Codex 사이드바는 줄마다 보통 굵기이고 고른 줄은 면으로만 드러난다 — v1 티켓 46).
-              "min-w-0 flex-1 text-sm",
+              "min-w-0 flex-1",
+              SIDEBAR_ROW_TEXT,
               work.status === "done" && "text-fg-tertiary",
             )}
           >

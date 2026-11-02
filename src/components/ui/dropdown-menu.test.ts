@@ -16,15 +16,10 @@ const CARDS = ["DropdownMenuContent", "DropdownMenuSubContent", "ContextMenuCont
 const WIDTH = /(?<![\w-])(?:[\w-]+:)*!?(?:w|min-w|max-w|size)-[^\s"'`]+/g;
 
 /**
- * **폭 표 밖의 예외** — 파일과 그 글자, 까닭 한 줄. 쓰이지 않는 예외는 다음 덮기의 뒷문이 되므로 함께 센다.
+ * **폭 표 밖의 예외** — 파일과 그 글자, 까닭 한 줄. 쓰이지 않는 예외는 다음 덮기의 뒷문이 되므로 함께 센다. 지금은 없다 — 하나 있던 바닥 사람
+ * 줄의 사람 메뉴(줄의 폭 `w-(--anchor-width)`)는 restart 02a-3이 걷었다.
  */
-const EXCEPTIONS: { file: string; width: string; why: string }[] = [
-  {
-    file: "src/components/shell/Sidebar.tsx",
-    width: "w-(--anchor-width)",
-    why: "바닥 사람 줄의 사람 메뉴는 그 줄(트리거)의 폭이다(02 구현 스펙 §4) — 표의 고정 폭이 아니라 여는 자리의 폭을 받는다",
-  },
-];
+const EXCEPTIONS: { file: string; width: string; why: string }[] = [];
 
 /** 여는 태그 하나 — `<이름` 뒤부터 중괄호 · 따옴표 밖의 첫 `>`까지(`onKeyDown={(e) => …}`의 `>`에서 멈추지 않는다). */
 function openingTag(text: string, from: number): string {

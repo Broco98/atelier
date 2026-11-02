@@ -96,8 +96,7 @@ describe("말의 사전", () => {
         "터미널",
         "머리 줄",
         "카드",
-        "위 줄",
-        "사람 메뉴",
+        "위 칸",
         "상태 표시",
         "알림 띠",
         "요약 카드",
@@ -416,20 +415,20 @@ describe("말의 사전", () => {
     expect(doc.split("\n").filter((line) => line.includes("흰 판"))).toEqual(["_피할 말_: 흰 판"]);
   });
 
-  // 02 구현 스펙 §2 · §4 · §5. 사이드바 맨 위가 거르기 머리 없이 두 행(위 줄)이고, 「내 차례」 행이 옛 「전체 | 내 차례」 거르기를 한다. 사전이
-  // 위 줄을 모르면 다음 사람이 그 자리에 머리를 되세우거나 「내 차례」 행을 모아 보기 화면으로 부른다. 사람 메뉴는 사람 줄(얼굴 · 이름 ·
-  // 꺾쇠)에서 위로 열리고 메모리 합계가 그 안 Processes 끝에 선다 — 사전이 옛 자리(사람 줄 오른쪽의 메모리)를 말하면 다음 사람이 그것을
-  // 바닥 줄에 되돌린다. 알림 띠는 위 줄 아래에 선다.
-  it("「위 줄」이 사이드바 맨 위 두 행이고, 「사람 메뉴」가 사람 줄에서 위로 열리며 Processes 끝에 메모리 합계를 든다", () => {
-    for (const row of ["새 Thread", "내 차례"]) expect(bodyOf("위 줄"), row).toContain(row);
-    expect(bodyOf("위 줄")).toContain("사이드바 맨 위 두 행");
-    expect(bodyOf("위 줄")).not.toContain("Library");
-    expect(bodyOf("위 줄")).toContain("거르기 머리는 없다");
-    expect(bodyOf("사람 메뉴")).toContain("위로 열리는 메뉴");
-    expect(bodyOf("사람 메뉴")).toContain("메모리 합계");
-    // 가는 곳에 `Service`가 `Projects` 다음으로 선다(03 구현 스펙 §2 · §4).
-    expect(bodyOf("사람 메뉴")).toContain("`Projects`·`Service`·`Terminal`·`Processes`·`Archive`");
-    expect(bodyOf("알림 띠")).toContain("위 줄 아래");
+  // restart 02a-3 · 스토리 84 · 86. 사이드바 맨 위가 거르기 머리 없이 위 칸이고, 거기서 Thread 밖의 다섯 화면으로 바로 간다 — 한때(v1 S27 – 02a-2)
+  // 그 다섯과 설정은 바닥 사람 줄이 여는 「사람 메뉴」에 있었다. 사전이 옛 메뉴를 말하면 다음 사람이 바닥에 사람 줄을 되세우고, 메모리 합계를
+  // 메뉴 안으로 되돌린다. 「내 차례」 행은 옛 「전체 | 내 차례」 거르기를 한다. 설정은 맨 아래에 혼자 선다. 알림 띠는 위 칸 아래에 선다.
+  it("「위 칸」이 사이드바 맨 위에서 다섯 화면으로 바로 가고, 메모리 합계가 그 Processes 끝에 서며 「사람 메뉴」를 거부한다", () => {
+    for (const row of ["새 채팅", "내 차례", "`Services`·`Projects`·`Terminal`·`Processes`·`Archive`"]) {
+      expect(bodyOf("위 칸"), row).toContain(row);
+    }
+    expect(bodyOf("위 칸")).not.toContain("Library");
+    expect(bodyOf("위 칸")).toContain("거르기 머리는 없다");
+    expect(bodyOf("위 칸")).toContain("메모리 합계");
+    expect(bodyOf("위 칸")).toContain("설정은 맨 아래");
+    expect(names).not.toContain("사람 메뉴");
+    expect(refused).toEqual(expect.arrayContaining(["사람 메뉴", "main nav"]));
+    expect(bodyOf("알림 띠")).toContain("위 칸 아래");
   });
 
   // 02 구현 스펙 §2 · §7. v1 Work 카드를 Codex 요약 카드로 바꿨다 — Work 없는 Thread에도 서고, 열림은 Work가 아니라 Thread마다 기억한다.
@@ -447,14 +446,15 @@ describe("말의 사전", () => {
 
   // 02 구현 스펙 §2 · §4(S8 · S11) · 티켓 05. 사이드바 줄의 상태가 오른쪽 끝 하나로 모였다 — 사전이 그 하나를 모르면 다음 사람이 줄에 점 ·
   // 수 · 굵은 제목을 되세운다. Work 줄의 표시가 셸 신호를 같은 차례로 접는 것과, Work 상태(draft …)가 이 표시가 아닌 것을 든다.
-  it("「상태 표시」가 줄마다 오른쪽 끝 하나이고, 넷과 그 차례 · 셸 신호 · 멈춤 · 빨강을 말하며 Work 상태와 갈린다", () => {
+  // restart 02a-3 — 표시의 색은 시안 Shell 「사이드바 상태」다: 「내 차례」 알약과 「실패」 글자가 주황(`warning`)이고 사이드바에 빨강이 없다.
+  it("「상태 표시」가 줄마다 오른쪽 끝 하나이고, 넷과 그 차례 · 셸 신호 · 멈춤 · 색을 말하며 Work 상태와 갈린다", () => {
     for (const piece of ["오른쪽 끝의 표시 하나", "「내 차례」 알약", "스피너", "「실패」 글자", "파란 점"]) {
       expect(bodyOf("상태 표시"), piece).toContain(piece);
     }
     expect(bodyOf("상태 표시")).toContain("내 차례 › 도는 중 › 실패 › 새 결과");
     expect(bodyOf("상태 표시")).toContain("셸 신호");
     expect(bodyOf("상태 표시")).toContain("멈춘 Thread에는 서지 않는다");
-    expect(bodyOf("상태 표시")).toContain("빨강은 「실패」 글자에만");
+    expect(bodyOf("상태 표시")).toContain("사이드바에 빨강은 없다");
     expect(bodyOf("상태 표시")).toContain("_Work 상태와 가른다._");
   });
 
@@ -643,20 +643,21 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("탭 줄과 레일 칸 — `spec` · `files`");
   });
 
-  it("대문자 층이 사람 메뉴를 든다", () => {
-    // 사람 메뉴 항목은 **가는 곳**의 이름이라 대문자다(US 59 — 한때 사이드바 위 main nav였고 v1 티켓 07이 사람 메뉴로 옮겼다).
+  it("대문자 층이 위 칸의 가는 곳을 든다", () => {
+    // 위 칸의 다섯은 **가는 곳**의 이름이라 대문자다(US 59 — 한때 사이드바 위 main nav였고 v1 티켓 07이 사람 메뉴로 옮겼다가 restart 02a-3이
+    // 위 칸으로 되올렸다).
     // 예시가 그것을 들지 않으면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다 — 한 화면에 대문자
     // `Terminal`과 소문자 `spec`이 함께 서는 자리가 그 층의 갈림이다.
     expect(uppercase).toContain("`Projects`");
     expect(uppercase).toContain("`Archive`");
   });
 
-  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Service`를 `Projects` 다음에 더해
-  // 다섯이다(03 구현 스펙 §4). **한 문장에서 다섯을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다.
-  // 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
-  it("대문자 층이 사람 메뉴 다섯을 한 문장으로 든다", () => {
+  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Service`를 더해 다섯이 됐으며, restart
+  // 02a-3이 시안의 차례와 이름(`Services`가 맨 앞)으로 위 칸에 세웠다. **한 문장에서 다섯을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가
+  // 빠지거나 다른 것이 끼어도) 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 위 칸 다섯을 한 문장으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(
-      "사람 메뉴의 가는 곳은 `Projects`·`Service`·`Terminal`·`Processes`·`Archive` 다섯이다",
+      "위 칸의 가는 곳은 `Services`·`Projects`·`Terminal`·`Processes`·`Archive` 다섯이다",
     );
   });
 

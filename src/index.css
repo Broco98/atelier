@@ -555,7 +555,7 @@
    - 둥근 네모 값은 아래 `@theme`에, superellipse 값은 그 뒤 `@supports (corner-shape: superellipse(1.5))`의 `:root`가 다시 세운다(층 밖
      선언이 `@theme`의 층 안 선언을 이긴다). **superellipse 단계를 쓰는 자리는 `corner-superellipse`를 함께 단다** — 모서리 모양도 같은 창에서만
      바뀐다. 짝이 빠지면 그 창에서 둥근 네모가 25% 커진다(`type-scale.test.ts`가 짝을 잰다).
-   - 사람 메뉴의 줄(04)과 내 차례 알약(05)의 8은 `md`, 답한 질문 · 대기 메시지(11)의 12는 `xl`이다 — 시안에서도
+   - 한때 사람 메뉴의 줄(04 — restart 02a-3이 걷었다)과 내 차례 알약(05)의 8은 `md`, 답한 질문 · 대기 메시지(11)의 12는 `xl`이다 — 시안에서도
      둥근 네모다.
 
    **restart 시안의 앱 틀 둥글기**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1). Air를 잰 값이고 둥근 네모 하나다. 쓰는 화면은
@@ -806,8 +806,8 @@
        is #DDDDDD」). 소제목 · 시각 · 미리보기는 그대로 `fg-tertiary`다.
        **라이트는 본문 글자와 같은 #1a1c1f다**(restart 시안 `restart-tokens.css` · 티켓 02a-1). 시안의 사이드바는 고른 줄을 글자가 아니라 면으로
        가른다(`.ra-sr-row.on`). 한때(v1 티켓 46부터 restart 02a-1 앞까지) Codex 그림에서 잰 `fg` 85%(rgba(26, 28, 31, 0.85))였다 — 고른 줄만 `fg`로
-       한 단 짙었다. 지금 사이드바(`sidebarRowTone` · 사람 메뉴 · 설정 nav)는 고른 줄에 여전히 `text-fg`를 걸지만 라이트에서는 같은 색이다.
-       사이드바를 시안대로 다시 세우는 것은 02a-3이다. */
+       한 단 짙었다. 지금 사이드바(`sidebarRowTone` · 설정 nav)는 고른 줄에 여전히 `text-fg`를 걸지만 라이트에서는 같은 색이다.
+       고른 줄은 면(`fill-hover`)으로 가른다 — 02a-3이 사이드바를 시안대로 세웠다. */
     --fg-sidebar: #1a1c1f;
 
     /* 면 알파 · 선 — 전경색의 투명도라 어느 면 위에서도 같은 단계로 보인다(DS 원칙 2). `fill-selected`만 불투명이다.
@@ -817,16 +817,15 @@
        버튼의 hover가 켜짐과 같은 면이다.
        이 부등식은 깨지면 안 된다:
          행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록 · 트리
-         줄 hover = 줄 선택 = 선택된 줄 hover(`fill-nav-selected`)             — 사이드바 줄(위 줄 · Work · Thread, 02 티켓 05 — Codex .053)
-         줄 hover = 메뉴 열림 = 켜진 줄(`fill-nav-selected`)                    — 사이드바 사람 줄 · 사람 메뉴(02 티켓 04 — Codex .053)
+         줄 hover(`fill-soft`)    < 줄 선택(`fill-hover`) = 선택된 줄 hover     — 사이드바 줄(위 칸 · Work · Thread — restart 02a-3, 시안 `.ra-sr-row`)
          탭 hover(`fill-soft`)    < 켜진 탭(`fill-hover`, `tab-on`) = 켜진 탭 hover — 카드 머리의 탭 줄
          버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
        **행 선택의 면은 면 알파 밖의 불투명한 `fill-selected`다**(`selected-row` — #eff0f0, DS `.at-tree-row.is-on`). 흰 카드 안 목록 ·
        트리는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택으로 갈린다. 선택된 행은 어디서나 hover해도 그 면 그대로다. **사이드바는 갈래가
        다르다**(02 티켓 05) — Codex 사이드바는 줄의 hover와 고른 면이 같은 투명 .053이라 둘을 가르지 않는다. 고른 줄은 hover가 떠나도
-       남는 면으로, 지나는 줄은 포인터가 있는 동안의 면으로 갈린다. 한때(v1 티켓 46) 사이드바도 hover(`fill-soft`) < 선택(`fill-selected`)
-       이었고, 그 전에는 창 바탕(`surface-shell`) 회색에 붙어 `fill-hover`였다 — 회색 위에서는 불투명한 면이 hover보다 옅어 부등식이
-       뒤집혔다.
+       남는 면으로, 지나는 줄은 포인터가 있는 동안의 면으로 갈린다. restart 02a-3이 시안대로 면 알파 둘(hover `fill-soft` < 선택
+       `fill-hover`)로 되돌렸다 — 사이드바는 카드가 아니라 창 바탕(`surface-shell`) 위에 서서 불투명한 `fill-selected`가 hover보다 옅다.
+       한때(v1 티켓 46) 사이드바도 hover(`fill-soft`) < 선택(`fill-selected`)이었다.
        **유틸리티 `accent`로 상태 배경을 칠하지 않는다** — shadcn은 그 이름에 옅은 면을 걸었지만 Codex에서는 같은 이름이
        파랑이고(`@theme inline`의 Codex 색 머리말), 그 이름은 행 hover인지 버튼 hover인지도 말하지 않는다. 메뉴 · Select의 켜진
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
@@ -834,10 +833,9 @@
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
          `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, codex-ds 결정 29)이 패널
                              트리의 고른 행과 같은 면이다
-         `fill-nav-selected` 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). 면 알파이지만
-                             셋과 단이 다르다 — Codex는 사이드바 줄의 hover와 고른 면이 같은 .053이다. 04가 사람 줄 · 사람 메뉴를,
-                             05가 사이드바 줄(`selected-row`의 사이드바 갈래 · `sidebarRowTone`의 hover)을 옮겼다(위 부등식의 둘째 ·
-                             셋째 줄)
+         `fill-nav-selected` 한때 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). restart
+                             02a-3이 사이드바 줄을 면 알파로 옮기고 사람 메뉴를 걷어 앱이 읽지 않는다 — 02 스펙 값을 재는
+                             `tokens.test.ts`와 옛 판을 재는 L3가 읽어 남겼다
          `fill-toggle-on`    Thread 머리 줄 요약 고정 토글의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
        이 목록은 **열거**다(`state-scale.test.ts`가 `:root`의 `--fill-*` 이름을 맞댄다): 여기 없는 새 상태 배경은 유예된 것이 아니라
        면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널 토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
@@ -921,26 +919,26 @@
          fg-bubble             사람 말풍선의 글자(08) — 바탕은 그대로 `bubble-user`
          fg-placeholder        입력창 자리표시(10) · 03 Project 추가 창의 새 자리 줄 「이름」 · Service 미리보기 카드의 「이름 없음」(빈 칸의 자리표시)
          fg-subtle             입력창 칩의 글자(10) · 작업 구분선의 글자와 꺾쇠(09) · 응답 액션 글리프(08)
-         fg-faint              바닥 사람 줄의 꺾쇠(04) · 요약 카드 결과물의 자리표시(07)
+         fg-faint              요약 카드 결과물의 자리표시(07) · 한때 바닥 사람 줄의 꺾쇠(04 — restart 02a-3이 걷었다)
          fg-label              요약 카드의 라벨과 머리의 Work 이름(07)
-         fg-icon               사람 메뉴의 글리프(04) — 시안은 요약 카드 소스 줄의 글리프에도 쓴다
+         fg-icon               요약 카드 소스 줄의 글리프 · 03 화면들의 글리프 · 한때 사람 메뉴의 글리프(04 — restart 02a-3이 걷었다)
          fg-titlebar           머리 줄의 셸 컨트롤 글리프(02) · Thread 머리 줄의 Work 이름과 「…」(06) · 03 머리 줄 이름 앞의 흐린 자리
                                (「Projects /」 · 「Service /」 · Work 화면의 Service)
          fg-titlebar-disabled  갈 수 없는 뒤 · 앞(02)
          fg-thinking           「생각 중」의 바랜 글자(12) — 띠(`shimmer-band`)가 그 위를 밝게 지나간다
-         mine                  내 차례 알약의 글자(05) · 위 줄 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
+         mine                  내 차례 알약의 글자(05) · 위 칸 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
          surface-codespan      답 안 인라인 코드의 바탕(08)
          surface-tray          첫 화면 입력창 밑 트레이(10) · 대기 메시지(11)
          border-panel          흰 판의 0.5 테두리(02). 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
          border-summary        요약 카드의 0.5 테두리(07)
          border-slot           입력창 자리 카드의 1px 테두리(11)
          border-faint          작업 중 점의 흰 원(32) 1px 테두리(11)
-         separator             머리 줄 가운데 앞 세로선(02) · 사람 메뉴의 구분선(04)
+         separator             머리 줄 가운데 앞 세로선(02) · 한때 사람 메뉴의 구분선(04 — restart 02a-3이 메뉴를 걷었다)
          separator-soft        요약 카드의 칸 구분선(07) · 작업 구분선 아래 선(09) · 답한 질문 카드의 테두리(11)
-         fill-nav-selected     사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말)
+         fill-nav-selected     한때 사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말). restart 02a-3 뒤로 앱이 읽지 않는다
          fill-toggle-on        Thread 머리 줄 요약 고정 토글의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
-         face-person           바닥 사람 줄의 얼굴 면(04 — 시안 F1-Home · Diff-Frame · Components의 `.ava`, 스펙 §4는 값을 적지 않았다). 글자는
+         face-person           한때 바닥 사람 줄의 얼굴 면(04 — 시안 F1-Home · Diff-Frame · Components의 `.ava`, 스펙 §4는 값을 적지 않았다 · restart 02a-3이 걷었다). 글자는
                                `fg-on-solid`. Agent 얼굴(`fill-active` 면)과 갈려 「나」가 한눈에 갈린다
          shimmer-band          「생각 중」 띠의 흰 75%(12) — 띠를 그리는 유틸리티만 읽어 유틸리티 이름을 잇지 않는다
        **03 시안 값**(캔버스 v52 F4-KitComposer — 괄호 안은 03 티켓). Codex를 잰 값이 아니라 03 시안이 트레이 칩에 적은 것이다.
@@ -1056,7 +1054,7 @@
     --shadow-2xl: 0 16px 32px -8px #00000030;
     /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — 위 「Codex 실측 색」처럼 다크 값이 없다.
          panel    흰 판의 위 그림자(02) — 테두리는 `border-panel` 0.5. 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
-         menu     사람 메뉴(04) — 0.5 링이 그림자 첫 겹에 든다
+         menu     한때 사람 메뉴(04) — 0.5 링이 그림자 첫 겹에 든다. 02a-3이 메뉴를 걷은 뒤로 사이드바는 읽지 않는다
          summary  요약 카드(07) — 테두리는 `border-summary` 0.5
          prompt   입력창(10) — DS `composer`의 바깥 흐림 40이 Codex에서 80이다(스펙 §9). `composer`는 입력창 자리 카드 · 알림 카드 ·
                   읽기만 줄도 읽어 그대로 둔다 */
@@ -1351,14 +1349,14 @@
     --input: var(--border-heavy);
     --ring: var(--accent);
     /* 사이드바는 Codex 대화 사이드바의 바탕이다(v1 티켓 46) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)이고 글자는 `fg-sidebar`다.
-       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-nav-selected`다(아래 `selected-row`). 사이드바
+       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-hover`다(아래 `selected-row` — restart 02a-3). 사이드바
        자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) · work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라
        Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를 읽는 자리는 없다. */
     --sidebar: var(--surface-sidebar);
     --sidebar-foreground: var(--fg-sidebar);
     --sidebar-primary: var(--accent);
     --sidebar-primary-foreground: var(--fg-inverse);
-    --sidebar-accent: var(--fill-nav-selected);
+    --sidebar-accent: var(--fill-hover);
     --sidebar-accent-foreground: var(--fg-sidebar);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
@@ -1408,12 +1406,13 @@
   &:hover {
     background: var(--fill-selected);
     }
-  /* 사이드바 안의 고른 줄은 투명한 `fill-nav-selected`(.053)다 — Codex 사이드바 줄의 hover와 같은 면이다(02 티켓 05 · 위 상태 농도).
-     글자는 위의 `fg`(#1a1c1f) 그대로다 — 안 고른 줄의 `fg-sidebar`(85%)보다 한 단 짙어, 면이 hover와 같아도 고른 줄이 갈린다(캔버스
-     Components 「사이드바 줄」의 고른 줄 · 사람 메뉴의 켜진 줄과 같다). 한때(v1 티켓 46) 여기서 글자를 `fg-sidebar`로 되돌렸다. */
+  /* 사이드바 안의 고른 줄은 면 알파 `fill-hover`(.08)다 — 지나는 줄의 `fill-soft`(.05)보다 한 단 짙어 면만으로 갈린다(restart 02a-3 · 시안
+     `.ra-sr-row.on` · `:hover`). 글자는 위의 `fg` 그대로다 — 라이트에서는 안 고른 줄의 `fg-sidebar`와 같은 색이다(02a-1). 한때(02 티켓
+     05 – 02a-2) 고른 면과 지나는 면이 같은 투명 `fill-nav-selected`(.053 — Codex 사이드바)였고, 그 전(v1 티켓 46)에는 글자를
+     `fg-sidebar`로 되돌렸다. */
   [data-sidebar] &,
   [data-sidebar] &:hover {
-    background: var(--fill-nav-selected);
+    background: var(--fill-hover);
     }
 }
 
@@ -1838,13 +1837,13 @@ body.dragging-row * {
 
 /* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 4px.
    조용한 갈래(`ShellMeta` — 셸 수)와 신호 갈래(`SignalMeta` — 경과)가 이 한 정의를 부른다.
-   두 파일이 같은 문자열을 옮겨 적던 자리다. 사람 메뉴 `Processes`의 메모리 합계(`ProcessesNavMeta`)도 같은 메뉴 `Terminal`의
+   두 파일이 같은 문자열을 옮겨 적던 자리다. 위 칸 `Processes`의 메모리 합계(`ProcessesNavMeta`)도 같은 위 칸 `Terminal`의
    셸 수와 같은 오른쪽 끝에 서야 해서 이것을 부른다.
 
    두 갈래가 work 행의 **같은 칸에 번갈아** 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
    숫자의 오른쪽 끝이 튄다. 오른쪽 여백 4px은 행의 `pr-1`(4px)과 합쳐 행 안쪽 8(DS `.at-row`)이 되어, 그 끝이 구획
-   헤더의 개수와 같은 x에 선다(work 행의 계약). 사람 메뉴의 줄은 끝 글자를 줄 안쪽 8에 세워(시안 `.mi .end`) 이 4를 그 자리에서
-   되돌린다(`Sidebar.tsx`의 `PersonMenu`).
+   헤더의 개수와 같은 x에 선다(work 행의 계약). 위 칸의 줄은 끝 글자를 줄 안쪽 8에 세워(시안 `.ra-sr-row .end`) 이 4를 그 자리에서
+   되돌린다(`sidebar-item.tsx`의 `PlaceRow`).
 
    **색은 안 정한다** — 칸에 서는 조각이 저마다 든다. 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 두고 무리가 한 단
    올린 `fg-secondary`를 들며(`shell-meta.tsx`), 신호 갈래의 경과도 그 조각이 제 `fg-secondary`를 든다(`SignalElapsed` —

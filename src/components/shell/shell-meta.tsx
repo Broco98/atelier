@@ -11,7 +11,7 @@ import { SquareTerminal } from "lucide-react";
  *
  * **`components/shell`에 사는 이유는 쓰는 자리가 둘이었어서다**(결정 13) — nav `Terminal`과
  * work 행의 오른쪽 끝. work 행의 자리는 02 티켓 05가 걷었다(그 끝은 상태 표시 하나이고 셸 수는 호버 카드가 말한다) — 지금은
- * 사람 메뉴의 `Terminal` 줄 하나다.
+ * 위 칸의 `Terminal` 줄 하나다.
  * 이 저장소의 규칙은 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」이고, 세는 규칙과
  * 색이 여기 하나에 있어야 그 둘이 앞으로도 안 갈린다. 규격(글꼴·간격·오른쪽 여백)은 index.css의
  * `row-meta` 하나다 — work 행에서 같은 칸에 번갈아 서는 신호의 경과(`shell-signal.tsx`의

@@ -18,10 +18,10 @@ export interface ProcessesMeta {
  *
  * **앱 전체를 센다**(프로세스 결정 9) — 이름(`Processes` = 앱 전체)이 그 이유를 말한다.
  *
- * **요약 폴러가 여기 하나다**(`useProcessSummary`, 10초). **늘 서 있는 자리가 부른다** — 사이드바 바닥의 사람 줄(`PersonMenu`)이다(접혀도
- * 렌더된다). 그리는 자리는 사람 메뉴의 `Processes` 줄 끝이라(02 구현 스펙 S12) 메뉴가 열려야 보이지만, 묻는 것과 「봤다」를 앉히는 것은 메뉴가
- * 닫힌 동안에도 돈다 — 메뉴 안에서 부르면 닫힌 동안 아무도 묻지 않아 `Processes` 화면의 합계 카드(`useSummaryCache`)가 비고, 화면에서 본
- * 것이 메뉴를 열 때 늦은 요약에 실려 점을 켠다(02 결정 「04 · 메모리 합계 폴러」). 설정 nav로 갈아 서는 동안만 쉰다(그때는 사람 줄이 없다).
+  * **요약 폴러가 여기 하나다**(`useProcessSummary`, 10초). **늘 서 있는 자리가 부른다** — 사이드바 위 칸의 `Processes` 줄이다(`Sidebar.tsx`의
+ * `ProcessesItem` — 사이드바가 접혀도 렌더된다). 부르는 자리와 그리는 자리가 같은 줄이다(restart 02a-3). 설정 nav로 갈아 서는 동안만 쉰다(그때는
+ * 위 칸이 없다) — `Processes` 화면의 합계 카드(`useSummaryCache`)가 이 요약을 읽는다. 한때(02 구현 스펙 S12 – 02a-2) 폴러는 바닥 사람 줄이
+ * 부르고 합계는 그 줄이 여는 메뉴 안에 섰다 — 메뉴 안에서 부르면 닫힌 동안 아무도 묻지 않아서였다(02 결정 「04 · 메모리 합계 폴러」).
  *
  * **「봤다」는 띠와 같다** — `Processes` 화면이 열려 있고 창에 포커스가 있을 때다(S41 — `useSeeWhileLooking`). 그동안은 새로 온 것도
  * 곧바로 본 것이 되고, 점은 서지 않는다. 화면도 같은 판정으로 스냅샷(2초)의 손볼 것을 본 것으로 앉힌다(`ProcessesPage`) — 이
@@ -39,7 +39,7 @@ export function useProcessesNavMeta(): ProcessesMeta {
 }
 
 /**
- * **`Processes`의 메타를 그린다** — 사람 메뉴 `Processes` 줄 끝(02 구현 스펙 S12 — 한때 사람 줄 오른쪽, 그 전에는 nav `Processes` 옆). 훅을
+ * **`Processes`의 메타를 그린다** — 위 칸 `Processes` 줄 끝(restart 02a-3 — 한때 사람 메뉴의 `Processes` 줄 끝, 그 전에는 사람 줄 오른쪽 · nav `Processes` 옆). 훅을
  * 부르지 않는다: 값은 늘 선 자리가 센 것을 받는다(`useProcessesNavMeta`).
  */
 export default function ProcessesNavMeta({ meta: { lit, total } }: { meta: ProcessesMeta }) {

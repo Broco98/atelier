@@ -12,7 +12,7 @@ import { useServiceDelete } from "./ServiceDeleteDialog";
 import { HOST_MAKE, listShows, shownServices, serviceName } from "./service-view";
 import type { Service } from "./types";
 
-// Service 목록(03 구현 스펙 §14 · 시안 F1-Space) — 사람 메뉴 「Service」가 여는 화면이다. 머리 줄 「Service」, 판 안에 제목 · 찾기 칸과 표(이름 ·
+// Service 목록(03 구현 스펙 §14 · 시안 F1-Space) — 사이드바 위 칸 「Services」가 여는 화면이다. 머리 줄 「Service」, 판 안에 제목 · 찾기 칸과 표(이름 ·
 // Project · 설명), 표 아래 한 줄 안내. 줄을 누르면 상세다. 문제가 있는 Service도 이름 뒤 「문제 있음」으로 선다(스토리 185). 파일은 바깥에서도
 // 고치므로 `services:changed`를 듣는다(`useServices`). 판 · 찾기 칸 · 표 · 줄의 꼴은 Projects 목록과 같은 것이다(`@/components/catalog` — 03 코드
 // 리뷰 D1), 찾기의 규칙은 `shownServices`다.

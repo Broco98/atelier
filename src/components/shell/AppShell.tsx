@@ -326,8 +326,8 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goToShell, searchOpen, queryClient, router, navigate]);
 
-  // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 줄 「새 채팅」과 ⌘N(아래)이 함께 부른다. 가는 곳은
-  // **씨앗 없는 새 Thread**(`/`)다 — 이미 거기면 아무것도 하지 않는다(같은 주소가 히스토리에 한 칸 더 쌓이지 않게 — 사람 메뉴 `onSelect`와 같은
+  // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 칸 「새 채팅」과 ⌘N(아래)이 함께 부른다. 가는 곳은
+  // **씨앗 없는 새 Thread**(`/`)다 — 이미 거기면 아무것도 하지 않는다(같은 주소가 히스토리에 한 칸 더 쌓이지 않게 — 위 칸 `onSelect`와 같은
   // 가드). 씨앗을 단 새 Thread(`/?work=<slug>` · `/?new=work`)에서는 씨앗이 걷힌 첫 화면으로 간다 — 한때 가드가 경로만 봐서 거기서 키가 먹지
   // 않았다(02 코드 리뷰 S1). 그 물음은 그 행의 고른 모양과 같은 하나다(`isBlankNewThread`). 주소는 **누를 때** 읽는다 — 셸이 그것을
   // 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
