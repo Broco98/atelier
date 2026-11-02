@@ -3,13 +3,14 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_MOTION } from "./panel-layout";
 
-// **머리 줄**(02 구현 스펙 §3 · CONTEXT 「머리 줄」) — 크롬 맨 위 44 줄 하나다. 앱 셸이 그리고, 어느 화면에서나 같은 줄이다.
+// **머리 줄**(02 구현 스펙 §3 · CONTEXT 「머리 줄」) — 크롬 맨 위 44 줄 하나다(restart 시안 토큰 `size-titlebar`). 앱 셸이 그리고, 어느
+// 화면에서나 같은 줄이다.
 //
 //   <header>(44 · 끌기) ─ 왼쪽 칸: 신호등 자리 · 셸 컨트롤(사이드바 토글 · 뒤 · 앞 · 검색)
 //                       └ 화면 자리: 지금 화면이 보낸 이름 · 할 일(`ScreenHead` — 포털)
 //
-// - **화면 자리의 왼쪽 끝은 사이드바를 따른다** — 열렸으면 흰 판 안 왼쪽 끝(사이드바 오른쪽 끝 + 판 테두리 0.5 — 사이드바는 판 밖 크롬
-//   위다, 03 구현 스펙 §3)과 같은 x이고 그 앞에 세로선 하나가 선다(Codex). 접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 왼쪽 칸의 폭이 그 끝이고, 폭은 사이드바 폭과 같은 박자
+// - **화면 자리의 왼쪽 끝은 사이드바를 따른다** — 열렸으면 카드 자리 왼쪽 끝(사이드바 오른쪽 끝 — 사이드바는 카드 밖 크롬 위다, 03 구현
+//   스펙 §3 · restart 02a-2)과 같은 x이고 그 앞에 세로선 하나가 선다(Codex). 접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 왼쪽 칸의 폭이 그 끝이고, 폭은 사이드바 폭과 같은 박자
 //   (`SIDEBAR_MOTION` — Codex spring .3s, 02 티켓 12)로 옮겨 간다 — 사이드바를 끄는 동안은 둘 다 트랜지션을 끄고 커서를 곧장 따른다(`Sidebar`의 `asideClass`). 사이드바
 //   폭(`--sidebar-width`)은 앱 셸 뿌리가 싣는다 — 사이드바와 이 줄이 한 값을 읽는다.
 // - **줄 전부가 창을 끄는 자리다**(`deep`) — 창 맨 위 줄이라 제목 막대의 관례를 따른다. 버튼 · 포커스를 받는 이름은 Tauri가 스스로
@@ -37,7 +38,7 @@ interface ShellHeadRowProps {
 
 export function ShellHeadRow({ open, dragging, onSlot, children }: ShellHeadRowProps) {
   return (
-    <header data-tauri-drag-region="deep" className="flex h-(--titlebar-height) shrink-0 items-center">
+    <header data-tauri-drag-region="deep" className="flex h-(--size-titlebar) shrink-0 items-center">
       {/* 신호등은 이 칸의 왼쪽에 OS가 그린다(`tauri.conf.json`의 `trafficLightPosition`) — 컨트롤은 그 끝에서 16 띄운 자리
           (`--titlebar-controls-left`)에서 시작한다. 전체화면에 들고 날 때 그 자리가 옮겨 가는 것도 같은 박자다. */}
       <div

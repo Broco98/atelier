@@ -396,7 +396,7 @@ describe("Codex 움직임 토큰", () => {
   // 스펙 §12의 줄 → 새 토큰과 값.
   const NEW: [줄: string, 토큰: string, 값: string][] = [
     ["툴팁 — 지연 200ms(호버 카드가 함께 읽는 `duration-tip` 150과 나눈다)", "delay-tip", "200ms"],
-    ["사이드바 열고 닫기 — .3s(작업공간 패널과 나누는 `PANEL_MOTION` 220과 따로 둔다)", "duration-sidebar", "300ms"],
+    ["사이드바 열고 닫기 — .3s(작업공간 패널의 `PANEL_MOTION` 500과 따로 둔다)", "duration-sidebar", "300ms"],
     ["사이드바 열고 닫기 — spring의 linear() 근사", "ease-spring", SPRING],
     ["생각 중 — 한 바퀴 4s(띠는 첫 1s에 지나간다)", "duration-think", "4000ms"],
     ["생각 중 — 보인 뒤 600ms에 시작", "delay-think", "600ms"],
@@ -633,7 +633,7 @@ describe("모션 토큰", () => {
 // 셋(`bubble-user-fg` · `size-send-chat` · 라이트 `fg-sidebar`)이고 시안의 `restart-tokens.css`(Version 92)와 맞댄 것이다. 쓰는 화면은
 // 02a-2부터 짓는다 — 쓰는 자리가 아직 없어 L3가 못 재므로, 값과 유틸리티를 여기서 잰다.
 describe("restart 시안 토큰", () => {
-  // 앱 틀의 둥글기 — Air 실측. 카드 8(지금은 흰 판 하나 12) · 레일 카드 6 · 틀 안의 버튼 · 선택 줄 · 입력칸 · 탭 4.
+  // 앱 틀의 둥글기 — Air 실측. 카드 8(02a-2 — 한때 흰 판 하나 12) · 레일 카드 6 · 틀 안의 버튼 · 선택 줄 · 입력칸 · 탭 4.
   const RADII: Record<string, string> = { card: "8px", rail: "6px", ctl: "4px" };
 
   it("앱 틀의 둥글기 셋이 @theme에 서고, 반경 유틸리티가 그 변수를 읽는다", async () => {
@@ -650,9 +650,10 @@ describe("restart 시안 토큰", () => {
     expect(ruleOf(await utilities(["size-send-chat"]), "size-send-chat")).toContain("width: var(--size-send-chat)");
   });
 
-  // 창 머리 줄은 값이 같고 토큰으로 뺀 것이다 — 지금 머리 줄이 읽는 `--titlebar-height`와 어긋나지 않는다.
-  it("창 머리 줄 토큰은 지금 머리 줄 높이와 같다", () => {
-    expect(declared(blocks, "light", "titlebar-height")).toBe(themed("size-titlebar"));
+  // 창 머리 줄 높이는 이 토큰 하나다 — 02a-2가 머리 줄을 옮기며 같은 값의 옛 이름(`--titlebar-height`)을 걷었다(`ShellHead.test.tsx`가 머리
+  // 줄이 이 이름을 읽는지 잰다).
+  it("창 머리 줄의 옛 이름이 남지 않는다", () => {
+    expect(declared(blocks, "light", "titlebar-height")).toBeUndefined();
   });
 
   // Motion 보드의 「바뀜」 · 「새로 추가」 시간 — 오른쪽 패널 · 레일 · 카드 넓힘의 여닫기 500(Codex spring .5, 지금 패널은 220), 레일 켜짐
@@ -664,7 +665,7 @@ describe("restart 시안 토큰", () => {
     const built = await utilities(Object.keys(DURATIONS).map((name) => `duration-${name}`));
     for (const name of Object.keys(DURATIONS))
       expect(ruleOf(built, `duration-${name}`), name).toContain(`transition-duration: var(--duration-${name})`);
-    // 지금 패널 박자는 그대로다 — 화면이 새 시간으로 옮기는 것은 02a-2다.
+    // 패널 여닫기는 02a-2부터 새 시간을 읽고(`panel-layout`의 `PANEL_MOTION`), 옛 패널 박자는 요약 카드가 열리는 박자 · 입력창 높이에 그대로다.
     expect(themed("duration-panel")).toBe("220ms");
   });
 

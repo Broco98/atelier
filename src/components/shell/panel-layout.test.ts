@@ -5,21 +5,26 @@ import { foldingInnerClass, PANEL_MOTION, SIDEBAR_MOTION } from "./panel-layout"
 
 // 접히는 패널의 바깥 폭 트랜지션 길이와 안쪽 열 `max-width`의 지연이 **같은 값**인가(`panel-layout.ts`).
 // 두 수가 네 리터럴로 두 파일에 흩어져 있던 때는 서로를 가리키는 주석만이 그 같음을 들었다. 이제 둘 다 Atelier 토큰
-// `--duration-panel`을 읽고(codex-ds 결정 27), 그 값은 `index.css` 한 곳에 있다.
+// `--duration-panel-open`을 읽고, 그 값은 `index.css` 한 곳에 있다.
+//
+// **패널 여닫기는 500ms spring이다**(restart 스펙 「02a」 · 티켓 02a-2 · Motion 보드 「오른쪽 패널 여닫기 — 바뀜」). Codex spring {duration .5,
+// bounce .1}을 사이드바와 같은 `linear()` 곡선(`ease-spring`)과 500ms(`duration-panel-open`)로 옮긴다. 한때 220ms · `ease-panel`이었다 — 그
+// 토큰(`duration-panel`)은 요약 카드가 열리는 박자 · 입력창 높이에 남는다. 동작 줄이기면 곧바로 바뀐다(시안 `.ra-panelwrap { transition: none }`).
 describe("접히는 패널의 박자", () => {
-  it("패널 여닫기가 duration-panel(220ms) · ease-panel이다", () => {
-    expect(PANEL_MOTION.split(" ")).toEqual(["duration-panel", "ease-panel"]);
-    // 토큰의 값 — 스펙이 지키는 불변조건이다(패널 여닫기 220ms). 블록을 못 찾으면 `undefined`라 실패한다.
+  it("패널 여닫기가 duration-panel-open(500ms) · ease-spring이고 동작 줄이기면 곧바로다", () => {
+    expect(PANEL_MOTION.split(" ")).toEqual(["duration-panel-open", "ease-spring", "motion-reduce:transition-none"]);
+    // 토큰의 값 — 스펙이 지키는 불변조건이다(패널 여닫기 500ms). 블록을 못 찾으면 `undefined`라 실패한다.
     const css = readFileSync("src/index.css", "utf8");
-    const declared = cssBlocks(css).find((block) => block.decls.has("--duration-panel"))?.decls.get("--duration-panel");
-    expect(declared).toBe("220ms");
+    const declared = (name: string) => cssBlocks(css).find((block) => block.decls.has(name))?.decls.get(name);
+    expect(declared("--duration-panel-open")).toBe("500ms");
+    expect(declared("--ease-spring")).toMatch(/^linear\(0, /);
   });
 
   it("안쪽 열의 max-width 지연이 바깥 폭 트랜지션 길이와 같은 토큰이다", () => {
-    // 지연 = 바깥 길이 · 길이 0 — 두 자리 모두 `--duration-panel`을 읽어야 같다(`foldingInnerClass` 주석).
+    // 지연 = 바깥 길이 · 길이 0 — 두 자리 모두 `--duration-panel-open`을 읽어야 같다(`foldingInnerClass` 주석).
     const inner = foldingInnerClass(true).split(" ");
-    expect(inner).toContain("delay-[0s,var(--duration-panel)]");
-    expect(inner).toContain("duration-[var(--duration-panel),0s]");
+    expect(inner).toContain("delay-[0s,var(--duration-panel-open)]");
+    expect(inner).toContain("duration-[var(--duration-panel-open),0s]");
     // 펴진 뒤의 상한은 바깥 폭 그대로이고, 접히는 동안에는 걷힌다.
     expect(inner).toContain("max-w-full");
     expect(foldingInnerClass(false)).not.toContain("max-w-full");
@@ -58,9 +63,9 @@ describe("접히는 패널의 박자", () => {
   });
 });
 
-// **사이드바 열고 닫기는 Codex spring이다**(02 구현 스펙 §12 · 스토리 100 · Diff-Tokens 「사이드바 열고 닫기」 · Motion 보드). spring
-// {duration .3, bounce .1}을 CSS `linear()`로 옮긴 곡선(`ease-spring` — Motion 보드 `--cx-spring`)과 .3s(`duration-sidebar`)다. 오른쪽 · 아래
-// 패널의 spring은 이번 판 밖이라 작업 패널은 `PANEL_MOTION` 그대로다. 내용은 그대로 둔 채(안쪽 열 고정 폭) 잘리며 옅어진다 — 안쪽 열의
+// **사이드바 열고 닫기는 Codex spring이다**(02 구현 스펙 §12 · 스토리 100 · Diff-Tokens 「사이드바 열고 닫기」 · Motion 보드 · restart 02a-2).
+// spring {duration .3, bounce .1}을 CSS `linear()`로 옮긴 곡선(`ease-spring` — Motion 보드 `--cx-spring`)과 .3s(`duration-sidebar`)다. 오른쪽
+// 패널은 같은 곡선에 .5s다(위 `PANEL_MOTION`). 내용은 그대로 둔 채(안쪽 열 고정 폭) 잘리며 옅어진다 — 안쪽 열의
 // 옅음이 같은 박자로 움직이고, 펴진 뒤의 상한은 그 길이만큼 늦는다. 동작 줄이기면 곧바로 바뀐다(Codex 「reduced motion — duration 0」).
 describe("사이드바 열고 닫기", () => {
   it("박자가 duration-sidebar(.3s) · ease-spring이고 동작 줄이기면 곧바로다", () => {
@@ -89,11 +94,20 @@ describe("사이드바 열고 닫기", () => {
 // 위 검사들의 `split(" ")`이 빈 글자를 센다.
 describe("접는 장치 하나, 박자 둘", () => {
   const classes = (open: boolean, beat?: "panel" | "sidebar") => foldingInnerClass(open, beat).split(" ").sort();
-  it("패널 — 펴면 지연된 상한 · 접으면 기본 전환으로 걷힌다", () => {
+  it("패널 — 펴면 지연된 상한 · 접으면 기본 전환으로 걷히고, 동작 줄이기면 곧바로다", () => {
     expect(classes(true)).toEqual(
-      ["max-w-full", "transition-[opacity,max-width]", "opacity-100", "delay-[0s,var(--duration-panel)]", "duration-[var(--duration-panel),0s]"].sort(),
+      [
+        "max-w-full",
+        "transition-[opacity,max-width]",
+        "opacity-100",
+        "delay-[0s,var(--duration-panel-open)]",
+        "duration-[var(--duration-panel-open),0s]",
+        "motion-reduce:transition-none",
+      ].sort(),
     );
-    expect(classes(false)).toEqual(["max-w-[100vw]", "opacity-0", "transition-opacity", "duration-basic"].sort());
+    expect(classes(false)).toEqual(
+      ["max-w-[100vw]", "opacity-0", "transition-opacity", "duration-basic", "motion-reduce:transition-none"].sort(),
+    );
   });
   it("사이드바 — 같은 장치에 spring 박자, 동작 줄이기면 곧바로다", () => {
     expect(classes(true, "sidebar")).toEqual(

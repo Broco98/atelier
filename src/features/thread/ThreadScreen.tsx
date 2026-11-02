@@ -67,8 +67,8 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
 //
-// - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 흰 판 — 02 구현 스펙 §3) — 이 화면은 머리 줄에 놓을 것과 판 안의 본문만 건넨다
-//   (`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
+// - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 카드 자리 — 02 구현 스펙 §3 · restart 02a-2) — 이 화면은 머리 줄에 놓을 것과
+//   본문 카드에 들 것만 건넨다(`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
 // - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
 //   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 오른쪽

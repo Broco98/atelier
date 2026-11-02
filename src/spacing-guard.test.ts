@@ -326,18 +326,6 @@ describe("눈금의 사분 단", () => {
    * 더 선 자리도 다음 사분 단의 뒷문이 되어 정확히 한 번인지 함께 센다(`notOnce`).
    */
   const QUARTERS: { file: string; className: string; why: string }[] = [
-    // 크롬 위 띄움 5 — Codex 판이 크롬 왼 · 오 · 아래 끝에서 띄운 값(02 구현 스펙 §3 · 시안 `.body`의 `0 5px 5px`). 사이드바가 판 밖 크롬 위에
-    // 서면서(03 구현 스펙 §3) 왼 · 오는 사이드바와 판을 함께 담는 줄이, 아래는 판이 띄운다 — 사이드바는 창 아래 끝까지 선다.
-    {
-      file: "src/components/shell/AppShell.tsx",
-      className: "px-1.25",
-      why: "사이드바 · 흰 판의 줄 — 크롬 왼 · 오 끝에서 5. 사이드바가 창 왼쪽 끝 + 5에서 서고, 접으면 판이 그 5까지 넓어진다. 머리 줄 이름 자리의 셈(`--titlebar-inset-sidebar`)이 같은 1.25 칸을 더한다",
-    },
-    {
-      file: "src/components/shell/AppShell.tsx",
-      className: "mb-1.25",
-      why: "흰 판 — 크롬 아래 끝에서 5",
-    },
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
     {
       file: "src/components/shell/Frame.tsx",
@@ -524,7 +512,7 @@ describe("간격 토큰", () => {
     expect(unit?.[1]).toBe("0.25");
     const px = Number(unit![1]) * 16;
     // 값은 식이 아니라 수로 적는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(`useResizableWidth`의 그린 폭 ·
-    // e2e)가 수로 못 읽는다(`index.css`의 `--titlebar-height`와 같은 까닭).
+    // e2e)가 수로 못 읽는다(`index.css`의 `--size-titlebar`와 같은 까닭).
     expect(tokens.filter((one) => one.value !== `${one.step * px}px`)).toEqual([]);
   });
 

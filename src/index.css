@@ -62,17 +62,6 @@
    않는다** — 기본값을 그 DS 값으로 옮기는 것이 codex-ds 스펙 S4다. 셋 다 옮겨 같은 수(290 · 264 · 340)이고(e2e `works-sidebar`가
    사이드바를, `frame`이 목록 칸과 작업 패널을 이 토큰과 맞댄다), 화면에 서는 것은 인라인 값이다. */
 :root {
-    /* **머리 줄** — 크롬 맨 위 44 줄(02 구현 스펙 §3 · Codex 제목줄 · 시안 `.tb`). 신호등 · 셸 컨트롤 · 지금 화면의 이름과 할 일이
-       이 줄의 가운데(22)에 선다(`ShellHead` · `ShellControls` · `tauri.conf.json`의 `trafficLightPosition`). 그 아래가 흰 판이다(`AppShell`).
-       신호등은 y 24다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
-       tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 식이다(2026-10-11 — 48 줄 때 y 26으로 가운데
-       24를 재었다). 진짜 앱(macOS 27, 44 줄)에서 신호등 셋의 가운데가 y 22로 섰다(02 티켓 13c — 창 단추 상자 16 · 위 14). 이 값을
-       고치면 y도 함께 고친다.
-       모든 화면의 이름 · 할 일이 이 줄 하나에 선다 — 공용 틀(`Frame`)의 화면들도 카드 없이 이 줄로 보낸다(02 구현 스펙 §3 S2).
-       식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
-       읽는다. 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
-    --titlebar-height: 44px;
-
     /* **간격** — DS 2판 `tokens.json`의 `space-*` 그대로다(4px 눈금 — Tailwind `--spacing`의 그 칸과 같은 값이다,
        `spacing-guard.test.ts`가 맞댄다). 화면은 세 줄에 맞춘다(codex-ds 스펙 §4 「여백」 · DS README 「간격 · 반경 · 크기」):
          틈 8       `space-2` — 창 끝 · 카드 사이 · 카드 끝에서 행까지
@@ -82,9 +71,10 @@
        않는다. Tailwind 4.3.3에서 `--space-*`는 `space-x-*` · `space-y-*`의 테마 이름공간이라, `@theme`에 올리면 `space-x-2` 같은
        유틸리티가 이 값으로 선다 — 테마에 간격 이름이 오르는 것은 `spacing-guard.test.ts`가 막는다. 이 변수를 읽는 것은 CSS
        변수가 있어야 하는 자리뿐이다: 틈(`--space-2`)을 더하는 폭 셈(`Frame`의 작업 패널 칸 · 분할 · 옆 칸,
-       `useResizableWidth`의 그린 폭과 손잡이 자리)과 머리 줄의 왼쪽 여백(아래 `--titlebar-inset-head`), 그리고 길이를 토큰에서
+       `useResizableWidth`의 그린 폭)과 머리 줄의 왼쪽 여백(아래 `--titlebar-inset-head`), 그리고 길이를 토큰에서
        읽어 맞대는 e2e다. 나머지는 선언만 있다(DS 이름을 통째로 선언한다 — 스펙 S2와 같은 손버릇).
-       식으로 적지 않는다 — 위 `--titlebar-height`와 같은 까닭이다. ui-refresh 때의 이름(`--gap` · `--card-pad` · `--term-inset` ·
+       식으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(`useResizableWidth`의 그린 폭 · e2e)가 수로
+       못 읽는다. ui-refresh 때의 이름(`--gap` · `--card-pad` · `--term-inset` ·
        `--row-gap` · `--glyph-gap`)은 걷었다(codex-ds 티켓 25) — 그 값은 이제 DS 값이다(카드 안 24 → 글 거터 20 · 위 24, 터미널 12 →
        DS `Terminal` 16, 행 사이 2 → 사이드바 · 목록 2 · 트리 1, 글리프 뒤 9 → 행 9 · 알림 띠 줄 10). */
     --space-1: 4px;
@@ -116,7 +106,7 @@
 }
 
 /* 머리 줄 왼쪽 자리의 유일한 출처(02 구현 스펙 §3). AppShell 루트에 붙는다. 머리 줄(`ShellHead`)의 왼쪽 칸에 신호등과 셸 컨트롤이
-   서고, 그 칸의 폭이 지금 화면의 이름이 서는 자리의 시작이다 — 사이드바가 열렸으면 흰 판 안 왼쪽 끝(`--titlebar-inset-sidebar`),
+   서고, 그 칸의 폭이 지금 화면의 이름이 서는 자리의 시작이다 — 사이드바가 열렸으면 카드 자리 왼쪽 끝(`--titlebar-inset-sidebar`),
    접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해
    --titlebar-controls-width만큼 이어진다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    89px는 신호등 끝에서 16을 띄운 자리다 — tauri.conf.json의 trafficLightPosition(x:13)에 신호등 셋이 지름 14 · 간격 23으로 서서
@@ -146,11 +136,11 @@
     --titlebar-inset-head: calc(
         var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--space-2)
     );
-    /* **사이드바가 열렸을 때 이름 자리의 시작** — 흰 판 안 왼쪽 끝(본문 왼쪽 끝)과 같은 x다(Codex). 사이드바가 판 밖 크롬 위에서 창 왼쪽
-       끝 + 5(눈금 1.25 칸 — `AppShell`의 줄 `px-1.25`)에 제 폭만큼 서고, 그 오른쪽 끝에서 판이 테두리 0.5와 함께 선다(03 구현 스펙 §3 —
-       사이드바가 판 안에 들던 02의 「판 띄움 5 + 테두리 0.5 + 사이드바 폭」과 같은 셈이다). 사이드바가 탭 줄에 자리를 내줘 저장한 폭보다
-       좁게 서는 때(창 최소 폭 900 아래 — `Sidebar`의 `asideClass`)는 따르지 않는다. */
-    --titlebar-inset-sidebar: calc(var(--spacing) * 1.25 + 0.5px + var(--sidebar-width));
+    /* **사이드바가 열렸을 때 이름 자리의 시작** — 카드 자리 왼쪽 끝(본문 카드 왼쪽 끝)과 같은 x다(Codex). 사이드바가 카드 밖 크롬 위에서
+       창 왼쪽 끝에 제 폭만큼 서고(행은 그 안 좌우 8), 그 오른쪽 끝에서 카드 자리가 선다(restart 02a-2 — 사이드바와 카드 사이 틈 8은 사이드바
+       폭 안의 오른쪽 8이다, 시안 `.ra-side-in`의 좌우 8). 한때 「크롬 띄움 5 + 흰 판 테두리 0.5 + 사이드바 폭」이었다(03). 사이드바가 탭 줄에
+       자리를 내줘 저장한 폭보다 좁게 서는 때(창 최소 폭 900 아래 — `Sidebar`의 `asideClass`)는 따르지 않는다. */
+    --titlebar-inset-sidebar: var(--sidebar-width);
 }
 
 /* 전체화면에선 macOS가 신호등을 숨기므로 컨트롤이 창 여백까지 당겨진다 */
@@ -540,7 +530,7 @@
      sm         6     상태 배지 · 트리의 확장자 꼬리표 · Processes의 포트 칩
      md         8     입력칸 · 툴팁 · 작은 아이콘 버튼(24 · 26) · 작은 버튼(`Button` xs) · 세그먼트 칸 · kbd · 툴바 칸
      lg        10     버튼(32) · 아이콘 버튼(28) · 검색칸 · 탭 · 목록 행 · 메뉴 행 · Select
-     xl        12     흰 판 · 문서의 콜아웃 · Processes의 합계 타일 · Projects 상세의 묶음(DS `List`) · 설명 상자 · 설정 묶음
+     xl        12     문서의 콜아웃 · Processes의 합계 타일 · Projects 상세의 묶음(DS `List`) · 설명 상자 · 설정 묶음
                       (DS `SettingsGroup` — spec 레이아웃 편집기의 폼도)
      2xl       16     카드 · 카드 안 묶음(문서의 표) · 떠 있는 것(메뉴 · 팔레트 · 전체화면 뷰어 · 토스트)
      3xl       20     코드 블록(문서 · mermaid · 에이전트 훅 설정의 미리보기)
@@ -565,13 +555,14 @@
    - 둥근 네모 값은 아래 `@theme`에, superellipse 값은 그 뒤 `@supports (corner-shape: superellipse(1.5))`의 `:root`가 다시 세운다(층 밖
      선언이 `@theme`의 층 안 선언을 이긴다). **superellipse 단계를 쓰는 자리는 `corner-superellipse`를 함께 단다** — 모서리 모양도 같은 창에서만
      바뀐다. 짝이 빠지면 그 창에서 둥근 네모가 25% 커진다(`type-scale.test.ts`가 짝을 잰다).
-   - 흰 판(02)의 12는 DS `xl`, 사람 메뉴의 줄(04)과 내 차례 알약(05)의 8은 `md`, 답한 질문 · 대기 메시지(11)의 12는 `xl`이다 — 시안에서도
+   - 사람 메뉴의 줄(04)과 내 차례 알약(05)의 8은 `md`, 답한 질문 · 대기 메시지(11)의 12는 `xl`이다 — 시안에서도
      둥근 네모다.
 
    **restart 시안의 앱 틀 둥글기**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1). Air를 잰 값이고 둥근 네모 하나다. 쓰는 화면은
    02a-2부터 짓는다(괄호 안).
-     card      8     앱 틀의 카드 — 사이드바 밖의 영역이 8 틈으로 뜬 카드들로 선다. 지금은 흰 판 하나(`xl` 12)다(02a-2)
-     rail      6     레일 카드(02a-14)
+     card      8     앱 틀의 카드 — 사이드바 밖의 영역이 8 틈으로 뜬 카드들로 선다(02a-2 — `Frame`의 `CARD_FACE`). 한때 그 자리는
+                     흰 판 한 장(`xl` 12)이었다(02)
+     rail      6     레일 카드(02a-2가 카드로 세우고 02a-14가 안을 짓는다)
      ctl       4     틀 안의 버튼 · 선택 줄 · 입력칸 · 탭(02a-2 · 02a-3)
 
    `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
@@ -645,7 +636,7 @@
        메뉴 · 팝오버 · 다이얼로그  움직이지 않는다. 모델 피커만 `duration-dropdown` · `ease-enter-snappy` · 30ms · .98배에서(`animate-menu-enter`)(12)
        툴팁                    `delay-tip`(200) · 움직임 없음. 같은 무리의 호버 카드(`hover-group.ts`)는 `--duration-tip`(150) 그대로다(12)
        사이드바 열고 닫기      `duration-sidebar`(.3s) · `ease-spring` — spring {duration .3, bounce .1}을 옮긴 `linear()`(Motion 보드 `--cx-spring`).
-                               사이드바 · 머리 줄 왼쪽 칸이 `SIDEBAR_MOTION`으로 읽는다. 작업 패널은 `PANEL_MOTION` 그대로다(12)
+                               사이드바 · 머리 줄 왼쪽 칸이 `SIDEBAR_MOTION`으로 읽는다. 작업 패널은 아래 `panel-open`이다(12 · 02a-2)
        요약 카드 비켜나기      `duration-panel` · `ease-panel`(07)
        펼침 · 접힘             `duration-relaxed` · `ease-enter` — 높이 0 → auto + 투명도. 꺾쇠 회전도 .3s(09)
        생각 중                 `duration-think`(4s 한 바퀴 — 띠는 첫 25%인 1s에 지나가고 쉰다) · `delay-think`(보인 뒤 600ms) · `ease-shimmer`
@@ -659,9 +650,10 @@
      늦음(`--delay-*`)과 사이(`--stagger-*`)는 Tailwind 이름공간이 아니다 — 움직임 유틸리티가 변수로 읽는다(Thread 화면은 `delay-*`를 쓰지
      않는다, `motion-guard.test.ts`).
    - **restart 시안의 움직임**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · Motion 보드 「바뀜」 · 「새로 추가」 · 티켓 02a-1). Motion 보드의
-     나머지 줄은 위 토큰 그대로다(보드 「앱 그대로」). 아직 쓰는 자리가 없다(괄호 안은 쓰게 될 티켓).
+     나머지 줄은 위 토큰 그대로다(보드 「앱 그대로」). 괄호 안은 쓰는 · 쓰게 될 티켓이다.
        panel-open  500ms  오른쪽 패널 여닫기 · 레일이 들고 남 · 카드 넓힘 — Codex spring {duration .5, bounce .1}, 곡선은 `ease-spring`.
-                          지금 패널은 `duration-panel`(220)이다(02a-2 · 02a-14)
+                          `panel-layout.ts`의 `PANEL_MOTION`이 읽는다 — 작업 패널 · Thread 화면의 넓힘 · 목록 칸 · 분할의 기본 폭
+                          되돌림(02a-2). 레일(02a-14)
        rail        220ms  레일 켜짐 표시가 칸 사이를 옮겨 감 — 곡선 `ease-panel`(02a-14)
        rise        320ms  보낸 말 말풍선이 아래 12 · .985배에서 자리에 섬 — 곡선 `ease-enter-snappy`(02b-7)
      Motion 보드의 「목록에서 상세로」 240ms는 보드가 토큰 이름 없이 적은 값이라 여기 두지 않는다. */
@@ -738,8 +730,8 @@
        `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다.
 
        요약 카드 폭(`--size-summary` 300)은 v1 Work 카드의 폭이다(v1 티켓 34 → 02 §7 · 캔버스 v35 Screen-Live `aside[aria-label=요약]`) — Thread
-       화면 판의 오른쪽 위(위 · 오른쪽 8)에 뜨는 카드의 폭이다. DS에 이 폭이 없다. 카드가 열린 동안 대화 열 · 입력창은 오른쪽 몫
-       `--size-summary-room`(308 = 카드 300 + 판 끝 띄움 8 + 카드 앞 틈 16 − 판 안쪽 여백 16 — 시안 `padding-right: 324px`의 16 바깥)을 비워
+       화면 본문 카드의 오른쪽 위(위 · 오른쪽 8)에 뜨는 카드의 폭이다. DS에 이 폭이 없다. 카드가 열린 동안 대화 열 · 입력창은 오른쪽 몫
+       `--size-summary-room`(308 = 카드 300 + 본문 카드 끝 띄움 8 + 카드 앞 틈 16 − 본문 안쪽 여백 16 — 시안 `padding-right: 324px`의 16 바깥)을 비워
        두고 그 남은 자리 가운데로 비켜난다(`ThreadScreen`의 `Beside`). 넓힌 카드 곁의 대화 폭(`--size-thread-beside` 480)은 v1이
        더했다(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.p-open .chat`) — 카드가 넓은 동안 대화가 왼쪽에 이 폭으로 남고 카드가 그 오른쪽을
        채운다(`ThreadScreen`). 넓힌 카드의 목록 칸은 `--size-list`(264)를 읽는다(보드 `.p-open .wlist` — `SummaryCard`).
@@ -751,9 +743,13 @@
        `--size-summary`(v1 `--size-work-card`의 이름을 고쳤다 — 07), 사이드바 줄 30은 `--size-row-nav`, 입력창 글 칸 최소 44는
        `--space-11`(눈금 11)이다.
 
-       **restart 시안 크기**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1) — 셋은 아직 쓰는 자리가 없다(괄호 안은 쓰게 될 티켓).
-         gap        8    카드 사이 · 창 끝 틈(02a-2). 값은 눈금의 `--space-2`와 같다
-         titlebar  44    창 머리 줄(02a-2). 값은 지금 머리 줄이 읽는 `--titlebar-height`와 같고 토큰으로 뺀 것이다
+       **restart 시안 크기**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1 · 02a-2). 괄호 안은 쓰는 티켓이다.
+         gap        8    카드 사이 · 창 끝 틈(02a-2). 값은 눈금의 `--space-2`와 같고, 앱은 틈을 눈금으로 적는다(`pr-2` · `pl-2` · 폭 셈의
+                         `--space-2` — 간격 유틸리티가 이 이름을 읽는 것은 `spacing-guard.test.ts`가 막는다). 이 이름은 시안의 값을 적어 둔다
+         titlebar  44    창 머리 줄(02a-2 — `ShellHead`가 높이로 읽는다). 한때 같은 값의 `--titlebar-height`였다. 신호등 · 셸 컨트롤 · 지금
+                         화면의 이름과 할 일이 이 줄의 가운데(22)에 선다(`ShellControls` · `tauri.conf.json`의 `trafficLightPosition`).
+                         신호등은 y 24다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다(진짜 앱 —
+                         macOS 27, 44 줄 — 에서 셋의 가운데가 y 22로 섰다, 02 티켓 13c). 이 값을 고치면 y도 함께 고친다
          send-chat 28    입력창 보내기 원 — 앱과 Codex 실측(02b-2). 지금 원은 `--size-control`을 읽는다
        레일 카드 폭 32는 지금 `--size-prail`이다(위 머리말 — `--size-rail` 52와 이름이 갈린다). */
     --size-rail: 52px;
@@ -787,7 +783,7 @@
    여기 적힌 값이 앱 팔레트의 정본이고, 아래 별칭 묶음의 이름들(Atelier 낱말 · shadcn 이름)은 값을 들지 않고 이 토큰을 가리킨다.
    다크는 `.dark`가 같은 이름을 덮는다(codex-ds 결정 17 — 앱은 `.dark`를 켜지 않는다. e2e가 켜서 잰다). */
 :root {
-    /* 면 — 흰 판 · 카드 · 글 면은 `surface`, 창 바탕(크롬)은 `surface-shell`, 메뉴 · 호버 카드 · 토스트는 `surface-elevated` */
+    /* 면 — 앱 틀의 카드 · 글 면은 `surface`, 창 바탕(크롬)은 `surface-shell`, 메뉴 · 호버 카드 · 토스트는 `surface-elevated` */
     --surface: #ffffff;
     --surface-under: #f9f9f9;
     --surface-shell: #f6f6f6;
@@ -935,7 +931,7 @@
          mine                  내 차례 알약의 글자(05) · 위 줄 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
          surface-codespan      답 안 인라인 코드의 바탕(08)
          surface-tray          첫 화면 입력창 밑 트레이(10) · 대기 메시지(11)
-         border-panel          흰 판의 0.5 테두리(02)
+         border-panel          흰 판의 0.5 테두리(02). 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
          border-summary        요약 카드의 0.5 테두리(07)
          border-slot           입력창 자리 카드의 1px 테두리(11)
          border-faint          작업 중 점의 흰 원(32) 1px 테두리(11)
@@ -1059,7 +1055,7 @@
     --shadow-prominent: 0 0 0 0.5px #1a1c1f1f, 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
     --shadow-2xl: 0 16px 32px -8px #00000030;
     /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — 위 「Codex 실측 색」처럼 다크 값이 없다.
-         panel    흰 판의 위 그림자(02) — 테두리는 `border-panel` 0.5
+         panel    흰 판의 위 그림자(02) — 테두리는 `border-panel` 0.5. 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
          menu     사람 메뉴(04) — 0.5 링이 그림자 첫 겹에 든다
          summary  요약 카드(07) — 테두리는 `border-summary` 0.5
          prompt   입력창(10) — DS `composer`의 바깥 흐림 40이 Codex에서 80이다(스펙 §9). `composer`는 입력창 자리 카드 · 알림 카드 ·

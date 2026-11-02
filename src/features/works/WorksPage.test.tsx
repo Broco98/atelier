@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { codeTabClosedByTab, shellClosedByTab } from "./WorksPage";
 import { PANEL_VIEWS } from "./WorkPanel";
 import { ToastProvider } from "@/components/ui/toast";
-import { PANE_RULE, TAB_ROW_CARD, TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
+import { TAB_ROW_CARD, TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
@@ -448,10 +448,10 @@ describe("WorksPage 머리 줄 배치", () => {
     expect(panelToggleTags(a)).toHaveLength(1);
   });
 
-  it("머리 줄의 화면 것은 카드가 아니고, 끌기는 셸의 머리 줄이 든다 — 판 안은 끄는 자리가 아니다", () => {
+  it("머리 줄의 화면 것은 카드가 아니고, 끌기는 셸의 머리 줄이 든다 — 카드 자리는 끄는 자리가 아니다", () => {
     // 02 구현 스펙 §3 S2 — 머리 카드(흰 면 · 둥글기 · 링)를 걷고 이름 · 할 일이 머리 줄에 바로 선다. 끄는 자리는 셸의 머리 줄 하나다
     // (`ShellHeadRow`의 `deep` — 빈 자리 · 보이기만 하는 글자는 끌고, 누를 것은 Tauri가 비켜 둔다). 어느 점이 끌리는지는 L3(`frame.spec.ts`의
-    // `끄는자리`)가 잰다. 판 안의 칸은 회색 틈이 없어 끄는 자리가 아니다. 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의
+    // `끄는자리`)가 잰다. 카드와 카드 사이 틈도 끄는 자리가 아니다(`Frame` 머리말). 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의
     // `rowOf`)가 집는다.
     const markup = render();
     const row = header(markup);
@@ -724,10 +724,10 @@ describe("WorksPage 작업 패널 칸", () => {
 
   // 이 패널은 화면 **오른쪽**에 있어 끄는 방향의 부호가 반대다. 호출부가 side를 빠뜨리거나 "left"로 적으면 손잡이가 패널
   // 건너편으로 가 잡을 곳이 사라지는데, 훅 쪽 테스트는 이 배선을 보지 못한다.
-  it("펼쳐져 있으면 패널 왼쪽 가장자리 — 문서와 가르는 선 — 에 손잡이가 선다", () => {
+  it("펼쳐져 있으면 패널 왼쪽 — 문서 카드와 가르는 틈 — 에 손잡이가 선다", () => {
     const box = panelBox(render());
     expect(box).toMatch(/cursor-col-resize/);
-    // 가장자리 손잡이(`seat="edge"`)이고, 오른쪽 패널이라 그 가장자리는 칸의 **왼쪽**이다.
+    // 틈 자리 손잡이(`seat="gap"`)이고, 오른쪽 패널이라 그 틈은 상자의 **왼쪽**이다.
     const handle = box.match(/<div[^>]*cursor-col-resize[^>]*>/)?.[0] ?? "";
     expect(handle).toMatch(/class="[^"]*\bleft-0\b/);
     // 손잡이는 absolute다. 이 상자가 기준이 아니면 조상 어딘가를 기준으로 서서 화면 엉뚱한 곳에 붙는다.
@@ -758,16 +758,16 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(panelBox(markup)).not.toMatch(/cursor-col-resize/);
   });
 
-  it("기본 폭 340(DS `size-panel`)으로 서고, 바깥과 안쪽이 같은 폭(칸의 폭)을 읽는다", () => {
+  it("기본 폭 340(DS `size-panel`)으로 서고, 바깥과 안쪽이 같은 폭(틈 + 카드)을 읽는다", () => {
     // codex-ds 스펙 S4 — 기본은 DS 값이고 범위(260–560)는 지금 것이다. 범위 안에 저장된 폭은 그대로 선다(아래 「지난번에 바꾼 폭」).
     const markup = render();
     expect(markup).toMatch(/--panel-width:\s*340px/);
     // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다. 바깥은 접히는 폭이고 안쪽은 그 폭으로 버티는
     // 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다 — 바깥은 flex 기준(`basis`)으로, 안쪽은 폭으로
-    // 읽는다(바깥이 문서 칸에 자리를 내줄 수 있어야 해서다). 판 안의 칸은 둘레 틈이 없어(02 구현 스펙 §3 S2) 둘 다 저장하는 폭 그대로다.
-    expect(countOf(markup, "basis-(--panel-width)")).toBe(1);
-    expect(countOf(markup, " w-(--panel-width)")).toBe(1);
-    expect(markup).not.toContain("var(--space-2)");
+    // 읽는다(바깥이 문서 카드에 자리를 내줄 수 있어야 해서다). 저장하는 폭은 카드의 폭이고, 둘 다 그 왼쪽의 틈 8(`space-2`)을 더한다 —
+    // 패널은 문서 카드와 8 틈을 둔 제 카드다(restart 02a-2 · 시안 `.ra-panelwrap`).
+    expect(countOf(markup, "basis-[calc(var(--panel-width)+var(--space-2))]")).toBe(1);
+    expect(countOf(markup, " w-[calc(var(--panel-width)+var(--space-2))]")).toBe(1);
   });
 
   it("줄어들어도 끄는 최소 폭 아래로는 안 주고, 문서 카드에 그 최소 폭만큼은 남긴다", () => {
@@ -778,7 +778,7 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(markup).toMatch(/--panel-reserve:\s*260px/);
     const root = rootTag(markup);
     if (!root) throw new Error("패널 aside가 없다");
-    expect(root).toContain("min-w-(--panel-min)");
+    expect(root).toContain("min-w-[calc(var(--panel-min)+var(--space-2))]");
     expect(root).toContain("max-w-[calc(100%-var(--panel-reserve))]");
     expect(root).not.toContain("shrink-0");
   });
@@ -789,16 +789,15 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(render()).toMatch(/--panel-width:\s*500px/);
   });
 
-  // 두 번 **뒤집혔다** — 처음엔 「떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼」이었고(창 끝에서 끝까지 가는 surface), ui-refresh
-  // 결정 4로 머리 줄 아래 뜬 둥근 흰 카드가 되어 문서와의 구분을 틈이 맡았다. 이제 흰 판 하나가 본문을 품어(02 구현 스펙 §3 S2) 패널은
-  // 다시 판 안의 칸이고, 문서와의 구분은 왼쪽 선 하나다(Codex 오른쪽 패널의 왼쪽 선 — `border-heavy`).
-  it("패널은 둥근 카드가 아니라 판 안의 칸이고, 왼쪽 선 하나로 문서와 갈린다", () => {
+  // 세 번 **뒤집혔다** — 처음엔 「떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼」이었고(창 끝에서 끝까지 가는 surface), ui-refresh
+  // 결정 4로 머리 줄 아래 뜬 둥근 흰 카드가 되어 문서와의 구분을 틈이 맡았다. 02 구현 스펙 §3 S2에서 흰 판 하나가 본문을 품어 패널이 판 안의
+  // 칸이 되고 왼쪽 선 하나로 갈렸다. restart 02a-2가 판을 걷어 패널은 다시 문서 카드와 8 틈을 둔 둥근 카드다(시안 `.ra-panelwrap` · `.ra-card`).
+  it("패널은 문서 카드와 8 틈을 둔 둥근 카드이고, 왼쪽 선이 없다", () => {
     const box = panelBox(render());
     const card = box.match(/<section[^>]*aria-label="작업공간 패널"[^>]*>/)?.[0] ?? "";
-    expect(card, "패널 칸을 찾지 못했다").not.toBe("");
-    expect(card).not.toContain("rounded-");
-    expect(card).not.toContain("shadow-");
-    for (const one of PANE_RULE.split(" ")) expect(rootTag(render())).toContain(one);
+    expect(card, "패널 카드를 찾지 못했다").not.toBe("");
+    for (const one of ["rounded-card", "shadow-hairline", "bg-surface"]) expect(card, one).toContain(one);
+    expect(rootTag(render())).not.toContain("after:bg-border-heavy");
   });
 });
 

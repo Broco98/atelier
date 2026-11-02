@@ -44,7 +44,7 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 머리 줄(앱 셸의 `ShellHeadRow`)의
 // 성질이다. 탭 줄은 한동안 그 줄에 칸들을 세우다가, 그 탭이 보여 줄 카드의 머리로 내려왔다(codex-ds 스펙 §4 · ShellTabs 머리말).
 //
-// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 흰 판 안에 터미널 칸 하나가 서고 그 칸의 머리가 탭 줄이다 —
+// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 카드 자리에 터미널 카드 하나가 서고 그 카드의 머리가 탭 줄이다 —
 // 위치 글자 줄은 없다(ui-refresh 결정 5: 카드는 제게 필요한 머리만 인다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
 // 16(DS `Terminal`)은 셸의 집이 든다(`TerminalPane`의 그 주석).
 //

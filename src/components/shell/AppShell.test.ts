@@ -59,48 +59,67 @@ describe("설정의 문", () => {
   });
 });
 
-// 틀이 하나다(02 구현 스펙 §3 · 03 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고, 그 아래 크롬 위에
-// 사이드바가 머리 줄 왼쪽 칸과 한 기둥으로 서며, 그 오른쪽 흰 판 하나에 화면 본문(라우트가 그리는 것)만 든다. 화면마다 제 틀을 그리면 화면을
-// 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를 소스로 잰다 — 판의 띄움 · 높이 · 이름 자리 · 사이드바 기둥은
-// L3(`frame.spec` · `frame-sidebar.spec`)가 상자로 잰다.
-describe("틀 하나 — 머리 줄과 흰 판", () => {
+// 틀이 하나다(02 구현 스펙 §3 · 03 구현 스펙 §3 · restart 02a-2 · CONTEXT 「머리 줄」 · 「카드」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고,
+// 그 아래 크롬 위에 사이드바가 머리 줄 왼쪽 칸과 한 기둥으로 서며, 그 오른쪽 카드 자리에 화면(라우트가 그리는 것)의 카드들이 8 틈으로 뜬다.
+// 화면마다 제 틀을 그리면 화면을 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를 소스로 잰다 — 카드의 자리 · 틈 ·
+// 이름 자리 · 사이드바 기둥은 시안 비교와 L3(`frame.spec` · `frame-sidebar.spec`)가 상자로 잰다.
+describe("틀 하나 — 머리 줄과 카드 자리", () => {
   const at = (literal: string) => source.indexOf(literal);
+  /** 카드 자리를 여는 태그 — `data-slot="cards"`가 선 `<div …>`다. */
+  const cardsTag = () => {
+    const slot = at('data-slot="cards"');
+    return source.slice(source.lastIndexOf("<div", slot), source.indexOf(">", slot));
+  };
 
   it("머리 줄이 크롬 맨 위에 서고 셸 컨트롤을 품는다", () => {
-    const [head, controls, headEnd, panel] = ["<ShellHeadRow", "<ShellControls", "</ShellHeadRow>", 'data-slot="panel"'].map(at);
-    expect([head, controls, headEnd, panel].every((one) => one > -1)).toBe(true);
+    const [head, controls, headEnd, cards] = ["<ShellHeadRow", "<ShellControls", "</ShellHeadRow>", 'data-slot="cards"'].map(at);
+    expect([head, controls, headEnd, cards].every((one) => one > -1)).toBe(true);
     expect(head).toBeLessThan(controls);
     expect(controls).toBeLessThan(headEnd);
-    expect(headEnd).toBeLessThan(panel);
+    expect(headEnd).toBeLessThan(cards);
     expect(source).toContain("bg-surface-shell");
   });
 
-  it("흰 판은 본문만 품고 사이드바는 판 밖에 선다", () => {
-    const panel = at('data-slot="panel"');
-    const tagAt = source.lastIndexOf("<div", panel);
+  // 시안 Shell 「판 한 장을 걷고 영역을 카드로 나눈다」 — 흰 판(둥글기 12 · 0.5 테두리 · 위 그림자의 흰 면 하나)이 없다. 카드의 겉은 화면의
+  // 틀이 그린다(`Frame`의 `Card` · `PlainFrame`).
+  it("흰 판이 없다 — 카드 자리는 겉 없이 화면의 카드들만 품는다", () => {
+    expect(source).not.toContain('data-slot="panel"');
+    for (const gone of ["border-border-panel", "shadow-panel", "rounded-xl"]) expect(source, gone).not.toContain(gone);
+    const tag = cardsTag();
+    expect(tag).not.toMatch(/\b(?:bg|rounded|shadow|border)-/);
+  });
+
+  it("카드 자리는 화면만 품고 사이드바는 그 밖에 선다", () => {
+    const cards = at('data-slot="cards"');
+    const tagAt = source.lastIndexOf("<div", cards);
     const [sidebar, outlet] = ["<Sidebar", "<Outlet />"].map(at);
     // **다 있는지부터 센다** — 없으면 indexOf가 -1이라 아래 차례 비교가 읽은 것 없이 통과한다.
-    expect([panel, sidebar, outlet].every((one) => one > -1)).toBe(true);
-    expect(countOf(source, 'data-slot="panel"')).toBe(1);
+    expect([cards, sidebar, outlet].every((one) => one > -1)).toBe(true);
+    expect(countOf(source, 'data-slot="cards"')).toBe(1);
     expect(countOf(source, "<Sidebar")).toBe(1);
-    // 사이드바는 판을 열기 전에 선다(판 밖 크롬 위). 본문은 판 안이다.
     expect(sidebar).toBeLessThan(tagAt);
-    expect(outlet).toBeGreaterThan(panel);
-    // 사이드바와 판은 한 줄의 형제다 — 사이드바에서 판을 여는 자리까지 주석을 걷으면 사이드바 말고 다른 요소가 없다(다른 상자가 끼면 기둥이
-    // 판과 갈린다).
+    expect(outlet).toBeGreaterThan(cards);
+    // 사이드바와 카드 자리는 한 줄의 형제다 — 사이드바에서 카드 자리를 여는 자리까지 주석을 걷으면 사이드바 말고 다른 요소가 없다.
     const between = source
       .slice(sidebar, tagAt)
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
       .replace(/\/\/.*$/gm, "");
     expect(between.match(/<[A-Za-z]\w*/g)).toEqual(["<Sidebar"]);
-    // 판의 겉은 토큰이다 — 손으로 적은 색 · 그림자가 아니다.
-    const tag = source.slice(tagAt, source.indexOf(">", panel));
-    for (const token of ["rounded-xl", "border-border-panel", "shadow-panel", "bg-surface"]) expect(tag, token).toContain(token);
-    // **판이 본문의 바닥을 사이드바에게 알린다**(`min-w-min`) — 판이 사이드바의 형제라, 본문 뿌리가 드는 바닥(탭 줄 — `TAB_ROW_COLUMN`)은 판의
-    // min-content로만 사이드바에 닿는다. 판은 모서리를 자르느라 `overflow-hidden`이어서 적지 않으면 그 바닥이 0이다(넘침 상자의 자동 최소 폭).
-    expect(tag).toContain("min-w-min");
+    // **카드 자리가 본문의 바닥을 사이드바에게 알린다**(`min-w-min`) — 화면 뿌리가 드는 바닥(탭 줄 — `TAB_ROW_COLUMN`)이 이 자리의
+    // min-content로 사이드바에 닿는다.
+    expect(cardsTag()).toContain("min-w-min");
     // 화면은 머리 줄의 자리를 셸에게서 받는다 — 본문(라우트)이 그 자리 안에 선다.
-    expect(source.slice(panel, outlet)).toContain("<ShellHeadSlot.Provider");
+    expect(source.slice(cards, outlet)).toContain("<ShellHeadSlot.Provider");
+  });
+
+  // 시안 `.ra-body { padding: 0 8px 8px 0 }` — 창 오른쪽 · 아래 끝의 틈 8은 사이드바와 카드 자리를 담는 줄이 든다. 왼쪽 틈은 사이드바의
+  // 몫이다(열리면 사이드바 폭 안쪽 여백, 접히면 틈 하나 폭 — `Sidebar`의 `asideClass`).
+  it("사이드바와 카드 자리를 담는 줄이 창 오른쪽 · 아래 끝에 틈 8을 둔다", () => {
+    const tagAt = source.lastIndexOf("<div", at("<Sidebar"));
+    const row = source.slice(tagAt, source.indexOf(">", tagAt));
+    const classes = row.match(/className="([^"]*)"/)?.[1].split(" ") ?? [];
+    expect(classes).toEqual(expect.arrayContaining(["pr-2", "pb-2"]));
+    expect(classes.filter((one) => /^p[xl]-/.test(one))).toEqual([]);
   });
 });
 

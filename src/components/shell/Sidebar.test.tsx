@@ -233,15 +233,26 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
     expect(sidebar).not.toContain("useResizableWidth(");
   });
 
-  // 03 구현 스펙 §3 · 스토리 3 — **사이드바는 판 밖 크롬 위에 선다**(`AppShell`). 바탕을 칠하거나 오른쪽에 선을 두면 크롬과 사이드바가 갈려
-  // 보이고, 머리 줄 왼쪽 칸과 한 기둥으로 읽히지 않는다. 경계는 옆 흰 판의 테두리가 말한다. 바깥 상자의 문자열 리터럴만 센다(주석은 옛 바탕을 적는다).
-  it("바깥 상자는 바탕도 오른쪽 선도 칠하지 않는다", () => {
+  // 03 구현 스펙 §3 · 스토리 3 · restart 02a-2 — **사이드바는 카드가 아니라 크롬 위에 선다**(`AppShell` · 시안 Shell). 바탕을 칠하거나 오른쪽에
+  // 선을 두면 크롬과 사이드바가 갈려 보이고, 머리 줄 왼쪽 칸과 한 기둥으로 읽히지 않는다. 경계는 옆 카드의 면이 말한다. 바깥 상자의 문자열
+  // 리터럴만 센다(주석은 옛 바탕을 적는다).
+  const asideClasses = () => {
     const sidebar = read("Sidebar.tsx");
     const at = sidebar.indexOf("function asideClass(");
     if (at < 0) throw new Error("asideClass를 못 찾았다");
-    const classes = [...sidebar.slice(at, sidebar.indexOf("\n}\n", at)).matchAll(/"([^"\n]*)"/g)].map((m) => m[1]).join(" ");
+    return [...sidebar.slice(at, sidebar.indexOf("\n}\n", at)).matchAll(/"([^"\n]*)"/g)].map((m) => m[1]);
+  };
+  it("바깥 상자는 바탕도 오른쪽 선도 칠하지 않는다", () => {
+    const classes = asideClasses().join(" ");
     expect(classes).not.toMatch(/(?:^|\s)bg-/);
     expect(classes).not.toMatch(/(?:^|\s)after:/);
+  });
+
+  // 시안 `.ra-side[data-open="false"] { width: var(--size-gap) }` — 접힌 사이드바는 틈 하나(8 — 눈금 `w-2`) 폭으로 남아, 카드가 창 왼쪽 끝 + 8에서
+  // 선다. 0으로 접히면 카드가 창 끝에 붙는다(창 끝 틈은 오른쪽 · 아래만 앱 셸의 줄이 든다 — `AppShell`).
+  it("접히면 틈 하나 폭으로 남는다", () => {
+    expect(asideClasses()).toContain("w-2 min-w-2");
+    expect(asideClasses()).not.toContain("w-0 min-w-0");
   });
 });
 
@@ -253,8 +264,8 @@ describe("사이드바 최상단이 위 줄이다", () => {
   const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
 
   it("신호등 띠도 거르기 머리도 없고, 앱 갈래의 첫 것이 위 줄(nav)이다", () => {
-    // **신호등 · 셸 컨트롤은 머리 줄의 것이다**(02 구현 스펙 §3) — 사이드바는 흰 판 안에 들어, 머리 줄과 같은 높이의 빈 끌기 띠를
-    // 제 맨 위에 둘 까닭이 없다(한때 48 띠 가운데에 신호등과 셸 컨트롤이 겹쳐 떴다). 띠가 남으면 판 안에 빈 줄 하나가 선다.
+    // **신호등 · 셸 컨트롤은 머리 줄의 것이다**(02 구현 스펙 §3) — 사이드바는 머리 줄 아래에 서서, 머리 줄과 같은 높이의 빈 끌기 띠를
+    // 제 맨 위에 둘 까닭이 없다(한때 48 띠 가운데에 신호등과 셸 컨트롤이 겹쳐 떴다). 띠가 남으면 사이드바 위에 빈 줄 하나가 선다.
     expect(countOf(sidebar, "data-tauri-drag-region")).toBe(0);
     const nav = app.indexOf("<nav");
     // **다 있는지부터 센다** — 없으면 indexOf가 -1이고, 그러면 아래 줄이 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.

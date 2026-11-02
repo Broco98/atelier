@@ -17,7 +17,7 @@ import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { foldingInnerClass, PANE_RULE, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
+import { cardGapPx, foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import Rail, { railStands, type RailProps } from "./Rail";
 import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
@@ -25,27 +25,31 @@ import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import type { TargetRegion } from "./TargetMenu";
 import useSplitRatio from "./useSplitRatio";
 
-// 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 S2). Terminal · Processes · Archive · Settings · 작업 화면 · spec 레이아웃
-// 편집기가 이 틀에 칸을 건넨다(Projects · Service는 03부터 `PlainFrame`이다). 틀 자체(크롬 · 머리 줄 44 · 흰 판)는 앱 셸 하나가 그리고(`AppShell` · `ShellHead`), 이 틀은 그
-// 위에서 두 자리만 든다 — 머리 줄의 화면 자리에 보낼 이름 · 할 일(`HeadSlot` — `ScreenHead`로 포털)과 흰 판 안의 칸들이다.
-// 목록은 따로 서지 않고 본문 칸 안 오른쪽 칸이다(codex-ds 결정 28 — 내용 | 목록 한 칸). 화면은 칸 내용만 건넨다 — 칸을 가르는 선 ·
-// 손잡이 · 머리 줄의 자리를 이 파일 한 곳이 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 선 하나를 빠뜨려도 화면으로는 어디가
-// 샜는지 안 보인다. 분할의 두 열과 편집기의 트리 칸도 이 틀의 칸이다(`split` · `beside`). 탭 줄(`ShellTabs`)은 이 틀의 줄이 아니라
+// 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 · restart 02a-2). Terminal · Processes · Archive · Settings · 작업 화면 · spec
+// 레이아웃 편집기가 이 틀에 칸을 건넨다(Projects · Service는 03부터 `PlainFrame`이다). 틀 자체(크롬 · 머리 줄 44 · 사이드바 오른쪽 카드 자리)는
+// 앱 셸 하나가 그리고(`AppShell` · `ShellHead`), 이 틀은 그 위에서 두 자리만 든다 — 머리 줄의 화면 자리에 보낼 이름 · 할 일(`HeadSlot` —
+// `ScreenHead`로 포털)과 카드 자리에 뜨는 카드들이다.
+// 목록은 따로 서지 않고 본문 카드 안 오른쪽 칸이다(codex-ds 결정 28 — 내용 | 목록 한 카드). 화면은 칸 내용만 건넨다 — 카드의 겉 · 카드
+// 사이 틈 · 손잡이 · 머리 줄의 자리를 이 파일 한 곳이 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는
+// 어디가 샜는지 안 보인다. 분할의 두 열과 편집기의 트리 칸도 이 틀의 칸이다(`split` · `beside`). 탭 줄(`ShellTabs`)은 이 틀의 줄이 아니라
 // 본문 칸의 머리다(codex-ds 스펙 §4 「탭 줄」) — 화면이 `Card`의 `head`로 건넨다.
 //
 //   머리 줄의 화면 자리(`ScreenHead`) ─ 돌아가는 길 · 아이콘 · 이름 · 브랜치 · 위치 | 할 일 · 세로선 · 그 너머 · 패널 토글(`FrameHead`)
-//   판 안 뿌리 ─ 본문 열(TAB_ROW_COLUMN) ─ 칸 줄 ─ 본문(칸 하나, 내용 | 목록 칸 하나, 또는 분할의 열 둘) · beside · panel · overlay
-//            └ 레일 열(rail의 칸이 둘 이상일 때만) ─ 칸 묶음
+//   카드 자리 뿌리 ─ 본문 열(TAB_ROW_COLUMN) ─ 카드 줄 ─ 본문(카드 하나, 내용 | 목록 카드 하나, 또는 분할의 열 카드 둘) · beside · panel ·
+//                 │                                   overlay
+//                 └ 레일 카드(rail의 칸이 둘 이상일 때만) ─ 칸 묶음
 //
-// **카드가 아니라 흰 판의 칸이다**(02 구현 스펙 §3 S2). 한때 이 틀은 회색 바탕 위에 머리 카드와 둥근 흰 카드들을 8 틈으로 띄웠다. 이제 흰 판
-// 하나가 본문을 품어(CONTEXT 「흰 판」 — 사이드바는 판 밖 크롬 위다, 03 구현 스펙 §3) 판 안의 칸은 제 면 · 둥글기 · 링 · 둘레 틈을
-// 버리고, 칸 사이는 0.5 선 하나로 갈린다(목록 칸의 선과 같은 `border-heavy` — Codex 오른쪽 패널의 왼쪽 선). **안쪽 배치는 그대로다** — 레일 · 분할 ·
-// 탭 줄 · 경로 줄 · 목록 칸 · 옆 칸 · 패널이 같은 차례 · 같은 폭 규칙으로 선다. 그 화면들의 새 모양은 다음 판이다.
+// **영역마다 카드다**(restart 스펙 「02a」 · 시안 Shell 「판 한 장을 걷고 영역을 카드로 나눈다」). 본문 · 작업 패널 · 옆 칸 · 분할의 열 ·
+// 레일이 저마다 둥근 카드(`CARD_FACE` — 면 surface · 둥글기 8 · 0.5 링, 레일만 둥글기 6)로 서고, 카드끼리는 8 틈(`space-2`)으로 갈린다.
+// 창 끝 틈 8은 앱 셸의 줄이 든다. 한때(02 구현 스펙 §3 S2) 판 한 장이 본문을 품어 칸들이 둘레 틈 없이 0.5 선으로 갈렸다 —
+// 그 앞(ui-refresh)의 카드 짜임으로 돌아온 것이다. **안쪽 배치는 그대로다** — 레일 · 분할 · 탭 줄 · 경로 줄 · 목록 칸 · 옆 칸 · 패널이 같은
+// 차례 · 같은 폭 규칙으로 선다.
 //
-// **판 안은 창을 끄는 자리가 아니다** — 회색 틈이 없어졌다. 창은 머리 줄(빈 곳 · 이름 글자 · 할 일 사이)로 끈다(`ShellHeadRow`의 `deep`).
+// **카드 사이 틈은 창을 끄는 자리가 아니다** — 창은 머리 줄(빈 곳 · 이름 글자 · 할 일 사이)로 끈다(`ShellHeadRow`의 `deep`).
 //
-// **칸 줄에 flex `gap`을 쓰지 않는다.** 칸 사이는 선이고, 그 선은 뒤에 선 칸이 제 가장자리에 칠한다 — 접힌 칸 옆에 선이 남지 않게(판 04
-// 「지키는 것」). 손잡이는 그 선 위나 칸 가장자리에 선다(`ResizeHandle`의 `rule` · `edge`).
+// **카드 줄에 flex `gap`을 쓰지 않는다.** 틈은 뒤(오른쪽)에 선 카드 상자의 안쪽 왼쪽 여백이다 — 접힌 카드 옆에 틈이 남지 않게(판 04
+// 「지키는 것」 — 작업 패널은 상자 폭이 0이 되며 틈도 걷힌다). 손잡이는 그 틈을 덮거나(`ResizeHandle`의 `gap`) 한 카드 안의 선 위에
+// 선다(`rule` — 내용 | 목록).
 
 /** 칸 하나가 그리는 내용 — 이름(`aria-label`)과 칸 안(머리와 몸). 칸 상자(바탕)와 이웃 칸과 가르는 선은 칸이 그린다. */
 interface CardContent {
@@ -185,7 +189,7 @@ interface FrameProps<Id extends string> {
   panel?: PanelSlot;
   /**
    * 작업 화면의 레일 열(`Rail` — 패널이 무엇을 볼지 고르는 칸 묶음). 패널과 같은 조건으로 건넨다. 레일 열은 **칸이 둘 이상일 때만**
-   * 선다(codex-ds 결정 25 — `railStands`). 레일 열이 없으면 본문 열이 판 오른쪽 끝까지 넓다. 패널 토글은 레일이 서든 안 서든 머리 줄
+   * 선다(codex-ds 결정 25 — `railStands`). 레일 열이 없으면 본문 열이 카드 자리 오른쪽 끝까지 넓다. 패널 토글은 레일이 서든 안 서든 머리 줄
    * 오른쪽 끝이다. 칸의 id 타입(`Id`)이 부르는 쪽의 것 그대로 `onPick`까지 간다.
    */
   rail?: RailProps<Id>;
@@ -196,7 +200,7 @@ interface FrameProps<Id extends string> {
   /** 본문 칸 오른쪽의 옆 칸 — 늘 열린 고정 폭 칸(`BesideSlot`). 편집기 트리 칸 하나가 쓴다. */
   beside?: BesideSlot;
   /**
-   * 칸 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 칸 줄은 판 위끝에서 시작한다 — 탭 줄은 칸 줄 안(본문 칸의 머리)이라,
+   * 칸 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 칸 줄은 카드 자리 위끝에서 시작한다 — 탭 줄은 칸 줄 안(본문 카드의 머리)이라,
    * 「끄는 것이 출발한 줄은 덮지 않는다」는 덮는 쪽이 줄 높이(`--size-toolbar`)만큼 내려 선다(`WorksPage`의 놓기 겹판).
    */
   overlay?: ReactNode;
@@ -217,11 +221,11 @@ function Frame<Id extends string>({ head, list, panel, rail, split, beside, over
       />
       {/* **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)이 사이드바에게 자리를 요구하는
           길이다. 칸 줄은 탭 줄을 품었을 때만 제 min-content를 알리고, 그때도 탭 줄을 이는 칸이 제 몸을 격리해(`TAB_ROW_CARD`) 넓은
-          문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선 줄은 본문 칸의 바닥과 옆 칸의 머리를 알린다(`BesideBox`). 그 값이 흰 판의
-          바닥이 되어 판 밖 사이드바에 닿는다(`AppShell`의 판 `min-w-min`). 판 안을 다 쓴다(판이 가로 줄이다). */}
+          문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선 줄은 본문 칸의 바닥과 옆 칸의 머리를 알린다(`BesideBox`). 그 값이 카드
+          자리의 바닥이 되어 그 밖 사이드바에 닿는다(`AppShell`의 카드 자리 `min-w-min`). 카드 자리를 다 쓴다(카드 자리가 가로 줄이다). */}
       <div className="flex min-h-0 min-w-min flex-1">
         <div className={cn("flex flex-1 flex-col", TAB_ROW_COLUMN)}>
-          {/* 칸 줄. 판의 끝(판의 테두리)까지 칸이 선다 — 둘레 틈이 없다. `relative`는
+          {/* 카드 줄. 카드 자리의 끝까지 카드가 선다 — 창 끝 틈은 앱 셸의 줄이 든다. `relative`는
               `overlay`의 기준이다. 탭 줄을 품었거나 옆 칸이 서면 이 줄은 본문 열의 격리(`TAB_ROW_COLUMN`)를 벗는다 — 탭 줄을 이는
               칸의 바닥 · 옆 칸의 머리가 모자라면 사이드바가 자리를 내준다. */}
           <div style={beside ? { contain: "none" } : undefined} className="relative flex min-h-0 flex-1">
@@ -257,8 +261,16 @@ function Frame<Id extends string>({ head, list, panel, rail, split, beside, over
 const InListCard = createContext(false);
 
 /**
- * 내용 | 목록 칸(codex-ds 결정 28 · 스펙 §4 「목록 칸」 · DS `.at-joined`). 본문 자리에 상자 하나가 서고, 그 안 왼쪽이 내용 칸
- * (화면의 본문 칸 — `main`), 오른쪽이 목록 칸(`section` — DS `.at-listcol`)이다. 둘 사이는 판 안 칸 사이 선 하나다(`PANE_RULE`).
+ * 내용 | 목록 카드 안의 0.5 세로 선 — 목록 칸이 제 왼쪽 가장자리에 칠한다. 색과 굵기는 `border-heavy` 0.5다. 테두리가 아니라 칠한
+ * 면인 것은 0.5px 테두리가 엔진마다 굵기가 갈려서다. 칸 내용 위에 서서 내용이 가장자리까지 칠해도 안 가려지고, 누름은 지나보낸다.
+ * **카드 사이를 가르는 선이 아니다** — 카드끼리는 8 틈으로 갈린다(02a-2). 한때(02 S2) 판 안의 모든 칸이 이런 선으로 갈렸다.
+ */
+const LIST_RULE =
+  "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-[0.5px] after:bg-border-heavy";
+
+/**
+ * 내용 | 목록 카드(codex-ds 결정 28 · 스펙 §4 「목록 칸」 · DS `.at-joined`). 본문 자리에 카드 하나가 서고(`CARD_FACE`), 그 안 왼쪽이
+ * 내용 칸(화면의 본문 칸 — `main`), 오른쪽이 목록 칸(`section` — DS `.at-listcol`)이다. 둘 사이는 카드 안 0.5 선 하나다(`LIST_RULE`).
  *
  * **마크업 차례가 보이는 차례다** — 내용 칸이 먼저, 목록 칸이 뒤다. 그래서 Tab이 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다. 목록
  * 칸을 CSS(`order` · `flex-row-reverse`)로 오른쪽에 세우면 Tab이 보이는 차례를 거슬러 간다.
@@ -281,14 +293,14 @@ const InListCard = createContext(false);
 function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) {
   const { label, size } = slot;
   return (
-    <div data-slot="card" className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface">
+    <div data-slot="card" className={cn("relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface", CARD_FACE)}>
       <InListCard.Provider value>{children}</InListCard.Provider>
       <section
         aria-label={label}
         style={{ width: size.width, "--list-min": `${size.min}px` } as CSSProperties}
         className={cn(
           "relative flex min-h-0 max-w-[calc(100%-var(--list-min))] min-w-(--list-min) shrink-0 flex-col px-2",
-          PANE_RULE,
+          LIST_RULE,
           !size.dragging && PANEL_MOTION,
           !size.dragging && "transition-[width]",
         )}
@@ -302,11 +314,12 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
 
 /**
  * 오른쪽 패널 칸(ui-refresh 결정 4 · 15) — 작업 화면의 작업 패널, Archive의 spec 목록 패널. 바깥 상자가 두 번째 `<aside>`이고(e2e
- * `tab-row-floor`가 `aside` 순서를 잰다) 폭이 칸의 폭이다 — 접히면 0이 되어 왼쪽 칸이 판 오른쪽 끝(레일이 서면 레일 앞)까지 넓어진다.
- * 왼쪽 칸과는 제 왼쪽 가장자리의 선 하나로 갈린다(`PANE_RULE` — Codex 오른쪽 패널의 왼쪽 선). 손잡이는 그 가장자리에 선다(`edge` —
- * 넘침을 숨기는 상자라 선 위에 걸치면 반이 잘린다).
+ * `tab-row-floor`가 `aside` 순서를 잰다) 폭이 **틈 8 + 카드의 폭**이다 — 접히면 0이 되어 틈째 걷히고 왼쪽 카드가 카드 자리 오른쪽 끝
+ * (레일이 서면 레일 카드 앞 틈)까지 넓어진다(시안 Motion 「패널을 닫으면 문서 카드가 넓어진다」). 왼쪽 카드와는 그 틈으로 갈린다 —
+ * 틈은 안쪽 열의 왼쪽 여백이다. 손잡이는 그 틈을 덮는다(`gap` — 틈 안이라 넘침을 숨기는 상자에 잘리지 않는다).
  *
- * 폭은 **칸의 폭**이다(`--panel-width`).
+ * 폭은 **카드의 폭**이다(`--panel-width` — 저장 · 끄는 최소 폭도 카드의 것이다). 상자의 기준 폭 · 최소 폭은 그 위에 틈 하나(`space-2`)를
+ * 더하고, 끄는 손이 잴 때 그 틈을 뺀다(`useResizableWidth`의 `drawnWidth`).
  *
  * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--panel-min`, 폭 훅이 받은 값)까지 왼쪽 칸에 자리를
  * 내주고, 왼쪽 칸에는 **남길 폭(`reserve`)만큼은 남긴다**(`max-width`). 그 폭은 왼쪽 칸이 화면을 이루는 최소다:
@@ -345,40 +358,42 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
       }
       className={cn(
         "relative flex overflow-hidden contain-inline-size",
-        PANE_RULE,
         !size.dragging && PANEL_MOTION,
         !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
         open
           ? cn(
-              "max-w-[calc(100%-var(--panel-reserve))] basis-(--panel-width)",
+              "max-w-[calc(100%-var(--panel-reserve))] basis-[calc(var(--panel-width)+var(--space-2))]",
               reserve === undefined
-                ? "min-w-(--panel-min)"
-                : "min-w-[min(var(--panel-min),max(0px,calc(100%-var(--panel-reserve))))]",
+                ? "min-w-[calc(var(--panel-min)+var(--space-2))]"
+                : "min-w-[min(calc(var(--panel-min)+var(--space-2)),max(0px,calc(100%-var(--panel-reserve))))]",
             )
           : "basis-0 min-w-0",
       )}
     >
-      {/* 접히는 동안 글이 되흐르지 않게 안쪽은 고정 폭이고, **펴진 뒤에만** 바깥 폭을 상한으로 받는다 — 좁게 선 칸에서 칸
-          오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass`에 있다. */}
-      <div inert={!open} className={cn("flex h-full w-(--panel-width) shrink-0", foldingInnerClass(open))}>
+      {/* 접히는 동안 글이 되흐르지 않게 안쪽은 고정 폭(틈 + 카드)이고, **펴진 뒤에만** 바깥 폭을 상한으로 받는다 — 좁게 선 칸에서 카드
+          오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass`에 있다. 틈은 안쪽 왼쪽 여백이다. */}
+      <div
+        inert={!open}
+        className={cn("flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2", foldingInnerClass(open))}
+      >
         <Card label={label} className="flex-1">
           {children}
         </Card>
       </div>
-      {open && <ResizeHandle control={size} seat="edge" />}
+      {open && <ResizeHandle control={size} seat="gap" />}
     </aside>
   );
 }
 
 /**
- * 분할(ui-refresh 결정 15 — 열 하나 = 칸 하나). 본문 자리의 `<main>` 안에 열 칸 둘이 선 하나(`PANE_RULE` — 오른쪽 열이 제 왼쪽 가장자리에
- * 칠한다)를 두고 선다.
+ * 분할(ui-refresh 결정 15 — 열 하나 = 카드 하나). 본문 자리의 `<main>` 안에 열 카드 둘이 틈 8을 두고 선다 — 틈은 왼쪽 열 상자의 안쪽
+ * 오른쪽 여백이다(02a-2 — 02a-13이 분할을 걷기 전까지).
  *
  * **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널 · 사이드바와 같은 관용구). 폭 손잡이는 왼쪽 열 상자의 오른쪽
- * 가장자리 — 두 열을 가르는 선 — 위에 걸쳐 선다(`rule`).
+ * 끝 — 두 열을 가르는 틈 — 을 덮는다(`gap`).
  *
- * 몫은 **비율**이다(`useSplitRatio` 머리말 — 두 열이 같은 본문을 나눠 갖는다). 비율은 `<main>`의 폭에 걸어 반반이면 두 칸이 같은
- * 폭이고, 끄는 손이 재는 분모도 같은 폭이다 — 둘이 갈리면 손잡이가 포인터에서 미끄러진다. 그래서 그리는 식과 재는 식이 이 한 곳에
+ * 몫은 **비율**이다(`useSplitRatio` 머리말 — 두 열이 같은 본문을 나눠 갖는다). 비율은 `<main>`의 폭에서 틈 하나를 뺀 폭(`sharedWidth`)에
+ * 걸어 반반이면 두 카드가 같은 폭이고, 끄는 손이 재는 분모도 같은 폭이다 — 둘이 갈리면 손잡이가 포인터에서 미끄러진다. 그래서 그리는 식과 재는 식이 이 한 곳에
  * 산다. 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`). 폭이 비율이라 늘 트랜지션을 걸 수 없고(창을 끄는
  * 내내 두 열이 손을 늦게 따라온다), 더블클릭으로 반반에 돌아가는 순간(`snapping`)만 접히는 칸과 같은 박자(`PANEL_MOTION`)로
  * 움직인다 — 한 화면에서 두 폭이 다른 속도로 움직이면 한 동작으로 안 읽힌다.
@@ -392,18 +407,18 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
  */
 function SplitBox({ slot }: { slot: SplitSlot }) {
   const host = useRef<HTMLElement>(null);
-  const size = useSplitRatio(slot.ratioKey, () => host.current?.getBoundingClientRect().width ?? 0);
+  const size = useSplitRatio(slot.ratioKey, () => sharedWidth(host.current));
   const [left, right] = slot.columns;
   return (
     <main ref={host} className="flex min-h-0 min-w-min flex-1">
       <div
-        style={{ width: `calc(100% * ${size.ratio})` }}
-        className={cn("relative flex min-w-min", size.snapping && PANEL_MOTION, size.snapping && "transition-[width]")}
+        style={{ width: `calc((100% - var(--space-2)) * ${size.ratio} + var(--space-2))` }}
+        className={cn("relative flex min-w-min pr-2", size.snapping && PANEL_MOTION, size.snapping && "transition-[width]")}
       >
         <ColumnCard column={left} />
-        <ResizeHandle control={size} seat="rule" />
+        <ResizeHandle control={size} seat="gap" />
       </div>
-      <div className={cn("relative flex min-w-min flex-1", PANE_RULE)}>
+      <div className="relative flex min-w-min flex-1">
         <ColumnCard column={right} />
       </div>
     </main>
@@ -411,7 +426,16 @@ function SplitBox({ slot }: { slot: SplitSlot }) {
 }
 
 /**
- * 분할의 열 칸 하나 — 문서 열은 흰 칸, 터미널 열은 터미널 칸이다. 두 열의 칸이 같아야 하는데 좌우가 바뀌므로 한 벌로 그린다. 바닥도
+ * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(위 `SplitBox`). 틈은 토큰(`--space-2`)에서 읽는다
+ * (`cardGapPx`). 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
+ */
+function sharedWidth(host: HTMLElement | null): number {
+  if (!host) return 0;
+  return Math.max(0, host.getBoundingClientRect().width - cardGapPx(host));
+}
+
+/**
+ * 분할의 열 카드 하나 — 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 두 열의 칸이 같아야 하는데 좌우가 바뀌므로 한 벌로 그린다. 바닥도
  * 같은 클래스다 — 탭 줄을 머리에 인 열만 그 줄의 폭을 바닥으로 알리고, 줄이 없는 열은 자식이 모두 격리되어 바닥이 없다(`TAB_ROW_CARD`).
  */
 function ColumnCard({ column }: { column: SplitColumn }) {
@@ -425,7 +449,8 @@ function ColumnCard({ column }: { column: SplitColumn }) {
 /**
  * 본문 칸 오른쪽의 옆 칸(ui-refresh 결정 15 · 27, 판 06 티켓 07 — 편집기 트리). **늘 열려 있고** 접힘 · 폭 손잡이 · 레일이 없어
  * 분할의 두 열처럼 본문 칸과 나란히 칸 줄에 선다. 그래서 `aside`가 아니다(`aside`는 사이드바와 오른쪽 패널 둘뿐이다 — `tab-row-floor` ·
- * `works-sidebar` · `archive-docs`가 그 순서를 센다). 본문 칸과는 제 왼쪽 가장자리의 선 하나로 갈린다(`PANE_RULE`).
+ * `works-sidebar` · `archive-docs`가 그 순서를 센다). 본문 카드와는 틈 8로 갈린다 — 틈은 상자의 안쪽 왼쪽 여백이고, 기준 폭은 틈 + 카드
+ * 폭이다.
  *
  * 폭을 `flex-basis`로 주고 줄어들게 둔다(`min-w-0`) — 창이 좁아 본문 칸이 제 최소 폭보다 좁아질 때만 그만큼 자리를 내준다. 작업 패널
  * 칸이 문서 칸에 최소 폭을 남기는 것과 같은 손버릇이다(`PanelBox`). 본문 칸의 최소 폭은 그 칸의 몫이다(화면이 건넨다 — 편집기의
@@ -437,7 +462,7 @@ function ColumnCard({ column }: { column: SplitColumn }) {
  */
 function BesideBox({ slot }: { slot: BesideSlot }) {
   return (
-    <div style={{ flexBasis: `${slot.width}px` }} className={cn("relative flex min-w-0", PANE_RULE)}>
+    <div style={{ flexBasis: `calc(${slot.width}px + var(--space-2))` }} className="relative flex min-w-0 pl-2">
       <Card label={slot.label} className="flex-1 [&>:not([data-slot=card-head])]:contain-inline-size">
         {slot.children}
       </Card>
@@ -454,7 +479,7 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 왼쪽은 **이름 상자**(DS `.at-wtitle` — 아이콘 · 이름 · 연필을 품은 24 상자, 안쪽 0 8 · 사이 7 · `radius-md`, 아이콘 14 `fg-secondary`)와
  * 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 이름 글자는 Thread 이름과 같은 14/500 `fg`다(`HEAD_NAME` — 머리 줄은 한 결이다, 02 결정
  * 「머리 줄은 한 결이다(03 뒤)」. 한때 머리 카드의 13/500이었다). 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다. 이름 상자의 안쪽 8은
- * hover 면 · 대상 테두리의 자리라, 묶음을 6 당겨(`-ml-1.5`) 사이드바가 열렸으면 아이콘이 판 안 본문 왼쪽 끝 + 16(세로선 뒤 14 − 6 + 8)
+ * hover 면 · 대상 테두리의 자리라, 묶음을 6 당겨(`-ml-1.5`) 사이드바가 열렸으면 아이콘이 본문 카드 왼쪽 끝 + 16(세로선 뒤 14 − 6 + 8)
  * — 아래 탭 줄 첫 칸의 글리프와 한 세로줄 — 에 선다. 하위 화면은 그 앞에 돌아가는 길(`lead`)이 하나 선다. 브랜치 · 위치는 이름 상자 밖
  * 형제이고 상자 끝에서 6에 선다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 연필이 없는 이름이면 이름 끝에서 14다). 위치는 DS
  * `.at-winhead .sub`(12 `fg-tertiary`)이고, 브랜치는 프로젝트 화면 Works 행의 ⑂ 브랜치와 같은 말(⑂ 12 · 고정폭 12 `fg-secondary` · 사이
@@ -621,6 +646,14 @@ function FrameHead({
   );
 }
 
+/**
+ * 카드의 겉(restart 스펙 「02a」 · 시안 `.ra-card`) — 둥글기 `radius-card`(8)와 바깥 0.5 링(`shadow-hairline`)이다. 면은 카드가 따로 칠한다
+ * (흰 카드는 `surface`, 터미널 카드는 셸의 바탕). 본문 카드 · 내용 | 목록 카드 · 작업 패널 카드 · 옆 칸 카드 · 분할의 열 카드가 이 한 벌을
+ * 쓴다 — 레일 카드만 둥글기가 `radius-rail`(6)이다(`Rail`). 넘침은 카드가 자른다(`overflow-hidden`) — 링은 그림자라 제 넘침 숨김에
+ * 잘리지 않는다.
+ */
+const CARD_FACE = "rounded-card shadow-hairline";
+
 type CardTag = "section" | "main";
 
 interface CardProps {
@@ -643,8 +676,8 @@ interface CardProps {
 }
 
 /**
- * 판 안의 칸 하나(ui-refresh 결정 15 — 칸 하나 = 한때의 카드 하나 · 02 구현 스펙 §3 S2). 이름(`aria-label`)과 표식(`data-slot="card"`)을
- * 들고, 제 면 · 둥글기 · 링이 없다 — 흰 판이 그 면이고, 이웃 칸과는 선 하나로 갈린다(`PANE_RULE` — 그 선은 칸 상자가 칠한다). 칸이
+ * 카드 하나(ui-refresh 결정 15 · restart 02a-2). 이름(`aria-label`)과 표식(`data-slot="card"`)을 들고, 제 겉(`CARD_FACE` — 둥글기 8 ·
+ * 0.5 링)으로 선다 — 이웃 카드와는 8 틈으로 갈리고, 그 틈은 카드를 품은 상자가 든다(`PanelBox` · `BesideBox` · `SplitBox`). 카드가
  * 넘침을 자른다(`overflow-hidden`) — 안의 스크롤 상자 · 셸 화면이 칸 밖으로 그려지지 않는다. `relative`는 칸 안에 덮이는 것(설정의
  * 메시지 등)의 기준이다.
  *
@@ -667,6 +700,7 @@ function Card({ as: Tag = "section", label, head, tone, className, children }: C
       style={background === undefined ? undefined : { backgroundColor: background }}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
+        !column && CARD_FACE,
         !column && tone !== "terminal" && "bg-surface",
         className,
       )}
@@ -778,4 +812,4 @@ function ListScroll({ menu, roving, children }: { menu?: TargetRegion; roving: R
   );
 }
 
-export { Card, CardHead, Frame, ListHead, ListScroll, ListSearch, TWO_LINE_ROW };
+export { Card, CARD_FACE, CardHead, Frame, ListHead, ListScroll, ListSearch, TWO_LINE_ROW };

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import useResizableWidth, {
+  drawnWidth,
   nextWidth,
   ResizeHandle,
   type PanelSide,
@@ -77,6 +78,42 @@ describe("ResizeHandle", () => {
     const markup = renderToStaticMarkup(<ResizeHandle control={control("right")} />);
     expect(markup.match(/left-0/g)).toHaveLength(2);
     expect(markup).not.toMatch(/right-0/);
+  });
+
+  // 02a-2 — 카드 사이 틈(8)에 서는 손잡이(작업 패널 카드 왼쪽 틈 · 분할의 두 열 사이 틈). 손잡이가 틈 전부(`w-2` — 틈 토큰 `space-2`와 같은
+  // 눈금)를 덮어 틈 어디를 짚어도 잡히고, 빛은 그 가운데다 — 카드 모서리에 붙이면 둥근 모서리를 따라 잘린 것처럼 보인다.
+  it("틈 자리 손잡이는 틈 전부를 덮고 빛은 그 가운데다", () => {
+    for (const [side, edge] of [
+      ["right", "left-0"],
+      ["left", "right-0"],
+    ] as const) {
+      const markup = renderToStaticMarkup(<ResizeHandle control={control(side)} seat="gap" />);
+      const [handle, line] = [...markup.matchAll(/class="([^"]*)"/g)].map((m) => m[1].split(" "));
+      expect(handle, side).toEqual(expect.arrayContaining([edge, "w-2"]));
+      expect(handle, side).not.toContain("w-[5px]");
+      expect(line, side).toEqual(expect.arrayContaining(["inset-x-0", "mx-auto"]));
+      expect(markup, side).toContain('data-seat="gap"');
+    }
+  });
+});
+
+// 끌기는 **그려진 폭에서 출발한다**(좁게 선 패널에서 안 튀게 — `useResizableWidth`의 `onPointerDown`). 틈 자리 손잡이의 부모는 「틈 +
+// 카드」 상자라 그 폭에서 틈을 빼야 카드의 폭(저장하는 폭)이다 — 빼지 않으면 첫 움직임에 손잡이가 틈만큼 튄다. 틈은 토큰 `--space-2`에서
+// 읽는다. 가장자리 · 세로 선 자리의 부모는 칸 그 자체라 뺄 것이 없다.
+describe("drawnWidth", () => {
+  const handle = (seat: string, parent: number) =>
+    ({ dataset: { seat }, parentElement: { getBoundingClientRect: () => ({ width: parent }) } }) as unknown as HTMLElement;
+  beforeEach(() => {
+    vi.stubGlobal("getComputedStyle", () => ({ getPropertyValue: (name: string) => (name === "--space-2" ? " 8px" : "") }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("틈 자리면 부모 폭에서 틈을 뺀 카드의 폭이고, 가장자리 · 세로 선 자리면 부모 폭 그대로다", () => {
+    expect(drawnWidth(handle("gap", 348))).toBe(340);
+    expect(drawnWidth(handle("edge", 348))).toBe(348);
+    expect(drawnWidth(handle("rule", 264))).toBe(264);
   });
 });
 

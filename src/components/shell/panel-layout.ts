@@ -2,8 +2,8 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
 // 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `SIDEBAR_MOTION` · `foldingInnerClass` · `panelMotionMs`)과 접힐 때의
-// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 칸의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
-// 판 안 칸을 가르는 선(`PANE_RULE`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
+// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
+// 카드 사이 틈을 스크립트가 읽는 길(`cardGapPx`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
 // 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
 // 작업 화면 · spec 레이아웃 편집기 · Archive(spec 목록 패널) 세 기능이 함께 읽어 어느 한 기능의 폴더에 두지 않는다.
 //
@@ -66,33 +66,41 @@ export const PANEL_MIN_WIDTH = 260;
 export const PANEL_MAX_WIDTH = 560;
 
 /**
- * 판 안 칸을 가르는 0.5 세로 선(02 구현 스펙 §3 S2) — 흰 판 안의 칸들은 둘레 틈 없이 맞닿고 이 선 하나로 갈린다. **뒤(오른쪽)에 선 칸이
- * 제 왼쪽 가장자리에 칠한다** — 공용 틀(`Frame`)의 목록 칸 · 오른쪽 패널 · 분할의 오른쪽 열 · 옆 칸과 레일 열(`Rail`)이다. 접힌 칸은 폭이
- * 0이라 선도 함께 걷힌다(판 04 「지키는 것」 — 접힌 칸 옆에 틈 · 선이 남지 않는다). 색과 굵기는 `border-heavy`
- * 0.5다(Codex 오른쪽 패널의 왼쪽 선). 테두리가 아니라 칠한 면인 것은 0.5px 테두리가 엔진마다 굵기가 갈려서다. 칸 내용 위에 서서 내용이
- * 가장자리까지 칠해도 안 가려지고, 누름은 지나보낸다. 칠하는 상자는 `relative`여야 한다.
+ * 카드 사이 틈(px) — 토큰 `--space-2`를 그 요소에서 읽는다. 카드 줄의 작업 패널 카드와 분할의 두 열이 이 틈을 두고 서서(`Frame`), 그려진
+ * 상자의 폭에서 틈을 빼야 카드의 폭이 나오는 자리가 부른다 — 틈 자리 손잡이가 재는 칸의 폭(`useResizableWidth`의 `drawnWidth`)과
+ * 분할의 두 열이 나눠 갖는 폭(`Frame`의 `sharedWidth`)이다. 숫자를 그 자리에 적으면 토큰이 바뀌는 날 그 자리만 낡는다.
+ * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다.
+ *
+ * 한때(02 구현 스펙 §3 S2) 흰 판 한 장 안의 칸이 둘레 틈 없이 0.5 선(`PANE_RULE`)으로 갈렸다 — restart 02a-2가 판을 걷고 영역을 다시
+ * 카드로 띄우며 그 선을 걷었다. 한 카드 안의 두 칸(내용 | 목록)을 가르는 선만 남는다(`Frame`의 `ListCard`).
  */
-export const PANE_RULE =
-  "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-[0.5px] after:bg-border-heavy";
+export function cardGapPx(from: HTMLElement): number {
+  return parseFloat(getComputedStyle(from).getPropertyValue("--space-2")) || 0;
+}
 
 /**
- * 접히는 패널 **바깥 상자**의 폭 트랜지션 길이와 곡선 — Atelier 토큰 `duration-panel`(220ms) · `ease-panel`이다(index.css의
- * `@theme static`, DS 「움직임」 — 패널 여닫기는 Codex가 말하지 않아 지금 앱의 값을 이었다).
+ * 접히는 패널 **바깥 상자**의 폭 트랜지션 길이와 곡선 — **500ms spring**이다(restart 스펙 「02a」 · 티켓 02a-2 · Motion 보드 「오른쪽 패널
+ * 여닫기」). Codex spring {duration .5, bounce .1}을 사이드바와 같은 `linear()` 곡선(`ease-spring`)과 `duration-panel-open`(500ms)으로
+ * 옮긴다(index.css의 `@theme static`). 한때 Codex가 말하지 않아 지금 앱의 값(`duration-panel` 220ms · `ease-panel`)을 이었다 — 그 토큰은
+ * 요약 카드가 열리는 박자 · 입력창 높이에 남는다.
  *
  * 길이가 아래 `foldingInnerClass`의 `max-width` 지연과 **같은 값이어야 한다** — 다르면 좁게 선 패널을 펼 때
- * 안쪽 열이 폭이 다 오기 전에 잘리거나(지연이 짧다) 다 온 뒤에 한 번 더 되흐른다(길다). 둘이 같은 토큰(`--duration-panel`)을
+ * 안쪽 열이 폭이 다 오기 전에 잘리거나(지연이 짧다) 다 온 뒤에 한 번 더 되흐른다(길다). 둘이 같은 토큰(`--duration-panel-open`)을
  * 읽는 것으로 그 같음을 든다(`panel-layout.test.ts`).
  *
- * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 목록 칸의 폭과 분할 열 폭이 훌쩍 뛰는 순간(둘 다 `Frame`)이다. 제 리터럴로 다시
- * 적으면 한쪽만 고친 날 칸 모서리가 경계를 지나쳤다 되돌아온다. 분할 열이 뛰는 순간을 끝내는 타이머는 CSS가 아니라서 같은 토큰을
- * `panelMotionMs`로 읽는다. 사이드바는 이 박자가 아니다(아래 `SIDEBAR_MOTION`).
+ * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 목록 칸의 폭과 분할 열 폭이 훌쩍 뛰는 순간(둘 다 `Frame`)과, 넓힌 요약 카드 곁에서
+ * 대화 폭 · 카드 자리가 옮겨 가는 순간(`ThreadScreen` — Motion 「카드가 넓어진다」도 500ms spring이다)이다. 제 리터럴로 다시
+ * 적으면 한쪽만 고친 날 카드 모서리가 경계를 지나쳤다 되돌아온다. 분할 열이 뛰는 순간을 끝내는 타이머는 CSS가 아니라서 같은 토큰을
+ * `panelMotionMs`로 읽는다. 사이드바는 같은 곡선에 길이만 다르다(아래 `SIDEBAR_MOTION`).
+ *
+ * **동작 줄이기면 곧바로 바뀐다**(시안 `.ra-panelwrap { transition: none }`) — 사이드바와 같은 갈래다.
  */
-export const PANEL_MOTION = "duration-panel ease-panel";
+export const PANEL_MOTION = "duration-panel-open ease-spring motion-reduce:transition-none";
 
 /**
  * **사이드바 열고 닫기의 박자** — Codex spring {duration .3, bounce .1}을 CSS `linear()`로 옮긴 곡선(`ease-spring` — Motion 보드
- * `--cx-spring`)과 .3s(`duration-sidebar`)다(02 구현 스펙 §12 · 스토리 100). 오른쪽 · 아래 패널의 spring(.5)은 이번 판 밖이라 작업
- * 패널은 위 `PANEL_MOTION` 그대로다(01 결정 「공유 토큰은 새 이름으로」).
+ * `--cx-spring`)과 .3s(`duration-sidebar`)다(02 구현 스펙 §12 · 스토리 100). 오른쪽 패널은 같은 곡선에 .5s다(위 `PANEL_MOTION` — restart
+ * 02a-2).
  *
  * 사이드바 폭과 **함께 더해지는** 것도 이 박자다 — 사이드바 끝을 따르고 전체화면에 들고 날 때 옮겨 가는 앱 머리 줄의 왼쪽 칸
  * (`ShellHead`)이다. 화면 위의 자리가 (사이드바 폭 + 그 칸)이라 곡선이 다르면 합이 단조롭지 않아 머리 줄의 이름이 사이드바 경계를
@@ -104,12 +112,12 @@ export const PANEL_MOTION = "duration-panel ease-panel";
 export const SIDEBAR_MOTION = "duration-sidebar ease-spring motion-reduce:transition-none";
 
 /**
- * 패널 여닫기 길이(ms) — `--duration-panel`을 문서 뿌리에서 읽는다. 패널과 같은 박자로 움직인 것이 **언제 끝나는지**를 스크립트가
+ * 패널 여닫기 길이(ms) — `--duration-panel-open`을 문서 뿌리에서 읽는다. 패널과 같은 박자로 움직인 것이 **언제 끝나는지**를 스크립트가
  * 알아야 하는 자리(분할의 되돌림 — `useSplitRatio`)가 부른다. 그 자리가 수를 따로 들면 토큰을 고친 날 타이머만 옛 길이로 남는다.
  * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다 — 그때는 옮겨 갈 트랜지션도 없다.
  */
 export function panelMotionMs(): number {
-  const value = getComputedStyle(document.documentElement).getPropertyValue("--duration-panel").trim();
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--duration-panel-open").trim();
   const time = parseFloat(value);
   if (!Number.isFinite(time)) return 0;
   return value.endsWith("ms") ? time : time * 1000;
@@ -130,7 +138,7 @@ export function panelMotionMs(): number {
 export function foldingInnerClass(open: boolean, beat: "panel" | "sidebar" = "panel"): string {
   const { opening, closing, curve } = FOLD_BEATS[beat];
   const fold = open ? `max-w-full transition-[opacity,max-width] opacity-100 ${opening}` : `max-w-[100vw] opacity-0 transition-opacity ${closing}`;
-  return curve === null ? fold : `${fold} ${curve}`;
+  return `${fold} ${curve}`;
 }
 
 /**
@@ -138,14 +146,15 @@ export function foldingInnerClass(open: boolean, beat: "panel" | "sidebar" = "pa
  * 토큰만 바꿔 통째로 다시 적었다).
  * - `opening` — 펼 때: 옅음은 곧바로 그 길이로, 상한은 그 길이만큼 늦게(바깥 폭 트랜지션 길이와 같은 토큰).
  * - `closing` — 접을 때 옅어지는 길이. 오른쪽 패널은 기본 전환으로 먼저 걷히고, 사이드바는 폭과 같은 박자로 옅어진다.
- * - `curve` — 곡선과 동작 줄이기. 오른쪽 패널은 기본 곡선이다.
+ * - `curve` — 곡선과 동작 줄이기. 오른쪽 패널의 옅음은 기본 곡선이고, 둘 다 동작 줄이기면 곧바로다(바깥 상자와 같은 갈래 — 그러지
+ *   않으면 바깥 폭은 곧바로 서는데 상한만 그 길이만큼 늦게 넘어간다).
  * 클래스는 글자 그대로 적는다 — Tailwind가 소스의 글자를 읽어 유틸리티를 짓는다(조각을 이어 붙이면 그 유틸리티가 서지 않는다).
  */
-const FOLD_BEATS: Readonly<Record<"panel" | "sidebar", { opening: string; closing: string; curve: string | null }>> = {
+const FOLD_BEATS: Readonly<Record<"panel" | "sidebar", { opening: string; closing: string; curve: string }>> = {
   panel: {
-    opening: "delay-[0s,var(--duration-panel)] duration-[var(--duration-panel),0s]",
+    opening: "delay-[0s,var(--duration-panel-open)] duration-[var(--duration-panel-open),0s]",
     closing: "duration-basic",
-    curve: null,
+    curve: "motion-reduce:transition-none",
   },
   sidebar: {
     opening: "delay-[0s,var(--duration-sidebar)] duration-[var(--duration-sidebar),0s]",

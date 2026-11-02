@@ -364,17 +364,17 @@ function AppShell() {
       }
       className="relative flex h-screen flex-col bg-surface-shell text-fg"
     >
-      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · 03 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」) — 크롬(`surface-shell`) 맨 위 머리 줄(44)에
-          신호등 · 셸 컨트롤과 지금 화면의 자리가 서고, 그 아래 크롬 위에 사이드바가, 그 오른쪽 흰 판 하나에 화면 본문이 든다. 화면은 머리 줄에
-          놓을 것(이름 · 할 일 — `ScreenHead`)과 판 안에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도, 공용 틀(`Frame`)의 화면들도
-          같다.
+      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · 03 구현 스펙 §3 · restart 02a-2 · CONTEXT 「머리 줄」 · 「카드」) — 크롬(`surface-shell`) 맨 위
+          머리 줄(44)에 신호등 · 셸 컨트롤과 지금 화면의 자리가 서고, 그 아래 크롬 위에 사이드바가, 그 오른쪽 카드 자리에 화면의 카드들이
+          8 틈으로 뜬다. 화면은 머리 줄에 놓을 것(이름 · 할 일 — `ScreenHead`)과 카드에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도,
+          공용 틀(`Frame`)의 화면들도 같다.
 
           검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을 둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로
           연 팔레트를 다른 쪽이 모른다. 이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 머리 줄을 덮어 애초에 눌리지
           않는다(ShellControls의 그 버튼 주석).
 
           **DOM 차례가 보이는 차례다** — 창의 Tab이 창 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)에서 시작해 머리 줄의 화면 것(이름 ·
-          할 일) → 사이드바 → 본문으로 간다. 머리 줄이 판 위 크롬에 한 줄로 서서, 읽는 차례(왼쪽 위 → 오른쪽 → 아래)를 따른다. */}
+          할 일) → 사이드바 → 본문으로 간다. 머리 줄이 카드 위 크롬에 한 줄로 서서, 읽는 차례(왼쪽 위 → 오른쪽 → 아래)를 따른다. */}
       <ShellHeadRow open={sidebarOpen} dragging={sidebarSize.dragging} onSlot={setHeadSlot}>
         <ShellControls
           sidebarOpen={sidebarOpen}
@@ -382,12 +382,13 @@ function AppShell() {
           onOpenSearch={openSearch}
         />
       </ShellHeadRow>
-      {/* 머리 줄 아래 가로 줄 하나 — **사이드바는 판 밖 크롬 위에 서고**(바탕 · 오른쪽 선이 없다), 머리 줄 왼쪽 칸(신호등 · 셸 컨트롤)과 한
-          기둥이다(03 구현 스펙 §3 · 02 결정 「시안 — 사이드바는 크롬 위에」). 흰 판은 그 오른쪽에서 본문만 담는다. 크롬 왼 · 오 끝에서 5(눈금의
-          사분 단 1.25 — 시안 `.body`의 `0 5px 5px`)를 이 줄이 띄워, 사이드바는 창 왼쪽 끝 + 5에서 서고 판은 사이드바 오른쪽 끝에서 선다 —
-          접으면(폭 0) 판이 왼쪽 띄움 5까지 넓어진다. 아래 5는 판의 것이다 — 사이드바는 창 아래 끝까지 서서 사람 줄이 창 아래 끝에서 8(안쪽
-          열의 아래 8)에 선다. 머리 줄의 이름 자리(`--titlebar-inset-sidebar` = 5 + 0.5 + 사이드바 폭)는 그대로 판 안 왼쪽 끝을 가리킨다. */}
-      <div className="flex min-h-0 flex-1 px-1.25">
+      {/* 머리 줄 아래 가로 줄 하나 — **사이드바는 카드가 아니라 크롬 위에 서고**(바탕 · 오른쪽 선이 없다), 머리 줄 왼쪽 칸(신호등 · 셸
+          컨트롤)과 한 기둥이다(03 구현 스펙 §3 · 시안 Shell 「사이드바만 카드가 아니라 창 바탕에 놓인다」). 그 오른쪽 카드 자리에 화면의
+          카드들이 뜬다. 창 오른쪽 · 아래 끝의 틈 8은 이 줄이 든다(시안 `.ra-body`의 `0 8px 8px 0`) — 사이드바도 창 아래 끝에서 8 위까지 선다.
+          왼쪽 틈은 사이드바의 몫이다 — 열리면 사이드바 폭 안의 좌우 8(행이 창 왼쪽 끝 + 8에서 선다), 접히면 틈 하나 폭(`Sidebar`의
+          `asideClass` — 시안 `.ra-side[data-open=false] { width: 8px }`)이라 카드가 창 왼쪽 끝 + 8까지 넓어진다. 머리 줄의 이름
+          자리(`--titlebar-inset-sidebar` = 사이드바 폭)는 카드 자리 왼쪽 끝을 가리킨다. */}
+      <div className="flex min-h-0 flex-1 pr-2 pb-2">
         <Sidebar
           open={sidebarOpen}
           size={sidebarSize}
@@ -421,15 +422,12 @@ function AppShell() {
             void navigate(appReturnTarget());
           }}
         />
-        {/* 흰 판 — 크롬 아래 끝에서 5 띄우고(왼 · 오는 위 줄이 띄운다) 0.5 `border-panel` · 둥글기 12 · 위 그림자(`shadow-panel`)다. 안에는
-            화면 본문만 든다. 모서리 밖으로 본문 면이 새지 않게 잘라 낸다 — 그래서 넘침 상자라 자동 최소 폭이 0이므로, 본문 뿌리가 드는 바닥(탭
-            줄 — `panel-layout`의 `TAB_ROW_COLUMN`)을 사이드바에게 알리는 것은 판의 `min-w-min`이다. 사이드바가 판 안에 들던 때 그 바닥은 본문
-            열이 사이드바와 한 줄에서 곧장 들었다 — 이제 판이 그 줄의 형제다. 본문의 글 폭은 바닥에 들지 않는다(`PlainFrame`의 본문 · 공용 틀의
-            본문 열이 격리한다). */}
-        <div
-          data-slot="panel"
-          className="mb-1.25 flex min-h-0 min-w-min flex-1 overflow-hidden rounded-xl border-[0.5px] border-border-panel bg-surface shadow-panel"
-        >
+        {/* 카드 자리 — 겉이 없다. 화면의 카드들(본문 카드 · 작업 패널 카드 · 레일 카드 …)이 이 안에 8 틈으로 서고, 그 겉은 화면의
+            틀이 그린다(`Frame`의 `Card` · `PlainFrame`). 한때(02 구현 스펙 §3 S2) 여기 흰 판 한 장(둥글기 12 · 0.5 테두리 · 위 그림자)이
+            서서 칸들이 그 안에 선으로 갈렸다 — restart 02a-2가 판을 걷었다. 넘침을 자르지 않는다 — 카드의 0.5 링(그림자)이 이 자리 끝에서
+            잘리지 않게. 화면 뿌리가 드는 바닥(탭 줄 — `panel-layout`의 `TAB_ROW_COLUMN`)을 사이드바에게 알리는 것은 이 자리의
+            `min-w-min`이다. 본문의 글 폭은 바닥에 들지 않는다(`PlainFrame`의 본문 · 공용 틀의 본문 열이 격리한다). */}
+        <div data-slot="cards" className="flex min-h-0 min-w-min flex-1">
           <ShellHeadSlot.Provider value={headSlot}>
             <Outlet />
           </ShellHeadSlot.Provider>
