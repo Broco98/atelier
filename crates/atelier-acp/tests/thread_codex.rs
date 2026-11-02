@@ -7,7 +7,7 @@
 
 mod common;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use atelier_acp::{Agent, EngineCheck, EngineState, HostError, Runtime, StartPicks, ThreadLink};
 use common::{of_kind, Sandbox};
@@ -252,6 +252,147 @@ fn 되살릴_세션을_codex가_모르면_새_세션으로_열고_머리말과_�
     assert!(blocks[0]["text"].as_str().unwrap().starts_with("Atelier Thread 안에서 열린 Session이다."));
     assert!(blocks[1]["text"].as_str().unwrap().starts_with("지난 말 — "), "{blocks:?}");
     assert_eq!(blocks[2]["text"], "오늘의 말");
+}
+
+// ── 추가 폴더(restart 01c-6) ─────────────────────────────────────────────────────────
+//
+// Codex는 `additionalDirectories`를 쓸 수 있는 자리로 받는다(실측 「worktree와 git」). 그래서 고칠 수 있는 자리만 넘긴다 — spec 폴더와
+// worktree마다의 git 자리 넷. 읽는 범위는 넘기지 않는다(읽기에는 필요 없다).
+
+#[test]
+fn 작업공간_없는_codex_채팅은_읽는_범위의_project도_채팅_폴더도_추가_폴더로_넘기지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.register_project("api");
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[]));
+
+    let thread = host
+        .start_thread_picking("Reply with exactly one word: ok", &[], ThreadLink::NoWork, codex())
+        .expect("Codex 채팅의 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let opened = &sandbox.acp_receipt(&sandbox.thread_session_id(&thread))["sessionNew"];
+    assert!(opened.get("additionalDirectories").is_none(), "읽는 범위는 쓸 수 있는 자리가 되므로 넘기지 않는다: {opened}");
+    assert_eq!(sandbox.thread_json(&thread)["additionalDirectories"], json!([]), "thread.json도 넘긴 값을 적는다");
+}
+
+/// 등록한 Project들로 작업공간을 세운다 — `start_work`가 진짜 git worktree를 `trees/<project>`에 만든다. 브랜치는 slug다.
+fn work_with_trees(sandbox: &Sandbox, slug: &str, projects: &[&str]) {
+    let root = sandbox.data_root();
+    let projects: Vec<String> = projects.iter().map(|one| (*one).to_owned()).collect();
+    let report = atelier_core::start_work(
+        &atelier_core::works_in(&root),
+        &atelier_core::archive_in(&root),
+        &atelier_core::projects_in(&root),
+        &format!("{slug} 제목"),
+        Some(slug),
+        &projects,
+        None,
+    )
+    .expect("작업공간");
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+}
+
+/// 그 Project 저장소에서 worktree 이름이 `name`인 git 자리 넷 — 실측 「worktree와 git」의 넷이다.
+fn git_places(repo: &Path, name: &str) -> Vec<PathBuf> {
+    let git = repo.join(".git");
+    vec![git.join("worktrees").join(name), git.join("objects"), git.join("refs"), git.join("logs")]
+}
+
+/// 경로 목록을 실제 자리로 — macOS의 임시 폴더는 `/var`와 `/private/var` 두 이름이 있다.
+fn real_dirs(value: &Value) -> Vec<PathBuf> {
+    value.as_array().unwrap_or_else(|| panic!("경로 목록이 아니다: {value}")).iter().map(|dir| real(dir.as_str().expect("경로"))).collect()
+}
+
+fn real(path: impl AsRef<Path>) -> PathBuf {
+    let path = path.as_ref();
+    path.canonicalize().unwrap_or_else(|_| panic!("없다: {}", path.display()))
+}
+
+#[test]
+fn 작업공간에_이은_codex_채팅의_추가_폴더는_spec_폴더와_worktree의_git_자리_넷이고_읽는_범위는_들지_않으며_말마다_다시_열지_않는다() {
+    let sandbox = Sandbox::new();
+    let api = sandbox.register_project("api");
+    sandbox.register_project("web");
+    work_with_trees(&sandbox, "cart", &["api"]);
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[]));
+
+    let link = ThreadLink::Work { slug: "cart".into() };
+    let thread = host.start_thread_picking("Reply with exactly one word: ok", &[], link, codex()).expect("Codex 채팅의 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "Run the shell command `echo atelier` and tell me what it printed. Do nothing else.").expect("이어 말하기");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.shut_down();
+
+    let opened = &sandbox.acp_receipt(&sandbox.thread_session_id(&thread))["sessionNew"];
+    let tree = sandbox.work_dir("cart").join("trees/api");
+    assert_eq!(real(opened["cwd"].as_str().expect("cwd")), real(&tree), "worktree 하나면 그 worktree에서 일한다");
+    let mut expected = vec![real(sandbox.work_dir("cart").join("spec"))];
+    expected.extend(git_places(&api, "api").iter().map(real));
+    assert_eq!(real_dirs(&opened["additionalDirectories"]), expected, "읽는 범위의 web은 들지 않는다: {opened}");
+    assert_eq!(real_dirs(&sandbox.thread_json(&thread)["additionalDirectories"]), expected, "thread.json도 넘긴 값을 적는다");
+
+    assert!(sandbox.acp_revivals().is_empty(), "자리가 그대로이니 다음 말에 다시 열지 않는다: {:?}", sandbox.acp_revivals());
+    assert_eq!(common::opened_hows(&record), ["new"]);
+}
+
+#[test]
+fn 같은_project를_쓰는_둘째_작업공간의_git_자리는_폴더_이름이_아니라_포인터_파일에서_읽는다() {
+    let sandbox = Sandbox::new();
+    let api = sandbox.register_project("api");
+    work_with_trees(&sandbox, "cart", &["api"]);
+    work_with_trees(&sandbox, "shop", &["api"]);
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[]));
+
+    let link = ThreadLink::Work { slug: "shop".into() };
+    let thread = host.start_thread_picking("Reply with exactly one word: ok", &[], link, codex()).expect("Codex 채팅의 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let opened = &sandbox.acp_receipt(&sandbox.thread_session_id(&thread))["sessionNew"];
+    assert_eq!(real(opened["cwd"].as_str().expect("cwd")), real(sandbox.work_dir("shop").join("trees/api")), "둘째도 폴더 이름은 api다");
+    let mut expected = vec![real(sandbox.work_dir("shop").join("spec"))];
+    expected.extend(git_places(&api, "api1").iter().map(real));
+    assert_eq!(real_dirs(&opened["additionalDirectories"]), expected, "git은 둘째 worktree의 자리를 api1로 지었다: {opened}");
+}
+
+#[test]
+fn spec_폴더에서_연_codex_채팅은_worktree가_서면_다음_말에_worktree를_cwd로_spec과_git_자리를_추가_폴더로_재개한다() {
+    let sandbox = Sandbox::new();
+    let api = sandbox.register_project("api");
+    let root = sandbox.data_root();
+    let (works, projects) = (atelier_core::works_in(&root), atelier_core::projects_in(&root));
+    let api_slug = vec!["api".to_owned()];
+    atelier_core::start_work_deferred(&works, &atelier_core::archive_in(&root), &projects, "cart 제목", Some("cart"), &api_slug, None)
+        .expect("worktree 없는 작업공간");
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/resume", &[]));
+
+    let link = ThreadLink::Work { slug: "cart".into() };
+    let first = "Remember the word lantern. Reply with exactly one word: ok";
+    let thread = host.start_thread_picking(first, &[], link, codex()).expect("Codex 채팅의 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let spec = sandbox.work_dir("cart").join("spec");
+    let opened = &sandbox.acp_receipt(&sandbox.thread_session_id(&thread))["sessionNew"];
+    assert_eq!(real(opened["cwd"].as_str().expect("cwd")), real(&spec), "worktree가 없으면 spec 폴더에서 연다");
+    assert!(opened.get("additionalDirectories").is_none(), "읽기만인 api는 넘기지 않는다: {opened}");
+
+    let report = atelier_core::attach_project(&works, &projects, "cart", "api", None).expect("api를 고치기 시작");
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    host.send_to_thread(&thread, "What word did I ask you to remember? Reply with that one word.").expect("이어 말하기");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.shut_down();
+
+    let revivals = sandbox.acp_revivals();
+    assert_eq!(revivals.len(), 1, "{revivals:?}");
+    assert_eq!((&revivals[0]["method"], &revivals[0]["ok"]), (&json!("session/resume"), &json!(true)));
+    let params = &revivals[0]["params"];
+    let tree = sandbox.work_dir("cart").join("trees/api");
+    assert_eq!(real(params["cwd"].as_str().expect("cwd")), real(&tree), "바뀐 작업 폴더로 재개한다: {params}");
+    let mut expected = vec![real(&spec)];
+    expected.extend(git_places(&api, "api").iter().map(real));
+    assert_eq!(real_dirs(&params["additionalDirectories"]), expected, "재개에도 spec 폴더와 git 자리를 준다: {params}");
+    assert_eq!(common::opened_hows(&record), ["new", "resumed"]);
+    assert_eq!(real(sandbox.thread_json(&thread)["cwd"].as_str().expect("cwd")), real(&tree), "thread.json에 바뀐 작업 폴더를 적는다");
 }
 
 // ── 판정 ───────────────────────────────────────────────────────────────────────────
