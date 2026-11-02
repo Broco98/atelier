@@ -782,19 +782,18 @@ describe("화면 탭의 주소", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("보던 문서가 탭을 왕복해도 그대로 남는다", async () => {
+  // restart 02a-12 — 한때 「보던 문서가 탭을 왕복해도 그대로 남는다」였다. `file`은 이제 넓힌 카드의 문서라 셸로 가는 주소에 남지 않는다 — 남으면
+  // 셸로 가는 주소가 채팅 탭과 넓힌 카드로 떨어진다. 문서 탭(임시)으로 가는 주소는 그 문서를 보인다.
+  it("셸로 가는 주소에 보던 문서가 남지 않고, 문서 탭으로 가는 주소에는 남는다", async () => {
     const { router } = setup(["/works/work-a"]);
     await router.load();
-    await router.navigate({
-      to: "/works/$slug",
-      params: { slug: "work-a" },
-      search: { file: "overview.md" },
-      replace: true,
-    });
+    const withDoc = { to: "/works/$slug", params: { slug: "work-a" }, search: { file: "overview.md" }, replace: true } as const;
+    await router.navigate(withDoc);
 
     await router.navigate(pick("work-a", "terminal"));
-    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "terminal" });
+    expect(router.state.location.search).toEqual({ tab: "terminal" });
 
+    await router.navigate(withDoc);
     await router.navigate(pick("work-a", "spec"));
     // 문서 탭은 **임시로** `tab=spec`이라 적는다(restart 02a-4 — 값이 없는 주소는 이제 채팅이다. 02a-13이 문서 탭을 걷는다).
     expect(router.state.location.search).toEqual({ file: "overview.md", tab: "spec" });

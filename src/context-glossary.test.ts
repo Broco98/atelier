@@ -187,6 +187,16 @@ describe("말의 사전", () => {
     expect(bodyOf("요약 카드")).not.toMatch(/첫 말을 보내기 전의 새\s+Thread에는 카드도 단추도 없다/);
   });
 
+  // restart 02a-12 · 스토리 95 · 102 · SummarySheet 표의 문서 줄 · 「넓힌 카드」 표의 Project 줄 — spec 패널의 문서 줄은 넓힌 카드로 열고(셸 · 파일
+  // 탭이면 켤 채팅 탭을 먼저 켠다), 주소의 문서(`?file=`)는 넓힌 카드의 문서다. 넓힌 카드의 Project 트리에서 바뀐 파일은 변경, 그 밖의 파일은 파일 탭이다.
+  it("「오른쪽 자리」가 문서 줄과 주소의 문서를, 「요약 카드」 · 「파일 탭」이 Project 트리의 파일이 가는 곳을 말한다", () => {
+    for (const piece of ["spec 패널의 문서 줄", "넓힌 카드로 연다", "주소의 문서", "없는 문서", "카드를 닫으면"]) {
+      expect(bodyOf("오른쪽 자리"), piece).toContain(piece);
+    }
+    expect(bodyOf("요약 카드")).toMatch(/Project 트리에서 바뀐 파일은 변경[^]*그 밖의 파일은 파일 탭/);
+    expect(bodyOf("파일 탭")).toContain("넓힌 카드의 Project 트리");
+  });
+
   it("「레일」 · 「패널 토글」이 등재돼 있고, 「레일」이 「패널 탭」을 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["레일", "패널 토글"]));
     expect(bodyOf("레일")).toContain("_피할 말_: 패널 탭");

@@ -4,8 +4,10 @@ import type { Opened } from "./expanded";
 import type { WorkLanding } from "./work-threads";
 import {
   bodyTabStore,
+  cardDocFile,
   cardTabOf,
   chatSeat,
+  docArrival,
   firstSeat,
   followTab,
   moveSeat,
@@ -218,6 +220,69 @@ describe("요약 카드가 설 채팅 탭", () => {
     followTab(workSeat("watcher"), "spec", 7);
     followTab(key, "spec", 3);
     expect(cardTabOf(key, [chatTab(3, "a"), chatTab(7, "b")], LATEST)).toEqual({ kind: "thread", id: "a" });
+  });
+});
+
+// restart 02a-12 · SummarySheet 표의 문서 줄 셋 — spec 패널의 문서 줄을 누르면 넓힌 카드가 선다(spec 패널 · 사이드바 접힘). 카드가 서는 탭이 아니면
+// 켤 탭(위 `cardTabOf`)을 먼저 켠다 — 값을 먼저 넓히고 본문이 그 채팅 탭 · 새 채팅 탭으로 바뀌어도 탭 줄 규칙이 넓힌 카드를 걷지 않는다.
+describe("문서 줄을 누를 때의 오른쪽 자리 — SummarySheet 표의 문서 줄", () => {
+  afterEach(() => {
+    rightPlaceStore.setState(() => ({}));
+    bodyTabStore.setState(() => ({}));
+  });
+  const key = workSeat("refund-api");
+  const now = () => inWork(seatOf(rightPlaceStore.state, key, "spec"));
+  const press = { kind: "expand", target: DOC } as const;
+
+  it("채팅 탭에서 문서 줄을 누르면 spec 패널이 접히고 넓힌 카드가 선다 — 사이드바가 접힌다", () => {
+    followTab(key, "spec", 3);
+    moveSeat(key, "spec", press);
+    expect(now()).toEqual({ panel: false, card: true, opened: DOC });
+  });
+
+  it("셸 · 파일 탭에서 누르면 최근 채팅 탭을 켜고 넓힌 카드가 선다", () => {
+    followTab(key, "spec", 3);
+    followTab(key, "spec", null);
+    moveSeat(key, "spec", press);
+    followTab(key, "spec", 3);
+    expect(now()).toEqual({ panel: false, card: true, opened: DOC });
+  });
+
+  it("채팅이 없는 작업공간에서 누르면 새 채팅 탭에 넓힌 카드가 선다", () => {
+    followTab(key, "spec", null);
+    moveSeat(key, "spec", press);
+    followTab(key, "spec", 9);
+    expect(now()).toEqual({ panel: false, card: true, opened: DOC });
+  });
+});
+
+// restart 02a-12 · 구현 스펙 「02a — `spec` 탭과 분할을 지운다」 — 주소의 `file`은 넓힌 카드의 문서다. 닿으면 넓힌 카드가 열고(없는 문서면 열지 않고
+// 걷는다), 카드가 닫히거나 문서가 아닌 것을 열면 걷힌다.
+describe("주소의 문서와 넓힌 카드", () => {
+  const SPEC = ["overview.md", DOC.path];
+
+  it("주소에 문서가 닿으면 넓힌 카드가 그 문서를 연다 — 이미 그 문서면 아무 일도 없다", () => {
+    expect(docArrival(DOC.path, SPEC, null)).toEqual({ kind: "expand", target: DOC });
+    expect(docArrival(DOC.path, SPEC, CHANGE)).toEqual({ kind: "expand", target: DOC });
+    expect(docArrival(DOC.path, SPEC, DOC)).toBeNull();
+  });
+
+  it("없는 문서면 카드를 열지 않고 주소에서 걷는다", () => {
+    expect(docArrival("지운-문서.md", SPEC, null)).toBe("clear");
+    expect(docArrival("지운-문서.md", SPEC, DOC)).toBe("clear");
+  });
+
+  it("넓힌 카드가 다른 문서를 열면 주소가 그 문서다 — 닫히거나 문서가 아닌 것을 열면 걷힌다", () => {
+    expect(cardDocFile(DOC, "overview.md")).toBe(DOC.path);
+    expect(cardDocFile(null, DOC.path)).toBeNull();
+    expect(cardDocFile(CHANGE, DOC.path)).toBeNull();
+    expect(cardDocFile({ kind: "project", project: "atelier" }, DOC.path)).toBeNull();
+  });
+
+  it("주소가 이미 그 값이면 고칠 것이 없다", () => {
+    expect(cardDocFile(DOC, DOC.path)).toBeUndefined();
+    expect(cardDocFile(null, null)).toBeUndefined();
+    expect(cardDocFile(CHANGE, null)).toBeUndefined();
   });
 });
 

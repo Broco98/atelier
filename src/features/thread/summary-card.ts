@@ -79,7 +79,7 @@ export function freshFiles(before: readonly ProjectChanges[] | undefined, after:
 export function changesTarget(changes: ChangeSummary | null, projects: readonly string[]): Opened | null {
   const first = changes?.groups[0];
   if (first && first.files.length > 0) return { kind: "change", project: first.project, path: first.files[0].path };
-  return projects.length > 0 ? { kind: "project", project: projects[0], file: null } : null;
+  return projects.length > 0 ? { kind: "project", project: projects[0] } : null;
 }
 
 /**

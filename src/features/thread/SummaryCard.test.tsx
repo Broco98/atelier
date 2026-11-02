@@ -190,7 +190,7 @@ describe("넓힌 카드의 목록(v1 티켓 35 — 넓힌 카드는 그대로다
     expect(markup).toContain(">schema.prisma<");
     expect(markup.match(/aria-current="true"/g) ?? []).toHaveLength(1);
     expect(markup).toMatch(/data-change="prisma\/schema.prisma"[^>]*aria-current="true"[^>]*class="[^"]*selected-row/);
-    expect(body(live, { expanded: true, opened: { kind: "project", project: "web-app", file: "package.json" } })).toMatch(
+    expect(body(live, { expanded: true, opened: { kind: "project", project: "web-app" } })).toMatch(
       /data-project="web-app"[^>]*aria-current="true"/,
     );
   });

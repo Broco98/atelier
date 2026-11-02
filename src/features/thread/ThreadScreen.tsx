@@ -13,6 +13,7 @@ import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useReadingScope, useServices } from "@/features/services/hooks";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
 import type { Quote } from "@/features/works/QuotePick";
 import type { WorkView } from "@/features/works/types";
 import { cn } from "@/lib/utils";
@@ -222,6 +223,7 @@ export function WorkNewChat({
             onNewThread={() => void navigate(newChatDoor(work))}
             opened={opened}
             onOpen={card.onOpen}
+            onOpenFile={card.onOpenFile}
             onClose={card.onClose}
           />
         )
@@ -501,6 +503,8 @@ export interface ChatCard {
   onShowChanges: (pr: PrLine) => void;
   /** 카드의 줄 · 트리 · 문서 링크가 파일을 열었다 — 카드가 넓어져(이미 넓으면 그대로) 그것을 본다. */
   onOpen: (target: Opened) => void;
+  /** 넓힌 카드의 Project 트리에서 바뀌지 않은 파일을 눌렀다 — 파일 탭으로 연다(restart 02a-12 · 스토리 102). */
+  onOpenFile: (target: CodeTarget) => void;
   /** 넓힌 카드의 × — 작은 카드로 돌아온다. */
   onClose: () => void;
 }
@@ -511,7 +515,15 @@ export interface ChatCard {
  */
 function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
   const show = () => move({ kind: "show", place: "summary" });
-  return { open, opened: null, docPlace: null, onShowChanges: show, onOpen: show, onClose: () => move({ kind: "collapse" }) };
+  return {
+    open,
+    opened: null,
+    docPlace: null,
+    onShowChanges: show,
+    onOpen: show,
+    onOpenFile: show,
+    onClose: () => move({ kind: "collapse" }),
+  };
 }
 
 /**
@@ -525,10 +537,16 @@ function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
  *   것도 없고, 접었던 사이드바가 돌아온다.
  * - **본문 탭이 바뀌면 표의 탭 줄대로 값을 바꾼다**(`tab` — restart 02a-10 · `followTab`) — 셸 · 파일 탭 · 문서가 켜지면 요약 카드가 닫히고, 다른
  *   채팅 탭이 켜지면 넓힌 카드가 작은 카드로 돌아온다. 모르는 한 틱(`undefined`)은 세지 않는다.
+ * - **넓힌 카드의 Project 트리에서 바뀌지 않은 파일은 파일 탭으로 연다**(`openFile` — restart 02a-12) — 탭을 여는 것은 작업공간 화면이다.
  */
 export function useWorkRightPlace(
   work: WorkView | null,
-  { split, chat, tab }: { split: boolean; chat: boolean; tab: BodyTab | undefined },
+  {
+    split,
+    chat,
+    tab,
+    openFile,
+  }: { split: boolean; chat: boolean; tab: BodyTab | undefined; openFile: (target: CodeTarget) => void },
 ) {
   const slug = work?.slug ?? null;
   const key = slug === null ? null : workSeat(slug);
@@ -570,6 +588,7 @@ export function useWorkRightPlace(
     docPlace,
     onShowChanges: showChanges,
     onOpen: (target) => move({ kind: "expand", target }),
+    onOpenFile: openFile,
     onClose: () => move({ kind: "collapse" }),
   };
   return { panelOpen: shown.panel, summaryOpen: shown.card, move, card };
@@ -651,6 +670,7 @@ function ThreadPane({
             onNewThread={() => void navigate(newChatDoor(cardWork))}
             opened={expanded ? card.opened : null}
             onOpen={card.onOpen}
+            onOpenFile={card.onOpenFile}
             onClose={card.onClose}
           />
         )
