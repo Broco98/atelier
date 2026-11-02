@@ -11,6 +11,7 @@ import {
   keptFolded,
   usageText,
   workLine,
+  type Entry,
   type PendingProject,
   type PendingProjectAdd,
   type PendingService,
@@ -1303,5 +1304,191 @@ describe("계획 체크리스트", () => {
     expect(checklists(model)).toEqual([]);
     expect(model.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool", "plan"]);
     expect(checklists(foldThread(blessed))).toEqual([]);
+  });
+});
+
+// 대화 정리(01b-4 · 스토리 51 · 52) — Claude 변환기와 Codex가 같은 도구 줄(`Compact conversation`, `think`)로 알린다. 접기는 이 제목으로 줄을 가려 작업
+// 로그에 넣지 않고, 턴이 열려 있고 줄이 끝나지 않은 동안만 정리 중이라고 말한다. 바탕은 엔진이 `/compact` 녹음으로 쓴 기록이다 — seq 14가 정리의
+// 시작, 15가 그 끝, 16이 그 턴의 끝이다.
+describe("대화 정리", () => {
+  const compact = record("thread-compact");
+  const tools = (model: ThreadModel) => model.turns.flatMap((turn) => turn.entries.filter((entry) => entry.kind === "tool"));
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "/compact" } };
+  const opened = (seq = 2) =>
+    update(seq, seq, { sessionUpdate: "tool_call", toolCallId: "compact", title: "Compact conversation", kind: "think", status: "in_progress" });
+  const closed = (seq: number, status: string) => update(seq, seq, { sessionUpdate: "tool_call_update", toolCallId: "compact", status });
+  const ended = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } });
+
+  it("줄이 끝나지 않은 동안만 정리 중이다", () => {
+    expect(foldThread(through(compact, 13)).compacting).toBe(false);
+    expect(foldThread(through(compact, 14)).compacting).toBe(true);
+    expect(foldThread(through(compact, 15)).compacting).toBe(false);
+    expect(foldThread(compact).compacting).toBe(false);
+  });
+
+  it("실패로 끝나도 정리는 끝났다", () => {
+    expect(foldThread([sent, opened(), closed(3, "failed")]).compacting).toBe(false);
+  });
+
+  it("정리 중에는 「답하는 중」이 서지 않고, 끝난 뒤 아직 답이 없으면 다시 선다", () => {
+    expect(answeringLine(foldThread(through(compact, 14)))).toBe(false);
+    expect(answeringLine(foldThread(through(compact, 15)))).toBe(true);
+  });
+
+  it("줄이 작업 로그에 들지 않는다 — 정리만 한 턴에는 구분선도 서지 않는다", () => {
+    const model = foldThread(compact);
+    expect(tools(model)).toEqual([]);
+    const turn = model.turns[2];
+    expect(turn.sent).toBe("/compact");
+    expect(turn.entries).toEqual([]);
+    expect(workLine(turn)).toBeNull();
+  });
+
+  it("끝나지 않은 줄은 턴이 끝나면 닫힌다", () => {
+    const model = foldThread([sent, opened(), ended(3)]);
+    expect(model.compacting).toBe(false);
+    expect(tools(model)).toEqual([]);
+  });
+
+  it("끝나지 않은 줄은 Session이 사라져도 닫힌다", () => {
+    const died: RecordLine = { seq: 3, at: at(3), kind: "session", payload: { state: "died" } };
+    expect(foldThread([sent, opened(), died]).compacting).toBe(false);
+    expect(foldThread([sent, opened()], 2).compacting).toBe(false);
+  });
+
+  it("턴이 끝난 뒤 온 끝은 줄을 세우지 않고, 다음 정리는 새로 선다", () => {
+    const late = foldThread([sent, opened(), ended(3), closed(4, "completed")]);
+    expect(tools(late)).toEqual([]);
+    const again: RecordLine = { ...sent, seq: 5, at: at(5) };
+    expect(foldThread([sent, opened(), ended(3), again, opened(6)]).compacting).toBe(true);
+  });
+
+  it("보낸 말 없이 온 정리도 턴을 세운다 — 그 턴의 끝에 닫힌다", () => {
+    const model = foldThread([opened(1)]);
+    expect(model.running).toBe(true);
+    expect(model.compacting).toBe(true);
+    const outOfTurn: RecordLine = { seq: 2, at: at(2), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000, outOfTurn: true } };
+    expect(foldThread([opened(1), outOfTurn]).running).toBe(false);
+  });
+
+  it("`Guardian Review`는 같은 종류여도 도구 줄로 남는다", () => {
+    const guardian = update(2, 2, {
+      sessionUpdate: "tool_call",
+      toolCallId: "guardian_assessment:edb67edb",
+      kind: "think",
+      title: "Guardian Review",
+      status: "in_progress",
+      content: [{ type: "content", content: { type: "text", text: "Status: In progress\nAction: MCP mark on atelier-thread" } }],
+    });
+    const model = foldThread([sent, guardian]);
+    expect(tools(model).map((tool) => tool.kind === "tool" && tool.call.title)).toEqual(["Guardian Review"]);
+    expect(model.compacting).toBe(false);
+  });
+
+  it("서브에이전트의 설명이 같은 글이어도 도구 줄로 남는다", () => {
+    const agent = update(2, 2, {
+      sessionUpdate: "tool_call",
+      toolCallId: "agent",
+      title: "Compact conversation",
+      kind: "think",
+      status: "in_progress",
+      _meta: { claudeCode: { toolName: "Agent", subagent: { subagentType: "general-purpose", description: "Compact conversation" } } },
+    });
+    const model = foldThread([sent, agent]);
+    expect(tools(model)).toHaveLength(1);
+    expect(model.compacting).toBe(false);
+  });
+});
+
+// Runtime 경고(01b-8 · 구현 스펙 「01b — 그 밖의 Runtime 신호」) — 기록만 되던 `stderr` 줄을 화면에 세운다. 이어진 줄은 안내 하나다. 일이 아니라서 턴의
+// 흐름(도는가 · 답했나 · 무엇이 마지막 줄인가)을 바꾸지 않는다.
+describe("Runtime 경고", () => {
+  const sent = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text: "고쳐 줘" } });
+  const said = (seq: number, words = "고치는 중"): RecordLine =>
+    update(seq, seq, { sessionUpdate: "agent_message_chunk", messageId: "m", content: { type: "text", text: words } });
+  const warned = (seq: number, line: string): RecordLine => ({ seq, at: at(seq), kind: "stderr", payload: { line } });
+  const ran = (seq: number): RecordLine =>
+    update(seq, seq, { sessionUpdate: "tool_call", toolCallId: `t${seq}`, title: "Read a.rs", kind: "read", status: "completed" });
+  const ended = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } });
+  const warnings = (entries: readonly Entry[]) => entries.flatMap((entry) => (entry.kind === "warning" ? [entry.lines] : []));
+  const kinds = (entries: readonly Entry[]) => entries.map((entry) => entry.kind);
+
+  it("턴 안의 이어진 줄은 그 자리에 안내 하나로 묶인다", () => {
+    const [turn] = foldThread([sent(1), said(2), warned(3, "첫 줄"), warned(4, "둘째 줄"), ran(5)]).turns;
+    expect(kinds(turn.entries)).toEqual(["message", "warning", "tool"]);
+    expect(warnings(turn.entries)).toEqual([["첫 줄", "둘째 줄"]]);
+  });
+
+  it("사이에 일이 낀 줄은 이어진 줄이 아니라 안내가 따로 선다", () => {
+    const [turn] = foldThread([sent(1), warned(2, "앞"), ran(3), warned(4, "뒤")]).turns;
+    expect(kinds(turn.entries)).toEqual(["warning", "tool", "warning"]);
+    expect(warnings(turn.entries)).toEqual([["앞"], ["뒤"]]);
+  });
+
+  it("화면에 서지 않는 줄이 끼어도 이어진 줄이다", () => {
+    const usage = update(3, 3, { sessionUpdate: "usage_update", used: 10, size: 100 });
+    const [turn] = foldThread([sent(1), warned(2, "앞"), usage, warned(4, "뒤")]).turns;
+    expect(warnings(turn.entries)).toEqual([["앞", "뒤"]]);
+  });
+
+  it("줄을 가려 고르지 않는다 — 묶음 안의 빈 줄도 그대로 든다", () => {
+    const [turn] = foldThread([sent(1), warned(2, "앞"), warned(3, ""), warned(4, "뒤")]).turns;
+    expect(warnings(turn.entries)).toEqual([["앞", "", "뒤"]]);
+  });
+
+  it("안내 글은 첫 줄이므로 빈 줄은 묶음을 열지 않는다", () => {
+    const [turn] = foldThread([sent(1), warned(2, "  "), warned(3, "Error: boom")]).turns;
+    expect(warnings(turn.entries)).toEqual([["Error: boom"]]);
+    expect(foldThread([warned(1, "")]).notices).toEqual([]);
+  });
+
+  it("턴 밖의 줄은 턴을 열지 않고 턴 사이에 안내 하나로 묶인다", () => {
+    const model = foldThread([sent(1), ended(2), warned(3, "첫 줄"), warned(4, "둘째 줄")]);
+    expect(model.running).toBe(false);
+    expect(model.turns).toHaveLength(1);
+    expect(model.notices.map(({ kind, text, lines, turnsBefore }) => ({ kind, text, lines, turnsBefore }))).toEqual([
+      { kind: "warning", text: "첫 줄", lines: ["첫 줄", "둘째 줄"], turnsBefore: 1 },
+    ]);
+  });
+
+  it("턴 사이의 다른 안내가 끼면 따로 묶는다", () => {
+    const died: RecordLine = { seq: 2, at: at(2), kind: "session", payload: { state: "died", reason: "끝났어요" } };
+    const model = foldThread([warned(1, "앞"), died, warned(3, "뒤")]);
+    expect(model.notices.map((notice) => [notice.kind, notice.text])).toEqual([
+      ["warning", "앞"],
+      ["died", "끝났어요 · 다음 말에서 다시 띄워요"],
+      ["warning", "뒤"],
+    ]);
+  });
+
+  it("경고가 있어도 대화는 막히지 않는다 — 턴이 돌지도, 물음이 걸리지도 않고 다음 말이 그대로 턴이 된다", () => {
+    const lines = [warned(1, "경고"), sent(2), ended(3), warned(4, "경고")];
+    const model = foldThread(lines);
+    expect(model.running).toBe(false);
+    expect(model.asks).toEqual([]);
+    expect(model.connecting).toBe(false);
+    expect(foldThread([...lines, sent(5)]).running).toBe(true);
+    expect(foldThread([...lines, sent(5)]).turns).toHaveLength(2);
+  });
+
+  it("경고는 답이 아니다 — 「답하는 중」이 그대로 서고 답한 때가 적히지 않는다", () => {
+    const lines = [sent(1), warned(2, "경고")];
+    const model = foldThread(lines);
+    expect(answeringLine(model)).toBe(true);
+    expect(model.turns[0].answeredAt).toBeNull();
+    expect(answeringLine(foldThread([...lines, said(3)]))).toBe(false);
+  });
+
+  it("답 글 도중에 온 경고가 답을 둘로 끊지 않는다", () => {
+    const [turn] = foldThread([sent(1), said(2, "안녕"), warned(3, "경고"), said(4, "하세요"), ended(5)]).turns;
+    expect(turn.entries.flatMap((entry) => (entry.kind === "message" ? [entry.text] : []))).toEqual(["안녕하세요"]);
+    expect(kinds(turn.entries)).toEqual(["message", "warning"]);
+  });
+
+  it("접힌 턴에도 남고, 말만 한 턴에 작업 구분선을 세우지 않는다", () => {
+    const [turn] = foldThread([sent(1), warned(2, "경고"), said(3), ended(4)]).turns;
+    expect(turn.entries.filter(keptFolded).map((entry) => entry.kind)).toEqual(["warning"]);
+    expect(workLine(turn)).toBeNull();
+    expect(finalMessages(turn).map((entry) => entry.kind)).toEqual(["message"]);
   });
 });

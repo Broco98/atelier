@@ -12,6 +12,7 @@ import {
   finalFrom,
   headline,
   keptFolded,
+  lastWork,
   runningHeadline,
   shownEntry,
   usageText,
@@ -25,6 +26,7 @@ import {
   type ToolEntry,
   type Turn,
   type Usage,
+  type WarningEntry,
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
 import { DocCard } from "./DocCard";
@@ -62,13 +64,17 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 작업공간 … 을 만들고 이 채팅에 연결함」이다.
 // - **흐르는 답은 조각이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming` — 끝 240px이 옅다). 답을 기다리는 동안은 「생각 중」에
-//   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12).
+//   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12). 대화를 정리하는 동안은 같은 자리의 「대화를 정리하는 중」이다
+//   (01b-4 · Tools 보드 — 정리 신호가 오는 동안만, `compacting`). 정리 줄은 작업 로그에 서지 않는다.
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
 // - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
 //   사이의 옅은 줄이다.
 // - 마지막으로 끝난 답 아래에만 응답 액션(복사)과 그 턴의 사용량이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」). 「…」는 무엇을 둘지
 //   정해지면(02 P1) 단다.
+// - **Runtime 경고**(01b-8 · Cards 보드 「Runtime 경고」 · `WarningLine`) — 이어진 `stderr` 줄의 안내다. 글은 첫 줄이고 「자세히」가 묶인 줄을 안내 안에서
+//   모두 펼친다. 대화를 막지 않는다 — 턴 안의 안내가 서도 「답하는 중」 · 머리줄 · 「생각 중」은 일의 줄로 정한다(`lastWork`). 접힌 턴에도 남는다.
+//   모양은 02b-5가 맞춘다.
 // - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
 //   선다(턴의 일이 아니라 Work의 일이다).
 //
@@ -97,6 +103,9 @@ export const DocPlace = createContext<{ specRoot: string; open: (path: string) =
  */
 export const TURN_GAP = "gap-11.5";
 
+/** 흐름의 Thread — Runtime 경고의 펼침을 Thread마다 기억하는 열쇠다. */
+const FlowThread = createContext("");
+
 interface ThreadFlowProps {
   thread: string;
   model: ThreadModel;
@@ -111,7 +120,11 @@ function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
   // PR 카드의 병합한 때(「어제 오후 6:12」)를 견줄 지금 — 흐름을 다시 그릴 때마다 읽는다.
   const now = Date.now();
   const between = (count: number) => [
-    ...model.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
+    ...model.notices
+      .filter((notice) => notice.turnsBefore === count)
+      .map((notice) =>
+        notice.kind === "warning" ? <WarningLine key={notice.key} warning={notice} /> : <NoticeLine key={notice.key} notice={notice} />,
+      ),
     ...model.system
       .filter((line) => line.turn === undefined && line.turnsBefore === count)
       .map((line) => <SystemRow key={line.key} line={line} />),
@@ -120,29 +133,32 @@ function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
   const last = model.turns[model.turns.length - 1];
   const answering = answeringLine(model);
   return (
-    <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
-      {between(0)}
-      {model.turns.map((turn, at) => (
-        <Fragment key={turn.key}>
-          <TurnView
-            turn={turn}
-            runtime={runtime}
-            open={expanded[turnKey(thread, turn.key)] === true}
-            onToggle={() => toggleTurn(turnKey(thread, turn.key))}
-            waiting={turn.end === null ? waitingFor(model) : null}
-            last={turn === last}
-            onRetry={onRetry}
-            lead={model.system
-              .filter((line) => line.turn === turn.key)
-              .map((line) => (
-                <SystemRow key={line.key} line={line} />
-              ))}
-          />
-          {between(at + 1)}
-        </Fragment>
-      ))}
-      {answering && <AnsweringRow runtime={runtime} />}
-    </div>
+    <FlowThread.Provider value={thread}>
+      <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
+        {between(0)}
+        {model.turns.map((turn, at) => (
+          <Fragment key={turn.key}>
+            <TurnView
+              turn={turn}
+              runtime={runtime}
+              open={expanded[turnKey(thread, turn.key)] === true}
+              onToggle={() => toggleTurn(turnKey(thread, turn.key))}
+              waiting={turn.end === null ? waitingFor(model) : null}
+              compacting={turn.end === null && model.compacting}
+              last={turn === last}
+              onRetry={onRetry}
+              lead={model.system
+                .filter((line) => line.turn === turn.key)
+                .map((line) => (
+                  <SystemRow key={line.key} line={line} />
+                ))}
+            />
+            {between(at + 1)}
+          </Fragment>
+        ))}
+        {answering && <AnsweringRow runtime={runtime} />}
+      </div>
+    </FlowThread.Provider>
   );
 }
 
@@ -174,6 +190,32 @@ function NoticeLine({ notice }: { notice: Notice }) {
       <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <span className="min-w-0 wrap-anywhere">{notice.text}</span>
     </p>
+  );
+}
+
+/**
+ * Runtime 경고(Cards 보드 「Runtime 경고」) — 그림 · 첫 줄 · 「자세히」. 펼침은 `expanded`에 둔다 — 턴이 끝나면 안내가 접힌 턴의 자리로 옮겨 서므로
+ * 안내 안의 상태로 두면 펼친 것이 닫힌다.
+ */
+function WarningLine({ warning }: { warning: Pick<WarningEntry, "key" | "lines"> }) {
+  const key = turnKey(useContext(FlowThread), warning.key);
+  const open = useStore(threadUiStore, (state) => state.expanded[key] === true);
+  return (
+    <div data-warning className="flex w-full flex-col gap-1 text-chat-meta text-fg-tertiary">
+      <p className="flex items-start gap-1.5">
+        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        <span className="min-w-0 wrap-anywhere">{warning.lines[0]}</span>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => toggleTurn(key)}
+          className="shrink-0 underline transition-colors hover:text-fg-secondary focus-ring"
+        >
+          자세히
+        </button>
+      </p>
+      {open && <pre className="pl-5 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{warning.lines.join("\n")}</pre>}
+    </div>
   );
 }
 
@@ -220,6 +262,7 @@ function TurnView({
   open,
   onToggle,
   waiting,
+  compacting,
   last,
   onRetry,
   lead,
@@ -230,20 +273,22 @@ function TurnView({
   onToggle: () => void;
   /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
   waiting: string | null;
+  /** 이 턴이 대화를 정리하는 중인가 — 「생각 중」 자리에 「대화를 정리하는 중」이 선다. */
+  compacting: boolean;
   last: boolean;
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
   /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, 답의 줄 앞이다(화면 2 보드). */
   lead: ReactNode[];
 }) {
   const from = finalFrom(turn);
-  const lastEntry = turn.entries[turn.entries.length - 1];
+  const lastEntry = lastWork(turn.entries);
   // 글이 빈 생각은 그리지 않는다(`shownEntry`) — 지금 생각하는 중이면 「생각 중」으로만 선다.
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(shownEntry);
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isToolChoice(entry)) : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 「생각 중」은 아직 서지 않는다.
-  const waitingFirst = !turn.end && turn.entries.length === 0;
-  const thinking = !turn.end && lastEntry?.kind === "thought";
+  const waitingFirst = !turn.end && turn.entries.length === 0 && !compacting;
+  const thinking = !turn.end && !compacting && lastEntry?.kind === "thought";
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
@@ -294,9 +339,10 @@ function TurnView({
             )
           ) : (
             <>
-              {turn.entries.length > 0 && <RunningHead turn={turn} waiting={waiting} />}
+              {lastEntry && <RunningHead turn={turn} waiting={waiting} />}
               <Entries entries={before} streaming />
               {thinking && <p className="think-shimmer text-sm">생각 중</p>}
+              {compacting && <p className="think-shimmer text-sm">대화를 정리하는 중</p>}
             </>
           )}
           {kept.map((entry) => (
@@ -344,7 +390,7 @@ function Entries({ entries, streaming }: { entries: readonly Entry[]; streaming:
     if (entry.kind === "tool" && tail && tail[0].kind === "tool") tail.push(entry);
     else runs.push([entry]);
   }
-  const lastEntry = entries[entries.length - 1];
+  const lastEntry = lastWork(entries);
   return (
     <>
       {runs.map((run) =>
@@ -401,6 +447,8 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <AnsweredRow entry={entry} />;
     case "result":
       return <ResultCard card={entry} />;
+    case "warning":
+      return <WarningLine warning={entry} />;
     // Thread 도구 카드의 결정 줄(Work 만들기 · Work 밖 Project · Service 질문 · Project 추가) — 갈래마다의 줄은 그 표다(`ToolCards.tsx`).
     default:
       return <ToolChoiceRow entry={entry} />;

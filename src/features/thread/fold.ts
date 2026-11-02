@@ -43,6 +43,12 @@ import { particle } from "@/lib/particle";
 // - **Agent의 질문은 질문 줄이다**(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — `question` 줄(`card: question`)이 오면 승인 ·
 //   Work 만들기 카드와 같은 물음 차례(`asks`)에 질문으로 서고, 그 질문을 낸 도구 줄 자리를 질문 줄이 대신한다. 답하면 그 자리에
 //   답한 카드가 남고, 거둬지면 아무것도 남지 않는다.
+// - **대화 정리는 도구 줄로 오지만 일이 아니다**(01b-4 · 스토리 51 · 52) — 두 Runtime이 같은 줄(`Compact conversation`, `think`)로 알린다. 제목으로 가려
+//   작업 로그에 넣지 않고, 턴이 열려 있고 줄이 끝나지 않은 동안만 정리 중이다(`compacting`). `Guardian Review`도 `think`라 종류로는 가리지 않고,
+//   서브에이전트의 설명이 같은 글일 수 있어 `toolNameOf`로 읽는다.
+// - **Runtime 경고는 `stderr` 줄이다**(01b-8 · 구현 스펙 「01b — 그 밖의 Runtime 신호」) — 이어진 줄을 안내 하나로 묶어 그 자리에 세운다. 도는
+//   턴의 줄이면 턴 안에(`WarningEntry`), 턴 밖의 줄이면 턴 사이에(`Notice`) 선다. 일이 아니라서 턴을 열지 않고, 답한 것으로 치지 않고,
+//   앞뒤의 답을 끊지 않는다(`lastWork`). 그래서 대화를 막지 않는다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -71,7 +77,15 @@ export type Entry =
   | DecisionEntry
   | QuestionEntry
   | ToolChoiceEntry
-  | ResultEntry;
+  | ResultEntry
+  | WarningEntry;
+
+/** Runtime 경고(01b-8) — 이어진 `stderr` 줄 묶음. 안내 글은 첫 줄이고, 「자세히」가 `lines`를 모두 펼친다. 첫 줄은 빈 줄이 아니다. */
+export interface WarningEntry {
+  kind: "warning";
+  key: string;
+  lines: string[];
+}
 
 /**
  * Work 만들기 카드에서 사람이 고른 것(v1 티켓 30) — 「작업공간 만들기 · api-server · fix/refund-api」 또는 「작업공간 없이 계속함」. 그 제안을 낸
@@ -258,12 +272,15 @@ export interface Turn {
 }
 
 /**
- * 흐름 안의 상태 줄(three-axes 티켓 23) — 되살리기가 새 Session으로 끝남 · 프로세스 죽음 · 판 경고. 턴에 들지 않고 턴 사이에 선다.
+ * 흐름 안의 상태 줄(three-axes 티켓 23) — 되살리기가 새 Session으로 끝남 · 프로세스 죽음 · 판 경고 · 턴 밖의 Runtime 경고(01b-8). 턴에 들지
+ * 않고 턴 사이에 선다.
  */
 export interface Notice {
   key: string;
-  kind: "fresh" | "died" | "version";
+  kind: "fresh" | "died" | "version" | "warning";
   text: string;
+  /** Runtime 경고로 묶인 `stderr` 줄 모두(`WarningEntry.lines`) — 다른 갈래는 비어 있다. */
+  lines: string[];
   /** 이 줄보다 먼저 선 턴의 수 — 흐름에서 그 턴들 뒤, 다음 턴 앞에 선다. */
   turnsBefore: number;
 }
@@ -327,6 +344,8 @@ export interface ThreadModel {
   running: boolean;
   /** Session을 띄우거나 되살리는 중인가 — 띄우는 중 줄 뒤로 열림 · 죽음 · 닫힘 · 로그인 필요가 아직 오지 않았다. */
   connecting: boolean;
+  /** 대화를 정리하는 중인가 — 도는 턴에 끝나지 않은 정리 줄이 있다. 턴이 끝나면 끝나지 않은 줄도 닫힌 것이다. */
+  compacting: boolean;
   notices: Notice[];
   system: SystemLine[];
   /** PR 카드(v1 티켓 36) — 줄이 온 차례다. */
@@ -502,6 +521,9 @@ const TOOL_SEARCH = "ToolSearch";
  */
 const PLAN_FILE = /\/\.claude\/plans\/[^/]+\.md$/;
 
+/** 대화 정리 줄의 이름 — Codex가 주고 Claude 변환기가 같은 모양으로 옮긴다(`translator/stream.rs`). */
+const COMPACT = "Compact conversation";
+
 /**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 Thread가 「떠 있는 Session이 없다」고 말할 때의 마지막 seq다 — 그 seq까지의 줄을
  * 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
@@ -534,6 +556,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
+  // 끝나지 않은 대화 정리 줄 id들 — 도는 턴의 것이다.
+  const compacts = new Set<string>();
   const start = (
     key: string,
     sent: string | null,
@@ -559,6 +583,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const close = (turn: Turn) => {
     if (open === turn) open = null;
     closedLast.delete(turn);
+    compacts.clear();
   };
   let connecting = false;
   const notices: Notice[] = [];
@@ -566,8 +591,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const prs: PrCardEntry[] = [];
   // 다른 줄이 대신한 Thread 도구 줄 id들.
   const absorbed = new Set<string>();
-  const notice = (seq: number, kind: Notice["kind"], words: string) =>
-    notices.push({ key: `n${seq}`, kind, text: words, turnsBefore: turns.length });
+  const notice = (seq: number, kind: Notice["kind"], words: string, lines: string[] = []) =>
+    notices.push({ key: `n${seq}`, kind, text: words, lines, turnsBefore: turns.length });
   const say = (
     seq: number,
     kind: SystemLine["kind"],
@@ -617,6 +642,23 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       case "sent":
         start(`t${line.seq}`, text(payload.text) ?? "", line.at, attachmentsOf(payload.attachments), quoteOf(payload.quote));
         break;
+      // Runtime 경고(01b-8) — 도는 턴의 줄이면 그 턴에, 아니면 턴 사이에 선다. 턴을 열지 않는다 — 턴이 돌면 입력창이 잠긴다.
+      case "stderr": {
+        const words = text(payload.line);
+        if (words === null) break;
+        const turn = open;
+        if (turn) {
+          const tail = turn.entries[turn.entries.length - 1];
+          gather(tail?.kind === "warning" ? tail : null, words, (lines) => {
+            turn.entries.push({ kind: "warning", key: `e${line.seq}`, lines });
+          });
+        } else {
+          const tail = notices[notices.length - 1];
+          const same = tail?.kind === "warning" && tail.turnsBefore === turns.length;
+          gather(same ? tail : null, words, (lines) => notice(line.seq, "warning", words, lines));
+        }
+        break;
+      }
       case "update": {
         const update = isObject(payload.update) ? payload.update : null;
         const kind = update && text(update.sessionUpdate);
@@ -624,6 +666,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (kind === "tool_call_update") {
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다 — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
+          if (id && statusDone(update.status)) compacts.delete(id);
           if (id && (planReviews.has(id) || absorbed.has(id) || questionTools.has(id))) break;
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
@@ -661,6 +704,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           break;
         }
         const turn: Turn = open ?? start(`o${line.seq}`, null, line.at);
+        if (kind === "tool_call" && toolNameOf(update) === COMPACT) {
+          absorbed.add(called);
+          if (!statusDone(update.status)) compacts.add(called);
+          break;
+        }
         if (turn.answeredAt === null) turn.answeredAt = line.at;
         closedLast.delete(turn);
         if (kind === "plan_update") {
@@ -979,6 +1027,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     turns,
     running: open !== null,
     connecting,
+    compacting: compacts.size > 0,
     notices,
     system,
     prs,
@@ -991,11 +1040,19 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
 /**
  * 「답하는 중」 줄을 세우나(캔버스 Messages 보드 「답하는 중」) — 턴이 도는데 아직 아무 줄도 오지 않았다(보낸 말 바로 뒤). 턴이 답 · 생각 · 도구
  * 줄을 흘리고 있으면 그 턴의 머리줄이 이미 말하므로 서지 않는다. 승인을 기다릴 때도 서지 않는다 — 답하는 것이 아니라 사람을 기다리고, 입력창
- * 자리의 카드가 말한다(v1 티켓 25). 줄의 글은 Runtime 이름 하나다(`ThreadFlow`).
+ * 자리의 카드가 말한다(v1 티켓 25). 대화를 정리하는 동안도 서지 않는다 — 「대화를 정리하는 중」이 말한다. 줄의 글은 Runtime 이름 하나다(`ThreadFlow`).
  */
 export function answeringLine(model: ThreadModel): boolean {
   const last = model.turns[model.turns.length - 1];
-  return model.running && last?.entries.length === 0 && model.asks.length === 0;
+  return model.running && last !== undefined && lastWork(last.entries) === null && model.asks.length === 0 && !model.compacting;
+}
+
+/** 줄들의 마지막 일 — Runtime 경고는 일이 아니다. 아무 일도 없으면 null이다. */
+export function lastWork(entries: readonly Entry[]): Entry | null {
+  for (let at = entries.length - 1; at >= 0; at -= 1) {
+    if (entries[at].kind !== "warning") return entries[at];
+  }
+  return null;
 }
 
 /** 앱을 다시 켜기 전에 끊긴 턴의 끝 까닭 — 앱이 꺼지면 Session도 함께 꺼진다. */
@@ -1174,8 +1231,11 @@ function grantedOf(value: unknown): DecisionEntry["granted"] {
   return rules.length === 0 ? null : { rules, work: text(value.work) };
 }
 
-/** 도구 줄이 끝났나 — ACP 도구 상태 넷 가운데 `completed` · `failed`가 끝이다. */
-export const toolDone = (tool: ToolEntry): boolean => tool.call.status === "completed" || tool.call.status === "failed";
+/** ACP 도구 상태 넷 가운데 끝인가 — `completed` · `failed`다. */
+const statusDone = (status: unknown): boolean => status === "completed" || status === "failed";
+
+/** 도구 줄이 끝났나. */
+export const toolDone = (tool: ToolEntry): boolean => statusDone(tool.call.status);
 
 /** 도구 호출에 update를 덮어 합친다 — 칸은 뒤의 것이 이기고, `_meta`만 한 겹 안쪽까지 합친다. */
 function mergeCall(call: Json, update: Json): Json {
@@ -1248,8 +1308,15 @@ function findTool(turns: readonly Turn[], id: string): ToolEntry | null {
   return toolHome(turns, id)?.tool ?? null;
 }
 
+/** `stderr` 한 줄을 묶음에 잇거나, 묶음이 없으면 `fresh`로 세운다. 빈 줄은 묶음을 열지 않는다 — 안내 글이 첫 줄이라서다. */
+function gather(group: { lines: string[] } | null, words: string, fresh: (lines: string[]) => void): void {
+  if (group) group.lines.push(words);
+  else if (nonEmpty(words) !== null) fresh([words]);
+}
+
+/** 답 글 사이에 온 Runtime 경고는 지나쳐 붙인다 — 한 답이 둘로 끊기면 코드 블록 같은 마크다운이 깨진다. */
 function appendChunk(turn: Turn, kind: "message" | "thought", messageId: string | null, chunk: string, seq: number): void {
-  const last = turn.entries[turn.entries.length - 1];
+  const last = lastWork(turn.entries);
   if (last && last.kind === kind && last.messageId === messageId) {
     last.text += chunk;
     return;
@@ -1304,14 +1371,15 @@ export function headline(end: TurnEnd): string {
   return end.error ? `멈췄어요 — ${end.error}` : "멈췄어요";
 }
 
-/** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 질문에 답한 줄 · 카드의 결정 줄 · 결과 카드는 다시 보는 것이라 접어도 선다. */
+/** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 질문에 답한 줄 · 카드의 결정 줄 · 결과 카드는 다시 보는 것이라 접어도 선다. 접으면 숨는 경고는 경고가 아니라서 Runtime 경고도 남는다. */
 export function keptFolded(entry: Entry): boolean {
   return (
     entry.kind === "plan" ||
     entry.kind === "checklist" ||
     entry.kind === "question" ||
     isToolChoice(entry) ||
-    entry.kind === "result"
+    entry.kind === "result" ||
+    entry.kind === "warning"
   );
 }
 

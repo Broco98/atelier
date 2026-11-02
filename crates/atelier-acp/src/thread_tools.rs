@@ -37,6 +37,9 @@ pub const THREAD_TOOLS_MODE: &str = "thread-tools";
 /// (§7) — 이름이 같으면 한쪽이 다른 쪽을 가린다.
 pub(crate) const SERVER_NAME: &str = "atelier-thread";
 
+/// 앱 기능 도구가 붙지 못했을 때의 Runtime 경고 — `stderr` 줄로 화면에 선다.
+pub(crate) const APP_TOOLS_FAILED: &str = "앱 기능 도구에 연결하지 못했어요";
+
 /// Runtime의 도구 이름이 앱 기능 도구면 그 도구 이름 — Claude Code는 `mcp__<서버>__<도구>`로 부른다.
 pub(crate) fn app_tool(name: &str) -> Option<&str> {
     name.strip_prefix("mcp__")?.strip_prefix(SERVER_NAME)?.strip_prefix("__")
