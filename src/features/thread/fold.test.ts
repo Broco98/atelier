@@ -544,6 +544,51 @@ describe("앱이 거절해 멈춘 턴", () => {
   });
 });
 
+// 사람이 답하지 않아 닫힌 카드(01c-8 · 스펙 「01c — Codex」 도구 제한 시간) — Codex는 MCP 도구를 300초에서 끊어서, Codex 채팅에서 카드로 사람을 기다리는
+// 앱 기능 도구는 그 전에 카드를 닫는다(`withdrawn` · `reason: timeout`). 엔진 검사(L1)가 녹음 `mcp`의 부르기를 「Work 만들기 제안」으로 바꿔 축복한
+// 기록이다(`thread-codex-unanswered`). 카드가 걷힌 자리에 결정 줄이 서고, 도구의 실패 결과는 그 줄이 흡수한다.
+describe("답이 없어 닫힌 카드", () => {
+  const closed = record("thread-codex-unanswered");
+  const TOOL = "exec-999b9a6d-c807-4f15-9574-dc05e22b9e29";
+  const kinds = (entries: readonly Entry[]) => entries.map((entry) => entry.kind);
+
+  it("카드를 낸 도구 줄 자리에 결정 줄 하나가 서고 그 도구 줄은 서지 않는다", () => {
+    const model = foldThread(closed);
+    expect(model.asks).toEqual([]);
+    const [turn] = model.turns;
+    expect(kinds(turn.entries)).toEqual(["unanswered", "message"]);
+    expect(turn.entries[0]).toMatchObject({ kind: "unanswered", card: "work", toolCallId: TOOL });
+    expect(keptFolded(turn.entries[0])).toBe(true);
+  });
+
+  it("도는 턴에서 카드가 닫히면 기다림이 끝나고 그 자리에 결정 줄이 선다", () => {
+    const shut = closed.find((line) => line.kind === "question" && (line.payload as { state?: string }).state === "withdrawn")!.seq;
+    const model = foldThread(through(closed, shut));
+    expect(model.running).toBe(true);
+    expect(model.asks).toEqual([]);
+    expect(kinds(model.turns[0].entries)).toEqual(["unanswered"]);
+  });
+
+  it("카드 줄이 도구 줄보다 먼저 와도 그 도구 줄 자리를 대신한다", () => {
+    const cards = closed.filter((line) => line.kind === "question");
+    const rest = closed.filter((line) => line.kind !== "question");
+    const tool = rest.findIndex((line) => (line.payload as { update?: { sessionUpdate?: string } }).update?.sessionUpdate === "tool_call");
+    const early = [...rest.slice(0, tool), ...cards, ...rest.slice(tool)];
+    const [turn] = foldThread(early).turns;
+    expect(kinds(turn.entries)).toEqual(["unanswered", "message"]);
+    expect(turn.entries[0]).toMatchObject({ kind: "unanswered", toolCallId: TOOL });
+  });
+
+  it("사람이 멈춰 거둔 카드는 결정 줄을 남기지 않는다 — 그 턴의 끝이 멈춤을 말한다", () => {
+    const stopped = closed.map((line) =>
+      line.kind === "question" && (line.payload as { state?: string }).state === "withdrawn"
+        ? { ...line, payload: { ...(line.payload as Record<string, unknown>), reason: "stopped" } }
+        : line,
+    );
+    expect(kinds(foldThread(stopped).turns[0].entries)).not.toContain("unanswered");
+  });
+});
+
 describe("승인 카드의 물음과 결정 줄(v1 티켓 24)", () => {
   const options = [
     { optionId: "allow_once", name: "Yes", kind: "allow_once" },

@@ -885,7 +885,7 @@ impl ConversationHost {
     /// 거절(빈 이름 · 사라진 Thread)은 도구의 실패로 돌려준다 — Runtime이 그 글을 읽는다. 연결마다의 스레드에서 불린다.
     fn answer_tool(&self, thread: &str, method: &str, params: &Value) -> Result<Value, Fault> {
         let call = match method {
-            "tools/list" => return Ok(thread_tools::list()),
+            "tools/list" => return Ok(thread_tools::list(self.thread_runtime(thread))),
             "tools/call" => thread_tools::read_call(params),
             _ => return Err(Fault::unknown_method(method)),
         };
@@ -911,6 +911,11 @@ impl ConversationHost {
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
+    }
+
+    /// 그 채팅의 Runtime — 앱 기능 도구가 Runtime에 맞춘 말과 한도를 고를 때 쓴다. 읽지 못하면 Claude Code로 본다.
+    fn thread_runtime(&self, thread: &str) -> Runtime {
+        self.read_thread_file(thread).ok().and_then(|file| runtime_of(thread, &file).ok()).unwrap_or_default()
     }
 
     /// 그 Session의 Thread 도구 소켓을 연다 — 중계 서버 명령이 없으면 없다. 열지 못하면 Thread 도구 없이 Session을 연다: 까닭은

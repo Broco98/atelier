@@ -46,6 +46,10 @@ const CLAUDE_OPEN_LIMIT: Duration = Duration::from_secs(10);
 /// 둔다.
 const SETTING_LIMIT: Duration = Duration::from_secs(10);
 
+/// Codex 채팅에서 카드로 사람을 기다리는 앱 기능 도구의 한도(스펙 「01c — Codex」 「도구 제한 시간」). Codex는 MCP 도구를 300초에서 끊고 앱이
+/// 그 값을 늘릴 길이 없다 — 그 전에 앱이 카드를 닫아야 뒤늦은 답이 사라지지 않는다.
+const CODEX_CARD_LIMIT: Duration = Duration::from_secs(280);
+
 /// 쌓인 글을 화면 조각으로 묶는 박자(스펙 「01b — 스트리밍」).
 const CHUNK_BEAT: Duration = Duration::from_millis(33);
 
@@ -107,6 +111,7 @@ pub struct HostBuilder {
     emit: Arc<Emit>,
     login_shell_limit: Duration,
     open_limit: Option<Duration>,
+    card_limit: Duration,
     thread_tools: Option<TranslatorCommand>,
 }
 
@@ -131,6 +136,12 @@ impl HostBuilder {
         self
     }
 
+    /// Codex 채팅에서 카드로 사람을 기다리는 앱 기능 도구의 한도. 기본은 280초다 — 검사에서는 줄여도 된다.
+    pub fn card_limit(mut self, limit: Duration) -> Self {
+        self.card_limit = limit;
+        self
+    }
+
     pub fn build(self) -> ConversationHost {
         ConversationHost(Arc::new(HostCore {
             logins: LoginDesk::new(Arc::clone(&self.emit)),
@@ -140,6 +151,7 @@ impl HostBuilder {
             emit: self.emit,
             login_shell_limit: self.login_shell_limit,
             open_limit: self.open_limit,
+            card_limit: self.card_limit,
             login_env: Mutex::new(None),
             revivals: Mutex::new(HashMap::new()),
             threads: thread::Threads::default(),
@@ -182,6 +194,8 @@ pub struct HostCore {
     emit: Arc<Emit>,
     login_shell_limit: Duration,
     open_limit: Option<Duration>,
+    /// Codex 채팅의 카드 한도([`CODEX_CARD_LIMIT`]).
+    card_limit: Duration,
     /// S7 — 로그인 env는 호스트가 도는 동안 한 번 읽어 메모리에 쥔다. 「다시 확인」만 다시 읽는다.
     /// 기록하지 않는다 — 비밀이 기록에 남지 않게(워크플로 S37).
     ///
@@ -739,6 +753,7 @@ impl ConversationHost {
             emit: Arc::new(emit),
             login_shell_limit: login_env::DEFAULT_LIMIT,
             open_limit: None,
+            card_limit: CODEX_CARD_LIMIT,
             thread_tools: None,
         }
     }
