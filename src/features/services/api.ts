@@ -4,6 +4,8 @@ import type { DeletedService, RestoredService, Service, ServiceDetail, ServiceDr
 
 export const servicesApi = {
   list: () => invoke<Service[]>("list_services"),
+  /** Service 파일들의 폴더(홈은 `~` — restart 03-3). ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다(`serviceFile`). */
+  folder: () => invoke<string>("services_folder"),
   get: (slug: string) => invoke<ServiceDetail>("get_service", { slug }),
   update: (slug: string, patch: ServicePatch) => invoke<Service>("update_service", { slug, ...patch }),
   // 고치기 화면(03 구현 스펙 §13) — `slug`가 없으면 새 Service다.

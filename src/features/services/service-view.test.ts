@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectView } from "@/features/projects/types";
-import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, listShows, scopeMenu, shownServices, serviceGraph, serviceMenu, serviceStarts, serviceWorks } from "./service-view";
+import {
+  CARD_GRAPH,
+  HOST_MAKE,
+  listShows,
+  scopeMenu,
+  serviceDetailMenu,
+  serviceFile,
+  serviceGraph,
+  serviceMenu,
+  serviceRowMenu,
+  serviceStarts,
+  serviceSummary,
+  shownServices,
+} from "./service-view";
 import type { SharedService, Service } from "./types";
 
 const service = (over: Partial<Service> = {}): Service => ({
@@ -93,17 +105,6 @@ describe("관계 그래프", () => {
   });
 });
 
-const project = (slug: string): ProjectView => ({
-  slug,
-  name: slug,
-  path: `~/MyProjects/${slug}`,
-  baseBranch: "main",
-  createdAt: "2026-10-01",
-  description: "",
-  git: null,
-  missing: false,
-});
-
 // 03 코드 리뷰 P4 · §8 — 읽을 수 없는 파일 하나는 그 줄만 「문제 있음」으로 서고(core), 목록을 아예 읽지 못하면 그 까닭이 선다 — 「아직 Service가
 // 없어요」는 Service가 정말 없을 때만이다.
 describe("Service 목록 판", () => {
@@ -111,10 +112,11 @@ describe("Service 목록 판", () => {
     expect(listShows({ isPending: false, isError: true, count: 0 })).toBe("error");
   });
 
-  it("다 읽어 Service가 없으면 빈 목록 안내, 있거나 읽는 중이면 표다", () => {
+  // restart 03-3 — 처음 읽는 중은 뼈대 자리다(공용 목록 틀 — 300ms 넘을 때만 선다). 한때(03) 읽는 중에도 빈 표였다.
+  it("다 읽어 Service가 없으면 빈 목록 안내, 있으면 표, 처음 읽는 중이면 뼈대 자리다", () => {
     expect(listShows({ isPending: false, isError: false, count: 0 })).toBe("empty");
     expect(listShows({ isPending: false, isError: false, count: 2 })).toBe("table");
-    expect(listShows({ isPending: true, isError: false, count: 0 })).toBe("table");
+    expect(listShows({ isPending: true, isError: false, count: 0 })).toBe("loading");
   });
 
   // 찾기(시안 「Service 찾기」 — 03 코드 리뷰 D1에서 목록 부품 밖으로 꺼냈다). Projects 목록의 찾기(`shownProjects`)와 같은 규칙이다.
@@ -133,34 +135,6 @@ describe("Service 목록 판", () => {
   it("빈 찾기는 모두 · 맞는 것이 없으면 빈 목록이다", () => {
     expect(shownServices(all, " ")).toHaveLength(3);
     expect(shownServices(all, "없는 글")).toEqual([]);
-  });
-});
-
-describe("넣기 메뉴", () => {
-  it("아직 묶이지 않은 등록된 Project를 등록부 차례로 보인다", () => {
-    const menu = addMenu(service(), [project("api-server"), project("backoffice"), project("web-app"), project("docs")]);
-    expect(menu.candidates.map((one) => one.slug)).toEqual(["backoffice", "docs"]);
-    expect(menu.note).toBeNull();
-  });
-
-  it("다 넣었으면 그렇다고 말한다", () => {
-    expect(addMenu(service(), [project("web-app"), project("api-server")])).toEqual({ candidates: [], note: "등록된 Project를 모두 넣었어요" });
-  });
-
-  // 03 코드 리뷰 P9 · 스토리 153 — 넣을 것이 없는 것은 같아도, 등록된 Project가 하나도 없으면 「모두 넣었어요」가 사실이 아니다.
-  it("등록된 Project가 없으면 「모두 넣었어요」가 아니라 없다고 말한다", () => {
-    expect(addMenu(service(), [])).toEqual({ candidates: [], note: "등록된 Project가 없어요" });
-  });
-});
-
-describe("만든 이 · 만든 때", () => {
-  const today = new Date(2026, 9, 26, 15, 0);
-  it("대화로 만들었으면 대화로 만듦, 아니면 직접 만듦", () => {
-    expect(createdLine(service({ createdBy: "host" }), today)).toEqual({ by: "대화로 만듦", when: "2일 전" });
-    expect(createdLine(service({ createdAt: "2026-10-26" }), today)).toEqual({ by: "직접 만듦", when: "오늘" });
-    expect(createdLine(service({ createdAt: "2026-10-25" }), today).when).toBe("어제");
-    expect(createdLine(service({ createdAt: "2025-12-01" }), today).when).toBe("2025. 12. 1.");
-    expect(createdLine(service({ createdAt: "" }), today).when).toBe("");
   });
 });
 
@@ -246,20 +220,7 @@ describe("범위 메뉴", () => {
   });
 });
 
-describe("Service 상세의 Work 묶음", () => {
-  it("이 Service에 이은 Work만 목록 차례로 선다", () => {
-    const works = [
-      { slug: "a", service: "결제-서비스" },
-      { slug: "b" },
-      { slug: "c", service: "사내-도구" },
-      { slug: "d", service: "결제-서비스" },
-    ];
-    expect(serviceWorks(works, "결제-서비스").map((work) => work.slug)).toEqual(["a", "d"]);
-    expect(serviceWorks(works, "없는-것")).toEqual([]);
-  });
-});
-
-// 03 구현 스펙 §14 · S16 · S17 · 티켓 06 — Service 화면의 시작 단추는 첫 화면(`/`)을 씨앗과 함께 연다. 보내기는 사람이 한다.
+// 03 구현 스펙 §14 · S16 · 티켓 06 — Service 화면의 시작 단추는 첫 화면(`/`)을 씨앗과 함께 연다. 보내기는 사람이 한다.
 describe("Service 화면의 시작 단추가 여는 첫 화면", () => {
   it("「대화로 만들기」는 Work 없는 대화에 Service를 만들어 달라는 말을 넣는다(S16)", () => {
     expect(HOST_MAKE).toEqual({
@@ -268,12 +229,55 @@ describe("Service 화면의 시작 단추가 여는 첫 화면", () => {
     });
   });
 
-  it("상세의 「작업공간 만들기」는 그 Service를 고른 「새 작업공간」, 「대화로 고치기」는 그 Service를 붙인 Work 없는 대화와 고쳐 달라는 말이다(S17)", () => {
-    expect(serviceStarts(service())).toEqual({
-      newWork: { new: "work", service: "결제-서비스" },
-      hostEdit: { new: "thread", service: "결제-서비스", say: "결제 서비스 Service를 고치고 싶어요. " },
+  // restart 03-3 · 스토리 8 · 13 · 117 · 스펙 「01a — 범위와 새 채팅」 「만드는 길」 — 줄과 상세 머리의 「작업공간 만들기」 · 「새 채팅」은 그 Service 범위의
+  // 새 채팅이고, 상세 Projects 묶음의 「Project 넣기」는 `?new=thread` · `?service=` · `?say=`로 그 Service를 고친다는 말을 채워 연다.
+  it("「작업공간 만들기」는 그 Service를 고른 「새 작업공간」, 「새 채팅」은 그 Service 범위의 작업공간 없는 채팅이다", () => {
+    expect(serviceStarts(service())).toMatchObject({
+      work: { new: "work", service: "결제-서비스" },
+      thread: { new: "thread", service: "결제-서비스" },
     });
-    // 이름이 없는(읽을 수 없는) 파일은 slug로 부른다.
-    expect(serviceStarts(service({ name: "" })).hostEdit.say).toBe("결제-서비스 Service를 고치고 싶어요. ");
+  });
+
+  it("「Project 넣기」는 그 Service에 Project를 넣고 싶다는 말이 채워진 새 채팅이다 — 이름이 없는(읽을 수 없는) 파일은 slug로 부른다", () => {
+    expect(serviceStarts(service()).addProject).toEqual({ new: "thread", service: "결제-서비스", say: "결제 서비스에 Project를 넣고 싶어요. " });
+    expect(serviceStarts(service({ name: "" })).addProject.say).toBe("결제-서비스에 Project를 넣고 싶어요. ");
+  });
+});
+
+// restart 03-3 · 보드 PlaceSheet 「세 화면」 — 이름 옆은 「Project 수와 이름」이다. 수와 이름은 등록된 Project만이다(등록되지 않은 것은 상세의 경고가 말한다).
+describe("Service 줄의 이름 옆", () => {
+  const registered = [{ slug: "backend", name: "backend" }, { slug: "front", name: "Front 앱" }];
+  it("넣은 Project의 수와 이름이다 — 이름은 등록부의 이름이다", () => {
+    expect(serviceSummary(service({ projects: ["backend", "front"] }), registered)).toBe("Project 2개 · backend · Front 앱");
+  });
+
+  it("등록되지 않은 Project는 세지 않고, 넣은 것이 없으면 그렇게 말한다", () => {
+    const troubled = service({
+      projects: ["front", "legacy-api"],
+      problems: [{ line: 3, kind: "unknownProject", project: "legacy-api", message: "등록되지 않은 Project예요" }],
+    });
+    expect(serviceSummary(troubled, registered)).toBe("Project 1개 · Front 앱");
+    expect(serviceSummary(service({ projects: [] }), registered)).toBe("Project 없음");
+  });
+});
+
+// restart 03-3 · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.services` — 「파일로 고치기 · 경로 복사 · 삭제…」. 파일로 고치기는 ⋯ 메뉴와 상세 경고에서 닿는다(스펙).
+describe("Service의 ⋯", () => {
+  it("목록 줄은 파일로 고치기 · 경로 복사 · 삭제…다", () => {
+    expect(serviceRowMenu().map((item) => [item.act, item.label])).toEqual([
+      ["edit-file", "파일로 고치기"],
+      ["copy-path", "경로 복사"],
+      ["delete", "삭제…"],
+    ]);
+  });
+
+  it("상세는 이름 바꾸기 · 설명 고치기 뒤에 목록 줄의 셋이다 — 칸 단위로 고칠 수 없는 파일이면 고치기 둘이 빠진다", () => {
+    expect(serviceDetailMenu(service()).map((item) => item.label)).toEqual(["이름 바꾸기", "설명 고치기", "파일로 고치기", "경로 복사", "삭제…"]);
+    const broken = service({ problems: [{ line: 1, kind: "unclosedFrontmatter", message: "frontmatter가 닫히지 않았어요" }] });
+    expect(serviceDetailMenu(broken).map((item) => item.label)).toEqual(["파일로 고치기", "경로 복사", "삭제…"]);
+  });
+
+  it("경로 복사는 Service 파일들의 폴더 아래 그 slug의 파일이다", () => {
+    expect(serviceFile("~/.atelier/services", "결제-서비스")).toBe("~/.atelier/services/결제-서비스.md");
   });
 });

@@ -48,6 +48,14 @@ export function useServices() {
   return useQuery(servicesQuery());
 }
 
+/**
+ * Service 파일들의 폴더(restart 03-3) — ⋯ 「경로 복사」가 누른 자리에서 곧바로 `<폴더>/<slug>.md`를 쓰도록 미리 읽어 둔다(웹뷰는 누름 밖의 클립보드
+ * 쓰기를 막는다). 데이터 루트는 앱이 떠 있는 동안 바뀌지 않으니 한 번 읽으면 된다. 아직 못 읽었으면 「경로 복사」가 서지 않는다.
+ */
+export function useServicesFolder() {
+  return useQuery({ queryKey: ["services-folder"], queryFn: servicesApi.folder, staleTime: Infinity });
+}
+
 /** Service 하나와 함께 쓰는 Service(상세). */
 export function useService(slug: string) {
   useServicesFeed();

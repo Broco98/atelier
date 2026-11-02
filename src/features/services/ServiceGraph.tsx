@@ -1,47 +1,36 @@
-import type { ReactNode } from "react";
 import { Book, Layers } from "lucide-react";
-import { particle } from "@/lib/particle";
 import { cn } from "@/lib/utils";
-import { DETAIL_GRAPH, NODE_HEIGHT, serviceGraph, type GraphLayout, type GraphNode } from "./service-view";
+import { NODE_HEIGHT, serviceGraph, type GraphLayout, type GraphNode } from "./service-view";
 import type { SharedService, Service } from "./types";
 
-// 관계 그래프(03 구현 스펙 §14 · 시안 F1-SpaceDetail `.graph` · F4-SpaceEmpty) — 배치는 순수 함수(`serviceGraph`)가 짓고 여기는 그리기만 한다.
-// 옅은 점 판(둥글기 16 · 1px 선) 가운데에 배치 폭(상세 720)의 층이 서고, 노드는 그 층 위 제 자리에, 선은 층 하나를 덮는 SVG의 곡선이다. 판
-// 아래에 범례와(다른 Service가 있으면) 「점선 Service를 누르면 그쪽으로 옮겨 가요」가 선다. 빈 Service는 Service 노드 하나와 「아직 Project가
-// 없어요 · 넣기」다.
+// 관계 그래프(03 구현 스펙 §13 · 시안 F1-SpaceEdit) — 파일로 고치기 화면의 미리보기 카드가 그린다. 배치는 순수 함수(`serviceGraph`)가 짓고 여기는
+// 그리기만 한다. 옅은 점 판 가운데에 배치 폭의 층이 서고, 노드는 그 층 위 제 자리에, 선은 층 하나를 덮는 SVG의 곡선이다. 판 아래에 범례가 선다.
+// 빈 Service는 Service 노드 하나와 「아직 Project가 없어요」다. 미리보기라 점선 Service는 누르지 않는 노드다.
 //
-// 고치기 화면의 미리보기 카드(§13 · 시안 F1-SpaceEdit)도 같은 그림이다 — 카드 배치(`CARD_GRAPH`)로, 카드 조각이라 판의 테두리 · 둥글기가
-// 없고, 미리보기라 점선 Service를 눌러 옮겨 가지 않는다(안내 줄도 없다).
+// 한때(03) Service 상세도 이 그래프를 그렸다(판 720 · 둥글기 16 · 점선 Service를 누르면 그쪽으로 · 빈 Service의 「넣기」). restart 03-3이 상세에서
+// 지웠다 — 같은 것을 Projects · 함께 쓰는 Service 묶음이 보인다(스펙 「03 — 목록과 상세」).
 
 export function ServiceGraph({
   service,
   shared,
-  onOpenService,
-  emptyAdd,
-  layout = DETAIL_GRAPH,
+  layout,
   tinted = false,
 }: {
   service: Service;
   shared: readonly SharedService[];
-  /** 점선 Service를 누르면 — 그 Service의 상세로 간다. 없으면 점선 Service는 누르지 않는 노드다(미리보기). */
-  onOpenService?: (slug: string) => void;
-  /** 빈 Service의 「넣기」 — 넣기 메뉴를 그 자리에 세운다. */
-  emptyAdd?: ReactNode;
-  /** 배치 — 상세(기본) · 고치기 화면의 카드(`CARD_GRAPH` — 카드 조각이라 판의 겉이 없다). */
-  layout?: GraphLayout;
+  /** 배치 — 고치기 화면의 카드(`CARD_GRAPH` — 카드 조각이라 판의 겉이 없다). */
+  layout: GraphLayout;
   /** 고치기 화면에서 커서가 projects 줄에 있다 — 판에 옅은 파랑을 덮는다(시안 `.lk.g.on .graph`). */
   tinted?: boolean;
 }) {
   const graph = serviceGraph(service, shared, layout);
   const at = new Map(graph.nodes.map((node) => [node.key, node]));
-  const hasOthers = graph.nodes.some((node) => node.kind === "other");
-  const card = layout !== DETAIL_GRAPH;
   const half = layout.nodeWidth / 2;
   return (
     <div
       role="img"
       aria-label={`${service.name || service.slug} Service와 Project ${service.projects.length}개의 관계`}
-      className={cn("relative overflow-hidden graph-dots", !card && "rounded-2xl border border-separator-soft")}
+      className="relative overflow-hidden graph-dots"
       style={{ height: graph.height }}
     >
       {tinted && <div aria-hidden className="absolute inset-0 bg-piece-soft" />}
@@ -65,13 +54,12 @@ export function ServiceGraph({
           })}
         </svg>
         {graph.nodes.map((node) => (
-          <Node key={node.key} node={node} width={layout.nodeWidth} onOpenService={onOpenService} />
+          <Node key={node.key} node={node} width={layout.nodeWidth} />
         ))}
       </div>
       {service.projects.length === 0 && (
         <div className="absolute top-1/2 left-1/2 flex -translate-x-1/4 -translate-y-1/2 items-center gap-2.5 text-chat-meta whitespace-nowrap text-fg-secondary">
           아직 Project가 없어요
-          {emptyAdd}
         </div>
       )}
       <div className="absolute bottom-2.5 left-3.5 flex items-center gap-3.5 text-xs text-fg-tertiary">
@@ -83,18 +71,15 @@ export function ServiceGraph({
           다른 Service에서도 씀
         </span>
       </div>
-      {hasOthers && onOpenService && (
-        <div className="absolute right-3.5 bottom-2.5 text-xs text-fg-tertiary">점선 Service를 누르면 그쪽으로 옮겨 가요</div>
-      )}
     </div>
   );
 }
 
 /**
- * 노드 하나 — 36 · 둥글기 10 · 1px 선 · 흰 면(시안 `.gn`). 이 Service는 짙은 면(`.me`), 다른 Service는 점선이고 누르면 그쪽으로 간다(`.other.go`),
- * 그 Service의 다른 Project · 접힌 「외 N개」는 옅다(`.extra`).
+ * 노드 하나 — 36 · 둥글기 10 · 1px 선 · 흰 면(시안 `.gn`). 이 Service는 짙은 면(`.me`), 다른 Service는 점선(`.other`), 그 Service의 다른 Project ·
+ * 접힌 「외 N개」는 옅다(`.extra`).
  */
-function Node({ node, width, onOpenService }: { node: GraphNode; width: number; onOpenService?: (slug: string) => void }) {
+function Node({ node, width }: { node: GraphNode; width: number }) {
   const style = { left: node.x - width / 2, top: node.y - NODE_HEIGHT / 2, width };
   const look = cn(
     "absolute flex h-9 items-center gap-1.5 rounded-lg border px-3 text-chat-meta",
@@ -102,7 +87,6 @@ function Node({ node, width, onOpenService }: { node: GraphNode; width: number; 
     (node.kind === "project" || node.kind === "extra" || node.kind === "more") && "border-border-heavy bg-surface text-fg shadow-100",
     (node.kind === "extra" || node.kind === "more") && "opacity-45 shadow-none",
     node.kind === "other" && "border-dashed border-fg-faint bg-surface text-fg",
-    node.kind === "other" && onOpenService && "transition-colors hover:border-solid hover:bg-fill-soft focus-ring",
   );
   const glyph =
     node.kind === "service" || node.kind === "other" ? (
@@ -110,20 +94,10 @@ function Node({ node, width, onOpenService }: { node: GraphNode; width: number; 
     ) : node.kind === "more" ? null : (
       <Book aria-hidden className="size-3.5 shrink-0 text-fg-icon" />
     );
-  const name = <span className="min-w-0 truncate">{node.name}</span>;
-  if (node.kind === "other" && node.to && onOpenService) {
-    const to = node.to;
-    return (
-      <button type="button" title={`${node.name}${particle(node.name, "으로", "로")} 옮겨 가기`} onClick={() => onOpenService(to)} className={look} style={style}>
-        {glyph}
-        {name}
-      </button>
-    );
-  }
   return (
     <div className={look} style={style} title={node.name}>
       {glyph}
-      {name}
+      <span className="min-w-0 truncate">{node.name}</span>
     </div>
   );
 }

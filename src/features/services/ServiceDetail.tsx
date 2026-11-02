@@ -1,451 +1,263 @@
-import { useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { shallow, useStore } from "@tanstack/react-store";
-import { Book, Folder, Layers, MoreHorizontal, Pencil, Plus, SquarePen, TriangleAlert, X } from "lucide-react";
-import { DescriptionSection, DetailPanel, HeadCrumb, Section } from "@/components/catalog/DetailParts";
-import { PlainFrame } from "@/components/shell/PlainFrame";
-import { navItem } from "@/components/shell/nav-items";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { showProblem } from "@/components/ui/confirm-store";
+import { AlignLeft, Folder, GitBranch, Layers, MoreHorizontal, Pencil, X, type LucideIcon } from "lucide-react";
+import { placeWhen } from "@/components/catalog/place-list";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  PLACE_ICON_BUTTON,
+  PlaceButton,
+  PlaceDetail,
+  PlaceDetailMenu,
+  PlaceFact,
+  PlaceFacts,
+  PlaceLede,
+  PlaceLedeEditor,
+  PlaceSection,
+  PlaceWarn,
+} from "@/components/catalog/PlaceDetail";
+import { PlaceAdd, PlaceRow } from "@/components/catalog/PlaceList";
+import { navItem } from "@/components/shell/nav-items";
+import { StatusMark } from "@/components/shell/status-mark";
+import { showProblem } from "@/components/ui/confirm-store";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { InlineRename } from "@/components/ui/inline-rename";
 import { showUndoToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
-import { addProject } from "@/features/projects/add-store";
 import { useProjects } from "@/features/projects/hooks";
-import type { ProjectView } from "@/features/projects/types";
 import { signalsOf } from "@/features/terminal/shell-attention";
 import { terminalStore } from "@/features/terminal/terminal-store";
-import { useWorkMarks } from "@/features/thread/hooks";
+import { useThreads, useWorkMarks } from "@/features/thread/hooks";
 import { useWorks } from "@/features/works/hooks";
-import { workDoor } from "@/routes/-work-search";
 import { workMark } from "@/features/works/work-mark";
-import { StatusMark } from "@/components/shell/status-mark";
+import { workDoor } from "@/routes/-work-search";
+import { cn } from "@/lib/utils";
 import { useService, useUpdateService } from "./hooks";
-import { ServiceActions } from "./ServiceActions";
+import { SERVICE_ACT_ICONS, shownActs, useServiceActs } from "./ServiceActions";
 import { useServiceDelete } from "./ServiceDeleteDialog";
-import { ServiceGraph } from "./ServiceGraph";
-import { addMenu, createdLine, serviceName, serviceStarts, serviceWorks } from "./service-view";
-import type { ServiceDetail as Detail, ServicePatch, ServiceProblemKind } from "./types";
+import { problemNotice, serviceFacts, serviceSections } from "./service-detail";
+import { editableInPlace, serviceDetailMenu, serviceName, serviceStarts, type ServiceDetailAct } from "./service-view";
+import type { ServiceDetail as Detail, ServicePatch } from "./types";
 
-// Service 상세(03 구현 스펙 §14 · 시안 F1-SpaceDetail · F4-SpaceEmpty). 머리 줄 「Service / 결제 서비스」, 판 안에 「← Service」 단추 · 제목과
-// 만든 이 줄 · 관계 그래프 · 설명 · Project 표, 오른쪽 칸에 「함께 쓰는 Service」. 고치는 일(이름 · 설명 · 넣기 · 빼기)은 모두 core의 글 단위
-// 고치기 하나로 그 칸만 바꾼다(`update_service`). 빼면 「되돌리기」 토스트가 잠깐 서고, 누르면 뺀 Project를 제자리에 다시 넣는다.
+// **Service 상세**(restart 03-3 · 스펙 「03 — 목록과 상세」 · 스토리 115 – 118 · 보드 MainServiceDetail · PlaceSheet 「문제가 있는 Service」 · Places
+// `DETAILS.payments` · `DETAILS.admin`) — 공용 상세 틀(`PlaceDetail`)에 선다. 틀은 `/services`의 것이다(`ServicesPlace`): 머리 줄 「Services / 이름」과
+// 본문 카드는 목록과 한 자리를 번갈아 쓰는 틀이 그리고, 여기는 상세의 판만 그린다.
 //
-// 관계 그래프의 「편집」과 문제 상자의 「관계 편집에서 고치기」는 그 Service 파일을 글 그대로 고치는 화면(`/services/$slug/edit` — 04)으로 간다.
-// 오른쪽 칸 「작업공간」 묶음은 이 Service에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
+//   「← Services」 ─ 언제나 목록으로(창의 뒤로 · 앞으로는 주소의 히스토리라 목록 · 상세 · 그 너머를 오간다)
+//   머리 ─ 이름 · 「작업공간 만들기」 · 「+ 새 채팅」(그 Service를 범위로 고른 새 채팅 — 목록 줄의 두 단추와 같은 주소) · ⋯
+//   설명 · 파일에 문제가 있으면 경고와 「파일로 고치기」(스토리 118 — 몇째 줄인지까지 말한다)
+//   위 카드 ─ Project · 작업공간 · 함께 쓰는 Service · 만든 날
+//   묶음 ─ Projects(+ 「Project 넣기」 — 그 Service를 고친다는 말이 채워진 새 채팅, 스토리 117) · 작업공간 · 함께 쓰는 Service(`serviceSections`)
 //
-// 판 안 맨 위 「← Service」 줄 오른쪽에 ⋯와 시작 단추 둘이 선다(시안 F1-SpaceDetail `.topbar`). ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인
-// 창을 거쳐 목록으로 가고, 목록에 「… Service를 지웠어요 · 되돌리기」 토스트가 선다. 시작 단추는 「대화로 고치기」(이 Service를 붙인 Work 없는
-// 새 대화에 고쳐 달라는 말, S17)와 「작업공간 만들기」(이 Service를 고른 「새 작업공간」 — 스토리 159)다(06) — 둘 다 첫 화면을 씨앗과 함께 열 뿐이고
-// 보내기는 사람이 한다.
+// - **관계 그래프를 지웠다**(스펙) — 같은 것을 Projects · 함께 쓰는 Service 묶음이 보인다. 한 Project는 여러 Service에 든다(스토리 116) — 그 Project의
+//   상세 Service 묶음과 이 상세의 「함께 쓰는 Service」가 그것을 보인다.
+// - **파일로 고치기**는 ⋯와 경고에서 닿는다 — 그 Service 파일을 글 그대로 고치는 화면(`/services/$slug/edit`)이다. 한때(03)의 「관계 편집」이다.
+// - **칸 단위 고치기는 그대로 두고 들어가는 문만 옮겼다**(Project 상세와 같은 판단 — restart 03-2) — 이름(제목을 누르거나 ⋯ 「이름 바꾸기」) · 설명
+//   (⋯ 「설명 고치기」) · Project 빼기(Projects 줄을 지날 때 서는 ⋯ 「Service에서 빼기」 — 「되돌리기」 토스트)는 모두 core 고치기 하나다
+//   (`update_service`). 쉴 때의 그림은 보드 그대로다. 칸 단위로 고칠 수 없는 파일(닫히지 않은 frontmatter · YAML이 아님 · 글로 읽을 수 없음)이면
+//   그 문들이 서지 않고 파일로만 고친다.
+// - 한때(03) 상세는 「← Service」 알약 줄 · 제목 연필과 만든 이 줄 · 관계 그래프 · 설명 묶음 · Project 표 | 오른쪽 칸(함께 쓰는 Service · 작업공간)
+//   두 단이었고, 머리에 「대화로 고치기」, Project 표에 등록된 Project를 곧바로 넣는 「넣기」 메뉴가 있었다.
 
 export default function ServiceDetail({ slug }: { slug: string }) {
   const { data: service, isError, error } = useService(slug);
-  const label = navItem("services").label;
-  const navigate = useNavigate();
-  const goList = () => void navigate({ to: "/services" });
-  // 상세에서 지우면 목록으로 간다(§14) — 되돌리기 토스트는 목록의 자리에 선다.
-  const removing = useServiceDelete(goList);
-  return (
-    <PlainFrame
-      label={`${label} 상세`}
-      lead={<HeadCrumb label={label} onOpen={goList} />}
-      title={service ? { name: serviceName(service) } : undefined}
-    >
-      {/* 되돌리기 토스트는 본문 왼쪽 아래다(`DetailPanel`). ⋯ · 시작 단추는 「← Service」 줄 오른쪽 끝이다. */}
-      <DetailPanel
-        back={{ to: "/services", label }}
-        end={
-          <>
-            {service && <ServiceActions service={service} onDelete={(one) => void removing.ask(one)} />}
-            {service && <ServiceStarts service={service} />}
-          </>
-        }
-        after={removing.dialog}
-      >
-        {service ? (
-          <ServiceBody key={service.slug} service={service} onOpenService={(to) => void navigate({ to: "/services/$slug", params: { slug: to } })} />
-        ) : (
-          isError && <p className="text-sm text-fg-tertiary">Service를 읽지 못했어요 — {String(error)}</p>
-        )}
-      </DetailPanel>
-    </PlainFrame>
-  );
+  if (!service) {
+    return (
+      <PlaceDetail back={BACK()} title={null}>
+        {isError && <p className="text-sm text-fg-tertiary">Service를 읽지 못했어요 — {String(error)}</p>}
+      </PlaceDetail>
+    );
+  }
+  return <ServiceBody key={service.slug} service={service} />;
 }
 
-/**
- * 시작 단추 둘(§14 · 시안 F1-SpaceDetail — 맨 위 줄 오른쪽 끝 ⋯ 뒤, 사이 6) — 테두리 알약 「대화로 고치기」(S17)와 짙은 알약 「+ 작업공간 만들기」(스토리
- * 159). 시안 `.btn.lg`의 34 · 좌우 14 · 14px다.
- */
-function ServiceStarts({ service }: { service: Detail }) {
+const BACK = () => ({ to: "/services" as const, label: navItem("services").label });
+
+/** 머리 ⋯(`serviceDetailMenu`) 항목의 글리프 — 고치기(연필 · 글 줄), 그리고 목록 줄의 셋(파일 위 연필 · 복사 · 지우기). */
+const MENU_ICONS: Record<ServiceDetailAct, LucideIcon> = { rename: Pencil, describe: AlignLeft, ...SERVICE_ACT_ICONS };
+
+function ServiceBody({ service }: { service: Detail }) {
   const navigate = useNavigate();
-  const starts = serviceStarts(service);
-  return (
-    <>
-      <Button variant="outline" size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.hostEdit })}>
-        <SquarePen aria-hidden className="size-3.5" />
-        대화로 고치기
-      </Button>
-      <Button size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.newWork })}>
-        <Plus aria-hidden className="size-3.5" />작업공간 만들기
-      </Button>
-    </>
-  );
-}
-
-/** 칸 단위로 고칠 자리를 찾을 수 없는 문제 — 닫히지 않은 frontmatter · YAML이 아님 · 글로 읽을 수 없는 파일. */
-const UNEDITABLE: ReadonlySet<ServiceProblemKind> = new Set(["unclosedFrontmatter", "badYaml", "unreadable"]);
-
-function ServiceBody({ service, onOpenService }: { service: Detail; onOpenService: (slug: string) => void }) {
-  const { data: registered = [] } = useProjects();
   const update = useUpdateService();
-  // frontmatter가 닫히지 않았거나 YAML · 글로 읽을 수 없으면 고칠 자리를 모른다 — 고치는 단추를 끈다(고치는 길은 관계 편집 — 04).
-  const locked = service.problems.some((problem) => UNEDITABLE.has(problem.kind));
+  const { data: registered = [] } = useProjects();
+  const { data: works = [] } = useWorks();
+  const { data: threads = [] } = useThreads();
+  const marks = useWorkMarks();
+  const signals = useStore(terminalStore, (state) => signalsOf(state), shallow);
+  // 상세에서 지우면 목록으로 간다 — 되돌리기 토스트는 목록의 자리에 선다.
+  const removing = useServiceDelete(() => void navigate({ to: "/services" }));
+  const acts = useServiceActs((one) => void removing.ask(one));
+  const [renaming, setRenaming] = useState(false);
+  const [describing, setDescribing] = useState(false);
 
-  const patch = async (change: ServicePatch): Promise<boolean> => {
+  const name = serviceName(service);
+  const editable = editableInPlace(service);
+  const starts = serviceStarts(service);
+  const notice = problemNotice(service.problems);
+  const sections = useMemo(() => serviceSections(service, registered, works, threads), [service, registered, works, threads]);
+  // 시각 글은 그린 때의 지금으로 센다(목록과 같다).
+  const now = Date.now();
+
+  const patch = async (change: ServicePatch, failed: string): Promise<boolean> => {
     try {
       await update.mutateAsync({ slug: service.slug, patch: change });
       return true;
     } catch (e) {
-      await showProblem(`Service를 고치지 못했어요 — ${e}`);
+      await showProblem(`${failed} — ${e}`);
       return false;
     }
-  };
-  const add = (project: string) => void patch({ add: [project] });
-  const addNew = async () => {
-    const view = await addProject();
-    if (view) await patch({ add: [view.slug] });
   };
   const drop = async (project: string) => {
     // 되돌리면 제자리로 — 뺀 Project 바로 뒤에 있던 것 앞에 다시 선다(없었으면 끝).
     const next = service.projects[service.projects.indexOf(project) + 1];
-    if (!(await patch({ remove: [project] }))) return;
-    showUndoToast(`Service에서 뺐어요 — ${project}`, () => void patch({ add: [project], before: next }));
+    if (!(await patch({ remove: [project] }, "Service에서 빼지 못했어요"))) return;
+    showUndoToast(`Service에서 뺐어요 — ${project}`, () => void patch({ add: [project], before: next }, "되돌리지 못했어요"));
   };
-  const menu = addMenu(service, registered);
-  const addItems = <AddMenuItems candidates={menu.candidates} note={menu.note} onAdd={add} onAddNew={() => void addNew()} />;
+  const act = (what: ServiceDetailAct) => {
+    if (what === "rename") setRenaming(true);
+    else if (what === "describe") setDescribing(true);
+    else acts.act(service, what);
+  };
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_270px] items-start gap-12">
-      <div className="min-w-0">
-        {service.problems.length > 0 && <Problems service={service} />}
-        <Title service={service} locked={locked} onRename={(name) => void patch({ name })} />
-        <Section
-          label="관계"
-          aside={service.shared.length > 0 ? `함께 쓰는 Service ${service.shared.length}` : "다른 Service와 겹치지 않아요"}
-          end={
-            <Link to="/services/$slug/edit" params={{ slug: service.slug }} tabIndex={0} className={buttonVariants({ variant: "ghost", size: "top" })}>
-              <Pencil aria-hidden />
-              편집
-            </Link>
-          }
-        >
-          <ServiceGraph
-            service={service}
-            shared={service.shared}
-            onOpenService={onOpenService}
-            emptyAdd={
-              <DropdownMenu>
-                <DropdownMenuTrigger disabled={locked} className={buttonVariants({ variant: "outline", size: "top", className: "rounded-full" })}>
-                  <Plus aria-hidden />
-                  넣기
-                </DropdownMenuTrigger>
-                <DropdownMenuContent width="pair">{addItems}</DropdownMenuContent>
-              </DropdownMenu>
-            }
-          />
-        </Section>
-        <DescriptionSection
-          text={service.description}
-          aside="Runtime이 이 Service에서 일할 때 처음 읽어요"
-          placeholder="이 Service에서 다루는 일과 Project들이 어떻게 이어지는지 적어 두세요"
-          locked={locked}
-          onSave={(description) => patch({ description })}
-        />
-        <Section
-          label="Project"
-          aside={String(service.projects.length)}
-          after={
-            <DropdownMenu>
-              <DropdownMenuTrigger disabled={locked} className={buttonVariants({ variant: "ghost", size: "top" })}>
-                <Plus aria-hidden />
-                넣기
-              </DropdownMenuTrigger>
-              <DropdownMenuContent width="pair">{addItems}</DropdownMenuContent>
-            </DropdownMenu>
-          }
-        >
-          <ProjectTable projects={service.projects} registered={registered} locked={locked} onDrop={(project) => void drop(project)} />
-        </Section>
-      </div>
-      <aside aria-label="Service 정보" className="flex flex-col">
-        <section className="pt-1 pb-4">
-          <h2 className="mb-2 text-sm text-fg-secondary">함께 쓰는 Service</h2>
-          {service.shared.length === 0 ? (
-            <p className="text-sm text-fg-secondary">없음</p>
-          ) : (
-            service.shared.map((other) => (
-              <button
-                key={other.slug}
-                type="button"
-                onClick={() => onOpenService(other.slug)}
-                className="-mx-1.5 flex min-h-8 w-[calc(100%+12px)] items-center gap-2.5 rounded-md px-1.5 text-left text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
-              >
-                <Layers aria-hidden className="size-4 shrink-0 text-fg-icon" />
-                <span className="min-w-0 truncate">{other.name}</span>
-                <span className="ml-auto shrink-0 font-mono text-xs text-fg-tertiary">{other.overlap.join(" · ")}</span>
-              </button>
-            ))
-          )}
-        </section>
-        <ServiceWorks slug={service.slug} />
-      </aside>
-    </div>
-  );
-}
-
-/**
- * 오른쪽 칸의 「작업공간」 묶음(§14 · 시안 F1-SpaceDetail `.rs`) — 머리 끝에 수, 이 Service에 이은 Work마다 📁 이름과 끝의 상태 표시 하나(사이드바 Work
- * 줄과 같은 것 — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호 · `workMark`). 누르면 그 Work 화면이다. 없으면 「아직 없음」.
- */
-function ServiceWorks({ slug }: { slug: string }) {
-  const { data: works = [] } = useWorks();
-  const marks = useWorkMarks();
-  const signals = useStore(terminalStore, (state) => signalsOf(state), shallow);
-  const linked = serviceWorks(works, slug);
-  return (
-    // 앞 묶음과 1px 선으로 가르고 위아래 16이다(시안 `.rs` — 첫 묶음만 선 없이 위 4). 머리 끝의 수는 머리와 같은 글자다(`.rl .end`).
-    <section aria-label="작업공간" className="border-t border-separator-soft py-4">
-      <h2 className="mb-2 flex items-center text-sm text-fg-secondary">
-        작업공간
-        {linked.length > 0 && <span className="ml-auto">{linked.length}</span>}
-      </h2>
-      {linked.length === 0 ? (
-        <p className="text-sm text-fg-secondary">아직 없음</p>
-      ) : (
-        linked.map((work) => (
-          <Link
-            key={work.slug}
-            // 그 Work의 마지막 화면으로 간다 — 다른 문(사이드바 · ⌘K)과 같은 주소다(`workDoor`, 03 코드 리뷰 A1).
-            {...workDoor(work.slug)}
-            tabIndex={0}
-            data-work={work.slug}
-            className="-mx-1.5 flex min-h-8 w-[calc(100%+12px)] items-center gap-2.5 rounded-md px-1.5 text-left text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
+    <PlaceDetail
+      back={BACK()}
+      title={
+        renaming ? (
+          // 칸은 이름 글자만큼(최소 352)이다 — 줄의 폭을 다 먹지 않게 줄 안의 상자로 감싼다(Project 상세와 같다).
+          <span className="flex min-w-0">
+            <InlineRename
+              value={name}
+              label="Service 이름"
+              emptyMeans="revert"
+              fit="text"
+              onCommit={(next) => void patch({ name: next }, "이름을 바꾸지 못했어요")}
+              onDone={() => setRenaming(false)}
+              className="-ml-2.5 h-9 min-w-88 items-center rounded-lg px-2.5"
+            />
+          </span>
+        ) : editable ? (
+          // 이름을 누르면 그 자리가 입력 칸이 된다 — 쉴 때는 보드의 제목 그대로다.
+          <button
+            type="button"
+            aria-label={`${name} — 이름 바꾸기`}
+            onClick={() => setRenaming(true)}
+            className="max-w-full rounded-ctl text-left wrap-anywhere focus-ring"
           >
-            <Folder aria-hidden className="size-4 shrink-0 text-fg-icon" />
-            <span className="min-w-0 truncate">{work.title || work.slug}</span>
-            <span className="ml-auto flex shrink-0 items-center">
-              <StatusMark kind={workMark(marks[work.slug] ?? [], signals[work.slug] ?? null)} />
-            </span>
-          </Link>
-        ))
-      )}
-    </section>
-  );
-}
-
-/** 문제가 있는 Service — 상세 위에 문제 줄들(줄 번호 · 말)이 선다. 고치는 길은 관계 편집이다 — 그 줄들이 편집기의 줄 끝에 그대로 선다. */
-function Problems({ service }: { service: Detail }) {
-  return (
-    <section aria-label="문제" className="mb-6 rounded-xl border border-separator-soft px-4 py-3">
-      <p className="flex items-center gap-2 text-sm text-fg-problem">
-        <TriangleAlert aria-hidden className="size-4 shrink-0" />이 Service 파일에 문제가 있어요
-        <Link
-          to="/services/$slug/edit"
-          params={{ slug: service.slug }}
-          tabIndex={0}
-          className="ml-auto rounded-sm text-chat-meta text-link underline-offset-3 hover:underline focus-ring"
-        >
-          관계 편집에서 고치기
-        </Link>
-      </p>
-      <ul className="mt-1.5 flex flex-col gap-1 pl-6 text-chat-meta text-fg-problem">
-        {service.problems.map((problem) => (
-          <li key={`${problem.line}:${problem.kind}:${problem.project ?? ""}`}>
-            <span className="font-mono">{problem.line}행</span> — {problem.message}
-            {problem.project && <span className="font-mono"> ({problem.project})</span>}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** 제목(24) · 이름 고치기 연필과 아래 만든 이 줄(시안 `.ttl` · `.meta`). */
-function Title({ service, locked, onRename }: { service: Detail; locked: boolean; onRename: (name: string) => void }) {
-  const [renaming, setRenaming] = useState(false);
-  const created = createdLine(service, new Date());
-  return (
-    <div>
-      <h1 className="flex min-h-8 items-center gap-2.5 text-heading-lg font-medium text-fg">
-        {renaming ? (
-          <InlineRename
-            value={serviceName(service)}
-            label="Service 이름"
-            emptyMeans="revert"
-            fit="text"
-            onCommit={onRename}
-            onDone={() => setRenaming(false)}
-            className="-ml-1 px-1"
-          />
+            {name}
+          </button>
         ) : (
-          <>
-            <span className="min-w-0 truncate">{serviceName(service)}</span>
-            <button
-              type="button"
-              aria-label="이름 바꾸기"
-              disabled={locked}
-              onClick={() => setRenaming(true)}
-              className="rounded-sm p-0.5 text-fg-faint transition-colors hover:text-fg-secondary focus-ring disabled:opacity-40"
-            >
-              <Pencil aria-hidden className="size-3.5" />
-            </button>
-          </>
-        )}
-      </h1>
-      <div className="mt-2 flex items-center gap-2 text-sm text-fg-secondary">
-        <span className="text-fg">{created.by}</span>
-        {created.when && <span>{created.when}</span>}
-        <span aria-hidden>·</span>
-        <span>Project {service.projects.length}</span>
-      </div>
-    </div>
-  );
-}
-
-/**
- * 「넣기」 메뉴의 줄들(스토리 152 · 153) — 「등록된 Project」 머리 아래 아직 묶이지 않은 Project(이름 · 경로), 넣을 것이 없으면 그 까닭 한 줄
- * (「등록된 Project를 모두 넣었어요」 · 「등록된 Project가 없어요」), 구분선 뒤 「새 Project 추가…」.
- */
-function AddMenuItems({
-  candidates,
-  note,
-  onAdd,
-  onAddNew,
-}: {
-  candidates: readonly ProjectView[];
-  note: string | null;
-  onAdd: (slug: string) => void;
-  onAddNew: () => void;
-}) {
-  return (
-    <>
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>등록된 Project</DropdownMenuLabel>
-        {candidates.map((project) => (
-          <DropdownMenuItem key={project.slug} aria-label={project.name} aria-description={project.path} onClick={() => onAdd(project.slug)}>
-            <Book />
-            <span className="shrink-0">{project.name}</span>
-            <span className="ml-auto min-w-0 truncate font-mono text-xs text-fg-tertiary">{project.path}</span>
-          </DropdownMenuItem>
-        ))}
-        {note && <p className="px-2 py-1.5 text-xs text-fg-tertiary">{note}</p>}
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={onAddNew}>
-        <Plus />
-        <span>새 Project 추가…</span>
-      </DropdownMenuItem>
-    </>
-  );
-}
-
-/** 표의 칸 — 이름 · 경로 · 기준 브랜치 · ⋯(시안 `.tr`). */
-const ROW = "grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.3fr)_112px_28px] items-center gap-3 px-1";
-
-/**
- * 묶인 Project의 표(스토리 151 · 156) — 이름 · 경로 · 기준 브랜치, 줄 ⋯는 「Project 보기 · Service에서 빼기」. 등록되지 않은 Project(손으로 적은
- * 줄)는 경로 자리에 그 말이 서고 「Service에서 빼기」만 남는다 — 그 줄을 빼서 문제를 걷는다.
- */
-function ProjectTable({
-  projects,
-  registered,
-  locked,
-  onDrop,
-}: {
-  projects: readonly string[];
-  registered: readonly ProjectView[];
-  locked: boolean;
-  onDrop: (project: string) => void;
-}) {
-  const navigate = useNavigate();
-  return (
-    <div role="table" aria-label="묶인 Project">
-      <div role="row" className={cn(ROW, "h-9 border-b border-separator-soft text-chat-meta font-semibold text-fg")}>
-        <span role="columnheader">이름</span>
-        <span role="columnheader">경로</span>
-        <span role="columnheader">기준 브랜치</span>
-        <span role="columnheader" aria-hidden />
-      </div>
-      {projects.length === 0 && (
-        <p className="px-1 py-3.5 text-sm text-fg-tertiary">아직 묶인 Project가 없어요 — 「넣기」로 묶어요.</p>
+          name
+        )
+      }
+      actions={
+        <>
+          <PlaceButton label="작업공간 만들기" onClick={() => void navigate({ to: "/", search: starts.work })} />
+          <PlaceAdd label="새 채팅" onClick={() => void navigate({ to: "/", search: starts.thread })} />
+          <PlaceDetailMenu label={`${name} 메뉴`} items={shownActs(serviceDetailMenu(service), acts.canCopy)} icons={MENU_ICONS} onAct={act} />
+        </>
+      }
+      after={removing.dialog}
+    >
+      {describing ? (
+        <PlaceLedeEditor
+          text={service.description}
+          placeholder="이 Service에서 다루는 일과 Project들이 어떻게 이어지는지 적어 두세요"
+          note="Runtime이 이 Service에서 일할 때 처음 읽어요"
+          onSave={(description) => patch({ description }, "설명을 저장하지 못했어요")}
+          onDone={() => setDescribing(false)}
+        />
+      ) : (
+        <PlaceLede>{service.description}</PlaceLede>
       )}
-      {projects.map((slug) => {
-        const project = registered.find((one) => one.slug === slug);
-        return (
-          <div key={slug} role="row" className={cn(ROW, "h-12 border-b-[0.5px] border-separator-soft text-sm transition-colors hover:bg-fill-soft")}>
-            <span role="cell" className="flex min-w-0 items-center gap-2">
-              <Book aria-hidden className="size-4 shrink-0 text-fg-icon" />
-              {project ? (
-                <Link
-                  to="/projects/$slug"
-                  params={{ slug }}
-                  tabIndex={0}
-                  className="min-w-0 truncate rounded-sm text-fg underline-offset-3 hover:underline focus-ring"
-                >
-                  {project.name}
-                </Link>
-              ) : (
-                <span className="min-w-0 truncate text-fg">{slug}</span>
-              )}
-            </span>
-            <span role="cell" className="min-w-0 truncate font-mono text-xs text-fg-tertiary">
-              {project ? project.path : "등록되지 않은 Project"}
-            </span>
-            <span role="cell" className="min-w-0">
-              {project && (
-                <code className="rounded-sm border-[0.5px] border-border bg-surface-code px-1.5 font-mono text-xs text-fg">
-                  {project.baseBranch}
-                </code>
-              )}
-            </span>
-            <span role="cell" className="flex justify-end">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  aria-label={`${slug} 메뉴`}
-                  className="icon-button text-fg-row-act transition-colors quiet-hover focus-ring"
-                >
-                  <MoreHorizontal aria-hidden className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" width="act-wide">
-                  {project && (
-                    <>
-                      <DropdownMenuItem onClick={() => void navigate({ to: "/projects/$slug", params: { slug } })}>
-                        <Book />
-                        <span>Project 보기</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  <DropdownMenuItem variant="destructive" disabled={locked} onClick={() => onDrop(slug)}>
-                    <X />
-                    <span>Service에서 빼기</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </span>
-          </div>
-        );
-      })}
-    </div>
+      {notice && <PlaceWarn text={notice} action={{ label: "파일로 고치기", onClick: () => acts.act(service, "edit-file") }} />}
+      <PlaceFacts>
+        {serviceFacts(service, works).map((fact) => (
+          <PlaceFact key={fact.label} label={fact.label} value={fact.value} />
+        ))}
+      </PlaceFacts>
+      {/* Projects 묶음은 넣은 것이 없어도 선다 — 그 머리의 +가 「Project 넣기」의 문이다. */}
+      <PlaceSection
+        title="Projects"
+        count={sections.projects.length}
+        add={{ label: "Project 넣기", onClick: () => void navigate({ to: "/", search: starts.addProject }) }}
+      >
+        {sections.projects.length === 0 && <p className="py-3.5 text-chat-meta text-fg-tertiary">넣은 Project가 없어요</p>}
+        {sections.projects.map((row) => (
+          <PlaceRow
+            key={row.slug}
+            size="sub"
+            icon={<Folder />}
+            name={row.name}
+            link={{ to: "/projects/$slug", params: { slug: row.slug } }}
+            desc={row.desc}
+            when={placeWhen(row.at, now)}
+            missing={row.missing}
+            onOpen={() => void navigate({ to: "/projects/$slug", params: { slug: row.slug } })}
+            actions={editable && <MemberMenu name={row.name} onDrop={() => void drop(row.slug)} />}
+          />
+        ))}
+      </PlaceSection>
+      {sections.works.length > 0 && (
+        <PlaceSection
+          title="작업공간"
+          count={sections.works.length}
+          add={{ label: "작업공간 만들기", onClick: () => void navigate({ to: "/", search: starts.work }) }}
+        >
+          {sections.works.map((row) => (
+            <PlaceRow
+              key={row.slug}
+              size="sub"
+              icon={<GitBranch />}
+              name={row.name}
+              // 그 작업공간의 마지막 화면으로 간다 — 다른 문(사이드바 · ⌘K)과 같은 주소다(`workDoor`).
+              link={workDoor(row.slug)}
+              desc={row.desc}
+              when={placeWhen(row.at, now)}
+              onOpen={() => void navigate(workDoor(row.slug))}
+              actions={<StatusMark kind={workMark(marks[row.slug] ?? [], signals[row.slug] ?? null)} />}
+            />
+          ))}
+        </PlaceSection>
+      )}
+      {sections.shared.length > 0 && (
+        <PlaceSection title="함께 쓰는 Service" count={sections.shared.length}>
+          {sections.shared.map((row) => (
+            <PlaceRow
+              key={row.slug}
+              size="sub"
+              icon={<Layers />}
+              name={row.name}
+              link={{ to: "/services/$slug", params: { slug: row.slug } }}
+              desc={row.desc}
+              when={placeWhen(row.at, now)}
+              onOpen={() => void navigate({ to: "/services/$slug", params: { slug: row.slug } })}
+              actions={null}
+            />
+          ))}
+        </PlaceSection>
+      )}
+    </PlaceDetail>
+  );
+}
+
+/**
+ * Projects 줄의 ⋯ — 「Service에서 빼기」 하나(빼면 「되돌리기」 토스트가 서고, 누르면 제자리에 다시 넣는다). 보드 상세 줄에는 오른쪽 단추가 없다 — 쉴 때는
+ * 보이지 않고 줄을 지나거나 키로 서거나 열렸을 때만 선다. 칸 단위로 고칠 수 없는 파일이면 서지 않는다(파일로 고친다).
+ */
+function MemberMenu({ name, onDrop }: { name: string; onDrop: () => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`${name} 메뉴`}
+        className={cn(PLACE_ICON_BUTTON, "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100")}
+      >
+        <MoreHorizontal aria-hidden className="size-3.75" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" width="place">
+        <DropdownMenuItem onClick={onDrop}>
+          <X />
+          <span>Service에서 빼기</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

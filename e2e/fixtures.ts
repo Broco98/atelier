@@ -1081,6 +1081,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Service이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
   // (`useUpdateService`) — 이 답은 쓰기를 기억하지 않는다.
   list_services: SERVICES,
+  // Service 파일들의 폴더(restart 03-3) — ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다. 목록 · 상세가 열 때 한 번 읽는다.
+  services_folder: "~/.atelier/services",
   get_service: answerByArg("slug", SERVICE_DETAILS),
   update_service: SERVICES[0],
   // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
