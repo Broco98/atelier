@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use serde::Serialize;
@@ -85,6 +85,45 @@ pub fn origin_head(dir: &Path) -> Option<String> {
 /// 작업 트리가 없어 `None`이다.
 pub(crate) fn toplevel(dir: &Path) -> Option<std::path::PathBuf> {
     git(dir, &["rev-parse", "--show-toplevel"]).map(std::path::PathBuf::from)
+}
+
+/// worktree 하나가 커밋하는 데 쓰는 git 자리 넷 — 그 worktree의 git 자리(`.git/worktrees/<이름>`)와 본 저장소의 `objects` · `refs` ·
+/// `logs`(restart 스펙 「01c — Codex」 추가 폴더, 실측 「worktree와 git」). `.git` 통째로가 아닌 까닭은 Codex 샌드박스가 쓸 수 있는 자리
+/// 안에서도 `.git`을 읽기 전용으로 두기 때문이다.
+///
+/// `<이름>`은 폴더 이름으로 짓지 않고 worktree의 `.git` 포인터 파일(`gitdir: …`)에서 읽는다 — 같은 Project를 쓰는 둘째 작업공간의
+/// worktree는 폴더 이름이 같아도 git 자리가 `<project>1`이다. 포인터와 `commondir`이 상대 경로여도(`worktree.useRelativePaths`) 읽는다.
+/// 포인터 파일이 없거나 읽지 못하면 빈 목록이고, 없는 폴더는 뺀다.
+pub fn worktree_git_places(worktree: &Path) -> Vec<PathBuf> {
+    let Ok(pointer) = std::fs::read_to_string(worktree.join(".git")) else { return Vec::new() };
+    let Some(gitdir) = pointer.lines().next().and_then(|line| line.strip_prefix("gitdir:")).map(str::trim) else {
+        return Vec::new();
+    };
+    let gitdir = lexical(&worktree.join(gitdir));
+    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
+        Ok(common) => lexical(&gitdir.join(common.trim())),
+        Err(_) => match gitdir.parent().and_then(Path::parent) {
+            Some(common) => common.to_path_buf(),
+            None => return Vec::new(),
+        },
+    };
+    let places = [gitdir.clone(), common.join("objects"), common.join("refs"), common.join("logs")];
+    places.into_iter().filter(|place| place.is_dir()).collect()
+}
+
+/// `.` · `..`를 글자로만 푼다 — 링크를 따라가지 않는다(git이 적은 자리 그대로 둔다).
+fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// 원격 이름들(`origin` · `upstream` …) — git이 내는 차례 그대로다. fetch하지 않는다.
@@ -580,6 +619,28 @@ mod tests {
         run(dir.path(), &["update-ref", "refs/remotes/origin/main", "HEAD"]);
         run(dir.path(), &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
         assert_eq!(origin_head(dir.path()).as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn worktree_git_places_follow_a_relative_pointer_and_skip_a_folder_without_one() {
+        // `worktree.useRelativePaths`로 만든 worktree는 포인터(`gitdir: ../repo/.git/worktrees/x`)와 `commondir`이 상대 경로다
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        run(&repo, &["worktree", "add", "--relative-paths", "-b", "cart", "../trees/api"]);
+        let tree = dir.path().join("trees/api");
+        assert!(std::fs::read_to_string(tree.join(".git")).unwrap().starts_with("gitdir: .."), "상대 포인터여야 시험이 된다");
+
+        let real = |path: PathBuf| path.canonicalize().unwrap_or_else(|_| panic!("없다: {}", path.display()));
+        let git = repo.join(".git");
+        let expected: Vec<PathBuf> =
+            [git.join("worktrees/api"), git.join("objects"), git.join("refs"), git.join("logs")].into_iter().map(real).collect();
+        assert_eq!(worktree_git_places(&tree).into_iter().map(real).collect::<Vec<_>>(), expected);
+
+        let plain = dir.path().join("plain");
+        std::fs::create_dir(&plain).unwrap();
+        assert!(worktree_git_places(&plain).is_empty(), "포인터 파일이 없으면 git 자리를 짓지 않는다");
     }
 
     #[test]
