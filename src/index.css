@@ -1511,8 +1511,8 @@
    **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창)가 쓴다 — 줄 높이
    (28 · 30 · 32) 안에 들어앉는다. 머리 줄의 단추는 이 단이
    아니라 기본 28이다 — 셸 컨트롤(`[data-titlebar]`의 `--titlebar-control-size`)도 화면 것(작업 ⋯ · 요약 카드 · 패널 토글 · 편집기의
-   「설정으로 돌아가기」 — `ShellHead`의 `headButton`)도 Codex 머리 줄 값이다(02 결정 「머리 줄은 한 결이다(03 뒤)」 — 한때 화면 것은 머리
-   카드의 24였다). */
+   「설정으로 돌아가기」)도 `ShellHead`의 `headButton` 한 벌이고 모서리는 `icon-button-ctl`(4 — 시안 `.ra-tbtn`)이다(02 결정 「머리 줄은
+   한 결이다(03 뒤)」 — 한때 화면 것은 머리 카드의 24였고, restart 02b-6b 전에는 둥글기가 기본의 10이었다). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
   --icon-button-radius: var(--radius-md);
@@ -1533,9 +1533,9 @@
   --icon-button-radius: var(--radius-md);
 }
 
-/* **28 · `radius-ctl`**(시안 `.ra-tbtn`) — 탭 줄의 `+` 하나가 쓴다(restart 02a-5). 탭 칸(높이 28 · 둥글기 4 — `ShellTabs`)과 나란히
-   서서 같은 높이 · 같은 모서리여야 칸 옆에서 혼자 작거나 둥글지 않다. 크기는 기본(28)이라 모서리만 바꾼다. 얹는 법은
-   `icon-button-xs`와 같다. */
+/* **28 · `radius-ctl`**(시안 `.ra-tbtn`) — 탭 줄의 `+`(restart 02a-5)와 머리 줄의 아이콘 단추(`ShellHead`의 `headButton` — 셸 컨트롤 ·
+   ⋯ · 요약 카드 · 패널 토글, restart 02b-6b)가 쓴다. 탭 칸(높이 28 · 둥글기 4 — `ShellTabs`)과 나란히 서서 같은 높이 · 같은 모서리여야
+   칸 옆에서 혼자 작거나 둥글지 않다. 크기는 기본(28)이라 모서리만 바꾼다. 얹는 법은 `icon-button-xs`와 같다. */
 @utility icon-button-ctl {
   --icon-button-radius: var(--radius-ctl);
 }

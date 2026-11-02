@@ -97,7 +97,7 @@ export function ThreadMenuItems({ rename }: { rename: (() => void) | null }) {
 }
 
 /**
- * 머리 줄 이름 바로 뒤의 「…」(02 §6 · restart 02a-7 시안 MainLoose — 28 · `radius-lg`, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
+ * 머리 줄 이름 바로 뒤의 「…」(02 §6 · restart 02a-7 시안 MainLoose — 28 · 둥글기 4, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
  * 연다. 열린 동안은 hover와 같은 면이다. 여닫이 · 줄 옮기기 · Esc · 바깥 누르기는 메뉴 부품이 한다(work 메뉴 ⋯와 같다). 모양은 머리 줄의
  * 아이콘 단추 한 벌이다(`ShellHead`의 `headButton` — 공용 틀 화면의 ⋯ · 패널 토글도 같은 것을 쓴다).
  *
@@ -153,7 +153,7 @@ export const SummaryGlyph = createLucideIcon("summary", [
 
 /**
  * 머리 줄 오른쪽 끝의 요약 단추(02 §6 · 시안 Main · MainLoose `aria-label="요약 카드"` — restart 02a-9가 이름을 「요약 고정」에서 「요약 카드」로
- * 바꿨다, SummarySheet 규격) — 28 · `radius-lg`, 글리프 16 `fg-titlebar`. 켜지면
+ * 바꿨다, SummarySheet 규격) — 28 · 둥글기 4(`.ra-tbtn`), 글리프 16 `fg-titlebar`. 켜지면
  * 바탕이 고른 면(`fill-selected`)이고 글리프가 `fg`로 진해지며, 켜진 채 hover해도 면이 그대로다(시안 `.ra-tbtn[aria-pressed="true"]`). 이름은 할 일
  * 하나이고 켬/끔은 `aria-pressed`가 말한다.
  *

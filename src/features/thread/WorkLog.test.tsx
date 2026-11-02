@@ -5,8 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { foldThread, type ToolEntry } from "./fold";
 import type { RecordLine } from "./types";
+import { CopyButton } from "./CopyButton";
 import { DocPlace } from "./ThreadFlow";
-import { InnerTools, ToolRows } from "./WorkLog";
+import { DiffCard, InnerTools, ToolRows } from "./WorkLog";
 
 // 방패 줄(v1 티켓 23 · 캔버스 WorkLog 보드 「자동 허용 줄」) — 판정이 묻지 않고 허용한 도구 줄 앞에 「자동으로 허용함」 · 대상 · 까닭 알약이
 // 선다. 까닭의 말은 `approval.test.ts`의 「방패 줄의 까닭」이 재고, 여기서는 그 말이 알약에 서는지를 정적 마크업으로 잰다(02 코드 리뷰 A1 —
@@ -142,6 +143,17 @@ describe("도구 줄의 모양", () => {
     );
     expect(html).toContain('aria-label="생성됨 b.ts"');
     expect(html).toContain('data-dot="created"');
+  });
+
+  // Tools · Thread 보드 「변경 카드」 머리의 `.ra-ic-btn` 「변경 복사」 — 내 말 · 답 · 코드 블록의 복사와 같은 단추다(26 · 둥근 8 · 글리프 14 ·
+  // `fg-tertiary`, 누르면 ✓가 1.6초 섰다 돌아온다 — `CopyButton`, restart 02b-6b). 한때 24 · `fg-tool`에 ✓가 돌아오지 않았다.
+  it("변경 카드의 「변경 복사」는 대화의 복사 단추와 같은 단추다", () => {
+    const piece = { path: "/w/src/watcher.rs", written: false, lines: [{ type: "add" as const, text: "retry();" }], added: 1, deleted: 0 };
+    const button = (html: string) => html.match(/<button[^>]*aria-label="변경 복사"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? "";
+    const inCard = button(renderToStaticMarkup(<DiffCard piece={piece} />));
+    expect(inCard).not.toBe("");
+    const alone = button(renderToStaticMarkup(<CopyButton text="+retry();" label="변경 복사" className="ml-auto" />));
+    expect(inCard).toBe(alone);
   });
 
   // Thread 보드 · States 08(restart 02b-6) — 이은 작업공간의 spec 폴더에 새로 쓴 문서는 문서 글리프 · 「생성됨 재시도-규칙.md」 · 새 파일 점이고, 셈과
