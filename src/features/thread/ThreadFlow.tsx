@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { createContext, Fragment, memo, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -68,9 +68,10 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   실행을 승인함 · 비슷한 명령 허용」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
 //   「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 작업공간 … 을 만들고 이 채팅에 연결함」이다.
-// - **흐르는 답은 조각이 도착하는 방식으로 선다**(`FlowingTail` · `ThreadMarkdown`의 `streaming` — 끝 240px이 옅다). 조각은 기록 줄이 아니라 접은
+// - **흐르는 답은 조각이 도착하는 방식으로 선다**(`MessageView` · `ThreadMarkdown`의 `streaming` — 끝 240px이 옅다). 조각은 기록 줄이 아니라 접은
 //   모델에 없고, 마지막 턴의 꼬리에만 붙는다. 조각을 구독하는 부품은 그 꼬리 하나라 조각이 오는 동안 앞선 턴이 다시 그려지지 않는다(스펙 「01b —
-//   스트리밍」). 같은 흐름의 기록 줄이 오면 꼬리가 걷히고 글이 턴의 줄로 선다 — 끝난 글은 다시 움직이지 않는다. 답을 기다리는 동안은 「생각 중」에
+//   스트리밍」). 같은 흐름의 기록 줄이 오면 글이 턴의 줄이 된다 — 꼬리와 그 줄은 같은 자리의 같은 부품이라(흐름 번호가 열쇠다, `flowKey`) 그려 둔 글을 다시
+//   그리지 않고, 턴이 끝나 접혀도 턴 끝 답은 그 자리에 남는다(restart 티켓 01b-9). 답을 기다리는 동안은 「생각 중」에
 //   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12). 대화를 정리하는 동안은 같은 자리의 「대화를 정리하는 중」이다
 //   (01b-4 · Tools 보드 — 정리 신호가 오는 동안만, `compacting`). 정리 줄은 작업 로그에 서지 않는다.
 // - **오류와 중단은 색 대신 문장이다** — 우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다. 실패한 턴과 거절 · 길이 제한 · 턴 한도, 끊긴 턴은 받은 글 뒤의 안내 줄이
@@ -117,7 +118,7 @@ const FlowThread = createContext("");
 
 /**
  * 맨 아래를 보던 흐름을 꼬리까지 내리는 길 — Thread 본문이 준다. 흐르는 글은 기록 줄이 아니라 본문이 다시 그려지지 않으므로, 글이 늘면
- * 꼬리가 부른다(`FlowingTail`).
+ * 꼬리가 부른다(`MessageView`).
  */
 export const FollowTail = createContext<() => void>(() => {});
 
@@ -169,18 +170,14 @@ function ThreadFlow({ thread, model, runtime, actions = null }: ThreadFlowProps)
               turn={turn}
               runtime={runtime}
               open={expanded[turnKey(thread, turn.key)] === true}
-              onToggle={() => toggleTurn(turnKey(thread, turn.key))}
               waiting={turn.end === null ? waitingFor(model) : null}
               compacting={turn.end === null && model.compacting}
               last={turn === last}
               actions={turn === last ? actions : null}
-              severed={model.severed}
-              connecting={model.connecting}
-              lead={model.system
-                .filter((line) => line.turn === turn.key)
-                .map((line) => (
-                  <SystemRow key={line.key} line={line} />
-                ))}
+              // 다시 잇기는 지금의 턴에서만 읽는다 — 지난 턴의 그림은 이 값에 움직이지 않는다.
+              severed={turn === last ? model.severed : null}
+              connecting={turn === last && model.connecting}
+              lead={leadOf(model, turn)}
             />
             {between(at + 1)}
           </Fragment>
@@ -290,23 +287,17 @@ function SystemRow({ line }: { line: SystemLine }) {
   );
 }
 
-function TurnView({
-  turn,
-  runtime,
-  open,
-  onToggle,
-  waiting,
-  compacting,
-  last,
-  actions,
-  severed,
-  connecting,
-  lead,
-}: {
+/** 이 턴의 머리에 서는 시스템 줄들(worktree를 만듦) — 없으면 늘 같은 빈 값이다. */
+const NO_LEAD: readonly SystemLine[] = [];
+function leadOf(model: ThreadModel, turn: Turn): readonly SystemLine[] {
+  const lead = model.system.filter((line) => line.turn === turn.key);
+  return lead.length === 0 ? NO_LEAD : lead;
+}
+
+interface TurnViewProps {
   turn: Turn;
   runtime: string;
   open: boolean;
-  onToggle: () => void;
   /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
   waiting: string | null;
   /** 이 턴이 대화를 정리하는 중인가 — 「생각 중」 자리에 「대화를 정리하는 중」이 선다. */
@@ -319,8 +310,19 @@ function TurnView({
   /** Session을 띄우는 중인가(`ThreadModel.connecting`). */
   connecting: boolean;
   /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, 답의 줄 앞이다(화면 2 보드). */
-  lead: ReactNode[];
-}) {
+  lead: readonly SystemLine[];
+}
+
+/**
+ * 턴 하나. 값이 그대로인 턴은 다시 그리지 않는다 — 기록 줄이 늘어도 지난 턴의 값은 그대로다(`foldOf`). 시스템 줄은 값으로 견준다: 고른 배열은 그릴 때마다 새것이다.
+ */
+const TurnView = memo(function TurnView({ turn, runtime, open, waiting, compacting, last, actions, severed, connecting, lead }: TurnViewProps) {
+  const thread = useContext(FlowThread);
+  const onToggle = () => toggleTurn(turnKey(thread, turn.key));
+  const running = turn.end === null;
+  const tailed = running && last;
+  const flow = useStore(threadFlowStore, (state) => (tailed ? (state[thread]?.kind ?? null) : null));
+  const stream = useStore(threadFlowStore, (state) => (tailed ? (state[thread]?.stream ?? null) : null));
   const from = finalFrom(turn);
   // 글이 빈 생각은 그리지 않는다(`shownEntry`).
   const before = turn.entries.slice(0, from).filter(shownEntry);
@@ -348,88 +350,105 @@ function TurnView({
           <UserMessage text={turn.sent} attachments={turn.attachments} quote={turn.quote} />
         </div>
       )}
-      {lead}
-      {turn.end ? (
+      {lead.map((line) => (
+        <SystemRow key={line.key} line={line} />
+      ))}
+      {/* 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 「생각 중」은 아직 서지 않는다. */}
+      {(!running || turn.entries.length > 0 || flow !== null || compacting) && (
+        // 도는 턴과 끝난 턴은 같은 상자이고 답은 같은 칸(`Entries`)에 선다 — 턴이 끝나도 그려 둔 답이 그대로 남는다.
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
-          {stopped ? (
-            // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
+          {turn.end ? (
             <>
-              <OpenedLog entries={before} open={unfolded} />
-              {final.map((entry) => (
-                <div key={entry.key} className="w-full text-fg-secondary">
-                  <EntryView entry={entry} />
-                </div>
+              {stopped ? (
+                // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
+                <>
+                  <OpenedLog entries={before} open={unfolded} />
+                  {final.map((entry) => (
+                    <div key={entry.key} className="w-full text-fg-secondary">
+                      <EntryView entry={entry} />
+                    </div>
+                  ))}
+                  <StopLine text={headline(turn.end)} open={unfolded} onToggle={onToggle} />
+                </>
+              ) : (
+                line && (
+                  <>
+                    <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key}>
+                      {line.text}
+                    </WorkDivider>
+                    {line.unfolds && <OpenedLog entries={before} open={unfolded} />}
+                  </>
+                )
+              )}
+              {kept.map((entry) => (
+                <EntryView key={entry.key} entry={entry} />
               ))}
-              <StopLine text={headline(turn.end)} open={unfolded} onToggle={onToggle} />
             </>
           ) : (
-            line && (
-              <>
-                <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key}>
-                  {line.text}
-                </WorkDivider>
-                {line.unfolds && <OpenedLog entries={before} open={unfolded} />}
-              </>
-            )
+            (lastWork(turn.entries) || flow) && <RunningHead turn={turn} waiting={waiting} />
           )}
-          {kept.map((entry) => (
-            <EntryView key={entry.key} entry={entry} />
-          ))}
-          {!stopped && final.map((entry) => <EntryView key={entry.key} entry={entry} />)}
-          <CreatedDocs turn={turn} name={runtime} />
-          {reconnecting ? <ReconnectingLine /> : notice && <EndNoticeLine notice={notice} action={noticeAction(turn, cut, reconnectable, actions)} />}
-          {last && !stopped && !notice && finalText !== "" && <AnswerActions text={finalText} usage={turn.usage} />}
+          <Entries
+            entries={turn.end ? (stopped ? [] : final) : turn.entries.filter(shownEntry)}
+            tail={flow === "message" && stream !== null ? <MessageView key={flowKey(stream)} /> : flow === "thought" ? <FlowingThought key="thought" /> : null}
+          />
+          {turn.end ? (
+            <>
+              <CreatedDocs turn={turn} name={runtime} />
+              {reconnecting ? <ReconnectingLine /> : notice && <EndNoticeLine notice={notice} action={noticeAction(turn, cut, reconnectable, actions)} />}
+              {last && !stopped && !notice && finalText !== "" && <AnswerActions text={finalText} usage={turn.usage} />}
+            </>
+          ) : (
+            <>
+              {!compacting && (flow ?? lastWork(turn.entries)?.kind) === "thought" && <p className="think-shimmer text-sm">생각 중</p>}
+              {compacting && <p className="think-shimmer text-sm">대화를 정리하는 중</p>}
+            </>
+          )}
         </div>
-      ) : (
-        <RunningTurn turn={turn} waiting={waiting} compacting={compacting} last={last} />
       )}
     </>
   );
-}
+}, sameTurnView);
 
-/**
- * 도는 턴 — 머리줄 · 줄들 · 꼬리의 흐르는 글. 흐르는 글의 종류만 구독한다 — 흐름이 열리고 닫힐 때만 다시 그려지고 글은 `FlowingTail`이 그린다.
- */
-function RunningTurn({
-  turn,
-  waiting,
-  compacting,
-  last,
-}: {
-  turn: Turn;
-  waiting: string | null;
-  compacting: boolean;
-  last: boolean;
-}) {
-  const thread = useContext(FlowThread);
-  const flow = useStore(threadFlowStore, (state) => (last ? (state[thread]?.kind ?? null) : null));
-  const lastEntry = lastWork(turn.entries);
-  // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 「생각 중」은 아직 서지 않는다.
-  if (turn.entries.length === 0 && flow === null && !compacting) return null;
-  const thinking = !compacting && (flow ?? lastEntry?.kind) === "thought";
+function sameTurnView(a: TurnViewProps, b: TurnViewProps): boolean {
   return (
-    <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
-      {(lastEntry || flow) && <RunningHead turn={turn} waiting={waiting} />}
-      {/* 글이 빈 생각은 그리지 않는다(`shownEntry`) — 지금 생각하는 중이면 「생각 중」으로만 선다. */}
-      <Entries entries={turn.entries.filter(shownEntry)} />
-      {flow && <FlowingTail thread={thread} />}
-      {thinking && <p className="think-shimmer text-sm">생각 중</p>}
-      {compacting && <p className="think-shimmer text-sm">대화를 정리하는 중</p>}
-    </div>
+    a.turn === b.turn &&
+    a.runtime === b.runtime &&
+    a.open === b.open &&
+    a.waiting === b.waiting &&
+    a.compacting === b.compacting &&
+    a.last === b.last &&
+    a.actions === b.actions &&
+    a.severed === b.severed &&
+    a.connecting === b.connecting &&
+    a.lead.length === b.lead.length &&
+    a.lead.every((line, at) => line === b.lead[at])
   );
 }
 
-/** 흐르는 글 — 마지막 턴의 꼬리다. 조각을 구독하는 부품은 이것 하나다. 글이 빈 생각은 그리지 않는다. 꼬리 모양은 02b-1이 맞춘다. */
-function FlowingTail({ thread }: { thread: string }) {
-  const flowing = useStore(threadFlowStore, (state) => state[thread]);
+/** 흐르던 글과 그 기록 줄이 함께 쓰는 열쇠 — 같은 칸의 같은 열쇠라 흐름이 줄이 되어도 그려 둔 글을 다시 그리지 않는다. */
+const flowKey = (stream: number) => `flow-${stream}`;
+
+/** 답 글 — `text`가 없으면 지금 흐르는 글이고 그 글을 구독한다. 조각을 구독하는 부품은 이것 하나다. 꼬리 모양은 02b-1이 맞춘다. */
+function MessageView({ text }: { text?: string }) {
+  const thread = useContext(FlowThread);
+  const flowing = useStore(threadFlowStore, (state) => (text === undefined ? state[thread]?.text : undefined));
   const follow = useContext(FollowTail);
-  useLayoutEffect(follow, [follow, flowing?.text]);
-  if (!flowing?.text) return null;
-  return flowing.kind === "message" ? (
-    <ThreadMarkdown text={flowing.text} streaming className="w-full" />
-  ) : (
-    <ThreadMarkdown text={flowing.text} className="w-full text-fg-tertiary" />
-  );
+  useLayoutEffect(() => {
+    if (flowing) follow();
+  }, [follow, flowing]);
+  const shown = text ?? flowing;
+  if (!shown) return null;
+  return <ThreadMarkdown text={shown} streaming={text === undefined} className="w-full" />;
+}
+
+/** 흐르는 생각 — 글이 빈 생각은 그리지 않는다. */
+function FlowingThought() {
+  const thread = useContext(FlowThread);
+  const flowing = useStore(threadFlowStore, (state) => state[thread]?.text);
+  const follow = useContext(FollowTail);
+  useLayoutEffect(follow, [follow, flowing]);
+  if (!flowing) return null;
+  return <ThreadMarkdown text={flowing} className="w-full text-fg-tertiary" />;
 }
 
 /** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 사람의 답을 기다리면 그 말이 링크 색으로 붙는다. */
@@ -456,27 +475,29 @@ function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) 
   );
 }
 
-/** 턴의 줄들 — 잇따른 도구 줄은 작업 로그의 한 묶음이다(줄 사이 틈 없이, 묶음 줄 포함). */
-function Entries({ entries }: { entries: readonly Entry[] }) {
+/**
+ * 턴의 줄들 — 잇따른 도구 줄은 작업 로그의 한 묶음이다(줄 사이 틈 없이, 묶음 줄 포함). 흐르는 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
+ */
+function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: ReactNode }) {
   const runs: Entry[][] = [];
   for (const entry of entries) {
-    const tail = runs[runs.length - 1];
-    if (entry.kind === "tool" && tail && tail[0].kind === "tool") tail.push(entry);
+    const last = runs[runs.length - 1];
+    if (entry.kind === "tool" && last && last[0].kind === "tool") last.push(entry);
     else runs.push([entry]);
   }
-  return (
-    <>
-      {runs.map((run) =>
-        run[0].kind === "tool" ? (
-          <div key={run[0].key} data-log-run className="flex w-full flex-col">
-            <ToolRows tools={run as ToolEntry[]} />
-          </div>
-        ) : (
-          <EntryView key={run[0].key} entry={run[0]} />
-        ),
-      )}
-    </>
-  );
+  const rows = runs.map((run) => {
+    const [first] = run;
+    if (first.kind === "tool") {
+      return (
+        <div key={first.key} data-log-run className="flex w-full flex-col">
+          <ToolRows tools={run as ToolEntry[]} />
+        </div>
+      );
+    }
+    if (first.kind === "message") return <MessageView key={first.stream === undefined ? first.key : flowKey(first.stream)} text={first.text} />;
+    return <EntryView key={first.key} entry={first} />;
+  });
+  return <>{tail === null ? rows : [...rows, tail]}</>;
 }
 
 /**
@@ -648,6 +669,20 @@ function StopLine({ text, open, onToggle }: { text: string; open: boolean; onTog
  */
 function AnswerActions({ text, usage }: { text: string; usage: Usage | null }) {
   const [copied, setCopied] = useState(false);
+  // 턴이 끝나 새로 서는 줄은 한 프레임 뒤에 선다. 이 줄을 더하는 배치가 답의 길이만큼 들어(9만 6천 자에 27ms) 턴 끝의 기록 줄들이 몰린 프레임에 얹으면 50ms를 넘는다
+  // (01b-9).
+  const late = useArrival("row-in") !== undefined;
+  const [shown, setShown] = useState(!late);
+  const follow = useContext(FollowTail);
+  useEffect(() => {
+    if (shown) return;
+    const frame = window.requestAnimationFrame(() => setShown(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [shown]);
+  useLayoutEffect(() => {
+    if (shown && late) follow();
+  }, [follow, shown, late]);
+  if (!shown) return null;
   return (
     <div className="-mt-0.5 -ml-1 flex items-center">
       <button

@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { Arrival, settledPlace } from "./arrival";
 import { foldThread, type QuestionEntry } from "./fold";
 import { addChunk } from "./thread-store";
 import ThreadFlow, { AnsweredRow, DocPlace, type FlowActions } from "./ThreadFlow";
@@ -167,6 +168,17 @@ describe("답 아래 사용량", () => {
     const markup = flow(foldThread(lines.filter((line) => line.seq !== 18)));
     expect(shown(markup)).toEqual([]);
     expect(markup).toContain('aria-label="답 복사"');
+  });
+
+  // 긴 답에서 이 줄을 더하는 배치가 턴 끝의 프레임에 얹히지 않게 한 프레임 뒤에 선다(01b-9). 처음 그린 화면에는 곧바로 선다.
+  it("화면이 선 뒤에 턴이 끝나면 답 아래 줄은 그 그림에 서지 않는다", () => {
+    const markup = renderToStaticMarkup(
+      <Arrival.Provider value={settledPlace()}>
+        <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />
+      </Arrival.Provider>,
+    );
+    expect(markup).not.toContain('aria-label="답 복사"');
+    expect(flow(foldThread(lines))).toContain('aria-label="답 복사"');
   });
 });
 

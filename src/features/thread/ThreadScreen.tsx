@@ -50,7 +50,7 @@ import { ResultPlace, type ResultActions } from "./ResultCard";
 import { runtimeNameOf } from "./runtime";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
@@ -592,6 +592,22 @@ function ThreadBody({
     next: askNext,
   };
 
+  // 안내 줄의 단추 — 읽기만인 채팅(v1 티켓 38)에는 채울 입력창도 다시 이을 Session도 없다. 값이 그대로여야 지금의 턴이 다시 그려지지 않는다(`ThreadFlow`의 `TurnView`).
+  const { mutate: reopen, isPending: reconnecting, error: reconnectError, variables: reconnectedTurn } = reconnect;
+  const lastKey = last?.key;
+  const flowActions = useMemo<FlowActions | null>(
+    () =>
+      view.readOnly
+        ? null
+        : {
+            fill: (text) => fillDraft(thread, text),
+            reconnect: () => reopen(lastKey ?? ""),
+            reconnecting,
+            reconnectFailure: reconnectError && reconnectedTurn === lastKey ? String(reconnectError) : null,
+          },
+    [view.readOnly, thread, reopen, reconnecting, reconnectError, reconnectedTurn, lastKey],
+  );
+
   const pickLevel = (mode: AskLevel) => {
     setChipProblem(null);
     setMode.mutate({ thread, mode }, { onError: (failure) => setChipProblem(String(failure)) });
@@ -633,17 +649,7 @@ function ThreadBody({
                       thread={thread}
                       model={model}
                       runtime={runtime}
-                      // 읽기만인 채팅(v1 티켓 38)에는 채울 입력창도 다시 이을 Session도 없다.
-                      actions={
-                        view.readOnly
-                          ? null
-                          : {
-                              fill: (text) => fillDraft(thread, text),
-                              reconnect: () => reconnect.mutate(last?.key ?? ""),
-                              reconnecting: reconnect.isPending,
-                              reconnectFailure: reconnect.error && reconnect.variables === last?.key ? String(reconnect.error) : null,
-                            }
-                      }
+                      actions={flowActions}
                     />
                   </FollowTail.Provider>
                 </ResultPlace.Provider>

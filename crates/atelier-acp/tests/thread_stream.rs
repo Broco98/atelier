@@ -320,6 +320,68 @@ fn 조각은_33ms로_묶여_나가고_오프셋은_화면의_글자_단위로_�
     host.shut_down();
 }
 
+/// 부하를 흘리는 가짜 claude로 새 Thread를 세운다 — 첫 말이 곧 그 턴이다. 호스트가 낸 이벤트를 모은다.
+fn thread_under_load(sandbox: &Sandbox, values: &[(&str, &str)]) -> (ConversationHost, String, Events) {
+    let (builder, events) = sandbox.host_builder_with_events(sandbox.claude_login_shell("normal", values));
+    let host = builder.build();
+    let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    (host, thread, events)
+}
+
+/// 가짜 claude가 부하를 다 흘리고 남긴 영수증 — 흘린 조각 수 · 메시지 수 · 걸린 밀리초.
+fn load_receipt(sandbox: &Sandbox, thread: &str) -> Value {
+    let path = sandbox.claude_receipts().join(format!("{}.stream", sandbox.thread_session_id(thread)));
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    serde_json::from_str(text.trim()).expect("영수증은 JSON 한 줄이다")
+}
+
+#[test]
+fn 조각_간격과_흘릴_시간을_주면_그동안_글이_조각으로_흐르고_완성_글이_기록_줄_하나로_남는다() {
+    let sandbox = Sandbox::new();
+    let started = Instant::now();
+    let (host, thread, events) =
+        thread_under_load(&sandbox, &[("FAKE_CLAUDE_STREAM_GAP_MS", "10"), ("FAKE_CLAUDE_STREAM_FOR_MS", "300")]);
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    assert!(started.elapsed() >= Duration::from_millis(300), "흘릴 시간을 다 채우지 않았다: {:?}", started.elapsed());
+    let lines = chunk_lines(&record);
+    assert_eq!(lines.len(), 1, "{}", common::lines_text(&record));
+    let text = lines[0]["payload"]["update"]["content"]["text"].as_str().expect("답 글");
+    assert!(of_kind(&record, "stderr").is_empty(), "조각의 합과 완성 글이 같으면 경고가 없다: {}", common::lines_text(&record));
+    // 마지막 묶음은 33ms가 차기 전에 기록 줄이 서면 조각으로 나가지 않는다.
+    let chunks = events.thread_chunks(&thread);
+    assert!(chunks.len() > 1, "한 번에 쏟지 않고 흘렸다: {chunks:#?}");
+    assert!(text.starts_with(&joined(&chunks)), "흐른 글은 기록 글의 앞이다: {chunks:#?}");
+    let receipt = load_receipt(&sandbox, &thread);
+    assert_eq!(receipt["chunks"], 30, "{receipt}");
+    assert_eq!(receipt["messages"], 1, "{receipt}");
+    assert!(receipt["ms"].as_u64().unwrap() >= 290, "{receipt}");
+    host.shut_down();
+}
+
+#[test]
+fn 메시지_길이를_주면_흐르는_동안_기록_줄이_그만큼_선다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, _events) = thread_under_load(
+        &sandbox,
+        &[
+            ("FAKE_CLAUDE_STREAM_GAP_MS", "10"),
+            ("FAKE_CLAUDE_STREAM_FOR_MS", "300"),
+            ("FAKE_CLAUDE_STREAM_MESSAGE_MS", "100"),
+        ],
+    );
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    let numbers: Vec<u64> =
+        chunk_lines(&record).iter().map(|line| line["payload"]["update"]["_meta"]["atelier"]["stream"].as_u64().unwrap()).collect();
+    assert_eq!(numbers.len(), 3, "{}", common::lines_text(&record));
+    assert_eq!(numbers.iter().collect::<std::collections::BTreeSet<_>>().len(), 3, "메시지마다 다른 흐름이다");
+    assert_eq!(load_receipt(&sandbox, &thread)["messages"], 3);
+    host.shut_down();
+}
+
 #[test]
 fn 글이_빈_생각도_흐름이_열렸다고_한_번_나간다() {
     let sandbox = Sandbox::new();

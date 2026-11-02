@@ -42,6 +42,10 @@
 //!   명령 글을 바꾸는 데도 쓴다(코드 리뷰 1차 A1 — `python3 -c` 앞에 `git -C … push`를 붙인다).
 //! - `FAKE_CLAUDE_STDOUT_LAG` — 있으면(밀리초) 내는 줄마다 그만큼 늦게 stdout에 쓴다. MCP 부르기는 늦추지 않는다 — stdout(변환기 →
 //!   엔진) 길이 부하로 늦어 Thread 도구 호출(중계 서버 → 소켓)이 먼저 닿는 꼴을 늘 일으킨다(코드 리뷰 1차 A3).
+//! - `FAKE_CLAUDE_STREAM_GAP_MS` · `FAKE_CLAUDE_STREAM_FOR_MS` — 부하(restart 티켓 01b-9). 둘 다 있으면 user 줄마다 녹음의 턴 대신 부하 턴을
+//!   낸다 — 그 간격으로 글 조각을 그 시간 동안 흘린 뒤 완성 줄과 `result`를 낸다. `FAKE_CLAUDE_STREAM_MESSAGE_MS`가 있으면 그 시간마다 새
+//!   메시지로 넘어간다 — 기록 줄이 그만큼 서서 접기가 돈다. 없으면 한 메시지다. 간격은 시작에서 잰 때를 지키므로 밀려도 늦은 만큼 쌓이지
+//!   않는다. 다 흘리면 영수증 `<세션 id>.stream`에 `{chunks, messages, ms}` 한 줄을 남긴다.
 //! - **녹음 속 MCP 부르기**(v1 티켓 20) — 되감는 원문의 `assistant`가 받은 `--mcp-config`의 서버 도구(`mcp__<서버>__<도구>`)를
 //!   부르면, 그 줄을 낸 뒤 그 서버를 띄워 같은 입력으로 정말 부르고, 뒤따르는 원문의 그 `tool_result`를 받은 답으로 바꿔 낸다.
 //!   진짜 claude가 Thread 도구를 부른 녹음(`thread-rename-host`)이 엔진의 중계 서버 → 소켓 길을 끝까지 탄다.
@@ -134,6 +138,7 @@ fn main() {
     fake.leave_receipt(&args, child.as_ref().map(Child::id));
 
     let email = std::env::var("FAKE_CLAUDE_ACCOUNT_EMAIL").ok();
+    let load = Load::from_env();
     let (mut replay, startup) = Replay::new(recorded, Setup { session_id, suggestions, question: None, hold, email });
     fake.emit_all(startup);
     for message in fake.read_stdin() {
@@ -143,6 +148,10 @@ fn main() {
             std::process::exit(1);
         };
         if scenario == "silent-initialize" {
+            continue;
+        }
+        if let Some(load) = load.as_ref().filter(|_| message["type"] == "user") {
+            fake.flow(load);
             continue;
         }
         let lines = replay.receive(&message);
@@ -273,6 +282,39 @@ fn rebased(line: &Value) -> String {
     rebase.iter().fold(line.to_string(), |text, (from, to)| text.replace(from.as_str(), to))
 }
 
+/// 부하 값(`FAKE_CLAUDE_STREAM_*`).
+struct Load {
+    gap: Duration,
+    total: Duration,
+    /// 메시지 하나의 길이. 없으면 턴 전체가 한 메시지다.
+    message: Option<Duration>,
+}
+
+impl Load {
+    fn from_env() -> Option<Self> {
+        let ms = |name: &str| {
+            let value = std::env::var(name).ok()?;
+            let ms: u64 = value.parse().unwrap_or_else(|_| panic!("{name}는 밀리초다: {value}"));
+            Some(Duration::from_millis(ms))
+        };
+        Some(Self {
+            gap: ms("FAKE_CLAUDE_STREAM_GAP_MS")?,
+            total: ms("FAKE_CLAUDE_STREAM_FOR_MS")?,
+            message: ms("FAKE_CLAUDE_STREAM_MESSAGE_MS"),
+        })
+    }
+
+    /// 턴 전체의 조각 수.
+    fn pieces(&self) -> usize {
+        (self.total.as_millis() / self.gap.as_millis()) as usize
+    }
+
+    /// 메시지 하나의 조각 수.
+    fn pieces_per_message(&self) -> usize {
+        self.message.map_or(self.pieces(), |message| (message.as_millis() / self.gap.as_millis()) as usize)
+    }
+}
+
 struct Fake {
     receipts: Option<PathBuf>,
     session_id: String,
@@ -296,6 +338,30 @@ impl Fake {
             emit(&line);
             self.call_recorded(&line);
         }
+    }
+
+    /// 부하 턴 하나를 낸다 — 도는 동안 stdin은 읽어 영수증에 적되 답하지 않는다.
+    fn flow(&self, load: &Load) {
+        let session = self.session_id.as_str();
+        let (init, result) = claude_replay::load_bookends(session);
+        emit(&init);
+        let pieces = claude_replay::load_pieces(load.pieces());
+        let started = Instant::now();
+        let mut sent = 0;
+        let messages = pieces.chunks(load.pieces_per_message()).enumerate().map(|(nth, pieces)| (format!("msg_load_{nth}"), pieces));
+        let mut count = 0;
+        for (id, pieces) in messages {
+            for piece in pieces {
+                std::thread::sleep((started + load.gap * sent).saturating_duration_since(Instant::now()));
+                emit(&claude_replay::load_piece(session, &id, piece));
+                sent += 1;
+            }
+            emit(&claude_replay::load_finished(session, &id, &pieces.concat()));
+            count += 1;
+        }
+        emit(&result);
+        let receipt = json!({"chunks": sent, "messages": count, "ms": started.elapsed().as_millis() as u64});
+        self.append("stream", &receipt.to_string());
     }
 
     /// 원문의 `assistant`가 받은 서버의 도구(`mcp__<서버>__<도구>`)를 부르면 그 서버를 띄워 같은 입력으로 부른다. 입력은

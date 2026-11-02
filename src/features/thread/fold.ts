@@ -1,3 +1,4 @@
+import { replaceEqualDeep } from "@tanstack/react-query";
 import { askLevelOf } from "./chips";
 import { isObject, nonEmpty, text, type Json } from "./json";
 import { readingText, registeredText } from "@/features/services/scope";
@@ -77,7 +78,8 @@ export interface TurnEnd {
 
 /** 턴 안의 한 줄. 같은 메시지의 조각들은 한 줄로 이어 붙는다. */
 export type Entry =
-  | { kind: "message"; key: string; messageId: string | null; text: string }
+  /** `stream`은 조각을 합친 줄의 흐름 번호다 — 화면은 흐르던 글과 이 줄을 이 번호로 잇는다(`ThreadFlow`의 `MessageView`). */
+  | { kind: "message"; key: string; messageId: string | null; text: string; stream?: number }
   | { kind: "thought"; key: string; messageId: string | null; text: string }
   | ToolEntry
   | PlanEntry
@@ -774,7 +776,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         const content = isObject(update.content) ? update.content : {};
         const chunk = content.type === "text" ? text(content.text) : null;
         if (chunk === null) break;
-        appendChunk(turn, kind === "agent_message_chunk" ? "message" : "thought", text(update.messageId), chunk, line.seq);
+        appendChunk(turn, kind === "agent_message_chunk" ? "message" : "thought", text(update.messageId), chunk, line.seq, streamOfUpdate(update));
         break;
       }
       case "turn-end": {
@@ -1108,12 +1110,19 @@ function versionNotice(version: string | null, major: unknown): string {
 /**
  * 같은 기록 줄을 한 번만 접는다 — Thread 몸(흐름 · 입력창 · 알약)과 사이드바가 같은 줄을 읽는다. 기록 줄 배열은 바뀔 때마다 새
  * 배열이라(`thread-store.ts`) 그 정체가 열쇠다. 접은 값은 읽기만 한다.
+ *
+ * **줄이 늘어도 바뀌지 않은 값은 앞의 것을 그대로 쓴다**(restart 티켓 01b-9). 접기 자체는 1,000줄에 1ms가 안 들지만 값이 모두 새것이면 흐름이 지난 턴을 모두 다시
+ * 그린다 — 턴이 끝날 때 기록 줄이 잇따라 오면 그것만으로 프레임이 찬다. 앞의 값은 그 기록의 첫 줄로 찾는다: 첫 줄은 줄이 늘어도 같은 값이다.
  */
 const folded = new WeakMap<readonly RecordLine[], { goneThrough: number | null; model: ThreadModel }>();
+const latest = new WeakMap<RecordLine, ThreadModel>();
 export function foldOf(lines: readonly RecordLine[], goneThrough: number | null): ThreadModel {
   const hit = folded.get(lines);
   if (hit && hit.goneThrough === goneThrough) return hit.model;
-  const model = foldThread(lines, goneThrough);
+  const fresh = foldThread(lines, goneThrough);
+  const first = lines[0];
+  const model = first === undefined ? fresh : replaceEqualDeep(latest.get(first), fresh);
+  if (first !== undefined) latest.set(first, model);
   folded.set(lines, { goneThrough, model });
   return model;
 }
@@ -1350,13 +1359,32 @@ function gather(group: { lines: string[] } | null, words: string, fresh: (lines:
 }
 
 /** 답 글 사이에 온 Runtime 경고는 지나쳐 붙인다 — 한 답이 둘로 끊기면 코드 블록 같은 마크다운이 깨진다. */
-function appendChunk(turn: Turn, kind: "message" | "thought", messageId: string | null, chunk: string, seq: number): void {
+function appendChunk(
+  turn: Turn,
+  kind: "message" | "thought",
+  messageId: string | null,
+  chunk: string,
+  seq: number,
+  stream: number | null,
+): void {
   const last = lastWork(turn.entries);
   if (last && last.kind === kind && last.messageId === messageId) {
     last.text += chunk;
     return;
   }
-  turn.entries.push({ kind, key: `${kind === "message" ? "m" : "r"}${seq}`, messageId, text: chunk });
+  if (kind === "message") {
+    turn.entries.push({ kind, key: `m${seq}`, messageId, text: chunk, ...(stream !== null && { stream }) });
+  } else {
+    turn.entries.push({ kind, key: `r${seq}`, messageId, text: chunk });
+  }
+}
+
+/** 그 조각 줄이 합친 흐름의 번호(`update._meta.atelier.stream`) — 턴 안의 조각 줄만 있다. */
+export function streamOfUpdate(update: unknown): number | null {
+  const meta = isObject(update) ? update._meta : null;
+  const atelier = isObject(meta) ? meta.atelier : null;
+  const stream = isObject(atelier) ? atelier.stream : null;
+  return typeof stream === "number" ? stream : null;
 }
 
 /**

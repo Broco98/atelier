@@ -561,3 +561,68 @@ fn initialize_response(request_id: &Value, email: Option<&str>) -> Value {
     }
     json!({"type": "control_response", "response": response})
 }
+
+/// 부하 턴의 조각 하나의 글자 수 — 2.1.316 녹음의 `text_delta` 평균이 8자다.
+const LOAD_PIECE_CHARS: usize = 8;
+/// 부하 턴의 첫 `system/init`과 끝 `result`를 빌릴 원문.
+const LOAD_TURN: &str = "2.1.316/stream-turns";
+
+/// 부하 턴의 글 `n`째 절 — 실제 답처럼 제목 · 문단 · 목록 · 코드 · 표가 섞인 마크다운이다. 절마다 번호가 들어가 같은 글덩이가 되풀이되지 않는다.
+fn load_section(n: usize) -> String {
+    format!(
+        "## {n}. 스트리밍 점검 절\n\n\
+         이 문단은 `{n}`번째 절의 설명이다. 답은 **조각으로** 도착하고, 화면은 [받은 글](https://example.com/{n})을 이어 붙여 다시 그린다. \
+         한 문단은 여러 문장이고 줄이 바뀌지 않은 채 길게 이어진다.\n\n\
+         - 첫째 항목은 `Host`가 조각을 쌓는 일이다({n})\n\
+         - 둘째 항목은 33ms마다 화면으로 내보내는 일이다\n\
+         - 셋째 항목은 기록 줄이 서면 흐르는 글을 지우는 일이다\n\n\
+         ```rust\n\
+         fn section_{n}(text: &str) -> usize {{\n    text.lines().filter(|line| !line.is_empty()).count() + {n}\n}}\n\
+         ```\n\n\
+         | 값 | 뜻 |\n|---|---|\n| {n} | 절 번호 |\n| 33 | 묶는 밀리초 |\n\n\
+         > 인용 문단도 하나 둔다. 번호는 {n}이다.\n\n"
+    )
+}
+
+/// 부하 턴의 조각들 — `count`개, 조각마다 [`LOAD_PIECE_CHARS`]자다.
+pub fn load_pieces(count: usize) -> Vec<String> {
+    let needed = count * LOAD_PIECE_CHARS;
+    let mut chars: Vec<char> = Vec::with_capacity(needed);
+    let mut section = 1;
+    while chars.len() < needed {
+        chars.extend(load_section(section).chars());
+        section += 1;
+    }
+    chars.truncate(needed);
+    chars.chunks(LOAD_PIECE_CHARS).map(|piece| piece.iter().collect()).collect()
+}
+
+/// 부하 턴의 글 조각 줄 — 진짜 claude의 `text_delta`와 같은 꼴이다.
+pub fn load_piece(session_id: &str, message_id: &str, text: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}},
+        "session_id": session_id, "parent_tool_use_id": null, "api_message_id": message_id,
+    })
+}
+
+/// 부하 턴의 완성 줄 — 그 메시지의 조각을 모두 합친 글이다.
+pub fn load_finished(session_id: &str, message_id: &str, text: &str) -> Value {
+    json!({
+        "type": "assistant",
+        "message": {"model": "claude-opus-5-5", "id": message_id, "type": "message", "role": "assistant",
+                    "content": [{"type": "text", "text": text}]},
+        "parent_tool_use_id": null, "session_id": session_id,
+    })
+}
+
+/// 부하 턴의 머리와 끝 — 녹음의 `system/init`과 `result`에 이 세션의 id를 끼운 것.
+pub fn load_bookends(session_id: &str) -> (Value, Value) {
+    let lines: Vec<Value> = json_lines(fixture(LOAD_TURN).expect("부하 턴의 원문")).collect();
+    let found = |wanted: fn(&Value) -> bool| {
+        let mut line = lines.iter().find(|line| wanted(line)).expect("원문에 그 줄이 있다").clone();
+        line["session_id"] = json!(session_id);
+        line
+    };
+    (found(|line| line["type"] == "system" && line["subtype"] == "init"), found(|line| line["type"] == "result"))
+}

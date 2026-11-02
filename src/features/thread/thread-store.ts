@@ -1,5 +1,6 @@
 import { Store } from "@tanstack/react-store";
 import type { Quote } from "@/features/works/QuotePick";
+import { streamOfUpdate } from "./fold";
 import { isObject } from "./json";
 import type { DocWriting, FlowChunk, QueuedMessage, RecordLine, ThreadView } from "./types";
 
@@ -92,11 +93,7 @@ export function settleFlowing({ id, lastSeq, flowing }: ThreadView): void {
 /** 그 기록 줄이 합친 흐름의 번호(`update._meta.atelier.stream`) — 턴 안의 조각 줄만 있다. */
 function streamOf(line: RecordLine): number | null {
   if (line.kind !== "update" || !isObject(line.payload)) return null;
-  const { update } = line.payload;
-  const meta = isObject(update) ? update._meta : null;
-  const atelier = isObject(meta) ? meta.atelier : null;
-  const stream = isObject(atelier) ? atelier.stream : null;
-  return typeof stream === "number" ? stream : null;
+  return streamOfUpdate(line.payload.update);
 }
 
 /**

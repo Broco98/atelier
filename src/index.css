@@ -1963,14 +1963,15 @@ body[data-palette-open] [data-scrollbar] {
 /* **답 글자 도착**(02 구현 스펙 §12 · 스토리 99 · Motion 보드 「답 글자 등장」 · Screen-Live `.seg` — Codex `_fade-in`의 흐르는 동안 값).
    흐르는 답에 새로 온 조각은 옅음에서 .7s(`duration-arrive`) `ease-arrive`로 또렷해진다. **조각 사이 늦음은 없다** — 한 번에 온 낱말들은
    함께 선다(`ThreadMarkdown`이 새 낱말을 감싼다). v1의 낱말마다 500ms · 70ms씩 늦던 도착을 바꿨다(02 티켓 12). 흐림은 쓰지 않는다(섹션
-   머리말). 흐르는 동안 끝 240px이 옅은 것은 아래 `stream-tail`이다. */
+   머리말). 흐르는 동안 끝 240px이 옅은 것은 아래 `stream-tail`이다. 채움(`fill-mode`)은 두지 않는다 — 늦음이 없어 보이는 값이 같고, 끝난 움직임이 남으면
+   WebKit이 프레임마다 그것을 모두 돌아 긴 답에서 프레임이 무거워진다(restart 01b-9). */
 @keyframes word-in {
     from {
         opacity: 0;
     }
 }
 @utility word-in {
-    animation: word-in var(--duration-arrive) var(--ease-arrive) both;
+    animation: word-in var(--duration-arrive) var(--ease-arrive);
 }
 
 /* **흐르는 답의 끝**(02 구현 스펙 §12 · Screen-Live 단계 5 `.tail` · research `codex-ui/gui.md` 「끝 약 240pt 구간이 … 아주 옅은 회색으로

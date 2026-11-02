@@ -1,10 +1,11 @@
-import { memo, useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import { memo, useEffect, useRef, useState, type ReactElement } from "react";
+import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Copy } from "lucide-react";
 import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
+import { continueBlocks, type BlockScan } from "./markdown-blocks";
 
 // Agent 답의 본문(v1 티켓 05 · 캔버스 Messages 보드 「Agent 답변」 · 「스트리밍」) — 말풍선 없이 본문 그대로다(14/22.75 · 블록 사이 12).
 // three-axes 답(`chat/ChatMarkdown.tsx`)을 옮겨 왔고, 달라진 것은 둘이다.
@@ -13,7 +14,10 @@ import { cn } from "@/lib/utils";
 //   .7s(`duration-arrive`) 동안 옅었다가 또렷해진다(`word-in`, index.css) — 깜빡이는 커서는 쓰지 않는다. 낱말을 감싸는 것은 hast 단계의
 //   작은 플러그인이다(`rehypeStream`): 렌더러는 같은 자리의 요소를 다시 쓰므로 이미 선 낱말은 다시 움직이지 않고, 끝에 붙은 낱말만 새로
 //   선다. **조각 사이 늦음은 없다** — 한 번에 온 낱말들이 함께 선다(Codex `fadeSegmentDelayMs` 0 — v1의 낱말마다 70ms 늦음을 걷었다).
-//   흐르는 동안은 마지막 글덩이의 끝 240px이 옅다(`stream-tail`). 턴이 끝나면 감싸지 않는다(낱말마다 요소를 두지 않게).
+//   흐르는 동안은 마지막 글덩이의 끝 240px이 옅다(`stream-tail`). 낱말이 다 서면 감쌈을 걷는다(낱말마다 요소를 두지 않게).
+// - **긴 답은 덩어리로 나눠 그린다**(restart 티켓 01b-9). 흐르는 글은 조각마다 다시 그리므로 글 전체를 풀면 글이 길어질수록 화면이 멎는다. 앞서 닫힌 덩어리는
+//   글이 그대로이니 건너뛰고 끝 덩어리만 다시 푼다(`markdownBlocks`). 닫힌 덩어리는 낱말의 움직임이 끝나면 감싸지 않은 모양으로 한 번 다시 그린다 — 흐름이
+//   끝날 때는 끝 덩어리만 남아 있어, 긴 답이 기록 줄이 되어도 다시 그리지 않는다.
 //
 // 링크는 바깥 URL만 연다 — Tauri 웹뷰에서 `<a>`가 그대로 주소를 바꾸면 앱이 그 페이지로 간다.
 
@@ -121,7 +125,7 @@ const NOT_TEXT = new Set(["pre", "table", "hr"]);
  * `stream-tail`을 단다 — 줄 상자는 모든 글덩이에 서 있어 마지막이 다음 글덩이로 넘어가도 같은 요소가 이름표만 바뀐다(낱말이 다시
  * 서지 않는다). 답이 코드 블록 · 표 · 가름선으로 끝나면 가릴 꼬리가 없다.
  */
-function rehypeStream() {
+function rehypeStream({ tail: marksTail }: { tail: boolean }) {
   const word = (value: string): HastNode => ({
     type: "element",
     tagName: "span",
@@ -152,21 +156,77 @@ function rehypeStream() {
       }
     };
     walk(tree);
-    if (tail !== null) (tail as HastNode).properties = { className: ["stream-tail"] };
+    if (marksTail && tail !== null) (tail as HastNode).properties = { className: ["stream-tail"] };
   };
 }
 
-/** 답 한 덩어리. 흐르는 동안 글이 늘 때마다 다시 그리므로 같은 글이면 건너뛴다. */
+const REMARK_PLUGINS: Options["remarkPlugins"] = [remarkGfm];
+/** 흐르는 답의 닫힌 덩어리 — 낱말을 감싸되 끝을 가리지 않는다. */
+const WORDS: Options["rehypePlugins"] = [[rehypeStream, { tail: false }]];
+/** 흐르는 답의 끝 덩어리. */
+const TAIL: Options["rehypePlugins"] = [[rehypeStream, { tail: true }]];
+
+/** 낱말이 다 서는 시간 — `duration-arrive`다(`tokens.test.ts`가 700ms를 지킨다). */
+const ARRIVE_MS = 700;
+
+interface MarkdownBlockProps {
+  text: string;
+  /** 흐르는 답의 덩어리인가 — 처음에 낱말을 감싼다. */
+  flowed: boolean;
+  /** 흐르는 답의 끝 덩어리인가. */
+  tail: boolean;
+}
+
+/** 덩어리 하나 — 글이 그대로면 다시 풀지 않는다. */
+const MarkdownBlock = memo(function MarkdownBlock({ text, flowed, tail }: MarkdownBlockProps) {
+  const [settled, setSettled] = useState(!flowed);
+  useEffect(() => {
+    if (tail || settled) return;
+    const timer = window.setTimeout(() => setSettled(true), ARRIVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [tail, settled]);
+  const plugins = tail ? TAIL : settled ? undefined : WORDS;
+  return (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={plugins} components={components}>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
+/** 상자 하나에 두는 덩어리 수 — 뒤의 덩어리는 이만큼씩 묶음 상자에 든다. 묶음은 처음부터 그 상자에 서므로 옮겨 그리는 일이 없다. */
+const GROUP_SIZE = 64;
+
+/** 덩어리 묶음 — WebKit은 flex 상자의 자식 하나가 바뀌어도 자식 모두를 다시 잰다. 긴 답의 자식 수를 줄인다. 틈은 바깥 상자와 같다. */
+const BlockGroup = memo(
+  function BlockGroup({ items }: { items: readonly ReactElement[] }) {
+    return <div className="flex min-w-0 flex-col gap-3">{items}</div>;
+  },
+  (a, b) => a.items.length === b.items.length && a.items.every((item, at) => item === b.items[at]),
+);
+
+/** 답 하나. 흐르는 동안 글이 늘 때마다 다시 그리므로 같은 글이면 건너뛴다. */
 function ThreadMarkdown({ text, streaming = false, className }: { text: string; streaming?: boolean; className?: string }) {
+  const scan = useRef<BlockScan | null>(null);
+  if (scan.current?.text !== text) scan.current = continueBlocks(scan.current, text);
+  const { blocks } = scan.current;
+  // 처음에 흘렀으면 기록 줄이 된 뒤에도 흐른 답이다 — 그려 둔 덩어리를 다시 그리지 않는다.
+  const [flowed] = useState(streaming);
+  // 그대로인 덩어리는 요소도 그대로 쓴다 — 덩어리가 수백 개인 긴 답에서는 조각마다 요소를 새로 짓는 값이 든다.
+  const made = useRef<ReactElement<MarkdownBlockProps>[]>([]);
+  const elements = blocks.map((block, at) => {
+    const tail = streaming && at === blocks.length - 1;
+    const had = made.current[at];
+    return had?.props.text === block && had.props.tail === tail ? had : <MarkdownBlock key={at} text={block} flowed={flowed} tail={tail} />;
+  });
+  made.current = elements;
+  const groups: ReactElement[] = [];
+  for (let at = GROUP_SIZE; at < elements.length; at += GROUP_SIZE) {
+    groups.push(<BlockGroup key={`group-${at}`} items={elements.slice(at, at + GROUP_SIZE)} />);
+  }
   return (
     <div className={cn("flex min-w-0 flex-col gap-3 wrap-anywhere", className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={streaming ? [rehypeStream] : undefined}
-        components={components}
-      >
-        {text}
-      </ReactMarkdown>
+      {elements.slice(0, GROUP_SIZE)}
+      {groups}
     </div>
   );
 }

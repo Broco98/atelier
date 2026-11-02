@@ -9,6 +9,7 @@ import {
   endNotice,
   finalFrom,
   finalMessages,
+  foldOf,
   foldThread,
   headline,
   keptFolded,
@@ -1688,5 +1689,98 @@ describe("Runtime 경고", () => {
     expect(turn.entries.filter(keptFolded).map((entry) => entry.kind)).toEqual(["warning"]);
     expect(workLine(turn)).toBeNull();
     expect(finalMessages(turn).map((entry) => entry.kind)).toEqual(["message"]);
+  });
+});
+
+// 흐르던 글과 그 기록 줄은 같은 자리에 선다(01b-9) — 화면이 흐름 번호로 둘을 잇는다. 번호는 `_meta.atelier.stream`이다(`crates/atelier-acp/src/host/chunks.rs`).
+describe("메시지 줄의 흐름 번호", () => {
+  const chunk = (seq: number, words: string, messageId: string, stream?: number): RecordLine => ({
+    seq,
+    at: "2026-11-02T12:00:00.000+09:00",
+    kind: "update",
+    payload: {
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId,
+        content: { type: "text", text: words },
+        ...(stream === undefined ? {} : { _meta: { atelier: { stream } } }),
+      },
+    },
+  });
+  const sent: RecordLine = { seq: 1, at: "2026-11-02T12:00:00.000+09:00", kind: "sent", payload: { text: "물음" } };
+
+  it("조각을 합친 줄의 메시지는 그 흐름의 번호를 든다", () => {
+    const [message] = foldThread([sent, chunk(2, "답", "m1", 7)]).turns[0].entries;
+
+    expect(message).toMatchObject({ kind: "message", text: "답", stream: 7 });
+  });
+
+  it("같은 메시지가 끊겨 두 흐름이 되면 첫 흐름의 번호를 지킨다", () => {
+    const { entries } = foldThread([sent, chunk(2, "앞", "m1", 7), chunk(3, "뒤", "m1", 8)]).turns[0];
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ text: "앞뒤", stream: 7 });
+  });
+
+  it("흐르지 않은 메시지에는 번호가 없다", () => {
+    const [message] = foldThread([sent, chunk(2, "답", "m1")]).turns[0].entries;
+
+    expect(message).not.toHaveProperty("stream");
+  });
+});
+
+// 기록 줄이 늘 때마다 접기는 새 값을 만든다. 달라지지 않은 턴은 앞의 값을 그대로 써야 화면이 그 턴을 다시 그리지 않는다(01b-9).
+describe("이어 접기", () => {
+  const at = "2026-11-02T12:00:00.000+09:00";
+  const sent = (seq: number, words: string): RecordLine => ({ seq, at, kind: "sent", payload: { text: words } });
+  const said = (seq: number, words: string): RecordLine => ({
+    seq,
+    at,
+    kind: "update",
+    payload: { update: { sessionUpdate: "agent_message_chunk", messageId: `m${seq}`, content: { type: "text", text: words } } },
+  });
+  const ended = (seq: number): RecordLine => ({
+    seq,
+    at,
+    kind: "turn-end",
+    payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
+  });
+  const opening = () => [sent(1, "앞 물음"), said(2, "앞 답"), ended(3), sent(4, "물음"), said(5, "먼저 온 글")];
+
+  it("줄이 더 와도 끝난 턴은 같은 값이다", () => {
+    const first = opening();
+    const before = foldOf(first, null);
+    const after = foldOf([...first, said(6, "뒤 글")], null);
+
+    expect(after.turns[0]).toBe(before.turns[0]);
+    expect(after.turns[1]).not.toBe(before.turns[1]);
+    expect(after.turns[1].entries).toHaveLength(2);
+    expect(after.turns[1].entries[0]).toBe(before.turns[1].entries[0]);
+  });
+
+  it("줄이 앞선 턴을 바꾸면 그 턴은 새 값이다", () => {
+    const first = opening();
+    const before = foldOf(first, null);
+    const vanished: RecordLine = { seq: 6, at, kind: "session", payload: { state: "died", reason: "끝남" } };
+    const after = foldOf([...first, vanished], null);
+
+    expect(after).toEqual(foldThread([...first, vanished]));
+    expect(after.turns[1]).not.toBe(before.turns[1]);
+  });
+
+  it("이은 값은 처음부터 접은 값과 같다", () => {
+    const first = opening();
+    foldOf(first, null);
+    const grown = [...first, said(6, "뒤 글"), ended(7)];
+
+    expect(foldOf(grown, null)).toEqual(foldThread(grown));
+  });
+
+  it("다른 기록의 앞 값은 쓰지 않는다", () => {
+    const one = foldOf(opening(), null);
+    const other = foldOf(opening(), null);
+
+    expect(other.turns[0]).not.toBe(one.turns[0]);
+    expect(other).toEqual(one);
   });
 });
