@@ -719,6 +719,9 @@ function WorksPage({
   //
   // **켜진 새 채팅 탭에 오른쪽 자리를 건넨다**(restart 02a-11) — 채팅 탭 몸과 같은 값(`right.card`)이라 요약 카드 · 넓힌 카드가 선다. 숨은 탭은
   // 받지 않는다 — 카드가 보이지 않는 곳에서 변경 · PR을 읽지 않게.
+  //
+  // **끌어다 놓기도 켜진 새 채팅 탭의 입력창만 듣는다**(restart 02a-16b · `shown`) — 놓기는 창 전체의 이벤트라 숨은 탭의 입력창이 들으면 보이지
+  // 않는 탭에도 첨부가 붙는다. 셸 · 파일 탭이 켜져 있으면 듣는 입력창이 없다(숨은 채팅 탭은 내려가 듣지 않는다).
   const visibleNewChat = newChatShown && tabOwner !== null ? activeTabOf(shellState, tabOwner) : null;
   const newChats =
     panelWork &&
@@ -729,6 +732,7 @@ function WorksPage({
               <WorkNewChat
                 work={panelWork.slug}
                 draftKey={newChatKey(one.id)}
+                shown={visibleNewChat?.id === one.id}
                 card={visibleNewChat?.id === one.id ? right.card : null}
                 onStarted={(started) => {
                   settleNewChat(one.id, started);

@@ -1781,6 +1781,18 @@ describe("WorksPage 새 채팅 탭", () => {
     expect(bodyOf(drawNewChat("terminal"), second)).toMatch(/^<div[^>]*class="hidden"/);
   });
 
+  // **끌어다 놓기는 켜진 탭의 입력창만 듣는다**(restart 02a-16b · 구현 스펙 「새 채팅의 글」 — 「글과 첨부의 열쇠를 탭마다 나눈다」). 놓기는 창 전체의
+  // 이벤트라(Tauri `onDragDropEvent`) 듣는 입력창 모두에 간다. 숨은 새 채팅 탭은 위처럼 내리지 않으므로, 그 입력창이 들으면 보이지 않는 탭에도
+  // 첨부가 붙는다(L3 `new-chat-tabs`). 셸 · 파일 탭이 켜져 있으면 듣는 입력창이 없다 — 숨은 채팅 탭은 내려가 듣지 않는다. 듣는 것은 이펙트라
+  // 정적 그림에 없어 화면 → 몸 → 입력창의 배선을 리터럴로 못박고, 손짓은 L3가 잰다.
+  it("숨은 새 채팅 탭의 입력창은 끌어다 놓기를 듣지 않는다 — 켜진 새 채팅 탭만 듣는다", () => {
+    const thread = (file: string) => readFileSync(fileURLToPath(new URL(`../thread/${file}`, import.meta.url)), "utf8");
+    expect(source("WorksPage.tsx")).toMatch(/<WorkNewChat\n\s+work=\{panelWork\.slug\}\n\s+draftKey=\{newChatKey\(one\.id\)\}\n\s+shown=\{visibleNewChat\?\.id === one\.id\}/);
+    expect(thread("ThreadScreen.tsx")).toMatch(/<NewChat\n\s+link=\{link\}[^]*?\n\s+drops=\{shown\}/);
+    expect(thread("ThreadScreen.tsx")).toMatch(/<ThreadComposer\n\s+draftKey=\{draftKey\}[^]*?\n\s+drops=\{drops\}/);
+    expect(thread("ThreadComposer.tsx")).toContain("useAttachmentDrop(drops && !busy && !carded, attach)");
+  });
+
   it("다른 작업공간의 새 채팅 탭은 이 화면에 꽂히지 않는다", () => {
     const other = openNewChatTab(terminalStore.state, ownerOf("다른-작업"));
     const theirs = activeIdOf(other, ownerOf("다른-작업")) ?? -1;

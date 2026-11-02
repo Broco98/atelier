@@ -193,15 +193,21 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
  * **요약 카드와 넓힌 카드가 선다**(restart 02a-11 · 구현 스펙 「02a — 오른쪽 자리」) — 작업공간 화면이 쥔 오른쪽 자리(`card`)를 채팅 탭 몸처럼
  * 받아 그린다. 숨은 탭은 받지 않는다(`null`). 아직 채팅이 없어 카드는 작업공간의 것이다 — 읽는 범위는 작업공간으로 읽고, 넓힌 카드의 문서
  * 인용은 이 탭의 글 열쇠(`draftKey`)로 붙는다. 터미널에서 만들어 채팅이 없는 작업공간도 첫 말 전에 문서를 읽는다.
+ *
+ * **끌어다 놓기는 켜진 탭만 듣는다**(restart 02a-16b · `shown`) — 놓기는 창 전체의 이벤트라 숨은 탭의 입력창이 들으면 보이지 않는 탭에도 첨부가
+ * 붙는다. 첨부는 글처럼 그 탭의 것이다(구현 스펙 「새 채팅의 글」).
  */
 export function WorkNewChat({
   work,
   draftKey,
+  shown,
   card,
   onStarted,
 }: {
   work: string;
   draftKey: string;
+  /** 이 탭이 켜져 보이나 — 숨은 탭의 입력창은 끌어다 놓기를 듣지 않는다. */
+  shown: boolean;
   card: ChatCard | null;
   onStarted: (id: string) => void;
 }) {
@@ -235,6 +241,7 @@ export function WorkNewChat({
           hold={holdOf({ link, service: null, project: null })}
           draftKey={draftKey}
           onStarted={onStarted}
+          drops={shown}
           beside={open}
           toasts={opened === null}
         />
@@ -254,6 +261,7 @@ function NewChat({
   draftKey,
   onStarted,
   onDropNewWork,
+  drops = true,
   beside = false,
   toasts = true,
 }: {
@@ -265,6 +273,8 @@ function NewChat({
   onStarted: (id: string) => void;
   /** 「새 작업공간」 칩의 × — `?new=work`로 연 홈만 준다. */
   onDropNewWork?: () => void;
+  /** 입력창이 끌어다 놓기를 듣나 — 숨은 새 채팅 탭(`WorkNewChat`)은 듣지 않는다. 홈은 늘 듣는다. */
+  drops?: boolean;
   /** 요약 카드가 열려 있나 — 물음 · 보낸 말 · 입력창의 열이 카드를 비켜난다(`Beside`). 카드는 작업공간의 새 채팅 탭에만 선다(restart 02a-11). */
   beside?: boolean;
   /** 안내 카드의 토스트가 이 몸 아래에 서나 — 넓힌 카드가 서 있으면 그 보기의 토스트 자리가 받는다(`ThreadBody`와 같다). */
@@ -340,6 +350,7 @@ function NewChat({
       running={false}
       busy={starting !== null}
       checking={engine.checking}
+      drops={drops}
       onSend={start}
       onNewThread={() => {}}
       runtime={{ value: runtime, onPick: pick }}

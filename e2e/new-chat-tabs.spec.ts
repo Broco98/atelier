@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_THREAD, WORKS } from "./fixtures";
+import { answerByArg, FIXTURE_THREAD, WORK_CHATS, WORKS, workChatAnswers } from "./fixtures";
 import {
   callCount,
   fireEventToAll,
@@ -8,6 +8,7 @@ import {
   holdCommand,
   installFixtureBackend,
   ipcArgs,
+  liveSubscriptions,
   openShell,
   releaseCommand,
   replaceAnswer,
@@ -221,6 +222,52 @@ test("새 채팅 탭에 끌어다 놓은 첨부는 그 탭의 것이다 — 다�
   await expect(칩들(page).getByRole("listitem")).toHaveText([/^shot\.png/]);
   await 새채팅칸(page, 0).click();
   await expect(칩들(page).getByRole("listitem")).toHaveText([/^error\.log/]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 끌어다 놓기는 켜진 탭의 입력창만 받는다(restart 02a-16b) — 채팅 탭이 켜져 있으면 그 채팅의 입력창에 붙고, 숨은 새 채팅 탭(내리지 않는다)과 숨은
+// 채팅 탭(내려간다)에는 붙지 않는다. 셸 탭이 켜져 있으면 보이는 입력창이 없어 듣는 자리도 없다 — 숨은 곳에 몰래 붙지 않는다. 듣는 자리의 수는
+// 창의 놓기 이벤트 구독으로 센다(놓기는 듣는 자리 모두에 간다 — 하나여야 한다).
+test("채팅 탭이 켜져 있으면 놓은 파일이 그 채팅의 입력창에만 붙고, 셸 탭이 켜져 있으면 어느 입력창에도 붙지 않는다 — 숨은 새 채팅 탭 · 숨은 채팅 탭에는 붙지 않는다", async ({
+  page,
+}) => {
+  const [chatA, chatB] = WORK_CHATS;
+  await installFixtureBackend(page, workChatAnswers());
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await expect(page).toHaveURL(주소(pinnedWork.slug, `tab=chat&thread=${chatB.id}`), { timeout: 20_000 });
+  // 숨을 탭 둘 — 새 채팅 탭(⌘T)과 첫째 채팅의 탭(사이드바). 그 뒤 둘째 채팅 탭을 켠다.
+  await 포커스를뺀다(page);
+  await page.keyboard.press("Meta+t");
+  await expect.poll(() => 칸차례(page)).toEqual([`chat:${chatB.id}`, "new-chat"]);
+  const 사이드바 = page.locator("aside[data-sidebar]");
+  await 사이드바.getByRole("button", { name: `${pinnedWork.title}의 채팅 펼치기`, exact: true }).click();
+  await 사이드바.locator(`[data-work-threads="${pinnedWork.slug}"]`).getByRole("button", { name: new RegExp(`^${chatA.title}`) }).click();
+  await expect.poll(() => 칸차례(page)).toEqual([`chat:${chatB.id}`, "new-chat", `chat:${chatA.id}`]);
+  const 채팅칸 = (id: string) => page.locator(`[data-tab="chat"][data-thread="${id}"] button[aria-pressed]`);
+  await 채팅칸(chatB.id).click();
+  await expect(page).toHaveURL(주소(pinnedWork.slug, `tab=chat&thread=${chatB.id}`));
+
+  // 채팅 탭이 켜져 있다 — 듣는 입력창은 그 채팅의 것 하나이고, 거기에만 붙는다.
+  expect(await liveSubscriptions(page, "tauri://drag-drop")).toBe(1);
+  await 놓는다(page, LOG);
+  await expect(칩들(page).getByRole("listitem")).toHaveText([/^error\.log/]);
+
+  // 셸 탭이 켜져 있다 — 듣는 입력창이 없다(숨은 새 채팅 탭도 듣지 않는다).
+  await openShell(page);
+  expect(await liveSubscriptions(page, "tauri://drag-drop")).toBe(0);
+
+  // 탭마다 돌아본다 — 둘째 채팅에는 놓은 첫 파일만, 숨어 있던 새 채팅 탭 · 첫째 채팅에는 아무것도 없다.
+  await 채팅칸(chatB.id).click();
+  await expect(칩들(page).getByRole("listitem")).toHaveText([/^error\.log/]);
+  await 새채팅칸(page, 0).click();
+  await expect(입력칸(page)).toBeVisible();
+  await expect(칩들(page)).toHaveCount(0);
+  expect(await liveSubscriptions(page, "tauri://drag-drop")).toBe(1);
+  await 채팅칸(chatA.id).click();
+  await expect(page).toHaveURL(주소(pinnedWork.slug, `tab=chat&thread=${chatA.id}`));
+  await expect(입력칸(page)).toBeVisible();
+  await expect(칩들(page)).toHaveCount(0);
+  expect(await callCount(page, "describe_attachments")).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
