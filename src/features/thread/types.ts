@@ -64,6 +64,9 @@ export interface QuitCounts {
 /** 모델 · 생각 깊이 바꾸기의 답에서 화면이 읽는 것 — 엔진은 바뀐 `thread.json` 전체를 돌려준다(`atelier_core::ThreadFile`). */
 export type ChipValues = Pick<ThreadView, "model" | "effort">;
 
+/** Codex 모드 바꾸기의 답에서 화면이 읽는 것 — 엔진은 바뀐 `thread.json` 전체를 돌려준다(restart 01c-5). */
+export type CodexModeValue = Pick<ThreadView, "codexMode">;
+
 /** Thread 하나의 지금(`atelier_acp::ThreadView`) — `thread.json`에 기록의 끝과 엔진의 살아 있는 상태를 더한 것. */
 export interface ThreadView {
   id: string;
@@ -73,6 +76,11 @@ export interface ThreadView {
   work: string | null;
   /** `thread.json`에 적힌 물어보는 정도 — Work가 없을 때만 쓴다(S18). 화면은 지금 정도(`askLevel`)를 읽는다. */
   mode: string | null;
+  /**
+   * Codex 모드(`thread.json`의 `codexMode`, restart 01c-5) — Codex가 `modes`로 보낸 id 하나다. Codex 채팅만 적고 없으면 칸째 빠진다(그때는 기본
+   * `workspace-write`로 연다 — `CODEX_DEFAULT_MODE`). 칩은 Codex가 알린 `currentModeId`가 아니라 이 값을 그린다.
+   */
+  codexMode?: string;
   /** Runtime 이름(`claude-code`) — 채팅 하나가 Runtime 세션 하나다. */
   runtime: string;
   /** Runtime의 세션 id. Session이 처음 열리면 선다. */

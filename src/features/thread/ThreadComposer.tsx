@@ -5,10 +5,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
-import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
+import { slashCommands, threadCommands, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
 import {
   AskChip,
+  CodexModeChip,
   LockedWorkChip,
   ModelChip,
   NewWorkChip,
@@ -16,17 +17,20 @@ import {
   ScopeChip,
   ScopeLineText,
   type ComposerTray,
+  type ModeChoice,
+  type ModelChoice,
   type RuntimeChoice,
 } from "./ComposerChips";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
 import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
 import type { Quote } from "@/features/works/QuotePick";
-import type { AskLevel, Attachment } from "./types";
+import type { Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · Screen-Live · v52 F4-KitComposer) — Codex
 // 입력창이다: 대화 열과 같은 737 폭에 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소
-// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6).
+// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 모드(Claude는 물어보는 정도, Codex는 Codex 모드) · 모델과 생각 깊이 칩뿐이다(03 §6 · restart 01c-5).
+// Runtime이 선언하지 않은 칩은 서지 않는다.
 // Work 칩은 상자 **밖** 트레이에 서고(씨앗 없는 새 채팅에는 없다), 새 채팅이면 범위 칩 · 범위 줄이 곁에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
@@ -38,6 +42,7 @@ import type { AskLevel, Attachment } from "./types";
 //   말과 함께 가고, 엔진이 그 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 둔다.
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/plan`은 물어보는 정도를 「계획」으로 바꾸고,
 //   `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이 된다.
+//   `/plan` · `/policy`는 물어보는 정도 칩이 설 때만 선다 — Codex 채팅에서는 Codex의 `/plan`이 그 이름으로 선다(`threadCommands`).
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
 // - **움직임**(v1 티켓 43 · 02 §12 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜),
@@ -62,11 +67,10 @@ const PLACEHOLDER = {
 export interface ThreadComposerProps {
   /** 입력 중인 글의 열쇠 — Thread id, 새 Thread면 `NEW_THREAD`. */
   draftKey: string;
-  models: readonly ChoiceOption[] | null;
-  model: string | null;
-  effort: string | null;
-  onModel: (value: string) => void;
-  onEffort: (value: string) => void;
+  /** 모드 칩(restart 01c-5) — Claude Code는 물어보는 정도(v1 티켓 23 — `/plan` · `/policy`가 바꾼다), Codex는 Codex 모드다. 없으면 서지 않는다. */
+  mode: ModeChoice | null;
+  /** 모델과 생각 깊이 칩 — 없으면 서지 않는다(첫 말 전 Codex · Runtime이 모델을 선언하지 않았다). */
+  model: ModelChoice | null;
   /** Runtime이 보낸 「/」 명령 — 화면 명령(`/new`) 뒤에 붙는다. */
   commands: readonly CommandOption[];
   running: boolean;
@@ -84,9 +88,6 @@ export interface ThreadComposerProps {
   onNewThread: () => void;
   /** 화면이 바깥에서 보이는 거절 글(이름 바꾸기 · 칩) — 입력창 아래에 함께 선다. */
   problem?: string | null;
-  /** 지금 물어보는 정도(v1 티켓 23) — 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
-  level: AskLevel;
-  onLevel: (level: AskLevel) => void;
   /** 트레이(03 §5) — 첫 화면은 상자 아래, Thread 화면은 상자 위에 서는 회색 띠다. 입력창 자리에 카드가 서면 함께 걷힌다. */
   tray?: ComposerTray;
   /** 비어 있을 때의 말 — 새 채팅이 시작할 곳을 따른다(`startPlaceholder`). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
@@ -100,11 +101,8 @@ export interface ThreadComposerProps {
 
 function ThreadComposer({
   draftKey,
-  models,
+  mode,
   model,
-  effort,
-  onModel,
-  onEffort,
   commands,
   running,
   stopped = false,
@@ -115,8 +113,6 @@ function ThreadComposer({
   onStop,
   onNewThread,
   problem: outside = null,
-  level,
-  onLevel,
   tray,
   placeholder,
   runtime,
@@ -133,7 +129,8 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const all = useMemo(() => slashCommands(commands), [commands]);
+  const modeKind = mode?.kind ?? null;
+  const all = useMemo(() => slashCommands(commands, threadCommands(modeKind && { kind: modeKind })), [commands, modeKind]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
   const active = pointer.query === query ? Math.min(pointer.at, Math.max(items.length - 1, 0)) : 0;
@@ -151,7 +148,7 @@ function ThreadComposer({
     }
     if (command.thread && command.name === "plan") {
       setDraft(draftKey, "");
-      if (level !== "plan") onLevel("plan");
+      if (mode?.kind === "ask" && mode.level !== "plan") mode.onLevel("plan");
       field.current?.focus();
       return;
     }
@@ -162,8 +159,8 @@ function ThreadComposer({
     }
     if (command.thread && command.name === "model") {
       setDraft(draftKey, "");
-      // 칩이 보이기만 할 때(고를 목록이 없다)는 열 메뉴가 없다 — 입력칸으로 돌아간다.
-      if (models && models.length > 0) setChoosingModel(true);
+      // 칩이 없거나 보이기만 할 때(고를 목록이 없다)는 열 메뉴가 없다 — 입력칸으로 돌아간다.
+      if (model?.models && model.models.length > 0) setChoosingModel(true);
       else field.current?.focus();
       return;
     }
@@ -332,19 +329,11 @@ function ThreadComposer({
             </button>
             {/* 첫 말을 보내는 중(Screen-Live 단계 1)에는 칩이 옅게 쉰다 — 고른 것은 이미 첫 말과 함께 떠났다. */}
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", busy && "pointer-events-none opacity-50")}>
-              <AskChip level={level} onLevel={onLevel} open={asking} onOpenChange={setAsking} />
+              {mode?.kind === "ask" && <AskChip level={mode.level} onLevel={mode.onLevel} open={asking} onOpenChange={setAsking} />}
+              {mode?.kind === "codex" && <CodexModeChip {...mode} />}
               <span className="min-w-0 flex-1" />
               {runtime && <RuntimeChip value={runtime.value} onPick={busy ? undefined : runtime.onPick} />}
-              <ModelChip
-                models={models}
-                model={model}
-                effort={effort}
-                running={running}
-                onModel={onModel}
-                onEffort={onEffort}
-                open={choosingModel}
-                onOpenChange={setChoosingModel}
-              />
+              {model && <ModelChip {...model} running={running} open={choosingModel} onOpenChange={setChoosingModel} />}
             </span>
             <SendButton running={running} empty={empty} busy={busy} onStop={onStop && stop} />
           </div>

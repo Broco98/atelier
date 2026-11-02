@@ -23,7 +23,7 @@ import { placeOf } from "./approval";
 import { askTurn, nextOf } from "./asks";
 import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
-import { chipLists, CLAUDE_MODELS, currentModel, newThreadLevel } from "./chips";
+import { chipLists, newThreadChips, newThreadLevel, pickRuntime, threadChips, type NewThreadPicks } from "./chips";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
 import { foldOf, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
@@ -34,6 +34,7 @@ import {
   useQueue,
   useReconnect,
   useRenameThread,
+  useSetCodexMode,
   useSetMode,
   useThread,
   useThreads,
@@ -47,7 +48,7 @@ import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
-import { DEFAULT_RUNTIME, runtimeNameOf, type Runtime } from "./runtime";
+import { DEFAULT_RUNTIME, runtimeNameOf } from "./runtime";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
@@ -55,8 +56,8 @@ import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
-import type { AskLevel, Attachment, StartPicks, ThreadView } from "./types";
-import type { ComposerTray, ScopeChoice } from "./ComposerChips";
+import type { AskLevel, Attachment, ThreadView } from "./types";
+import type { ComposerTray, ModeChoice, ModelChoice, ScopeChoice } from "./ComposerChips";
 import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
 import { HeadWork, ServiceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { headService, heldScope, holdOf, holdPick, scopeArgs, shownScope, startScope } from "./service-chip";
@@ -164,12 +165,14 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
   };
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「편집 자동」, `?work=`면
-  // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다.
-  const [picks, setPicks] = useState<Omit<StartPicks, "runtime" | "service" | "project">>({ mode: null, model: null, effort: null });
-  // 이 채팅을 돌릴 Runtime(스토리 30) — 새 채팅에서만 고르고 첫 말과 함께 간다. 첫 말을 보내면 입력창이 칩을 잠근다(스토리 31).
-  const [runtime, setRuntime] = useState<Runtime>(DEFAULT_RUNTIME);
+  // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다. Runtime(스토리 30)은 새 채팅에서만 고르고 첫 말과 함께 간다 —
+  // 첫 말을 보내면 입력창이 칩을 잠근다(스토리 31). Runtime을 바꾸면 고른 모델과 생각 깊이를 비운다(`pickRuntime`).
+  const [picks, setPicks] = useState<NewThreadPicks>(NO_PICKS);
+  const runtime = picks.runtime;
   const workLevel = useWorkMode(work);
   const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel, runtime);
+  // 칩은 Runtime대로 선다 — 첫 말 전 Codex는 모델 칩 없이 기본 모드만 메뉴 없이 선다(Composer 「첫 말 전 Codex」).
+  const chips = newThreadChips(runtime, picks, level);
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
   const guide = guideKind(engine, false);
@@ -178,7 +181,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
     setStarting({ text, attachments });
     let id: string;
     try {
-      id = await threadApi.start(text, attachments, link, { ...picks, runtime, mode, ...startScope(link, hold, shown) });
+      id = await threadApi.start(text, attachments, link, { ...picks, mode, ...startScope(link, hold, shown) });
     } catch (error) {
       setStarting(null);
       throw error;
@@ -189,8 +192,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
       if (router.state.location.pathname !== "/") return;
       setStarting(null);
       setHold(holdOf(seed));
-      setPicks({ mode: null, model: null, effort: null });
-      setRuntime(DEFAULT_RUNTIME);
+      setPicks(NO_PICKS);
     });
   };
 
@@ -201,19 +203,21 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
   const composer = (
     <ThreadComposer
       draftKey={NEW_THREAD}
-      models={CLAUDE_MODELS}
-      model={picks.model ?? "default"}
-      effort={picks.effort}
-      onModel={(model) => setPicks((now) => ({ ...now, model }))}
-      onEffort={(effort) => setPicks((now) => ({ ...now, effort }))}
+      mode={withActions(chips.mode, (mode) => setPicks((now) => ({ ...now, mode })), () => {})}
+      model={
+        chips.model && {
+          ...chips.model,
+          runtime,
+          onModel: (model) => setPicks((now) => ({ ...now, model })),
+          onEffort: (effort) => setPicks((now) => ({ ...now, effort })),
+        }
+      }
       commands={[]}
       running={false}
       busy={starting !== null}
       onSend={start}
       onNewThread={() => {}}
-      level={level}
-      onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
-      runtime={{ value: runtime, onPick: setRuntime }}
+      runtime={{ value: runtime, onPick: (next) => setPicks((now) => pickRuntime(now, next)) }}
       // 트레이는 첫 말 전에 상자 아래에서 범위를 고르고, 씨앗이 있으면 그 앞에 Work 칩이 선다. 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의
       // 입력창처럼 상자 위에서 잠긴다. 범위 칩은 첫 말 뒤에 서지 않는다.
       tray={starting === null ? { at: "below", work: seeded, scope } : { at: "above", work: locked }}
@@ -258,6 +262,19 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
       </ArrivalScope>
     </PlainFrame>
   );
+}
+
+/** 새 채팅의 처음 칩 — Claude Code, 고른 것 없음. */
+const NO_PICKS: NewThreadPicks = { runtime: DEFAULT_RUNTIME, mode: null, model: null, effort: null };
+
+/** 모드 칩의 값에 고르기를 붙인다 — 물어보는 정도는 `onLevel`, Codex 모드는 `onPick`이다. */
+function withActions(
+  mode: ReturnType<typeof threadChips>["mode"],
+  onLevel: (level: AskLevel) => void,
+  onPick: (mode: string) => void,
+): ModeChoice | null {
+  if (mode === null) return null;
+  return mode.kind === "ask" ? { ...mode, onLevel } : { ...mode, onPick };
 }
 
 /** Thread 하나(`/threads/<id>`). */
@@ -507,8 +524,10 @@ function ThreadBody({
   // 다시 켠 뒤면 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model: ThreadModel = foldOf(lines, view.live ? null : view.lastSeq);
   const lists = useMemo(() => chipLists(lines), [lines]);
+  const chips = threadChips(view, lists);
   const change = useChangeChip();
   const setMode = useSetMode();
+  const setCodexMode = useSetCodexMode();
   const reconnect = useReconnect(thread);
   const [chipProblem, setChipProblem] = useState<string | null>(null);
   const queue = useQueue(view);
@@ -622,6 +641,17 @@ function ThreadBody({
     change.mutate({ thread, change: next }, { onError: (failure) => setChipProblem(String(failure)) });
   };
 
+  const pickCodexMode = (mode: string) => {
+    setChipProblem(null);
+    setCodexMode.mutate({ thread, mode }, { onError: (failure) => setChipProblem(String(failure)) });
+  };
+  const modelChoice: ModelChoice | null = chips.model && {
+    ...chips.model,
+    runtime: view.runtime,
+    onModel: (value) => chip({ field: "model", value }),
+    onEffort: (value) => chip({ field: "effort", value }),
+  };
+
   if (guide) {
     return (
       <GuidePlace>
@@ -665,12 +695,9 @@ function ThreadBody({
           <Beside open={beside}>
             <ThreadComposer
               draftKey={thread}
-              // Session을 연 적 없는 채팅(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
-              models={lists.models ?? CLAUDE_MODELS}
-              model={currentModel(lists, view)}
-              effort={view.effort}
-              onModel={(value) => chip({ field: "model", value })}
-              onEffort={(value) => chip({ field: "effort", value })}
+              // 칩은 그 채팅의 Runtime대로 선다(`threadChips`) — Claude는 물어보는 정도, Codex는 채팅 파일의 Codex 모드와 Codex가 보낸 목록이다.
+              mode={withActions(chips.mode, pickLevel, pickCodexMode)}
+              model={modelChoice}
               commands={lists.commands}
               running={model.running}
               stopped={stopped}
@@ -681,8 +708,6 @@ function ThreadBody({
               onStop={() => threadApi.stop(thread)}
               onNewThread={() => void navigate({ to: "/" })}
               problem={problem ?? chipProblem}
-              level={view.askLevel}
-              onLevel={pickLevel}
               tray={tray}
               // 턴이 시작된 채팅의 Runtime은 잠겨 있다(스토리 31) — 이름만 선다.
               runtime={{ value: view.runtime }}

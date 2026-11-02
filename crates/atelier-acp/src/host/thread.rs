@@ -76,6 +76,9 @@ use tool_lines::ToolLines;
 const TITLE_LIMIT: usize = 40;
 /// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// 새 Codex 채팅의 모드(restart 스펙 「01c — Codex」 모드) — 「Workspace access」. 작업공간 밖 쓰기를 샌드박스가 막는다. codex-acp의 기본
+/// `agent`(Auto review)는 Guardian이 판단해 앱의 경계를 지나지 않고 쓸 수 있어 쓰지 않는다. `codexMode`가 없는 채팅 파일도 이것으로 연다.
+const CODEX_DEFAULT_MODE: &str = "workspace-write";
 /// 머리말의 첫 줄 — 기록에서 머리말 블록을 알아본다([`service::heard_service`]).
 const PREAMBLE_HEAD: &str = "Atelier Thread 안에서 열린 Session이다.";
 /// 「새 작업공간」 칩을 둔 채 시작한 Thread의 첫 머리말 끝 줄(v1 티켓 31 · §11) — 받은 Agent가 Work부터 만든다.
@@ -99,8 +102,8 @@ pub enum ThreadLink {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StartPicks {
     /// 채팅을 돌릴 Runtime(restart 스펙 「01c — Codex」) — 새 채팅에서만 고르고, 채팅의 값(`thread.json`의 `runtime`)으로 서서 바꿀 수 없다.
-    /// 기본은 Claude Code다. Codex 채팅은 아래의 모델 · 생각 깊이를 받지 않는다 — claude `--model` · `--effort`의 값이다(Codex의 칩은
-    /// 01c-5가 `configOptions`로 짓는다).
+    /// 기본은 Claude Code다. Codex 채팅은 아래의 정도 · 모델 · 생각 깊이를 받지 않는다 — 정도는 작업공간이 함께 쓰는 Claude의 값이고, 모델 · 생각
+    /// 깊이는 claude `--model` · `--effort`의 값이다. Codex의 목록은 Session이 열려야 오므로 첫 말 뒤에 칩에서 고른다(restart 01c-5).
     pub runtime: Runtime,
     /// 물어보는 정도 — Work 없는 Thread면 `thread.json`의 `mode`로 서고, 이은 Work면 다를 때 그 Work의 정도가 된다(S18). 화면은 새 Claude
     /// 채팅이면 칩에 보이는 값을 늘 보낸다. 엔진은 기본값을 정하지 않는다 — `None`은 적지 않고, 없는 값은 `always`로 읽는다.
@@ -206,6 +209,8 @@ pub(super) struct Threads {
 pub(super) struct Session {
     pub(super) agent: AgentProcess,
     pub(super) conv: Arc<Conv>,
+    /// 그 Session의 Runtime — 작업공간의 물어보는 정도를 따르는 것은 Claude Code Session뿐이다(restart 01c-5).
+    runtime: Runtime,
     /// 그 Session의 쓰기 자리 손(v1 티켓 18) — 런타임의 판정과 턴 끝을 보는 sink가 함께 쥔다. 사람의 권한 답이 이것으로 자리를 쥔다.
     writer: Arc<Writer>,
     /// 그 Session의 Thread 도구 소켓 — 쥐고만 있다: 프로세스와 함께 놓여 치워진다. 중계 서버 명령이 없거나 열지 못했으면 없다.
@@ -243,11 +248,12 @@ impl Threads {
         self.lock_sessions().get(thread).map(|session| Arc::clone(&session.conv))
     }
 
-    /// 그 Work에 이어 열린 떠 있는 Session들 — Work의 물어보는 정도를 함께 쓴다(S18 · v1 티켓 23).
-    fn of_work(&self, work: &str) -> Vec<String> {
+    /// 그 Work에 이어 열린 떠 있는 Claude Code Session들 — Work의 물어보는 정도를 함께 쓴다(S18 · v1 티켓 23). Codex 세션은 그 값을 읽지 않는다 —
+    /// 모드는 채팅마다의 Codex 모드다(restart 01c-5).
+    fn claude_of_work(&self, work: &str) -> Vec<String> {
         self.lock_sessions()
             .iter()
-            .filter(|(_, session)| session.writer.work().as_deref() == Some(work))
+            .filter(|(_, session)| session.runtime == Runtime::ClaudeCode && session.writer.work().as_deref() == Some(work))
             .map(|(thread, _)| thread.clone())
             .collect()
     }
@@ -378,8 +384,11 @@ impl ConversationHost {
         link: ThreadLink,
         mut picks: StartPicks,
     ) -> Result<String, HostError> {
+        // Codex 채팅은 claude의 모델 · 생각 깊이를 받지 않고(첫 말 전에는 Codex의 목록이 없다), 작업공간이 함께 쓰는 물어보는 정도도 보내지 않는다 —
+        // 보내면 같은 작업공간의 Claude 채팅이 쓰는 값이 바뀐다. 모드는 채팅 파일의 Codex 모드이고 기본은 Workspace access다.
+        let codex_mode = (picks.runtime == Runtime::Codex).then(|| CODEX_DEFAULT_MODE.to_owned());
         if picks.runtime == Runtime::Codex {
-            (picks.model, picks.effort) = (None, None);
+            (picks.model, picks.effort, picks.mode) = (None, None, None);
         }
         if let Some(effort) = picks.effort.as_deref().filter(|effort| !EFFORTS.contains(effort)) {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
@@ -415,6 +424,7 @@ impl ConversationHost {
             title: title_of(text),
             work: work.clone(),
             mode,
+            codex_mode,
             new_work,
             service,
             project,
@@ -662,7 +672,12 @@ impl ConversationHost {
     ///
     /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정하고, 「계획」
     /// 으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 모드도 곧바로 바꾼다(v1 티켓 23 — [`Self::retune_sessions`]).
+    ///
+    /// Codex 채팅이면 아무것도 바꾸지 않고 거절한다 — 그 채팅은 이 값을 읽지 않고, 바꾸면 같은 작업공간의 Claude 채팅이 쓰는 값이 바뀐다(restart 01c-5).
     pub fn set_thread_mode(&self, thread: &str, mode: AskLevel) -> Result<(), HostError> {
+        if runtime_of(thread, &self.read_thread_file(thread)?)? == Runtime::Codex {
+            return Err(HostError::Setting("Codex 채팅은 물어보는 정도를 쓰지 않아요 — Codex 모드로 바꿔요".into()));
+        }
         let (file, before) = self.store_thread_mode(thread, mode)?;
         if before.claude_mode() == mode.claude_mode() {
             return Ok(());
@@ -702,21 +717,22 @@ impl ConversationHost {
     }
 
     /// 그 정도를 쓰는 떠 있는 Session의 `claude` 권한 모드를 맞춘다(S17 · v1 티켓 23) — 그 Thread와, Work에 이었으면 그 Work에 이어 열린
-    /// 다른 Thread의 Session들. 다시 띄우지 않고 `session/set_mode`를 넣는다 — 턴이 돌고 있으면 그 턴의 다음 도구부터 든다.
+    /// 다른 Thread의 Session들. Codex 세션은 건너뛴다 — Claude의 모드를 모르고, 제 모드는 채팅마다의 Codex 모드다(restart 01c-5). 다시 띄우지 않고 `session/set_mode`를 넣는다 — 턴이 돌고 있으면 그 턴의 다음 도구부터 든다.
     /// 넣은 바꾸기는 그 Session의 `config` 줄로 남는다. 떠 있지 않은 Session은 다음에 열 때 이 정도로 뜬다.
     ///
     /// 되살리는 중인 Session은 그 끝을 기다린다 — 옛 정도로 열리는 중일 수 있다. 한 Session이 거절해도 나머지는 바꾸고, 처음 거절의
     /// 까닭으로 실패한다(정도는 이미 바뀌었다 — 판정은 요청마다 그것을 읽는다).
     fn retune_sessions(&self, thread: &str, file: &ThreadFile, mode: AskLevel) -> Result<(), HostError> {
-        let mut threads = vec![thread.to_owned()];
+        let claude = Runtime::of(file.runtime.as_deref().unwrap_or_default()) == Some(Runtime::ClaudeCode);
+        let mut threads: Vec<String> = claude.then(|| thread.to_owned()).into_iter().collect();
         if let Some(slug) = &file.work {
-            for other in self.threads.of_work(slug) {
+            for other in self.threads.claude_of_work(slug) {
                 if !threads.contains(&other) {
                     threads.push(other);
                 }
             }
         }
-        let setting = Setting::Mode(mode.claude_mode());
+        let setting = Setting::Mode(mode.claude_mode().to_owned());
         let mut refused = None;
         for thread in threads {
             let gate = self.revival_gate(&thread);
@@ -746,6 +762,26 @@ impl ConversationHost {
     ///
     /// 답은 바뀐 채팅의 값이다. 막히는 호출이다 — 엔진의 답을 기다린다(한도 10초). 되살리는 중이면 그 끝을 기다린다.
     pub fn set_thread_model(&self, thread: &str, model: &str) -> Result<ThreadFile, HostError> {
+        self.put_setting(thread, Setting::Model(model.to_owned()), |file| file.model = Some(model.to_owned()))
+    }
+
+    /// Codex 모드 바꾸기(restart 01c-5 · 스토리 24 · 26) — 그 Codex 채팅의 모드(Codex가 `modes`로 보낸 id 하나)를 바꾼다. 채팅마다의 값이라 같은
+    /// 작업공간의 다른 채팅에는 들지 않는다.
+    ///
+    /// - Session이 떠 있으면 `session/set_mode`로 곧바로 넣고 답을 기다린다 — 받지 않으면 아무것도 바꾸지 않는다. 넣은 바꾸기는 `config` 줄로 남는다.
+    /// - 떠 있지 않으면 `thread.json`에만 남고, 열 때 넣는다([`settle_codex`]).
+    ///
+    /// Claude Code 채팅이면 거절한다 — 그 모드는 물어보는 정도가 정한다. 답은 바뀐 채팅의 값이다.
+    pub fn set_thread_codex_mode(&self, thread: &str, mode: &str) -> Result<ThreadFile, HostError> {
+        if runtime_of(thread, &self.read_thread_file(thread)?)? != Runtime::Codex {
+            return Err(HostError::Setting("Codex 모드는 Codex 채팅에만 있어요".into()));
+        }
+        self.put_setting(thread, Setting::Mode(mode.to_owned()), |file| file.codex_mode = Some(mode.to_owned()))
+    }
+
+    /// 채팅의 설정 하나를 바꾼다 — 떠 있는 Session이면 곧바로 넣고(받지 않으면 아무것도 바꾸지 않는다) `config` 줄을 남기고, 채팅의 값(`store`)을
+    /// 고쳐 쓴다. 떠 있지 않으면 채팅의 값만 고친다 — 열 때 든다. 되살리는 중이면 그 끝을 기다린다.
+    fn put_setting(&self, thread: &str, setting: Setting, store: impl FnOnce(&mut ThreadFile)) -> Result<ThreadFile, HostError> {
         let gate = self.revival_gate(thread);
         let _not_while_reviving = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         self.read_thread_file(thread)?;
@@ -757,12 +793,11 @@ impl ConversationHost {
             Some((conv, turns))
         });
         let _one_at_a_time = running.as_ref().map(|(conv, _)| conv.setting.lock().unwrap_or_else(|p| p.into_inner()));
-        let setting = Setting::Model(model.to_owned());
         if let Some((_, turns)) = &running {
             let (method, fields) = setting.request();
             turns.change(method, fields, SETTING_LIMIT).map_err(HostError::Setting)?;
         }
-        let file = self.change_thread(thread, |file| file.model = Some(model.to_owned()))?;
+        let file = self.change_thread(thread, store)?;
         if let Some((conv, _)) = &running {
             conv.recorder.config(setting.changed()).map_err(HostError::Record)?;
         }
@@ -777,7 +812,13 @@ impl ConversationHost {
     /// - 턴이 도는 동안은 거절한다 — 다시 띄우면 그 턴이 끊긴다. 입력창 칩도 그동안 잠긴다.
     ///
     /// 답은 바뀐 채팅의 값이다. 다시 띄우면 막히는 호출이다(Session이 열릴 때까지).
+    ///
+    /// Codex 채팅의 생각 깊이는 Codex의 `reasoning_effort`다(restart 01c-5) — 모델처럼 떠 있는 Session에 곧바로 넣고 다시 띄우지 않는다. 값은 Codex가
+    /// 보낸 목록의 것이라 엔진이 거르지 않는다 — 받지 않으면 Codex가 거절한다.
     pub fn set_thread_effort(&self, thread: &str, effort: &str) -> Result<ThreadFile, HostError> {
+        if runtime_of(thread, &self.read_thread_file(thread)?)? == Runtime::Codex {
+            return self.put_setting(thread, Setting::Effort(effort.to_owned()), |file| file.effort = Some(effort.to_owned()));
+        }
         if !EFFORTS.contains(&effort) {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
@@ -1055,7 +1096,7 @@ impl ConversationHost {
         let tool_lines = Arc::new(ToolLines::default());
         let sink = self.reading_prs(tool_lines.watching(writer.watching(conv.sink())), &writer);
         let opened = runtime::open(launch, at, terms, limit, sink, record_opened(&conv));
-        let (agent, opened) = match opened {
+        let (mut agent, opened) = match opened {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {
                 recorder.session(SessionState::LoginRequired).map_err(HostError::Record)?;
@@ -1070,6 +1111,17 @@ impl ConversationHost {
                 return Err(HostError::Open { thread: thread.to_owned(), reason });
             }
         };
+        // Codex는 연 뒤에 채팅의 값을 넣는다 — 새로 열든 되살리든 모드가 풀려 있다(restart 스펙 「01c — Codex」 모드). 받지 않으면 턴을 열지 않는다:
+        // 모드가 풀린 채 턴이 돌면 경계가 사라진다. Session을 끄고 죽음 줄에 까닭을 적는다 — 보내던 말은 가지 않았고 다음 말이 다시 띄운다.
+        if runtime == Runtime::Codex {
+            if let Err(reason) = settle_codex(&agent, &conv, file) {
+                end_together(vec![(&mut agent, &*conv)]);
+                recorder
+                    .session(SessionState::Died { reason: reason.clone(), stderr_tail: Vec::new() })
+                    .map_err(HostError::Record)?;
+                return Err(HostError::Open { thread: thread.to_owned(), reason });
+            }
+        }
         // 그 Session의 첫 말이면 머리말을 붙인다(S10) — 새로 섰거나, 되살린 Session이 아직 말을 받은 적이 없다. 작업 폴더가 바뀌어
         // 옮겨 연 Session에도 붙인다(v1 티켓 32) — 이은 Work · 새 worktree · 읽기만 폴더를 그 Agent가 알게.
         let heard = self.read_thread_record(thread, 0)?;
@@ -1086,7 +1138,7 @@ impl ConversationHost {
             file.cwd = Some(place.cwd.clone());
             file.additional_directories = place.additional_directories.clone();
         })?;
-        self.threads.put(thread.to_owned(), Session { agent, conv, writer, _tools: tools, tool_lines });
+        self.threads.put(thread.to_owned(), Session { agent, conv, runtime, writer, _tools: tools, tool_lines });
         Ok(())
     }
 
@@ -1278,6 +1330,24 @@ fn runtime_of(thread: &str, file: &ThreadFile) -> Result<Runtime, HostError> {
     let value = file.runtime.as_deref().unwrap_or_default();
     Runtime::of(value)
         .ok_or_else(|| HostError::Open { thread: thread.to_owned(), reason: format!("이 판이 모르는 Runtime이에요: {value}") })
+}
+
+/// 막 연 Codex Session에 채팅의 값을 넣는다(restart 01c-5) — Codex 모드(늘, 없으면 기본값)와 사람이 고른 모델 · 생각 깊이(있으면). 넣은 것마다
+/// `config` 줄을 남긴다. 하나라도 받지 않으면 거기서 멈추고 안내 글을 돌려준다 — 칩은 채팅의 값을 그리므로, 넣지 못한 값으로 턴이 돌면 칩이 거짓을 말한다.
+fn settle_codex(agent: &AgentProcess, conv: &Conv, file: &ThreadFile) -> Result<(), String> {
+    let mode = file.codex_mode.clone().unwrap_or_else(|| CODEX_DEFAULT_MODE.to_owned());
+    let mut settings = vec![Setting::Mode(mode)];
+    settings.extend(file.model.clone().map(Setting::Model));
+    settings.extend(file.effort.clone().map(Setting::Effort));
+    let turns = agent.turns().ok_or_else(|| "Codex Session이 열리자마자 닫혔어요".to_owned())?;
+    for setting in settings {
+        let (method, fields) = setting.request();
+        turns
+            .change(method, fields, SETTING_LIMIT)
+            .map_err(|why| format!("Codex가 {}를 받지 않아 턴을 시작하지 않았어요 — {why}", setting.described()))?;
+        conv.recorder.config(setting.changed())?;
+    }
+    Ok(())
 }
 
 /// 그 Session이 연 자리(`thread.json`)가 지금 자리와 다른가(v1 티켓 32) — 처음 열기 전(작업 폴더가 없다)이면 다르지 않다.

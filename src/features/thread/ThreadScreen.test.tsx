@@ -50,10 +50,18 @@ const chat: ThreadView = {
   flowing: null,
 };
 
-function draw(view: ThreadView): string {
+const codexRecord: RecordLine[] = readFileSync(
+  fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-codex.jsonl", import.meta.url)),
+  "utf8",
+)
+  .split("\n")
+  .filter((line) => line.trim() !== "")
+  .map((line) => JSON.parse(line) as RecordLine);
+
+function draw(view: ThreadView, lines: RecordLine[] = blessed): string {
   const client = new QueryClient();
   client.setQueryData(threadQuery(view.id).queryKey, view);
-  mergeLines(view.id, blessed);
+  mergeLines(view.id, lines);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ThreadScreen thread={view.id} />
@@ -93,6 +101,26 @@ describe("채팅 화면", () => {
       expect(html, runtime).toContain(`aria-label="Runtime ${name}"`);
       expect(html, runtime).not.toContain('aria-label="Runtime:');
     }
+  });
+
+  // restart 01c-5 · 스토리 24 · 26 · 34 — Codex 채팅의 칩은 Codex가 보낸 대로 선다. 모드 칩의 값은 Codex가 알린 `currentModeId`(agent — 「Auto review」)가
+  // 아니라 채팅 파일의 Codex 모드다.
+  it("Codex 채팅은 채팅 파일의 모드와 Codex가 보낸 모델 · 생각 깊이를 칩에 세운다 — 물어보는 정도 칩이 없다", () => {
+    const view: ThreadView = { ...chat, id: "20261010-100020", runtime: "codex", codexMode: "read-only", model: null, effort: null, lastSeq: 23 };
+    const html = draw(view, codexRecord);
+    const chip = /<button\b[^>]*aria-label="Codex 모드 Read-only"[^>]*>/.exec(html)?.[0];
+    expect(chip).toContain("aria-haspopup");
+    expect(html).not.toContain("Auto review");
+    expect(html).not.toContain("물어보는 정도");
+    expect(html).toContain('aria-label="모델과 생각 깊이 6.1 Sol · Xhigh"');
+  });
+
+  it("Codex 채팅의 「/」 메뉴는 Codex가 보낸 명령을 보인다", () => {
+    const view: ThreadView = { ...chat, id: "20261010-100021", runtime: "codex", lastSeq: 23 };
+    setDraft(view.id, "/");
+    const html = draw(view, codexRecord);
+    expect(html).toContain("Turn plan mode on.");
+    expect(html).not.toContain("계획만 세우고 멈추기");
   });
 
   it("범위 칩과 범위 줄은 첫 말 뒤에 서지 않는다 — 범위는 대화로 바꾼다", () => {

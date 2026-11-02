@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { CODEX_DEFAULT_MODE, EFFORTS, type ChoiceOption } from "./chips";
 import ThreadComposer, { type ThreadComposerProps } from "./ThreadComposer";
 import { setDraft } from "./thread-store";
 import { lockedWork } from "./work-chip";
@@ -22,22 +23,28 @@ const composer = (over: Partial<ThreadComposerProps> = {}, draft = "") => {
     <QueryClientProvider client={new QueryClient()}>
       <ThreadComposer
         draftKey={draftKey}
-        models={null}
-        model={null}
-        effort={null}
-        onModel={none}
-        onEffort={none}
+        mode={{ kind: "ask", level: "always", onLevel: none }}
+        model={claudeModel()}
         commands={[]}
         running={false}
         onSend={quiet}
         onNewThread={none}
-        level="always"
-        onLevel={none}
         {...over}
       />
     </QueryClientProvider>,
   );
 };
+
+/** Claude Code 채팅의 모델 칩 — 목록을 주면 메뉴가 붙는다. */
+const claudeModel = (models: readonly ChoiceOption[] | null = null, model: string | null = null): ThreadComposerProps["model"] => ({
+  runtime: "claude-code",
+  models,
+  model,
+  efforts: EFFORTS,
+  effort: null,
+  onModel: none,
+  onEffort: none,
+});
 
 /** 트레이의 마크업 — 입력창(`form`)에 붙어 서는 회색 띠다. */
 const trayOf = (markup: string) => /<div data-slot="composer-tray"[^>]*>.*?<\/div>/s.exec(markup)?.[0] ?? null;
@@ -105,7 +112,7 @@ describe("잠긴 Work 칩(03 §5 · S3)", () => {
 
 describe("입력창 안(03 §6)", () => {
   it("`+` · 물어보는 정도 · 모델 칩만 선다 — `@` 단추(Agent 부르기)가 없다", () => {
-    const names = buttonsOf(composer({ models: [{ value: "default", name: "Default", description: null }], model: "default" })).map(
+    const names = buttonsOf(composer({ model: claudeModel([{ value: "default", name: "Default", description: null }], "default") })).map(
       (one) => one.name,
     );
     expect(names).toContain("파일 첨부");
@@ -158,10 +165,76 @@ describe("Runtime 칩", () => {
   });
 
   it("모델 칩 앞에 선다", () => {
-    const markup = composer({ runtime: { value: "claude-code", onPick: none }, models: [{ value: "default", name: "Default", description: null }], model: "default" });
+    const markup = composer({
+      runtime: { value: "claude-code", onPick: none },
+      model: claudeModel([{ value: "default", name: "Default", description: null }], "default"),
+    });
     const names = buttonsOf(markup).map((one) => one.name);
     const model = names.findIndex((name) => name.startsWith("모델과 생각 깊이"));
     expect(names.indexOf("Runtime: Claude Code")).toBe(model - 1);
+  });
+});
+
+// restart 01c-5 · Composer 「모드 · Codex」 · 「능력이 적을 때」 · 「첫 말 전 Codex」 — Codex 채팅의 모드 칩은 Codex가 보낸 모드의 이름이고, 메뉴는
+// Session이 열려 Codex의 목록이 왔을 때만 열린다. Runtime이 선언하지 않은 칩은 서지 않는다.
+describe("Codex 채팅의 칩", () => {
+  const MODES: ChoiceOption[] = [
+    { value: "read-only", name: "Read-only", description: "Requires approval to edit files and access the internet." },
+    { value: "workspace-write", name: "Workspace access", description: "Edit workspace files." },
+  ];
+  /** Codex 모드 칩의 여는 태그 — 메뉴가 붙으면 단추, 잠겼으면 글자만 선 칸이다. */
+  const modeChip = (markup: string) => /<(?:button|span)\b[^>]*aria-label="Codex 모드[^"]*"[^>]*>/.exec(markup)?.[0] ?? null;
+  const codexModel = (efforts: readonly ChoiceOption[] | null): ThreadComposerProps["model"] => ({
+    runtime: "codex",
+    models: [{ value: "gpt-6.1-sol", name: "6.1 Sol", description: null }],
+    model: "gpt-6.1-sol",
+    efforts,
+    effort: "xhigh",
+    onModel: none,
+    onEffort: none,
+  });
+
+  it("Session이 연 채팅의 모드 칩은 채팅의 모드 이름이고 메뉴가 붙는다 — 물어보는 정도 칩은 서지 않는다", () => {
+    const markup = composer({ mode: { kind: "codex", value: "read-only", name: "Read-only", options: MODES, onPick: none } });
+    expect(modeChip(markup)).toContain('aria-label="Codex 모드 Read-only"');
+    expect(modeChip(markup)).toContain("aria-haspopup");
+    expect(markup).not.toContain("물어보는 정도");
+  });
+
+  it("첫 말 전에는 Workspace access로만 서고 메뉴가 없으며, 모델 칩이 서지 않는다", () => {
+    const { value, name } = CODEX_DEFAULT_MODE;
+    const markup = composer({ mode: { kind: "codex", value, name, options: null, onPick: none }, model: null });
+    expect(modeChip(markup)).toContain('aria-label="Codex 모드 Workspace access"');
+    expect(modeChip(markup)).not.toContain("aria-haspopup");
+    expect(markup).toContain(">Workspace access<");
+    expect(markup).not.toContain('aria-label="모델');
+  });
+
+  it("모델 칩은 Codex가 보낸 이름이고, 생각 깊이도 Codex가 보낸 이름이다", () => {
+    const efforts = [{ value: "xhigh", name: "Xhigh", description: null }];
+    const markup = composer({ model: codexModel(efforts) });
+    expect(markup).toContain('aria-label="모델과 생각 깊이 6.1 Sol · Xhigh"');
+  });
+
+  it("Runtime이 선언하지 않은 칩은 서지 않는다 — 모드가 없으면 모드 칩이, 생각 깊이가 없으면 그 조각이 없다", () => {
+    const markup = composer({ mode: null, model: codexModel(null) });
+    expect(modeChip(markup)).toBeNull();
+    expect(markup).not.toContain("물어보는 정도");
+    expect(markup).toContain('aria-label="모델과 생각 깊이 6.1 Sol"');
+  });
+
+  it("「/」 메뉴에 Codex가 보낸 `/plan`이 그 글로 서고, 앱의 `/plan` · `/policy`는 서지 않는다", () => {
+    const menu = composer(
+      {
+        mode: { kind: "codex", value: "read-only", name: "Read-only", options: MODES, onPick: none },
+        commands: [{ name: "plan", description: "Turn plan mode on.", aliases: [] }],
+      },
+      "/",
+    );
+    expect(menu).toContain("Turn plan mode on.");
+    expect(menu).not.toContain("계획만 세우고 멈추기");
+    expect(menu).not.toContain("언제 물어볼지");
+    expect(menu).toContain("/new");
   });
 });
 

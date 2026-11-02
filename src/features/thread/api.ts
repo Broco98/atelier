@@ -13,6 +13,7 @@ import type {
   AskLevel,
   Attachment,
   ChipValues,
+  CodexModeValue,
   EngineCheck,
   EngineState,
   ProjectAddAnswer,
@@ -134,6 +135,11 @@ export const threadApi = {
    * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
    */
   setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),
+  /**
+   * Codex 모드 바꾸기(restart 01c-5) — Codex 채팅의 모드 칩이 Codex가 보낸 모드 id 하나를 고른다. 채팅마다의 값이다. 떠 있으면 곧바로 들고(Codex가
+   * 받지 않으면 실패로 온다), 아니면 열 때 든다. 답은 바뀐 채팅의 값이다.
+   */
+  setCodexMode: (thread: string, mode: string) => invoke<CodexModeValue>("thread_set_codex_mode", { thread, mode }),
   /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 채팅의 물어보는 정도 칩이 이것을 보인다. */
   workMode: (work: string) => invoke<AskLevel>("thread_work_mode", { work }),
   /**

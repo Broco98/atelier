@@ -60,9 +60,13 @@ pub struct ThreadFile {
     /// 이어진 Work의 slug. 없으면 `null`이다.
     #[serde(default)]
     pub work: Option<String>,
-    /// 물어보는 정도. Work가 없을 때만 쓴다(v1 구현 스펙 §9 · S18).
+    /// 물어보는 정도. Work가 없을 때만 쓴다(v1 구현 스펙 §9 · S18). Claude Code 채팅만 읽는다.
     #[serde(default)]
     pub mode: Option<String>,
+    /// Codex 모드 — Codex가 `modes`로 보낸 id 하나(`workspace-write` 같은 것, restart 스펙 「01c — Codex」 모드). Codex 채팅만 쓰고, 채팅마다
+    /// 따로 쥔다 — 작업공간이 함께 쓰는 물어보는 정도와 섞이지 않는다. Session을 열 때마다 이 값을 `session/set_mode`로 넣는다. 없으면 칸째 빠진다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_mode: Option<String>,
     /// Runtime 이름(`claude-code` · `codex` — [`Runtime`]) — 채팅 하나가 Runtime 세션 하나다. 이 값이 없는 폴더는 옛 판의 것이라 목록에서
     /// 빠지고 없는 Thread처럼 읽힌다(스펙 「옛 기록」, [`Loaded::Old`]).
     #[serde(default)]
@@ -112,6 +116,8 @@ pub struct NewThread {
     pub title: String,
     pub work: Option<String>,
     pub mode: Option<String>,
+    /// 첫 Codex 모드 — [`ThreadFile::codex_mode`]. Codex 채팅만 싣는다.
+    pub codex_mode: Option<String>,
     /// 「새 Work」로 시작했나 — [`ThreadFile::new_work`].
     pub new_work: bool,
     /// 첫 말 전에 트레이 범위 칩에서 고른 Service — [`ThreadFile::service`]. Work에 이은 Thread는 쓰지 않는다.
@@ -155,6 +161,7 @@ pub(crate) fn create_thread_at(
         created_at: at.to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
         work: thread.work,
         mode: thread.mode,
+        codex_mode: thread.codex_mode,
         new_work: thread.new_work,
         service: thread.service,
         project: thread.project,
