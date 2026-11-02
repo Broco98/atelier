@@ -201,7 +201,7 @@ interface FrameProps<Id extends string> {
   beside?: BesideSlot;
   /**
    * 칸 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 칸 줄은 카드 자리 위끝에서 시작한다 — 탭 줄은 칸 줄 안(본문 카드의 머리)이라,
-   * 「끄는 것이 출발한 줄은 덮지 않는다」는 덮는 쪽이 줄 높이(`--size-toolbar`)만큼 내려 선다(`WorksPage`의 놓기 겹판).
+   * 「끄는 것이 출발한 줄은 덮지 않는다」는 덮는 쪽이 줄 높이(`--size-tab-row`)만큼 내려 선다(`WorksPage`의 놓기 겹판).
    */
   overlay?: ReactNode;
   /** 본문 칸(`<Card as="main">`) — 목록 칸이 있으면(`list`) 내용 | 목록 칸의 내용 칸이 된다. 분할이면(`split`) 비워 둔다. */
@@ -713,7 +713,7 @@ function Card({ as: Tag = "section", label, head, tone, className, children }: C
 
 /**
  * 카드 머리(ui-refresh 결정 5) — 카드 안에서 고르는 것(패널 이름 · 트리의 도구)과 그 곁의 버튼이 서는 46px 줄이다(`--card-head`
- * — 탭 줄과 같은 `size-toolbar`). `div`다. 문서 칸의 머리는 이것이 아니라 경로 줄(`PathBar`)이고,
+ * — 한때 탭 줄과 같은 `size-toolbar`였고, 탭 줄은 restart 02a-5부터 `size-tab-row` 40이다). `div`다. 문서 칸의 머리는 이것이 아니라 경로 줄(`PathBar`)이고,
  * 목록 칸의 머리는 목록 머리(`ListHead`)다. 좌우 여백은 8(`px-2` — DS `.at-toolbar` · `.at-panel-head`의 안쪽 8)이라 머리의 첫 버튼이
  * 카드 끝에서 8, 제목은 제 안쪽 8을 더해 카드 + 16(행 글자 16 — 아래 트리 행의 글리프와 한 세로줄)에 선다.
  *

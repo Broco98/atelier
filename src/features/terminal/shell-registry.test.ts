@@ -51,6 +51,7 @@ import {
   quietShellsOf,
   quitNotice,
   removeShell,
+  removeViewTab,
   runningOn,
   runningShellsOf,
   searchHotkey,
@@ -505,6 +506,56 @@ describe("채팅 탭을 묶음에 세운다", () => {
     const { state: shells, ids } = opened(2, originFor("ga"));
     const state = withShellActive(openChatTab(shells, ga, X), ga);
     expect(activeIdOf(state, ga)).toBe(ids[0]);
+  });
+});
+
+// restart 02a-5 — 채팅 탭은 셸 탭처럼 닫힌다. 닫는 것은 묶음의 칸뿐이다 — 채팅과 세션은 남고 돌던 턴도 계속 돈다(채팅은 코어가 쥔다).
+// 파일 탭처럼 프로세스가 없는 칸이라 확인 없이 빠지고, 다음 켜질 칸은 셸을 닫을 때와 같은 이웃 규칙이다.
+describe("보기 탭(파일 탭 · 채팅 탭)을 닫는다", () => {
+  const ga = ownerFor("ga");
+  const X = "20261010-100000";
+  const Y = "20261010-110000";
+
+  it("켜진 채팅 탭을 닫으면 그 칸만 빠지고 오른쪽 이웃이 켜진다", () => {
+    const { state: shells, ids } = opened(1, originFor("ga"));
+    const withX = openChatTab(shells, ga, X);
+    const xId = activeIdOf(withX, ga)!;
+    const both = openChatTab(withX, ga, Y);
+    const yId = activeIdOf(both, ga)!;
+    // 가운데 칸(X)을 켜 둔다 — 셸 · X · Y
+    const state = activateShell(both, xId);
+
+    const after = removeViewTab(state, xId);
+    expect(bundleOf(after, ga)).toEqual([
+      { kind: "shell", id: ids[0] },
+      { kind: "chat", id: yId, thread: Y },
+    ]);
+    expect(activeIdOf(after, ga)).toBe(yId);
+    // 셸은 한 칸도 안 움직인다
+    expect(after.shells).toBe(state.shells);
+  });
+
+  it("마지막 칸이면 묶음이 비고 켜진 칸도 없다", () => {
+    const state = openChatTab(NO_SHELLS, ga, X);
+    const after = removeViewTab(state, activeIdOf(state, ga)!);
+    expect(bundleOf(after, ga)).toEqual([]);
+    expect(activeIdOf(after, ga)).toBeNull();
+  });
+
+  it("파일 탭도 같은 길로 빠진다", () => {
+    const state = openCodeTab(openChatTab(NO_SHELLS, ga, X), ga, { project: "fe", path: "src/a.ts" });
+    const after = removeViewTab(state, activeIdOf(state, ga)!);
+    expect(bundleOf(after, ga).map((tab) => tab.kind)).toEqual(["chat"]);
+  });
+
+  it("셸 칸은 이 길로 빼지 않는다 — 셸은 확인 창을 거치는 길 하나다", () => {
+    const { state, ids } = opened(1, originFor("ga"));
+    expect(removeViewTab(state, ids[0])).toBe(state);
+  });
+
+  it("없는 칸이면 받은 상태 그대로다", () => {
+    const state = openChatTab(NO_SHELLS, ga, X);
+    expect(removeViewTab(state, 999)).toBe(state);
   });
 });
 

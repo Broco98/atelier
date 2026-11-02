@@ -4,7 +4,7 @@ import { Card, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import { TAB_ROW_CARD } from "@/components/shell/panel-layout";
 import { cn } from "@/lib/utils";
-import ShellTabs from "./ShellTabs";
+import ShellTabs, { type ChatTabs } from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
   activeIdOf,
@@ -56,8 +56,11 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 /** 이 화면의 nav 항목 — 머리 줄의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("terminal");
 
-/** 채팅 탭의 이름 — 이 화면에는 채팅 탭이 서지 않아 부를 일이 없다(탭 줄의 `chatTitle`). 회차마다 같은 값이다. */
-const NO_CHAT_TITLE = () => "";
+/**
+ * 채팅 탭의 몫(탭 줄의 `chat` — 이름 · 이름 바꾸기 · ⋯ 항목) — 이 화면에는 채팅 탭이 서지 않아 부를 일이 없다. 회차마다 같은 값이다.
+ * `features/thread`를 부르지 않는다 — 채팅 화면의 무게가 이 화면까지 따라오지 않게.
+ */
+const NO_CHAT: ChatTabs = { title: () => "", onRename: () => {}, menu: () => null };
 
 function TerminalPage() {
   /**
@@ -202,7 +205,7 @@ function TerminalPage() {
             // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
             showing
             // 채팅 탭은 이 화면에 서지 않는다(`openChatTab`이 최상위 터미널을 안 받는다 — restart 02a-4). 줄의 계약이 필수라 준다.
-            chatTitle={NO_CHAT_TITLE}
+            chat={NO_CHAT}
             // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
             onSelect={selectShellWithFocus}
             // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.

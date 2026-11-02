@@ -642,10 +642,11 @@ describe("restart 시안 토큰", () => {
     for (const name of Object.keys(RADII)) expect(ruleOf(built, `rounded-${name}`), name).toContain(`border-radius: var(--radius-${name})`);
   });
 
-  // 카드 사이 · 창 끝 틈 8, 창 머리 줄 44, 입력창 보내기 원 28(앱과 Codex 실측), 레일 카드 폭 32(지금 토큰 그대로).
-  const SIZES: Record<string, string> = { gap: "8px", titlebar: "44px", "send-chat": "28px", prail: "32px" };
+  // 카드 사이 · 창 끝 틈 8, 창 머리 줄 44, 입력창 보내기 원 28(앱과 Codex 실측), 레일 카드 폭 32(지금 토큰 그대로), 작업공간의 탭 줄 40
+  // (02a-5 — 시안 `.ra-tabs`의 높이, 구현 지도 「탭 줄」. 카드 머리 `size-toolbar` 46과 따로다).
+  const SIZES: Record<string, string> = { gap: "8px", titlebar: "44px", "send-chat": "28px", prail: "32px", "tab-row": "40px" };
 
-  it("틈 · 창 머리 · 보내기 원 · 레일 폭의 크기가 @theme에 선다", async () => {
+  it("틈 · 창 머리 · 보내기 원 · 레일 폭 · 탭 줄의 크기가 @theme에 선다", async () => {
     for (const [name, value] of Object.entries(SIZES)) expect(themed(`size-${name}`), name).toBe(value);
     expect(ruleOf(await utilities(["size-send-chat"]), "size-send-chat")).toContain("width: var(--size-send-chat)");
   });

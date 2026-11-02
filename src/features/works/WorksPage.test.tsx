@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorksPage, { codeTabClosedByTab, shellClosedByTab } from "./WorksPage";
+import WorksPage, { shellClosedByTab, viewTabClosedByTab } from "./WorksPage";
 import { PANEL_VIEWS } from "./WorkPanel";
 import { ToastProvider } from "@/components/ui/toast";
 import { TAB_ROW_CARD, TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
@@ -1131,15 +1131,15 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
   // 않는다** — 이 파일이 그 fail-open을 이미 겪었다. 리터럴 하나로 통째로 못박으면
   // 어느 갈래가 뒤집혀도 반드시 빨개진다.
   //
-  // 묶음의 칸(셸 칸 · 파일 탭 — git-integration 결정 31)은 그 칸의 종류를 싣는다 — 종류는 레지스트리가 id로 안다.
-  // 채팅 탭은 아직 끌리지 않는다(restart 02a-4 — 끌기는 02a-5가 짓는다).
+  // 묶음의 칸(셸 칸 · 파일 탭 — git-integration 결정 31 · 채팅 탭 — restart 02a-5)은 그 칸의 종류를 싣는다 — 종류는 레지스트리가 id로
+  // 안다. 채팅 탭도 거르지 않는다 — 셸 탭과 같은 규칙으로 끌린다.
   it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 묶음의 칸을 그 종류로 가른다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
       `onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
         const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
-        if (kind && kind !== "chat") armDrag({ kind, owner, shellId }, from);
+        if (kind) armDrag({ kind, owner, shellId }, from);
       }}`,
     )).toBe(1);
   });
@@ -1217,6 +1217,18 @@ describe("WorksPage 채팅 탭", () => {
     expect(main).toContain('aria-label="보낼 말"');
     // 문서 카드가 아니다 — 경로 줄이 없다.
     expect(pathBarOf(markup)).toBe("");
+  });
+
+  // restart 02a-5 — 채팅 탭은 셸 탭처럼 닫히고 이름이 바뀐다. 칸의 `×`는 그 채팅의 이름으로 서고, 칸에서 고친 이름은 채팅 이름 명령으로
+  // 간다(머리 줄에서 고치던 것과 같은 길). 우클릭 메뉴 앞머리는 채팅의 ⋯ 항목이다 — 정의는 채팅 쪽 한 자리다. 배선은 렌더로 못 봐서
+  // 리터럴로 못박는다(핸들러는 직렬화되지 않는다).
+  it("채팅 탭에 그 채팅 이름의 `×`가 서고, 이름 바꾸기와 ⋯ 항목이 채팅 쪽으로 이어진다", () => {
+    const row = tabRowOf(render({}, "chat", null, {}, { view: chat, lines: said }));
+    expect(row).toContain('aria-label="실패 신호 구현 닫기"');
+    const page = source("WorksPage.tsx");
+    expect(page).toContain("chat={chatTabs}");
+    expect(countOf(page, "renameThread.mutate(")).toBe(1);
+    expect(page).toContain("menu: (rename) => <ThreadMenuItems rename={rename} />");
   });
 
   // 임시 `tab=spec`(02a-13이 걷는다) — 채팅 탭이 있어도 spec 탭이 켜지고 문서가 선다.
@@ -1324,29 +1336,54 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
 
     it("본문(분할이면 포커스가 든 묶음 열)이 파일 탭이면 그 칸이다", () => {
       const id = seedCode();
-      expect(codeTabClosedByTab("code", owner, terminalStore.state)).toBe(id);
+      expect(viewTabClosedByTab("code", owner, terminalStore.state)).toBe(id);
     });
 
     it("`spec`이 켜져 있으면 — 분할에서 문서 열에 포커스가 있어도 — 아무 일도 안 한다", () => {
       seedCode();
-      expect(codeTabClosedByTab("spec", owner, terminalStore.state)).toBeNull();
+      expect(viewTabClosedByTab("spec", owner, terminalStore.state)).toBeNull();
     });
 
     it("주소가 셸을 말하면 파일 탭을 닫지 않는다", () => {
       seedCode();
-      expect(codeTabClosedByTab("terminal", owner, terminalStore.state)).toBeNull();
+      expect(viewTabClosedByTab("terminal", owner, terminalStore.state)).toBeNull();
     });
 
     it("지금 탭이 셸이면 이 길로 닫지 않는다 — 셸은 확인 창을 거친다", () => {
       seedCode();
       // 얹는다 — `seed`는 빈 상태에서 다시 짓는다. 새 셸이 묶음 끝에 서고 지금 탭이 된다.
       terminalStore.setState((state) => openShell(state, workSeat(work.slug))!.state);
-      expect(codeTabClosedByTab("code", owner, terminalStore.state)).toBeNull();
+      expect(viewTabClosedByTab("code", owner, terminalStore.state)).toBeNull();
     });
 
     it("고른 작업이 없으면 닫을 것이 없다", () => {
       seedCode();
-      expect(codeTabClosedByTab("code", null, terminalStore.state)).toBeNull();
+      expect(viewTabClosedByTab("code", null, terminalStore.state)).toBeNull();
+    });
+  });
+
+  // restart 02a-5 — 채팅 탭은 셸 탭처럼 닫힌다. 본문이 채팅 탭이면 ⌘W가 그 칸을 확인 없이 닫는다 — 닫는 것은 칸뿐이고 채팅과 돌던 턴은
+  // 남는다. 입력창에서 친 ⌘W는 여기까지 오지 않는다(`closesShellFromWindow`가 글을 치는 자리를 비켜 간다).
+  describe("채팅 탭", () => {
+    const owner = ownerFor(work.slug);
+    function seedChat(): number {
+      terminalStore.setState(() => openChatTab(NO_SHELLS, owner, "20261010-100000"));
+      return terminalStore.state.activeByOwner[owner]!;
+    }
+
+    it("본문이 채팅 탭이면 그 칸이다", () => {
+      const id = seedChat();
+      expect(viewTabClosedByTab("chat", owner, terminalStore.state)).toBe(id);
+    });
+
+    it("`spec`이 켜져 있으면 아무 일도 안 한다", () => {
+      seedChat();
+      expect(viewTabClosedByTab("spec", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("주소가 파일 탭을 말하는데 지금 탭이 채팅이면 닫지 않는다 — 본문과 다른 칸을 닫지 않는다", () => {
+      seedChat();
+      expect(viewTabClosedByTab("code", owner, terminalStore.state)).toBeNull();
     });
   });
 
@@ -1361,9 +1398,11 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     expect(worksPage).toContain("void requestCloseShell(id);");
     // 탭의 `×`도 **같은 함수**로 온다. 두 길이 갈리면 한쪽만 확인 창을 거치는데, 화면으로는
     // 「가끔 안 묻는다」로만 보인다 — 결정 92가 `closeShell`을 밖으로 안 내보낸 그 이유다.
-    // 셸이 아닌 칸(파일 탭)만 확인 없이 닫는다(git-integration 스토리 37) — 셸 칸은 여전히 이 함수다.
-    // 채팅 탭은 이 길로 오지 않는다(restart 02a-4 — 채팅 탭을 닫는 길은 02a-5가 짓는다).
-    expect(worksPage).toContain('else if (kind === "shell") void requestCloseShell(id);');
+    // 셸이 아닌 칸(파일 탭 · 채팅 탭)만 확인 없이 닫는다(git-integration 스토리 37 · restart 02a-5) — 셸 칸은 여전히 이 함수다.
+    expect(worksPage).toContain(`if (kind === "shell") void requestCloseShell(id);
+        else if (kind) closeViewTab(id);`);
+    // ⌘W도 보기 탭은 같은 길이다.
+    expect(worksPage).toContain("closeViewTab(viewId);");
   });
 });
 

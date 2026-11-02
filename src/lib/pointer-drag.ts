@@ -26,13 +26,13 @@ import { Store } from "@tanstack/react-store";
 export type SplitHalf = "left" | "right";
 
 /**
- * 탭 줄에서 끌 수 있는 것 — 문서 칸과 **묶음의 칸** 둘(셸 칸 · 파일 탭 — git-integration 결정 31). 묶음의 칸은 종류를 안 가리고
- * 그 묶음의 어느 틈에나 놓인다.
+ * 탭 줄에서 끌 수 있는 것 — 문서 칸과 **묶음의 칸** 둘(셸 칸 · 파일 탭 — git-integration 결정 31 · 채팅 탭 — restart 02a-5). 묶음의
+ * 칸은 종류를 안 가리고 그 묶음의 어느 틈에나 놓인다.
  *
- * 본문 위로 끌어 분할을 세우는 것도 셋 다다(결정 90 · git-integration 스토리 56) — 문서 칸은 문서 열에, 묶음의 칸은 묶음 열에
+ * 본문 위로 끌어 분할을 세우는 것도 넷 다다(결정 90 · git-integration 스토리 56) — 문서 칸은 문서 열에, 묶음의 칸은 묶음 열에
  * 선다(`split-view.ts`).
  */
-export type DragKind = "spec" | "shell" | "code";
+export type DragKind = "spec" | "shell" | "code" | "chat";
 
 /** 탭 줄에서 끈 것. 놓일 자리는 탭 줄의 틈이거나 본문의 절반이다(`split-view.ts`). */
 export interface DragSource {
@@ -46,7 +46,7 @@ export interface DragSource {
    */
   owner: string;
   /**
-   * 끈 **묶음 칸**의 id — `kind`가 `shell` · `code`일 때만 있다(문서 칸은 묶음의 칸이 아니다). 틈에 놓으면 그 칸을 옮기고,
+   * 끈 **묶음 칸**의 id — `kind`가 `shell` · `code` · `chat`일 때만 있다(문서 칸은 묶음의 칸이 아니다). 틈에 놓으면 그 칸을 옮기고,
    * 떨군 셸은 터미널 열에 서야 해서 필요하다.
    *
    * 이름이 「셸」인 것은 묶음에 셸만 서던 때의 것이다 — 레지스트리의 `moveShell`처럼 이름은 두고 뜻을 묶음의 칸으로 넓혔다
@@ -112,11 +112,12 @@ export const dragStore = new Store<DragState>(IDLE);
  * **탭 종류로 좁힌다.** 「작업 행이 아니면 탭」으로 거르면 원천 종류가 늘어나는 날 새 종류가 조용히 탭으로
  * 읽힌다 — 편집기 항목(`EntryDragSource`)을 끄는 순간 분할 겹판이 섰을 것이다.
  *
- * 파일 탭(`code`)도 든다 — 본문 절반에 놓으면 spec과 그 파일로 분할된다(git-integration 스토리 56). 한때 셸 칸만 받았다.
+ * 파일 탭(`code`)도 든다 — 본문 절반에 놓으면 spec과 그 파일로 분할된다(git-integration 스토리 56). 한때 셸 칸만 받았다. 채팅 탭(`chat`)도
+ * 같다(restart 02a-5 — 셸 탭과 같은 규칙으로 끌린다).
  */
 export function tabDragOf(state: DragState): DragSource | null {
   const source = state.source;
-  return source !== null && (source.kind === "spec" || source.kind === "shell" || source.kind === "code") ? source : null;
+  return source !== null && (source.kind === "spec" || isBundleDrag(source)) ? source : null;
 }
 
 /**
@@ -428,7 +429,7 @@ export function clearHalf(): void {
 }
 
 /**
- * 탭 줄에서 손을 뗀 순간 옮길 것 — 끄는 것이 **묶음의 칸**(셸 칸 · 파일 탭)이고 틈이 켜져 있을 때만 있다. 받는 쪽(터미널
+ * 탭 줄에서 손을 뗀 순간 옮길 것 — 끄는 것이 **묶음의 칸**(셸 칸 · 파일 탭 · 채팅 탭)이고 틈이 켜져 있을 때만 있다. 받는 쪽(터미널
  * 스토어)이 드래그 상태의 모양(원천 · 틈)을 몰라도 되게 여기서 꺼낸다. 이름은 셸만 끌리던 때의 것이다(`DragSource.shellId`).
  */
 export function shellMoveOf(state: DragState): { shellId: number; slot: number } | null {
@@ -437,7 +438,7 @@ export function shellMoveOf(state: DragState): { shellId: number; slot: number }
   return { shellId: source.shellId, slot };
 }
 
-/** 끄는 것이 **묶음의 칸**인가 — 셸 칸이든 파일 탭이든(`DragKind`). 문서 칸 · 작업 행 · 편집기 항목은 아니다. */
+/** 끄는 것이 **묶음의 칸**인가 — 셸 칸 · 파일 탭 · 채팅 탭(`DragKind`). 문서 칸 · 작업 행 · 편집기 항목은 아니다. */
 function isBundleDrag(source: AnyDragSource | null | undefined): source is DragSource {
-  return source?.kind === "shell" || source?.kind === "code";
+  return source?.kind === "shell" || source?.kind === "code" || source?.kind === "chat";
 }

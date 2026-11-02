@@ -144,6 +144,8 @@ describe("탭 끌기 판정", () => {
   it.each([
     { name: "문서 칸", source: { kind: "spec", owner: "", shellId: null } as DragSource },
     { name: "셸 칸", source: { kind: "shell", owner: "", shellId: 2 } as DragSource },
+    // restart 02a-5 — 채팅 탭은 셸 · 파일 탭과 같은 규칙으로 끌린다. 본문 절반에 놓으면 그 채팅이 묶음 열에 선다.
+    { name: "채팅 탭", source: { kind: "chat", owner: "가", shellId: 4 } as DragSource },
   ])("$name은 탭이다", ({ source }) => {
     expect(tabDragOf(state(source))).toBe(source);
   });
@@ -166,6 +168,8 @@ describe("탭 줄에 놓인 셸", () => {
     { name: "틈이 없으면 없다", state: { source: shell, half: "left", slot: null }, want: null },
     { name: "끄는 중이 아니면 없다", state: { source: null, half: null, slot: null }, want: null },
     { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "", shellId: null }, half: null, slot: 0 }, want: null },
+    // restart 02a-5 — 채팅 탭도 묶음의 칸이라 같은 틈에 놓인다.
+    { name: "채팅 탭을 틈 위에서 놓으면 그 둘이다", state: { source: { kind: "chat", owner: "가", shellId: 4 }, half: null, slot: 0 }, want: { shellId: 4, slot: 0 } },
   ] as const)("$name", ({ state, want }) => {
     expect(shellMoveOf(state)).toEqual(want);
   });

@@ -589,15 +589,18 @@ function openTab(
 }
 
 /**
- * 파일 탭 하나를 **확인 없이** 묶음에서 뺀다(스토리 37 · 50 — 프로세스가 없어 물을 것이 없다). 다음 켜질 칸은 셸을 닫을
- * 때와 같은 이웃 규칙이다(`withoutTab`).
+ * **보기 탭**(파일 탭 · 채팅 탭 — 프로세스가 없이 무엇을 보여 주기만 하는 칸) 하나를 **확인 없이** 묶음에서 뺀다(git-integration 스토리
+ * 37 · 50 · restart 02a-5 — 물을 것이 없다). 다음 켜질 칸은 셸을 닫을 때와 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * 채팅 탭을 빼도 **채팅은 남는다** — 칸은 화면 위의 자리일 뿐이고 채팅 · 세션 · 돌던 턴은 코어가 쥔다(구현 스펙 「02a」). 사이드바에서
+ * 다시 연다.
  *
  * **셸 칸은 여기로 빼지 않는다** — 받은 상태 그대로다. 셸을 닫는 길은 확인 창을 거치는 하나다(`requestCloseShell`).
  */
-export function removeCodeTab(state: ShellsState, id: number): ShellsState {
+export function removeViewTab(state: ShellsState, id: number): ShellsState {
   const owner = bundleOwnerOf(state, id);
   if (owner === null) return state;
-  if (bundleTabOf(state, owner, id)?.kind !== "code") return state;
+  if (bundleTabOf(state, owner, id)?.kind === "shell") return state;
   return withoutTab(state, owner, id);
 }
 

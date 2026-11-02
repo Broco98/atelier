@@ -61,7 +61,7 @@ import {
   quietCloseNotice,
   quietShellsOf,
   openChatTab,
-  removeCodeTab,
+  removeViewTab,
   removeShell,
   runningOfId,
   setAttention,
@@ -347,9 +347,12 @@ export function showChatTab(owner: ShellOwner, thread: string): void {
   terminalStore.setState((state) => openChatTab(state, owner, thread));
 }
 
-/** 파일 탭을 **확인 없이** 닫는다(스토리 37 · 50). 셸 칸이면 아무 일도 없다 — 셸은 `requestCloseShell`로 닫는다. */
-export function closeCodeTab(id: number): void {
-  terminalStore.setState((state) => removeCodeTab(state, id));
+/**
+ * 보기 탭(파일 탭 · 채팅 탭)을 **확인 없이** 닫는다(git-integration 스토리 37 · 50 · restart 02a-5 — `removeViewTab`). 셸 칸이면 아무 일도
+ * 없다 — 셸은 `requestCloseShell`로 닫는다. 채팅 탭을 닫아도 채팅에는 아무것도 부르지 않는다 — 채팅과 돌던 턴은 그대로다.
+ */
+export function closeViewTab(id: number): void {
+  terminalStore.setState((state) => removeViewTab(state, id));
 }
 
 /** 그 화면의 지금 탭이 셸이 되게 한다(`withShellActive`) — 주소가 「본문은 셸이다」라고 말할 때 work 화면이 부른다. */
