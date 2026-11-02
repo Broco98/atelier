@@ -404,7 +404,7 @@ impl ConversationHost {
         // 색인을 먼저 쥔다 — 처음 읽는 색인이 새 Thread를 읽으면 요약이 바뀐 것으로 보이지 않는다(`announce_thread`).
         self.with_index(|_| ())?;
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Session, session_payload(SessionState::Spawning))
-            .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
+            .map_err(|error| HostError::Record(format!("채팅을 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
         log.written(created.first.clone());
@@ -458,7 +458,7 @@ impl ConversationHost {
     /// 인용을 이은 Work의 spec 폴더 것으로 붙인다 — 인용 블록이 그 폴더 안의 실제 경로를 가리킨다.
     fn quote_in(&self, work: Option<&str>, quote: &Quote) -> Result<Attached, HostError> {
         let Some(slug) = work else {
-            return Err(HostError::BadQuote("Work에 이어지지 않은 Thread에는 인용을 붙일 수 없습니다".to_owned()));
+            return Err(HostError::BadQuote("작업공간에 이어지지 않은 채팅에는 인용을 붙일 수 없습니다".to_owned()));
         };
         let spec = self.open_work(slug)?.places.spec;
         quote.attach(&spec).map_err(|bad| HostError::BadQuote(bad.to_string()))
@@ -1183,7 +1183,7 @@ impl ConversationHost {
         let mut held = self.threads.index.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if held.is_none() {
             let loaded = ThreadIndex::load(&self.data_root)
-                .map_err(|error| HostError::Record(format!("Thread 목록을 읽지 못했습니다: {error}")))?;
+                .map_err(|error| HostError::Record(format!("채팅 목록을 읽지 못했습니다: {error}")))?;
             *held = Some(loaded);
         }
         Ok(use_it(held.as_mut().expect("방금 읽었다")))
@@ -1221,7 +1221,7 @@ fn thread_error(thread: &str, error: atelier_core::Error) -> HostError {
         atelier_core::Error::Io(error) if error.kind() == std::io::ErrorKind::NotFound => {
             HostError::ThreadNotFound(thread.to_owned())
         }
-        other => HostError::Record(format!("Thread를 읽거나 쓰지 못했습니다: {thread} — {other}")),
+        other => HostError::Record(format!("채팅을 읽거나 쓰지 못했습니다: {thread} — {other}")),
     }
 }
 

@@ -134,7 +134,7 @@ fn 묻지_않음에서도_thread_폴더의_기록_파일이_나오는_명령은_
     let asked = wait_permission(&sandbox, &thread, "asked");
     let command = asked["payload"]["toolCall"]["rawInput"]["command"].as_str().unwrap_or_default();
     assert!(command.starts_with(touched), "{command}");
-    assert_eq!(asked["payload"]["policy"], "Thread 기록을 건드리기 전에 묻기", "{asked}");
+    assert_eq!(asked["payload"]["policy"], "채팅 기록을 건드리기 전에 묻기", "{asked}");
     assert!(asked["payload"].get("grant").is_none(), "줄 허락이 없다 — 「다시 묻지 않기」가 서지 않는다: {asked}");
 
     host.shut_down();
@@ -163,7 +163,7 @@ fn thread_폴더의_점_파일을_고치려는_편집은_편집_자동이어도_
     assert_eq!(permissions(&record).len(), 1, "물음 줄 없이 판정 줄 하나다:\n{}", common::lines_text(&record));
     let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
     assert_eq!(decided["payload"]["optionId"], "reject");
-    assert!(reason.starts_with("Thread 기록이라 고칠 수 없어요: "), "{reason}");
+    assert!(reason.starts_with("채팅 기록이라 고칠 수 없어요: "), "{reason}");
     assert!(reason.contains(&format!("{thread}/.policy.json")), "{reason}");
     let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
@@ -191,9 +191,9 @@ fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_
     let decided = wait_permission(&sandbox, &thread, "decided");
     let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
     assert_eq!(decided["payload"]["optionId"], "reject", "묻지 않음이어도 Work 밖은 거절한다");
-    assert!(reason.starts_with("Work 밖의 파일이라 고칠 수 없어요: "), "{reason}");
+    assert!(reason.starts_with("작업공간 밖의 파일이라 고칠 수 없어요: "), "{reason}");
     assert!(reason.contains("gate/ws/g1/outside/allowed.txt"), "{reason}");
-    assert!(reason.ends_with("— `gate` Project를 고치려면 먼저 Thread 도구 `start_editing`(Project 고치기 시작)을 부르세요"), "{reason}");
+    assert!(reason.ends_with("— `gate` Project를 고치려면 먼저 채팅 도구 `start_editing`(Project 고치기 시작)을 부르세요"), "{reason}");
     let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
 
@@ -255,7 +255,7 @@ fn 편집_자동에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐어
     let refused = wait_permission(&sandbox, &other, "decided");
     assert_eq!(
         refused["payload"]["reason"],
-        "「장바구니 수량을 고쳐 줘」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요"
+        "「장바구니 수량을 고쳐 줘」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요"
     );
     assert_eq!(refused["payload"]["optionId"], "reject");
 

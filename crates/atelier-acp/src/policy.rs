@@ -225,7 +225,7 @@ fn app_boundary(case: &Case) -> Option<Verdict> {
             let kept = paths.iter().find(|path| case.kept.iter().any(|kept| path.starts_with(kept) || kept.starts_with(path)));
             kept.map(|kept| Verdict::Refuse { message: kept_message(kept) })
         }
-        Act::Command(text) if mentions_kept(text, case.kept, case.cwd) => ask(Card::Command, "Thread 기록을 건드리기 전에 묻기"),
+        Act::Command(text) if mentions_kept(text, case.kept, case.cwd) => ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"),
         _ => None,
     }
 }
@@ -257,26 +257,26 @@ fn by_level(case: &Case) -> Verdict {
 /// 밖 편집의 글 — 등록된 Project 안이면 그 Project의 worktree를 세우는(Work에 없으면 붙일지 묻는) Thread 도구를 가리킨다. Work가
 /// 없는 Thread면 붙일 Work가 없으므로 Work 만들기 제안부터다.
 fn outside_message(path: &Path, case: &Case) -> String {
-    let place = if case.in_work { "Work" } else { "Thread 폴더" };
+    let place = if case.in_work { "작업공간" } else { "채팅 폴더" };
     let head = format!("{place} 밖의 파일이라 고칠 수 없어요: {}", path.display());
     let start = crate::thread_tools::START_EDITING;
     match case.projects.iter().find(|(_, folder)| path.starts_with(folder)) {
         Some((project, _)) if case.in_work => {
-            format!("{head} — `{project}` Project를 고치려면 먼저 Thread 도구 `{start}`(Project 고치기 시작)을 부르세요")
+            format!("{head} — `{project}` Project를 고치려면 먼저 채팅 도구 `{start}`(Project 고치기 시작)을 부르세요")
         }
         Some((project, _)) => format!(
-            "{head} — `{project}` Project를 고치려면 먼저 Thread 도구 `{}`로 그 Project를 넣은 Work를 만든 뒤 `{start}`을 부르세요",
+            "{head} — `{project}` Project를 고치려면 먼저 채팅 도구 `{}`로 그 Project를 넣은 작업공간을 만든 뒤 `{start}`을 부르세요",
             crate::thread_tools::PROPOSE_WORK
         ),
-        None if case.in_work => format!("{head} — 이 Work의 worktree · spec 폴더 안에서만 고쳐요"),
-        None => format!("{head} — Work가 없는 Thread는 이 Thread 폴더 안에서만 고쳐요"),
+        None if case.in_work => format!("{head} — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
+        None => format!("{head} — 작업공간이 없는 채팅은 이 채팅 폴더 안에서만 고쳐요"),
     }
 }
 
 /// Atelier만 쓰는 파일의 글 — Work 밖 거절과 같은 꼴이다.
 fn kept_message(path: &Path) -> String {
     format!(
-        "Thread 기록이라 고칠 수 없어요: {} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요",
+        "채팅 기록이라 고칠 수 없어요: {} — 채팅 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요",
         path.display()
     )
 }
@@ -521,7 +521,7 @@ mod tests {
         Verdict::Ask { card, policy: policy.to_owned(), grant: names(grant) }
     }
 
-    const BUSY: &str = "「장바구니」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+    const BUSY: &str = "「장바구니」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요";
 
     /// 물어보는 정도 넷 — 표를 도는 시험이 쓴다.
     const LEVELS: [AskLevel; 4] = [AskLevel::Always, AskLevel::Edits, AskLevel::Plan, AskLevel::Auto];
@@ -592,7 +592,7 @@ mod tests {
         for level in LEVELS {
             assert!(matches!(judged(edit("/etc/hosts"), level), Verdict::Refuse { message } if message.contains("밖의 파일")), "{level:?} 밖 편집");
             let kept = judged(edit("/t/20261023-101010/events.jsonl"), level);
-            assert!(matches!(kept, Verdict::Refuse { message } if message.starts_with("Thread 기록이라")), "{level:?} 기록 파일 편집");
+            assert!(matches!(kept, Verdict::Refuse { message } if message.starts_with("채팅 기록이라")), "{level:?} 기록 파일 편집");
             assert_eq!(
                 judged(Act::Edit(Vec::new()), level),
                 ask(Card::Edit, "경로를 읽을 수 없는 편집이라 묻기"),
@@ -600,7 +600,7 @@ mod tests {
             );
             assert_eq!(
                 judged(command("cat events.jsonl"), level),
-                ask(Card::Command, "Thread 기록을 건드리기 전에 묻기"),
+                ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"),
                 "{level:?} 기록 파일을 언급한 명령"
             );
         }
@@ -616,7 +616,7 @@ mod tests {
         assert_eq!(
             given.judged(),
             refuse(
-                "Work 밖의 파일이라 고칠 수 없어요: /repos/fe/src/cart.ts — `fe` Project를 고치려면 먼저 Thread 도구 \
+                "작업공간 밖의 파일이라 고칠 수 없어요: /repos/fe/src/cart.ts — `fe` Project를 고치려면 먼저 채팅 도구 \
                  `start_editing`(Project 고치기 시작)을 부르세요"
             ),
             "1. 앱 경계"
@@ -874,18 +874,18 @@ mod tests {
         assert_eq!(judged("/w/cart/trees/fe/a.ts", true), allow("묻지 않음"));
         assert_eq!(
             judged("/w/cart/trees/fe-old/a.ts", true),
-            refuse("Work 밖의 파일이라 고칠 수 없어요: /w/cart/trees/fe-old/a.ts — 이 Work의 worktree · spec 폴더 안에서만 고쳐요"),
+            refuse("작업공간 밖의 파일이라 고칠 수 없어요: /w/cart/trees/fe-old/a.ts — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
             "경로는 낱말(폴더) 단위로 견준다 — 경로 하나라도 밖이면 거절이다"
         );
         assert_eq!(
             judged("/etc/hosts", false),
-            refuse("Thread 폴더 밖의 파일이라 고칠 수 없어요: /etc/hosts — Work가 없는 Thread는 이 Thread 폴더 안에서만 고쳐요")
+            refuse("채팅 폴더 밖의 파일이라 고칠 수 없어요: /etc/hosts — 작업공간이 없는 채팅은 이 채팅 폴더 안에서만 고쳐요")
         );
         assert_eq!(
             judged("/repos/fe/a.ts", false),
             refuse(
-                "Thread 폴더 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 Thread 도구 `propose_work`로 \
-                 그 Project를 넣은 Work를 만든 뒤 `start_editing`을 부르세요"
+                "채팅 폴더 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 채팅 도구 `propose_work`로 \
+                 그 Project를 넣은 작업공간을 만든 뒤 `start_editing`을 부르세요"
             )
         );
     }
@@ -902,7 +902,7 @@ mod tests {
         };
         let refused = |path: &str| {
             refuse(&format!(
-                "Thread 기록이라 고칠 수 없어요: {path} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요"
+                "채팅 기록이라 고칠 수 없어요: {path} — 채팅 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요"
             ))
         };
         for path in [
@@ -940,7 +940,7 @@ mod tests {
             ("cp x ./.policy.json", thread),
             ("python3 x.py --out=../events.jsonl", thread),
         ] {
-            assert_eq!(judged(text, cwd), ask(Card::Command, "Thread 기록을 건드리기 전에 묻기"), "{text:?} ({cwd})");
+            assert_eq!(judged(text, cwd), ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"), "{text:?} ({cwd})");
         }
         // worktree의 같은 이름 · Thread 폴더의 다른 파일은 그대로다.
         for (text, cwd) in [

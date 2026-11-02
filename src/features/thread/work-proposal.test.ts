@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkProjectChoice } from "./fold";
 import { branchHint, firstPicked } from "./work-proposal";
 
-// Work 만들기 카드의 값(v1 티켓 30 · 구현 스펙 §11 · 캔버스 Cards 보드 「Work 만들기」) — 브랜치 칸 오른쪽의 규칙 설명 · 처음 골라 둘
+// Work 만들기 카드의 값(v1 티켓 30 · 구현 스펙 §11 · 캔버스 Cards 보드 「작업공간 만들기」) — 브랜치 칸 오른쪽의 규칙 설명 · 처음 골라 둘
 // Project. seam은 순수 함수 둘이다 — 카드는 이 값을 그리기만 한다.
 
 const project = (slug: string, branches: string[], extra: Partial<WorkProjectChoice> = {}): WorkProjectChoice => ({
@@ -40,7 +40,7 @@ describe("브랜치 칸의 규칙 설명", () => {
     });
   });
 
-  it("고른 Project에 이미 있는 브랜치 · 빈 이름은 문제다 — 「Work 만들기」가 잠긴다", () => {
+  it("고른 Project에 이미 있는 브랜치 · 빈 이름은 문제다 — 「작업공간 만들기」가 잠긴다", () => {
     expect(branchHint("fix/login-timeout", [api, web], new Set(["api-server", "web-app"]))).toEqual({
       text: "api-server에 이미 있는 브랜치예요",
       problem: true,

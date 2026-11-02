@@ -68,7 +68,7 @@ export function shownService(held: string | null, scope: ReadingScope | undefine
 }
 
 /**
- * 첫 말 전에 입력창이 쥔 Service(§5 · S4) — 둘을 따로 쥔다. Work 없는 쪽(「새 Work」 · 「Work 없이 대화」)이 고른 것은 그 둘을 오가도 남고,
+ * 첫 말 전에 입력창이 쥔 Service(§5 · S4) — 둘을 따로 쥔다. Work 없는 쪽(「새 작업공간」 · 「작업공간 없이 대화」)이 고른 것은 그 둘을 오가도 남고,
  * 최근 Work를 고르고 Service 칩에서 바꾼 것은 그 Work를 고른 동안만 산다(바꾸지 않았으면 그 Work의 Service 그대로다). 바꾼 것은 첫 말을 보낼 때
  * 그 Work에 적는다 — 메뉴를 훑다 버린 입력이 Work 파일을 바꾸지 않게.
  */
@@ -112,7 +112,7 @@ function picked(link: ThreadLink, hold: ServiceHold): ServicePick | null {
 }
 
 /**
- * Thread 머리 줄 이름 앞의 Service(§10) — Work 없는 Thread에 Service가 있으면 「흐린 Service / Thread 이름」의 그 Service다(누르면 Service 상세). 그
+ * Thread 머리 줄 이름 앞의 Service(§10) — Work 없는 Thread에 Service가 있으면 「흐린 Service / 채팅 이름」의 그 Service다(누르면 Service 상세). 그
  * Thread의 읽는 범위가 싣는 Service다 — 없거나 그 파일이 없으면(범위를 아직 못 읽었어도) 이름만 선다. 빈 자리를 말하지 않는다. Work에 이은
  * Thread는 02 그대로 Work 단추만 둔다.
  */

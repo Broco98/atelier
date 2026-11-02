@@ -41,7 +41,7 @@ pub struct PolicyFile {
 fn folder(data_root: &Path, place: PolicyPlace) -> Result<PathBuf> {
     match place {
         PolicyPlace::Work(slug) if crate::slug::is_safe_slug(slug) => Ok(crate::works_in(data_root).join(slug)),
-        PolicyPlace::Work(slug) => Err(crate::Error::Validation(format!("Work slug가 아닙니다: {slug:?}"))),
+        PolicyPlace::Work(slug) => Err(crate::Error::Validation(format!("작업공간 slug가 아닙니다: {slug:?}"))),
         PolicyPlace::Thread(id) => crate::thread_dir(data_root, id),
     }
 }

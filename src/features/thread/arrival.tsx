@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 
 // **움직임은 상태가 바뀐 그 자리에서만 일어난다**(v1 티켓 43 · 캔버스 Motion 보드 머리말 「움직임은 상태가 바뀐 그 자리에서만 짧게
-// 일어납니다」). 들어서는 움직임(`index.css` 「Thread의 움직임」의 `chip-in` · `card-rise` · `row-in` …)은 마운트에 걸리는데,
+// 일어납니다」). 들어서는 움직임(`index.css` 「채팅의 움직임」의 `chip-in` · `card-rise` · `row-in` …)은 마운트에 걸리는데,
 // 그대로 두면 Thread를 열 때 이미 있던 줄 · 칩 · 얼굴이 한꺼번에 들어선다. 그래서 「화면이 선 뒤에 새로 섰나」를 여기서 가린다.
 // - 화면(Thread 본문 · 새 Thread)은 `ArrivalScope`로 감싼다. 처음 그린 한 번이 지나면 그 자리가 「섰다」가 된다.
 // - 부품은 처음 설 때 그 답을 붙든다(`useArrival`) — 처음 그림에 선 부품은 끝까지 움직이지 않고, 선 뒤에 새로 선 부품(새 결정 줄 · 다음
@@ -45,7 +45,7 @@ export function ArrivalScope({ children }: { children: ReactNode }) {
   return <Arrival.Provider value={place}>{children}</Arrival.Provider>;
 }
 
-/** 들어서는 움직임의 유틸리티 이름(`index.css` 「Thread의 움직임」). */
+/** 들어서는 움직임의 유틸리티 이름(`index.css` 「채팅의 움직임」). */
 export type Motion = "word-in" | "chip-in" | "card-rise" | "row-in" | "jump-in" | "view-in";
 
 /**

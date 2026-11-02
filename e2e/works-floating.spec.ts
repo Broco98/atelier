@@ -35,9 +35,9 @@ import { fillToCap, MAX_SHELLS } from "./tab-row";
 const [pinnedWork, plainWork, multiWork] = WORKS;
 
 /**
- * 머리 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
+ * 머리 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업공간 메뉴」). 이름 전체로 집는다.
  */
-const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
+const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업공간 메뉴", exact: true });
 
 /** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — work 메뉴 절과 토스트 절이 함께 쓴다. */
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
@@ -289,7 +289,7 @@ test("Finder가 폴더를 못 열면 그 오류 문장이 「메시지」에 선
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 작업 패널 머리의 「spec 폴더 열기」(codex-ds 스펙 §6 「작업 패널」 — 머리는 「spec」과 spec 폴더 열기다). work 메뉴의 Finder ▸ spec 폴더와
+// 작업 패널 머리의 「spec 폴더 열기」(codex-ds 스펙 §6 「작업공간 패널」 — 머리는 「spec」과 spec 폴더 열기다). work 메뉴의 Finder ▸ spec 폴더와
 // 같은 명령을 slug 하나로 부르고(경로는 백엔드가 푼다 — 스펙 S6), 못 열면 같은 문장이 「메시지」에 선다.
 test("작업 패널 머리에 「spec」과 spec 폴더 열기가 서고, 누르면 그 work의 spec 폴더를 연다 — 못 열면 Finder ▸와 같은 문장이 선다", async ({
   page,
@@ -297,7 +297,7 @@ test("작업 패널 머리에 「spec」과 spec 폴더 열기가 서고, 누르
   await installFixtureBackend(page);
   await page.clock.install();
   await page.goto(`/works/${multiWork.slug}`);
-  const head = page.getByRole("region", { name: "작업 패널", exact: true }).locator('[data-slot="card-head"]');
+  const head = page.getByRole("region", { name: "작업공간 패널", exact: true }).locator('[data-slot="card-head"]');
   const open = head.getByRole("button", { name: "spec 폴더 열기", exact: true });
   await expect(head).toHaveText("spec");
   await expect(open).toBeVisible();

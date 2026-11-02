@@ -80,10 +80,10 @@ describe("프로젝트 자리", () => {
 describe("아무것도 안 치웠을 때", () => {
   it("문구는 그대로다", () => {
     const markup = render([]);
-    expect(markup).toContain("아직 치운 작업이 없어요");
-    expect(markup).toContain("끝난 작업의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.");
+    expect(markup).toContain("아직 치운 작업공간이 없어요");
+    expect(markup).toContain("끝난 작업공간의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.");
     expect(markup).toContain(
-      "끝난 작업의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요.",
+      "끝난 작업공간의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요.",
     );
   });
 });

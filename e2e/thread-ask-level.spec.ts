@@ -9,7 +9,7 @@ import type { ThreadView } from "@/features/thread/types";
 // 남고, 선 Thread에서 정도를 바꾸면 「Policy를 … 바꿈」 줄이 서고 다음 편집부터 그 정도로 묻는다**(v1 티켓 23 · 구현 스펙 §9 S18 ·
 // §14 입력창 아래 줄 · 스토리 84 · 86).
 //
-// 줄은 L1이 축복한 「편집은 허용으로 세운 Thread를 매번 묻기로 바꾼」 기록(`thread-ask-level.jsonl`)을 그대로 쏜다 — 첫 턴의 파일 쓰기는
+// 줄은 L1이 축복한 「편집은 허용으로 세운 채팅을 매번 묻기로 바꾼」 기록(`thread-ask-level.jsonl`)을 그대로 쏜다 — 첫 턴의 파일 쓰기는
 // 판정이 묻지 않고 허용하고(`decided` · 「편집은 허용」), 사람이 정도를 바꾼 `mode` 줄 뒤 둘째 턴의 파일 쓰기는 「매번 묻기」로 묻는다.
 // 보낸 말 · seq는 그 기록에서 읽는다(스토리 137).
 
@@ -39,7 +39,7 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
-  // 빈 Thread의 칩은 「매번 묻기」다(최근 Work를 고르지 않았다 — 기본 「새 Work」). 메뉴는 넷을 설명과 함께 보이고, 고르면 칩만 바뀐다 — 아직 Thread가 없다.
+  // 빈 Thread의 칩은 「매번 묻기」다(최근 Work를 고르지 않았다 — 기본 「새 작업공간」). 메뉴는 넷을 설명과 함께 보이고, 고르면 칩만 바뀐다 — 아직 Thread가 없다.
   await 정도칩(page, "매번 묻기").click();
   await expect(page.getByRole("menuitemradio")).toHaveText([/^매번 묻기/, /^편집은 허용/, /^계획만/, /^알아서/]);
   await expect(정도(page, "매번 묻기")).toHaveAttribute("aria-checked", "true");

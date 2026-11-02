@@ -566,7 +566,7 @@ pub enum HostError {
     BadTitle,
     /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
     QuestionClosed { thread: String, request: String },
-    /// 「Work 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
+    /// 「작업공간 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
     /// 적지 않았고 카드는 그대로 서 있다.
     WorkNotCreated(String),
     /// 읽기만 된 Thread — 이은 Work가 보관됐거나 지워졌다(v1 티켓 38). 아무것도 적지 않았다.
@@ -584,7 +584,7 @@ pub enum HostError {
 impl fmt::Display for HostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HostError::WorkNotFound(work) => write!(f, "work를 찾을 수 없습니다: {work}"),
+            HostError::WorkNotFound(work) => write!(f, "작업공간을 찾을 수 없습니다: {work}"),
             HostError::LoginShell(error) => write!(f, "{error}"),
             HostError::EngineMissing { agent, missing } => {
                 let names: Vec<&str> = missing.iter().map(|program| program.name).collect();
@@ -608,12 +608,12 @@ impl fmt::Display for HostError {
             HostError::BadQuote(reason) | HostError::BadAttachment(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
-            HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없어요: {thread}"),
-            HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
+            HostError::ThreadNotFound(thread) => write!(f, "채팅을 찾을 수 없어요: {thread}"),
+            HostError::BadTitle => write!(f, "채팅 이름이 비었어요"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
-            HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
-            HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 Work의 Thread는 읽기만 돼요"),
-            HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 Work의 Thread는 읽기만 돼요"),
+            HostError::WorkNotCreated(reason) => write!(f, "작업공간을 만들지 못했어요 — {reason}"),
+            HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 작업공간의 채팅은 읽기만 돼요"),
+            HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 작업공간의 채팅은 읽기만 돼요"),
             HostError::ProjectNotAttached(reason) => write!(f, "Project를 붙이지 못했어요 — {reason}"),
             HostError::ServiceNotFound(slug) => write!(f, "Service를 찾지 못했어요: {slug}"),
             HostError::ProjectNotAdded(reason) => write!(f, "Project를 추가하지 못했어요 — {reason}"),

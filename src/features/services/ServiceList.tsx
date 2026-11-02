@@ -67,7 +67,7 @@ export default function ServiceList() {
 
 /**
  * 「새 Service ⌄」 — 짙은 알약(시안 F1-Space `.btn.pri`)이 메뉴를 연다(F4-SpaceNewMenu — 단추 오른쪽 끝에 맞춰 아래 6). 「대화로 만들기」(끝에
- * 「기본」)는 첫 화면을 「Work 없이 대화」와 맡기는 말로 열고 보내기는 사람이 한다(S16), 「직접 만들기」는 빈 틀의 고치기 화면이다.
+ * 「기본」)는 첫 화면을 「작업공간 없이 대화」와 맡기는 말로 열고 보내기는 사람이 한다(S16), 「직접 만들기」는 빈 틀의 고치기 화면이다.
  */
 function NewServiceButton() {
   const navigate = useNavigate();

@@ -170,7 +170,7 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
     assert_eq!(
         wait_card(&sandbox, &thread, "answered")["payload"],
         json!({"state": "answered", "requestId": request_of(&asked), "card": "project", "choice": "attach", "project": "web-app"}),
-        "결정한 뒤 「web-app을 이 Work에 붙임」이 이 줄을 읽는다"
+        "결정한 뒤 「web-app을 이 작업공간에 붙임」이 이 줄을 읽는다"
     );
     let lines: Vec<Value> = of_kind(&record, "work").into_iter().map(|line| line["payload"].clone()).collect();
     assert_eq!(
@@ -377,10 +377,10 @@ fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로
     let decided = of_kind(&record, "permission").into_iter().find(|line| line["payload"]["state"] == "decided").unwrap().clone();
     let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
     assert_eq!(decided["payload"]["optionId"], "reject", "함께 연 폴더여도 고칠 수 있는 자리가 아니다: {decided}");
-    assert!(reason.starts_with(&format!("Thread 폴더 밖의 파일이라 고칠 수 없어요: {}", api.display())), "{reason}");
+    assert!(reason.starts_with(&format!("채팅 폴더 밖의 파일이라 고칠 수 없어요: {}", api.display())), "{reason}");
     assert!(
         reason.ends_with(
-            "— `api-server` Project를 고치려면 먼저 Thread 도구 `propose_work`로 그 Project를 넣은 Work를 만든 뒤 `start_editing`을 부르세요"
+            "— `api-server` Project를 고치려면 먼저 채팅 도구 `propose_work`로 그 Project를 넣은 작업공간을 만든 뒤 `start_editing`을 부르세요"
         ),
         "{reason}"
     );

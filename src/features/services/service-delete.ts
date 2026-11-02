@@ -16,7 +16,7 @@ export interface DeleteDialog {
 
 export function deleteDialog(service: Service, usage: ServiceUsage): DeleteDialog {
   const name = serviceName(service);
-  const counts = [usage.threads > 0 && `Thread ${usage.threads}개`, usage.works > 0 && `Work ${usage.works}개`].filter(Boolean).join(" · ");
+  const counts = [usage.threads > 0 && `채팅 ${usage.threads}개`, usage.works > 0 && `작업공간 ${usage.works}개`].filter(Boolean).join(" · ");
   return {
     title: `${name} Service를 삭제할까요?`,
     name,

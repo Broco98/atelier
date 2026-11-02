@@ -8,18 +8,18 @@ import ReadOnlyNotice from "./ReadOnlyNotice";
 const none = () => {};
 
 describe("읽기만 된 Thread의 입력창 자리", () => {
-  it("보관된 Work의 Thread는 「보관된 Work의 Thread는 읽기만 돼요」라고 말하고, 쓸 칸도 보낼 버튼도 없다", () => {
+  it("보관된 Work의 Thread는 「보관된 작업공간의 채팅은 읽기만 돼요」라고 말하고, 쓸 칸도 보낼 버튼도 없다", () => {
     const markup = renderToStaticMarkup(<ReadOnlyNotice gone="archived" running={false} onStop={none} />);
-    expect(markup).toContain("보관된 Work의 Thread는 읽기만 돼요");
+    expect(markup).toContain("보관된 작업공간의 채팅은 읽기만 돼요");
     expect(markup).toContain('role="status"');
     expect(markup).not.toMatch(/<textarea|<form|<input/);
     expect(markup).not.toContain("보내기");
     expect(markup).not.toContain("멈추기");
   });
 
-  it("지워진 Work의 Thread는 「지워진 Work의 Thread는 읽기만 돼요」다", () => {
+  it("지워진 Work의 Thread는 「지워진 작업공간의 채팅은 읽기만 돼요」다", () => {
     const markup = renderToStaticMarkup(<ReadOnlyNotice gone="removed" running={false} onStop={none} />);
-    expect(markup).toContain("지워진 Work의 Thread는 읽기만 돼요");
+    expect(markup).toContain("지워진 작업공간의 채팅은 읽기만 돼요");
     expect(markup).not.toContain("보관된");
   });
 

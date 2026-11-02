@@ -278,8 +278,8 @@ test("셸이 여덟이어도 파일 탭은 열리고, ⌘T만 막힌다", async 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
 const 레일칸 = (page: Page, name: "spec" | "files") => 레일(page).getByRole("button", { name, exact: true });
 /** 패널 토글 — 이름이 상태를 탄다(열렸으면 「접기」, 닫혔으면 「펼치기」). */
-const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
+const 토글 = (page: Page) => page.getByRole("button", { name: /^작업공간 패널 (접기|펼치기)$/ });
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업공간 패널", exact: true });
 /** 패널 카드 머리 — 고른 칸의 제목과 그 칸의 할 일 하나를 든다(`×`도 탭도 없다). */
 const 패널머리 = (page: Page) => 작업패널(page).locator('[data-slot="card-head"]');
 /** files 몸이 섰다는 표식 — 워크트리 트리의 첫 줄 폴더. 숨은 몸은 `hidden`이라 접근성 트리에 없다. */
@@ -312,7 +312,7 @@ test("레일 칸을 누르면 그 패널이 서고, 켜진 칸을 다시 누르�
   // 켜진 칸을 다시 누르면 닫힌다(ui-refresh 결정 9). 켜진 칸이 없어지고, 레일은 그 자리에 남는다(ui-refresh 결정 10).
   await files.click();
   await expect(토글(page)).toHaveAttribute("aria-expanded", "false");
-  await expect(토글(page)).toHaveAccessibleName("작업 패널 펼치기");
+  await expect(토글(page)).toHaveAccessibleName("작업공간 패널 펼치기");
   await expect(files).toHaveAttribute("aria-pressed", "false");
   await expect(spec).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => 패널폭(page)).toBe(0);
@@ -339,20 +339,20 @@ test("패널 토글과 ⌘Enter는 열림만 뒤집고 고른 칸은 그대로�
   // 열렸으면 「접기」이고 도움말에 ⌘Enter가 선다. 키는 설명으로도 남는다(S28 — `Hint`의 `shortcut`). 도움말은 포인터를 올려
   // 띄운다 — 칸을 마우스로 누른 뒤라 프로그램으로 준 포커스는 `:focus-visible`이 아니어서 도움말을 안 띄운다.
   const toggle = 토글(page);
-  await expect(toggle).toHaveAccessibleName("작업 패널 접기");
+  await expect(toggle).toHaveAccessibleName("작업공간 패널 접기");
   await expect(toggle).toHaveAccessibleDescription("⌘Enter");
   await toggle.hover();
-  await expect(툴팁(page)).toHaveText("작업 패널 접기 ⌘Enter");
+  await expect(툴팁(page)).toHaveText("작업공간 패널 접기 ⌘Enter");
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(toggle).toHaveAccessibleName("작업 패널 펼치기");
+  await expect(toggle).toHaveAccessibleName("작업공간 패널 펼치기");
   await expect(files).toHaveAttribute("aria-pressed", "false");
   // 도움말도 상태를 탄다 — 비켰다가 다시 올리면 「펼치기」다.
   await page.mouse.move(0, 0);
   await expect(툴팁(page)).toHaveCount(0);
   await toggle.hover();
-  await expect(툴팁(page)).toHaveText("작업 패널 펼치기 ⌘Enter");
+  await expect(툴팁(page)).toHaveText("작업공간 패널 펼치기 ⌘Enter");
   await expect.poll(() => 패널폭(page)).toBe(0);
   // 다시 열면 고른 칸(`files`) 그대로다 — 토글이 칸을 `spec`으로 되돌리면 안 된다.
   await toggle.click();

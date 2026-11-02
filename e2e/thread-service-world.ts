@@ -92,7 +92,7 @@ export const SCOPE_BY_SERVICE: Record<string, ReadingScope> = {
   [SETTLEMENT.slug]: SCOPES.settlement,
 };
 
-/** Work 넷 — 시안 「최근 Work」의 그 이름 · Service다. 마지막은 Service가 없다. */
+/** Work 넷 — 시안 「최근 작업공간」의 그 이름 · Service다. 마지막은 Service가 없다. */
 const work = (slug: string, title: string, linked: Service | null): WorkView => ({
   ...workView({ slug, title, branch: `fix/${slug}`, projects: linked ? linked.projects.slice(0, 1) : [] }),
   ...(linked && { service: linked.slug }),

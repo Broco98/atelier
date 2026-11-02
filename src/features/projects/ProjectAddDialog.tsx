@@ -197,7 +197,7 @@ function AddBody({ seq, folder, done }: { seq: number; folder: string | null; do
       {/* 아래 안내(스토리 116) — Project · Service · Work의 관계를 처음에 안다. */}
       <div className="flex items-start gap-3 rounded-xl bg-fill-soft px-4 py-3.5 text-chat-meta break-keep text-fg-secondary">
         <Lightbulb className="mt-0.5 size-4 shrink-0" aria-hidden />
-        <span>Project는 git 레포 하나예요. Service로 묶으면 Runtime이 함께 읽고, Work는 고칠 Project에만 worktree를 만들어요.</span>
+        <span>Project는 git 레포 하나예요. Service로 묶으면 Runtime이 함께 읽고, 작업공간은 고칠 Project에만 worktree를 만들어요.</span>
       </div>
 
       {/* 오른쪽 아래 단추 — 채우기 전엔 꺼져 있다(시안 회색). 36 둥근 큰 버튼이다. */}

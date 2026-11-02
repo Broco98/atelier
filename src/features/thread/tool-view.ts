@@ -10,13 +10,13 @@ import { isObject, nonEmpty, type Json } from "./json";
 // - **문구는 「대상 + 동사」다** — 대상(파일 이름 · 명령 · MCP 도구)이 앞에 고정폭으로 서고 동사가 뒤에 선다(「refund.service.ts 읽음」 ·
 //   「pnpm test refunds 실행함」). 하는 중에는 현재형(「읽는 중」 · 「고치는 중」 · 「실행 중」 · 「부르는 중」), 끝나면 과거형이다.
 // - **줄 앞에 종류 글리프가 선다**(02 구현 스펙 §8 · 스토리 50 — Codex 결). 갈래는 일곱이다(`ToolGlyph`): 읽기 · 편집 · 명령 · 검색 · 웹 ·
-//   MCP · 그 밖. 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말로 서니(「Work 읽음」 · 「api-server 고치기 시작함」) MCP
+//   MCP · 그 밖. 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말로 서니(「작업공간 읽음」 · 「api-server 고치기 시작함」) MCP
 //   플러그가 아니라 그 말의 갈래다. 그 밖의 MCP 도구만 플러그다. 그림은 `WorkLog.tsx`가 고른다.
 // - **실패 · 중단 · 거절은 색이 아니라 문장이다** — 「실행하지 못함 · 코드 종료 1」(동사만 진하게), 「중단함 · 12초」, 「실행하지 않음 ·
 //   내가 거절함」.
 // - **명령 출력의 끝 줄은 종료 코드와 걸린 시간이다**(「코드 종료 0 · 4.2초」). Claude Code는 종료 코드를 주지 않아 그때는 「끝남」 ·
 //   「실패」다.
-// - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「Work 읽음」 · 「Work 만들기를 묻는 중」.
+// - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「작업공간 읽음」 · 「작업공간 만들기를 묻는 중」.
 //   「Project 고치기 시작」(v1 티켓 32)은 「api-server 고치기 시작함」이다 — Work 밖 Project 카드가 서면 그동안 「web-app 고치기 시작하는
 //   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다.
 // - **Service를 붙이는 Thread 도구 둘**(03 티켓 08) — 「Service 목록 확인함」 · 「Service 고름」(질문 카드가 선 동안은 「Service 고르는 중」).
@@ -186,9 +186,9 @@ export function describeTool(tool: ToolEntry): ToolView {
       const count = state === "done" ? listedCount(received) : null;
       return { ...base, glyph: "read", phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, false), mcp: box };
     }
-    if (name === GET_WORK) return { ...base, glyph: "read", phrase: say(READ, "Work", false), mcp: box };
+    if (name === GET_WORK) return { ...base, glyph: "read", phrase: say(READ, "작업공간", false), mcp: box };
     // 카드가 선 동안 서는 줄이다 — 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다(`fold.ts`). 거절된 제안만 이 줄로 남는다.
-    if (name === PROPOSE_WORK) return { ...base, glyph: "other", phrase: say(ASK, "Work 만들기를", false), mcp: box };
+    if (name === PROPOSE_WORK) return { ...base, glyph: "other", phrase: say(ASK, "작업공간 만들기를", false), mcp: box };
     if (name === START_EDITING) {
       return { ...base, glyph: "edit", phrase: say(START, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
     }

@@ -344,7 +344,7 @@ pub async fn list_work_changes(slug: String) -> CmdResult<Vec<atelier_core::Proj
         atelier_core::list_work_changes(&works_dir(), &projects_dir(), &slug).map_err(err)
     })
     .await
-    .map_err(|e| format!("Work의 변경을 읽지 못했습니다: {e}"))?
+    .map_err(|e| format!("작업공간의 변경을 읽지 못했습니다: {e}"))?
 }
 
 /// 변경 하나의 diff(S23) — 넓힌 카드의 diff 보기가 받는 unified patch다. `..` · 절대 경로는 명령 실패다.
@@ -853,7 +853,7 @@ pub async fn thread_cancel_login(engine: tauri::State<'_, Arc<atelier_acp::Conve
 pub async fn thread_quit_counts(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
 ) -> CmdResult<atelier_acp::QuitCounts> {
-    to_host(&engine, "Thread를 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
+    to_host(&engine, "채팅을 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
 }
 
 /// Thread 목록 — 모든 Thread의 요약, 새것부터. 엔진의 색인을 읽는다.
@@ -861,7 +861,7 @@ pub async fn thread_quit_counts(
 pub async fn thread_list(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
 ) -> CmdResult<Vec<atelier_core::ThreadSummary>> {
-    to_host(&engine, "Thread 목록을 읽지 못했습니다", |host| host.list_threads()).await
+    to_host(&engine, "채팅 목록을 읽지 못했습니다", |host| host.list_threads()).await
 }
 
 /// Thread 하나의 지금 — `thread.json` · 기록의 끝 · 떠 있나 · 대기 줄. 다시 켠 뒤 · ⌘R 뒤 화면이 Thread를 열 때 읽는다.
@@ -870,7 +870,7 @@ pub async fn thread_get(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
 ) -> CmdResult<atelier_acp::ThreadView> {
-    to_host(&engine, "Thread를 읽지 못했습니다", move |host| host.thread(&thread)).await
+    to_host(&engine, "채팅을 읽지 못했습니다", move |host| host.thread(&thread)).await
 }
 
 /// 그 Thread의 기록에서 `after` 다음 seq의 줄들 — 화면은 이것으로 그리고, 그 뒤는 기록 줄 이벤트로 잇는다.
@@ -880,7 +880,7 @@ pub async fn thread_read_record(
     thread: String,
     after: u64,
 ) -> CmdResult<Vec<atelier_acp::RecordLine>> {
-    to_host(&engine, "Thread 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
+    to_host(&engine, "채팅 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
 }
 
 /// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
@@ -902,7 +902,7 @@ pub async fn thread_start(
     service: Option<atelier_acp::ServicePick>,
 ) -> CmdResult<String> {
     let picks = atelier_acp::StartPicks { mode, model, effort, service };
-    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
+    to_host(&engine, "채팅을 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
 }
 
 /// 있는 Thread에 말한다. 턴을 기다리지 않는다. 다시 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 없는 첨부면 아무것도 적지 않고
@@ -976,8 +976,8 @@ pub async fn thread_answer_permission(
     .await
 }
 
-/// Work 만들기 카드의 답(v1 티켓 30) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「Work 만들기」(`create`, 카드에서 고친
-/// Project들 · 브랜치)나 「Work 없이 계속」으로 답한다. 만들지 못하면 그 까닭으로 실패하고 카드는 그대로 서 있다.
+/// Work 만들기 카드의 답(v1 티켓 30) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「작업공간 만들기」(`create`, 카드에서 고친
+/// Project들 · 브랜치)나 「작업공간 없이 계속」으로 답한다. 만들지 못하면 그 까닭으로 실패하고 카드는 그대로 서 있다.
 #[tauri::command]
 pub async fn thread_answer_work(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -992,7 +992,7 @@ pub async fn thread_answer_work(
     } else {
         atelier_acp::WorkChoice::Continue
     };
-    to_host(&engine, "Work 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
+    to_host(&engine, "작업공간 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
 }
 
 /// 질문 답(v1 티켓 26) — 그 Thread의 Session에 걸린 질문(`request` — `question` 줄의 요청 id)에 물음마다의 답(`answers`)으로
@@ -1025,9 +1025,9 @@ pub async fn thread_answer_project(
         "attach" => atelier_acp::ProjectChoice::Attach,
         "read" => atelier_acp::ProjectChoice::ReadOnly,
         "decline" => atelier_acp::ProjectChoice::Decline,
-        other => return Err(format!("Work 밖 Project 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
+        other => return Err(format!("작업공간 밖 Project 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
     };
-    to_host(&engine, "Work 밖 Project 카드에 답하지 못했습니다", move |host| host.answer_project(&thread, &request, choice)).await
+    to_host(&engine, "작업공간 밖 Project 카드에 답하지 못했습니다", move |host| host.answer_project(&thread, &request, choice)).await
 }
 
 /// Service 질문 카드의 답(03 §11 · 티켓 08) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 그 Service(`service` + `service`의 slug) ·
@@ -1120,7 +1120,7 @@ pub async fn thread_set_work_service(
     work: String,
     service: Option<String>,
 ) -> CmdResult<()> {
-    to_host(&engine, "Work의 Service를 바꾸지 못했습니다", move |host| host.set_work_service(&work, service.as_deref())).await
+    to_host(&engine, "작업공간의 Service를 바꾸지 못했습니다", move |host| host.set_work_service(&work, service.as_deref())).await
 }
 
 /// Service 지우기(03 티켓 07 · §9 · §14) — 확인 창의 「삭제」. 파일을 지운 자리로 옮기고 그 Service에 이은 칸을 비우며, 그 Service로 읽던
@@ -1150,7 +1150,7 @@ pub async fn thread_work_mode(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     work: String,
 ) -> CmdResult<atelier_acp::AskLevel> {
-    to_host(&engine, "Work의 물어보는 정도를 읽지 못했습니다", move |host| host.work_ask_level(&work)).await
+    to_host(&engine, "작업공간의 물어보는 정도를 읽지 못했습니다", move |host| host.work_ask_level(&work)).await
 }
 
 /// 이름 바꾸기 — 위 막대에서 사람이 고친 이름(v1 티켓 05). `thread.json` · `title` 줄 · 목록 요약이 함께 바뀐다. 답은 바뀐 목록

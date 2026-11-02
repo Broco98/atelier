@@ -7,7 +7,7 @@ import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFiel
 // 카드의 값(머리 한 줄 · 물음 · 어디서 한 줄 · 명령이나 diff), 선택지, 키 하나의 고르기로 옮기고, 사람이 고른 것(`DecisionEntry`)을
 // 결정 줄의 글로 옮기는 **순수 함수**다. 그리는 것은 `ApprovalCard` · `ThreadFlow`다.
 //
-// - **머리 한 줄이 누가 · 무슨 일 · 왜 묻는지다** — 「Host · 명령 실행 · 「Thread 기록을 건드리기 전에 묻기」」. 왜는 판정이 물음 줄에 단
+// - **머리 한 줄이 누가 · 무슨 일 · 왜 묻는지다** — 「Host · 명령 실행 · 「채팅 기록을 건드리기 전에 묻기」」. 왜는 판정이 물음 줄에 단
 //   까닭(`policy`, v1 티켓 22)이고, 없으면 그 조각을 뺀다. Runtime이 준 까닭(Claude `decision_reason` — 「This command requires
 //   approval」)은 쓰지 않는다: Atelier가 하나뿐인 판정자다(S17). 머리가 Agent를 말하니 보이는 물음은 이름 없이 선다(「이 명령을 실행해도
 //   될까요?」) — 카드의 이름(`label`)은 누가 묻는지까지 든 물음이다.
@@ -29,7 +29,7 @@ export type CardKind = "command" | "edit" | "plan" | "other";
 
 export interface ApprovalView {
   kind: CardKind;
-  /** 머리 한 줄 — 「Host · 명령 실행 · 「Thread 기록을 건드리기 전에 묻기」」. 까닭이 없으면 「Host · 명령 실행」이다. */
+  /** 머리 한 줄 — 「Host · 명령 실행 · 「채팅 기록을 건드리기 전에 묻기」」. 까닭이 없으면 「Host · 명령 실행」이다. */
   head: string;
   /** 보이는 물음(14/500) — 「이 명령을 실행해도 될까요?」. */
   title: string;
@@ -131,20 +131,20 @@ export interface WorkPlaces {
 
 /**
  * 명령을 실행할 자리 — 그 Session의 작업 폴더(`cwd`)를 이은 Work의 자리들과 견준다(v1 구현 스펙 §11 · three-axes 결정 17).
- * worktree면 「Project · 브랜치 worktree」, worktree들을 품은 폴더(Project 여럿)면 「Work의 worktree 폴더」, spec 폴더면 그 이름, 그 밖은
+ * worktree면 「Project · 브랜치 worktree」, worktree들을 품은 폴더(Project 여럿)면 「작업공간의 worktree 폴더」, spec 폴더면 그 이름, 그 밖은
  * 폴더 이름이다. Work 없는 Thread의 Session은 Thread 폴더에서 일한다(S11). **폴더 이름으로 가르지 않는다** — 프런트는 Work 폴더의
  * 짜임을 모른다(`shell-registry.test.ts`의 경로 조각 지킴). 모르면 null이다.
  */
 export function placeOf(cwd: string | null, work: WorkPlaces | null): string | null {
   if (!cwd) return null;
-  if (!work) return "Thread 폴더에서 실행";
+  if (!work) return "채팅 폴더에서 실행";
   const bare = (path: string) => path.replace(/\/+$/, "");
   const here = bare(cwd);
   const tree = work.worktrees.find((one) => bare(one.path) === here);
   if (tree) return `${[tree.project, work.branch].filter(Boolean).join(" · ")} worktree에서 실행`;
   if (here === bare(work.specDir)) return "spec 폴더에서 실행";
   if (work.worktrees.length > 0 && work.worktrees.every((one) => bare(one.path).startsWith(`${here}/`))) {
-    return "Work의 worktree 폴더에서 실행";
+    return "작업공간의 worktree 폴더에서 실행";
   }
   return `${baseName(here)} 폴더에서 실행`;
 }

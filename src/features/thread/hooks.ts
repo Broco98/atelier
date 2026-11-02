@@ -264,7 +264,7 @@ function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): 
 
 /**
  * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
- * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Service 이름은 Work
+ * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 작업공간이 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Service 이름은 Work
  * 목록 · Service 목록에서 읽는다(아직 못 읽었으면 비어 선다).
  */
 export function useRecentWorks(): RecentWork[] | null {

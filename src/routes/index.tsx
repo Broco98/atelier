@@ -8,7 +8,7 @@ import { seedOf, validateNewThreadSearch } from "./-new-thread-search";
 // (03 S2 — `work-chip.ts`).
 //
 // search는 **처음 고를 곳**(Work 칩의 씨앗 — `?work=<slug>` · `?new=work` · `?new=thread`, Service 칩의 씨앗 — `?service=<slug>`)과 **입력
-// 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 줄 「새 Thread」가 같은 규칙으로 「씨앗 없는 새
+// 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 줄 「새 채팅」이 같은 규칙으로 「씨앗 없는 새
 // Thread인가」를 읽는다(02 코드 리뷰 S1).
 export const Route = createFileRoute("/")({
   component: NewThreadRoute,

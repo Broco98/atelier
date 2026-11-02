@@ -394,7 +394,7 @@ describe("Codex 움직임 토큰", () => {
   // 스펙 §12의 줄 → 새 토큰과 값.
   const NEW: [줄: string, 토큰: string, 값: string][] = [
     ["툴팁 — 지연 200ms(호버 카드가 함께 읽는 `duration-tip` 150과 나눈다)", "delay-tip", "200ms"],
-    ["사이드바 열고 닫기 — .3s(작업 패널과 나누는 `PANEL_MOTION` 220과 따로 둔다)", "duration-sidebar", "300ms"],
+    ["사이드바 열고 닫기 — .3s(작업공간 패널과 나누는 `PANEL_MOTION` 220과 따로 둔다)", "duration-sidebar", "300ms"],
     ["사이드바 열고 닫기 — spring의 linear() 근사", "ease-spring", SPRING],
     ["생각 중 — 한 바퀴 4s(띠는 첫 1s에 지나간다)", "duration-think", "4000ms"],
     ["생각 중 — 보인 뒤 600ms에 시작", "delay-think", "600ms"],

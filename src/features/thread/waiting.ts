@@ -79,7 +79,7 @@ export type Jump = { kind: "thread"; id: string } | { kind: "shell" } | null;
  *   하지 않는다(`shell-recall.ts`의 `recallTarget`). 그 갈래는 그 길이 정한다.
  * - **내 차례 Thread 밖이면 가장 오래 기다린 Thread다.** 안이면 기다린 순서의 다음 Thread로 건너뛴다 — 답하지 않고 넘기는 길이다(답하면
  *   그 Thread는 차례에서 빠지므로 다음 ⌘J는 다시 맨 앞부터다).
- * - **마지막 Thread 다음은 부른 셸이다** — 「내 차례 Thread 다음에 셸」(S28 표). 부른 셸이 없으면(닫혔어도) 처음 Thread로 돈다: 닫힌 셸을
+ * - **마지막 Thread 다음은 부른 셸이다** — 「내 차례 채팅 다음에 셸」(S28 표). 부른 셸이 없으면(닫혔어도) 처음 Thread로 돈다: 닫힌 셸을
  *   알리는 것은 그 셸로 가려 할 때의 말이고, 기다리는 Thread가 남았는데 키가 아무 일도 안 하면 건너뛰기가 막힌다. 처음 Thread가 지금 보는
  *   그것이면 갈 곳이 없다.
  */

@@ -12,7 +12,7 @@ import { SIDEBAR_ROW_SHAPE, sidebarRowTone } from "./sidebar-look";
 // 없다(`Sidebar.test.tsx` 머리말). 행의 그림(이름 · 끝 글자 · 누름)은 여기서 잰다(`sidebar-item.test.tsx`), 켜짐을 무엇이 정하는지(주소 ·
 // 거르기)는 `Sidebar.tsx`의 항목이 든다.
 
-/** nav 정류장 목록에서 「새 Thread」의 열쇠 — nav 항목의 key와 겹치지 않는다. */
+/** nav 정류장 목록에서 「새 채팅」의 열쇠 — nav 항목의 key와 겹치지 않는다. */
 export const NEW_THREAD_KEY = "new-thread";
 /** nav 정류장 목록에서 「내 차례」의 열쇠. */
 export const MINE_KEY = "mine";
@@ -84,8 +84,8 @@ export function SidebarItem({
 }
 
 /**
- * 위 줄 「새 Thread」의 그림 — 끝에 그 키(⌘N)가 옅게 선다(12 · 3단계 색, 시안 F1-Home `.cnt`). 글자는 단축키 표의 것이고(`newThread`) 접근성
- * 이름에서 빠진다 — 이름이 「새 Thread⌘N」이 되면 이름으로 집는 자리와 스크린리더가 함께 흐려진다. 키는 `aria-keyshortcuts`가 말한다(메뉴
+ * 위 줄 「새 채팅」의 그림 — 끝에 그 키(⌘N)가 옅게 선다(12 · 3단계 색, 시안 F1-Home `.cnt`). 글자는 단축키 표의 것이고(`newThread`) 접근성
+ * 이름에서 빠진다 — 이름이 「새 채팅⌘N」이 되면 이름으로 집는 자리와 스크린리더가 함께 흐려진다. 키는 `aria-keyshortcuts`가 말한다(메뉴
  * 단축키 칸 `MenuShortcut`과 같은 길). 켜짐(지금 `/`인가)은 부르는 쪽이 정한다.
  */
 export function NewThreadRow({ active, stop, onClick }: { active: boolean; stop: boolean; onClick: () => void }) {
@@ -93,7 +93,7 @@ export function NewThreadRow({ active, stop, onClick }: { active: boolean; stop:
   return (
     <SidebarItem
       icon={SquarePen}
-      label="새 Thread"
+      label="새 채팅"
       active={active}
       roving={{ key: NEW_THREAD_KEY, stop }}
       onClick={onClick}

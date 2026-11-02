@@ -399,7 +399,7 @@ const 이름칸들: Array<{
     setUp: async (page) => {
       await 행버튼(page, pinnedWork.title).focus();
       await page.keyboard.press("F2");
-      return workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true, includeHidden: true });
+      return workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true, includeHidden: true });
     },
   },
   {
@@ -412,7 +412,7 @@ const 이름칸들: Array<{
     ring: (field) => field.locator(".."),
     setUp: async (page) => {
       await 화면머리(page).getByText(plainWork.title, { exact: true }).dblclick();
-      return 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true, includeHidden: true });
+      return 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true, includeHidden: true });
     },
   },
   {
@@ -721,7 +721,7 @@ test("⋯ 메뉴 · 상태 메뉴를 누른 채 끌어 줄 위에서 놓으면 �
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
 
-  await 끌어놓는다(page, page.getByRole("button", { name: "작업 메뉴", exact: true }), (menu) =>
+  await 끌어놓는다(page, page.getByRole("button", { name: "작업공간 메뉴", exact: true }), (menu) =>
     menu.getByRole("menuitem", { name: "고정 풀기", exact: true }),
   );
   await expect.poll(async () => (await ipcCallArgs(page, "set_work_pinned", "pinned")).map(({ args }) => args.pinned)).toEqual([false]);

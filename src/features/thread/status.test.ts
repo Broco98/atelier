@@ -106,18 +106,18 @@ describe("내 차례", () => {
     expect(statusOf(through(working, 55), live(0))).toEqual({
       kind: "mine",
       since: "2026-10-10T10:00:55.000+09:00",
-      text: "Work 만들기 · 환불 API 부분 환불 버그 수정 (#31)",
+      text: "작업공간 만들기 · 환불 API 부분 환불 버그 수정 (#31)",
     });
     expect(statusOf(through(working, 56), live(0))?.kind).toBe("working");
   });
 
   // Work 밖 Project 카드(v1 티켓 32)도 같은 물음 차례다 — 미리보기는 고치려는 Project다.
-  it("Work 밖 Project 카드가 서 있으면 내 차례이고, 미리보기는 「Work 밖 Project · web-app」이다", () => {
+  it("Work 밖 Project 카드가 서 있으면 내 차례이고, 미리보기는 「작업공간 밖 Project · web-app」이다", () => {
     const outside = record("thread-project");
     expect(statusOf(through(outside, 7), live(0))).toEqual({
       kind: "mine",
       since: "2026-10-10T10:00:07.000+09:00",
-      text: "Work 밖 Project · web-app",
+      text: "작업공간 밖 Project · web-app",
     });
     expect(statusOf(through(outside, 8), live(0))?.kind).toBe("working");
   });

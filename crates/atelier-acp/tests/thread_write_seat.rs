@@ -19,7 +19,7 @@ const FIXING: &str = "장바구니 수량을 고쳐 줘";
 const OTHER: &str = "장바구니 문서를 고쳐 줘";
 
 /// 다른 채팅에서 거절된 Session이 받는 글 — 주인은 그 채팅의 이름으로 부른다.
-const FIXING_HOLDS: &str = "「장바구니 수량을 고쳐 줘」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+const FIXING_HOLDS: &str = "「장바구니 수량을 고쳐 줘」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요";
 
 /// 녹음 — 파일 쓰기(`Write`)를 묻는 턴 둘. 경로는 각자의 작업 폴더(Work `cart`의 worktree)로 옮긴다 — 원문의 경로는 Work 밖이라 판정이
 /// 묻지 않고 거절한다(v1 티켓 22).
@@ -169,7 +169,7 @@ fn 먼저_쥔_채팅이_놓으면_다른_채팅이_쥐고_먼저_쥐었던_채�
     let refused = wait_permission(&sandbox, &first, "decided");
     assert_eq!(
         (refused["payload"]["optionId"].clone(), refused["payload"]["reason"].clone()),
-        (json!("reject"), json!("「장바구니 문서를 고쳐 줘」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요"))
+        (json!("reject"), json!("「장바구니 문서를 고쳐 줘」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요"))
     );
     let session = sandbox.thread_session_id(&first);
     assert_eq!(decisions(&sandbox, &session).last().expect("둘째 편집의 답")["behavior"], "deny");

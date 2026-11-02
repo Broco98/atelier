@@ -42,7 +42,7 @@ vi.mock("@/components/shell/ShellHead", async (actual) =>
 );
 
 // 작업 패널을 여닫는 길은 **머리 줄의 패널 토글 하나**다(ui-refresh 결정 9 · codex-ds 스펙 §10 — 머리 줄 오른쪽 맨 끝, 02 구현 스펙
-// §3 S2) — 한때 흩어져 있던 둘(패널 머리의 `×`와, 닫혔을 때만 창 맨 위 줄에 뜨던 「작업 패널 펼치기」)이 그것 하나로 합쳐졌다.
+// §3 S2) — 한때 흩어져 있던 둘(패널 머리의 `×`와, 닫혔을 때만 창 맨 위 줄에 뜨던 「작업공간 패널 펼치기」)이 그것 하나로 합쳐졌다.
 // 토글은 늘 그 자리에 있고 이름과 `aria-expanded`가 상태를 탄다.
 //
 // 이 화면은 작업 하나가 골라져 있어야 헤더 우측이 그려진다. 조회를 가로채는 대신
@@ -146,7 +146,7 @@ function railItems(markup: string): { name: string; pressed: string }[] {
 
 /** 패널 토글의 여는 태그들 — 이름이 상태를 타므로 두 이름 중 하나로 집는다. 맞는 것을 다 돌려주고, 없으면 빈 배열이다. */
 const panelToggleTags = (markup: string) =>
-  markup.match(/<button[^>]*aria-label="작업 패널 (?:접기|펼치기)"[^>]*>/g) ?? [];
+  markup.match(/<button[^>]*aria-label="작업공간 패널 (?:접기|펼치기)"[^>]*>/g) ?? [];
 
 describe("WorksPage 패널 토글과 레일", () => {
   beforeEach(() => {
@@ -157,21 +157,21 @@ describe("WorksPage 패널 토글과 레일", () => {
     vi.unstubAllGlobals();
   });
 
-  it("패널이 열려 있으면 토글이 하나이고 「작업 패널 접기」 · `aria-expanded=\"true\"`다", () => {
+  it("패널이 열려 있으면 토글이 하나이고 「작업공간 패널 접기」 · `aria-expanded=\"true\"`다", () => {
     // ui-refresh 결정 9로 **뒤집혔다** — 한때 「열려 있으면 여는 아이콘이 없다 · 늘 보이는 토글이 없다」였다(여는 길은 창 맨 위
     // 줄, 닫는 길은 패널 머리의 `×`). 이제 그 둘이 토글 하나로 합쳐져 늘 서 있고, 누르면 무슨 일이 날지를 이름이 말한다.
     // 첫 화면은 패널이 열린 상태다(WorksPage의 workPanelOpen 초기값).
     const tags = panelToggleTags(render());
     expect(tags).toHaveLength(1);
-    expect(tags[0]).toContain('aria-label="작업 패널 접기"');
+    expect(tags[0]).toContain('aria-label="작업공간 패널 접기"');
     expect(tags[0]).toContain('aria-expanded="true"');
   });
 
-  it("패널이 접혀 있어도 토글은 그 하나이고, 이름이 「작업 패널 펼치기」 · `aria-expanded=\"false\"`다", () => {
+  it("패널이 접혀 있어도 토글은 그 하나이고, 이름이 「작업공간 패널 펼치기」 · `aria-expanded=\"false\"`다", () => {
     // 분할로 들어오면 패널이 접혀 있다(결정 88) — 정적 렌더로 접힌 패널을 만드는 길이 그것이다.
     const tags = panelToggleTags(render(specDocs(["overview.md"]), "spec", "lr"));
     expect(tags).toHaveLength(1);
-    expect(tags[0]).toContain('aria-label="작업 패널 펼치기"');
+    expect(tags[0]).toContain('aria-label="작업공간 패널 펼치기"');
     expect(tags[0]).toContain('aria-expanded="false"');
   });
 
@@ -186,7 +186,7 @@ describe("WorksPage 패널 토글과 레일", () => {
       expect(panelToggleTags(headRowOf(markup)), `${split}`).toHaveLength(1);
       expect(panelToggleTags(group), `${split} — 할 일 묶음 안`).toHaveLength(1);
       const buttons = group.match(/<button[^>]*>/g) ?? [];
-      expect(buttons[buttons.length - 1], `${split}`).toMatch(/aria-label="작업 패널 (?:접기|펼치기)"/);
+      expect(buttons[buttons.length - 1], `${split}`).toMatch(/aria-label="작업공간 패널 (?:접기|펼치기)"/);
       expect(buttons[buttons.length - 2], `${split}`).toContain('aria-label="분할"');
     }
   });
@@ -211,7 +211,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // `aside`는 사이드바와 작업 패널 둘뿐이고(e2e `tab-row-floor`가 순서를 잰다) `nav`는 사이드바 버튼을 집는 고리다(`harness.ts`).
     // 토글은 레일 열이 아니라 머리 줄에 선다(codex-ds 스펙 §10) — `header` 안이고, `aside` · `nav`에는 안 든다.
     const markup = render();
-    const toggleAt = markup.indexOf('aria-label="작업 패널 접기"');
+    const toggleAt = markup.indexOf('aria-label="작업공간 패널 접기"');
     expect(toggleAt, "토글이 없다").toBeGreaterThan(-1);
     const beforeToggle = markup.slice(0, toggleAt);
     for (const tag of ["aside", "nav"]) {
@@ -261,7 +261,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     expect(header).not.toContain("atelier");
     // 상태 배지와 ⋯는 남는다 — 자주 누르는 조작이라 탭 뒤에 숨기면 클릭이 두 번 든다
     expect(header).toContain("active");
-    expect(header).toMatch(/aria-label="작업 메뉴"/);
+    expect(header).toMatch(/aria-label="작업공간 메뉴"/);
   });
 });
 
@@ -380,7 +380,7 @@ describe("WorksPage 머리 줄 배치", () => {
     // 할 일(상태 · ⋯)과 보기 배치(분할)는 얇은 세로선이 가른다(DS `HeadCard`) — 선은 장식이 아니라 구분이라 `separator`다.
     const a = actions(render());
     const status = a.indexOf('aria-description="상태 변경"');
-    const menu = a.indexOf('aria-label="작업 메뉴"');
+    const menu = a.indexOf('aria-label="작업공간 메뉴"');
     const line = a.indexOf('role="separator"');
     const split = a.indexOf('aria-label="분할"');
     expect(status).toBeGreaterThan(-1);
@@ -401,7 +401,7 @@ describe("WorksPage 머리 줄 배치", () => {
     const tags = header(render()).match(/<button[^>]*>/g) ?? [];
     const box = (label: string) =>
       tags.find((tag) => tag.includes(`aria-label="${label}"`))?.match(/class="([^"]*)"/)?.[1] ?? "";
-    for (const label of ["작업 메뉴", "분할"]) {
+    for (const label of ["작업공간 메뉴", "분할"]) {
       expect(box(label), label).toMatch(/\bicon-button\b/);
       expect(box(label), label).not.toMatch(/\bicon-button-xs\b/);
     }
@@ -410,12 +410,12 @@ describe("WorksPage 머리 줄 배치", () => {
     expect(glyph("columns-2")).toMatch(/\bsize-4\b/);
     // 크기 단까지 같은지는 L3가 칠해진 상자로 잰다(`e2e/primitives.spec.ts`)
     // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
-    expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
+    expect(box("작업공간 메뉴")).not.toMatch(/\bh-\[/);
   });
 
   it("화면의 이름표는 한 글자도 안 바뀐다", () => {
     const markup = render();
-    expect(markup).toContain('aria-label="작업 메뉴"');
+    expect(markup).toContain('aria-label="작업공간 메뉴"');
     expect(markup).toContain('aria-label="분할"');
   });
 
@@ -425,7 +425,7 @@ describe("WorksPage 머리 줄 배치", () => {
   // (`keyboard.spec.ts`)가 진짜 Tab으로 잰다.
   it("분할이 Tab 정류장임을 tabindex로 명시한다 — ⋯와 같다", () => {
     const tags = header(render()).match(/<button[^>]*>/g) ?? [];
-    for (const label of ["작업 메뉴", "분할"]) {
+    for (const label of ["작업공간 메뉴", "분할"]) {
       expect(tags.find((tag) => tag.includes(`aria-label="${label}"`)), label).toMatch(/\btabindex="0"/);
     }
   });
@@ -440,7 +440,7 @@ describe("WorksPage 머리 줄 배치", () => {
     for (const one of [
       // 도움말 「상태 변경」은 툴팁이라 정적 마크업에 없다 — 이름(지금 상태)보다 더 말하던 그 말은 설명으로 남는다(S28).
       'aria-description="상태 변경"',
-      'aria-label="작업 메뉴"',
+      'aria-label="작업공간 메뉴"',
       'aria-label="분할"',
     ]) {
       expect(a, one).toContain(one);
@@ -481,8 +481,8 @@ describe("WorksPage 머리 줄 배치", () => {
     const title = card.slice(zap, card.indexOf("data-head-actions"));
     expect(title).not.toMatch(/<button|<input|contenteditable/);
     expect(title).not.toContain('title="클릭해서 편집"');
-    // 브레드크럼이 아니다. `Works /`가 남아 있으면 제목 앞에 이유 없는 글자가 선다.
-    expect(header(render())).not.toContain("Works");
+    // 브레드크럼이 아니다. 화면 이름 「작업공간 /」이 남아 있으면 제목 앞에 이유 없는 글자가 선다. 머리에는 「작업공간 메뉴」가 있어 글자로만 잰다.
+    expect(header(render()).replace(/<[^>]+>/g, " ")).not.toContain("작업공간");
   });
 
   it("제목 앞에 흐린 Service와 「/」가 선다 — Service가 없으면 「Service 없음」, Service 목록을 아직 못 읽었으면 slug다(03 §10)", () => {
@@ -612,7 +612,7 @@ describe("WorksPage 터미널 탭", () => {
     // 그리고 여는 자리는 **탭 줄에** 있다. 둘 다 없으면 열 길이 아예 사라진 것이다.
     expect(row).toContain('aria-label="셸 열기"');
     // 패널이 **함께** 있다. 그 카드의 이름으로 확인한다.
-    expect(markup).toContain('aria-label="작업 패널"');
+    expect(markup).toContain('aria-label="작업공간 패널"');
   });
 
   it("spec 본문에는 여는 자리가 없다 — 여는 자리는 탭 줄의 `+`다", () => {
@@ -624,7 +624,7 @@ describe("WorksPage 터미널 탭", () => {
     expect(row, "탭 줄을 찾지 못했다").not.toBe("");
     expect(row).toContain('aria-label="셸 열기"');
     expect(markup.replace(row, "")).not.toContain('aria-label="셸 열기"');
-    expect(markup).toContain('aria-label="작업 패널"');
+    expect(markup).toContain('aria-label="작업공간 패널"');
   });
 
   // 본문이 셸이라 `</>`가 적용될 곳이 없다 — 터미널 카드의 머리는 탭 줄 하나다(ui-refresh 결정 5 · codex-ds 스펙 §4). 경로
@@ -754,7 +754,7 @@ describe("WorksPage 작업 패널 칸", () => {
   it("접혀 있으면 손잡이가 없다", () => {
     // 분할로 들어오면 패널이 접혀 있다(결정 88) — 정적 렌더로 접힌 패널을 만드는 길이 그것이다.
     const markup = render(specDocs(["05-분할-뷰/spec.md"]), "spec", "lr");
-    expect(markup).toContain('aria-label="작업 패널 펼치기"');
+    expect(markup).toContain('aria-label="작업공간 패널 펼치기"');
     expect(panelBox(markup)).not.toMatch(/cursor-col-resize/);
   });
 
@@ -794,7 +794,7 @@ describe("WorksPage 작업 패널 칸", () => {
   // 다시 판 안의 칸이고, 문서와의 구분은 왼쪽 선 하나다(Codex 오른쪽 패널의 왼쪽 선 — `border-heavy`).
   it("패널은 둥근 카드가 아니라 판 안의 칸이고, 왼쪽 선 하나로 문서와 갈린다", () => {
     const box = panelBox(render());
-    const card = box.match(/<section[^>]*aria-label="작업 패널"[^>]*>/)?.[0] ?? "";
+    const card = box.match(/<section[^>]*aria-label="작업공간 패널"[^>]*>/)?.[0] ?? "";
     expect(card, "패널 칸을 찾지 못했다").not.toBe("");
     expect(card).not.toContain("rounded-");
     expect(card).not.toContain("shadow-");
@@ -1080,7 +1080,7 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
     expect(kindsOf(markup)).toEqual([]);
     // 화면 이름은 머리 줄이 말한다(codex-ds 티켓 14) — 지금 보는 work가 없어 할 일 묶음도 패널 토글도 없고, 칸 안에 고를 것이
     // 없어 빈 화면 칸에는 머리가 없다.
-    expect(headRowOf(markup)).toContain(">Works<");
+    expect(headRowOf(markup)).toContain(">작업공간<");
     expect(headActionsOf(markup)).toBe("");
     expect(panelToggleTags(markup)).toEqual([]);
     expect(markup.slice(markup.indexOf("<main"))).not.toContain('data-slot="card-head"');
@@ -1491,8 +1491,8 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
   // 접혔다는 것은 **머리 줄의 패널 토글 이름이 「펼치기」인 것**으로 보인다(이름이 상태를 탄다 — ui-refresh 결정 9).
   it("분할인 채 들어와도 3열로 서지 않는다", () => {
     const withSpec = specDocs(["05-분할-뷰/spec.md"]);
-    expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업 패널 펼치기"')).toBe(1);
-    expect(countOf(render(withSpec, "spec", null), 'aria-label="작업 패널 펼치기"')).toBe(0);
+    expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업공간 패널 펼치기"')).toBe(1);
+    expect(countOf(render(withSpec, "spec", null), 'aria-label="작업공간 패널 펼치기"')).toBe(0);
   });
 });
 
@@ -1558,14 +1558,14 @@ describe("아무것도 안 골랐을 때의 본문", () => {
 
   it("머리는 그대로 `Works`다", () => {
     const html = renderEmpty();
-    expect(html).toContain(">Works<");
+    expect(html).toContain(">작업공간<");
   });
 
   it("레일도 패널 토글도 없다 — 고른 작업이 없으면 열 패널이 없다", () => {
     // 레일은 작업을 고른 작업 화면에만 선다(판 04 티켓 04). 여기 서면 눌러도 아무 일이 없는 버튼이 된다(결정 11·21).
     const html = renderEmpty([PROJECT]);
     expect(html).not.toContain('aria-label="레일"');
-    expect(html).not.toMatch(/작업 패널 (?:접기|펼치기)/);
+    expect(html).not.toMatch(/작업공간 패널 (?:접기|펼치기)/);
     expect(html).not.toContain("<aside");
   });
   afterEach(() => {
@@ -1574,9 +1574,9 @@ describe("아무것도 안 골랐을 때의 본문", () => {
 
   it("문구 셋이 그대로 선다", () => {
     const html = renderEmpty([PROJECT]);
-    expect(html).toContain("아직 작업이 없어요");
-    expect(html).toContain("작업은 Claude Code에서 시작돼요.");
-    expect(html).toContain("새 작업");
+    expect(html).toContain("아직 작업공간이 없어요");
+    expect(html).toContain("작업공간은 Claude Code에서 시작돼요.");
+    expect(html).toContain("새 작업공간");
   });
 
   // 반대쪽 증거 — 프로젝트가 0개면 첫 실행의 안내가 선다.

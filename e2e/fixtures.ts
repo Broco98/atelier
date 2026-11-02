@@ -394,7 +394,7 @@ export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
 // 손으로 고치지 않게, 그리고 이 이름을 드는 spec(`works-sidebar`·`sidebar-quiet`)이 따로 고치지
 // 않게 여기 한 벌만 둔다.
 export const PINNED_HEADER = `고정 ${WORKS.filter((work) => work.pinned).length}`;
-export const MAIN_HEADER = `Work ${WORKS.filter((work) => !work.pinned).length}`;
+export const MAIN_HEADER = `작업공간 ${WORKS.filter((work) => !work.pinned).length}`;
 
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문

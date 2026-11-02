@@ -34,7 +34,7 @@ const frameHead = () =>
           ),
         }}
         panel={{
-          label: "작업 패널",
+          label: "작업공간 패널",
           open: true,
           onToggle: () => {},
           size: { width: 320, min: 240, dragging: false } as never,
@@ -58,7 +58,7 @@ describe("머리 줄은 한 결이다", () => {
     const threadName = threadHead().match(/<span[^>]*>구현<\/span>/)?.[0] ?? "";
     for (const [where, tag] of [
       ["공용 틀", frameName],
-      ["Thread", threadName],
+      ["채팅", threadName],
     ] as const) {
       expect(tag, `${where} 이름을 못 찾았다`).not.toBe("");
       expect(classOf(tag), where).toEqual(expect.arrayContaining(["text-sm", "font-medium", "text-fg"]));
@@ -78,7 +78,7 @@ describe("머리 줄은 한 결이다", () => {
 
   it("단추는 28이다 — 아이콘 단추도 글자 단추도", () => {
     const head = frameHead();
-    const toggle = head.match(/<button[^>]*aria-label="작업 패널 접기"[^>]*>/)?.[0] ?? "";
+    const toggle = head.match(/<button[^>]*aria-label="작업공간 패널 접기"[^>]*>/)?.[0] ?? "";
     expect(toggle, "패널 토글").not.toBe("");
     expect(classOf(toggle)).toContain("icon-button");
     expect(classOf(toggle)).not.toContain("icon-button-xs");

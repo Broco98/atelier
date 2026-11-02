@@ -36,7 +36,7 @@ test("×로 닫으면 닫기에 까닭 「셸 닫기」와 그 셸의 주인이 
 
 test("UI 아카이브로 닫으면 까닭이 「아카이브」이고 주인이 그 work이다", async ({ page }) => {
   await installFixtureBackend(page);
-  await archive(page, `/works/${plainWork.slug}`, "작업 메뉴");
+  await archive(page, `/works/${plainWork.slug}`, "작업공간 메뉴");
 
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "archive", owner: plainWork.slug }]);
   expect(await unknownIpcCalls(page)).toEqual([]);

@@ -98,7 +98,7 @@ export function WorkPeek({
           </CardField>
         )}
         <CardField label="spec">{`${work.specFiles.length}개`}</CardField>
-        <CardField label="Thread" muted={threads === 0}>
+        <CardField label="채팅" muted={threads === 0}>
           {threads === 0 ? "아직 없어요" : `${threads}개`}
         </CardField>
         {/* 셸이 없으면 칸이 없다 — 「없음」을 숫자로 말하지 않는다(`ShellMeta`의 규칙 그대로). */}

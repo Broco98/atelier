@@ -104,7 +104,7 @@ describe("틀 하나 — 머리 줄과 흰 판", () => {
   });
 });
 
-// 02 구현 스펙 §4 · 스토리 10 · 11. **⌘N이 새 Thread를 연다 — 사이드바 위 줄 「새 Thread」와 같은 함수다.** 둘이 따로 `navigate`하면 한쪽의
+// 02 구현 스펙 §4 · 스토리 10 · 11. **⌘N이 새 Thread를 연다 — 사이드바 위 줄 「새 채팅」과 같은 함수다.** 둘이 따로 `navigate`하면 한쪽의
 // 가드(이미 `/`면 칸을 안 쌓는다)만 고쳐지는 날 같은 일이 두 모양이 된다. 키는 단축키 표의 `newThread`이고(글자 · 메뉴 바는
 // `hotkeys.test.ts`), 확인 창 · 팔레트가 떠 있으면 안 먹는다(⌘J와 같은 게이트 — 답을 기다리는 동안 화면을 옮기지 않는다). 키가 실제로
 // 새 Thread를 여는지는 L3(13)가 본다.
@@ -121,7 +121,7 @@ describe("⌘N", () => {
   });
 
   // 02 코드 리뷰 S1 — 가드는 **씨앗 없는 새 Thread인가**를 묻는다(`isBlankNewThread` — 값은 `router.test.ts`가 진짜 라우터의 주소로 잰다).
-  // 경로(`/`)만 보면 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서 ⌘N과 「새 Thread」가 먹지 않는다 — 「새 Work」 칩이 그대로 남는다.
+  // 경로(`/`)만 보면 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서 ⌘N과 「새 채팅」이 먹지 않는다 — 「새 작업공간」 칩이 그대로 남는다.
   it("가드가 경로가 아니라 씨앗 없는 새 Thread인가를 묻는다", () => {
     const at = source.indexOf("const openNewThread = useCallback(");
     const body = source.slice(at, source.indexOf("}, [", at));

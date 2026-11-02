@@ -118,11 +118,11 @@ describe("카드의 값", () => {
       ],
     };
     expect(placeOf(`${root}/w/api-server/`, work)).toBe("api-server · fix/refund-api worktree에서 실행");
-    expect(placeOf(`${root}/w`, work)).toBe("Work의 worktree 폴더에서 실행");
+    expect(placeOf(`${root}/w`, work)).toBe("작업공간의 worktree 폴더에서 실행");
     expect(placeOf(`${root}/spec`, work)).toBe("spec 폴더에서 실행");
     expect(placeOf("/repos/elsewhere", work)).toBe("elsewhere 폴더에서 실행");
     // Work 없는 Thread의 Session은 Thread 폴더에서 일한다(S11).
-    expect(placeOf("/Users/u/.atelier/threads/20261023-101010", null)).toBe("Thread 폴더에서 실행");
+    expect(placeOf("/Users/u/.atelier/threads/20261023-101010", null)).toBe("채팅 폴더에서 실행");
     expect(placeOf(null, work)).toBeNull();
   });
 });

@@ -210,7 +210,7 @@ describe("work마다 마지막으로 보던 화면", () => {
   });
 });
 
-// **`<Link>`로 work을 여는 문**(03 코드 리뷰 A1) — Service 상세의 「Work」 묶음 줄과 Project 제거 창의 Work 줄이다. 둘 다 처음에는 기억을
+// **`<Link>`로 work을 여는 문**(03 코드 리뷰 A1) — Service 상세의 「작업공간」 묶음 줄과 Project 제거 창의 Work 줄이다. 둘 다 처음에는 기억을
 // 안 실어(`search={{}}` · `search` 없음) 그 문으로 들어간 work이 기본 화면으로 열렸고, 도착한 주소를 적는 effect가 그 기본값으로 기억을
 // 덮어썼다 — `recallSearch` 머리말의 「빠뜨린 문 하나」가 Projects 문에 이어 다시 난 것이다. 문은 `workDoor`를 펼치고, 그 값을 여기서 잰다.
 describe("Link로 work을 여는 문", () => {

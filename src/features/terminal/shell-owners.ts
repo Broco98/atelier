@@ -92,7 +92,7 @@ function goneJudge(result: ListResult | undefined, held: HeldOwners): (owner: Sh
  * N은 **살아 있는** 주인 잃은 셸이다(`liveOwnerlessOf`).
  */
 export function ownerlessNotice(count: number): string {
-  return `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
+  return `아카이브된 작업공간의 셸 ${count}개에 아직 도는 것이 있어요`;
 }
 
 /**

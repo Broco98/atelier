@@ -42,7 +42,7 @@ import { elapsed, phraseText, shownPath, type DiffPiece, type ToolGlyph, type To
 //   화면의 말이다 — 엔진은 허락을 「이 Work에서는 다시 묻지 않기」로 적고, 화면이 넘어간 도구의 종류로 카드의 말을 고른다(`autoAllowReason` —
 //   02 코드 리뷰 A1). 그 도구 줄은 제 줄 그대로 뒤에 선다(결과 · 펼친 안은 도구 줄의 것이다).
 //
-// 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 머리의 「Work 패널에서 열기」는 Work 패널(31)이 서는 날 단다.
+// 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 머리의 「작업공간 패널에서 열기」는 Work 패널(31)이 서는 날 단다.
 
 /** 그 Thread의 작업 폴더(Host Session의 `cwd`) — 변경 상자 머리가 경로를 이 폴더에서 본 자리로 줄인다(`shownPath`). */
 export const LogPlace = createContext<string | null>(null);

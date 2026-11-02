@@ -99,7 +99,7 @@ const 대상들: 대상[] = [
   },
   // spec 트리 파일 행 — 대상은 고른 파일이 아닌 행이고, 테두리 · 돌아올 포커스는 그 행의 이름 버튼(목록의 roving 줄)이다.
   {
-    name: "작업 패널의 spec 트리 파일 행",
+    name: "작업공간 패널의 spec 트리 파일 행",
     setUp: async (page) => {
       await page.goto(`/works/${pinnedWork.slug}`);
       return { target: 트리파일(page, "메타.json"), order: ["경로 복사"], mark: "data-spec-file", selected: "overview.md" };

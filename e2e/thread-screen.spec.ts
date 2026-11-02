@@ -23,15 +23,15 @@ import type { Service } from "@/features/services/types";
 import type { RecordLine, ThreadQueueEvent, ThreadView } from "@/features/thread/types";
 import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 
-// 02 티켓 13 흐름 「Thread 화면」 — **Codex 결로 바뀐 Thread 화면이 겉으로 그렇게 선다**(02 구현 스펙 Testing Decisions 「Thread 화면」 ·
+// 02 티켓 13 흐름 「채팅 화면」 — **Codex 결로 바뀐 Thread 화면이 겉으로 그렇게 선다**(02 구현 스펙 Testing Decisions 「채팅 화면」 ·
 // §6 머리 줄 · §7 요약 카드 · §9 입력창 · §10 입력창 자리 카드). 흐름 하나에 스펙 하나이고, 같은 것을 두 번 재지 않는다 — 이 판의 목록
 // 가운데 이미 다른 spec이 재는 것은 그 자리에 둔다.
 //
 //   여기서 잰다     머리 줄(이름 · Work 이름 · 제자리 바꾸기 · 「…」 · 요약 고정 토글 · 읽기만이면 꺼짐)
 //                   요약 카드(칸 차례 · 「＋」 없음 · 소스 「모두 보기」 · 「변경 사항」 → 넓힌 카드 · 열 비켜나기 · Work 없는 Thread의 칸 ·
 //                   Thread마다 기억 · 첫 화면에 없음)
-//                   승인 카드의 늘 허용 갈래(이은 Work면 「이 Work에서」) · 입력창 자리 카드의 겉 · 대기 「지금 보내기」 · 작업 중 점 ·
-//                   Thread 화면이 서기 전에 「새 Thread」로 돌아온 첫 화면
+//                   승인 카드의 늘 허용 갈래(이은 Work면 「이 작업공간에서」) · 입력창 자리 카드의 겉 · 대기 「지금 보내기」 · 작업 중 점 ·
+//                   Thread 화면이 서기 전에 「새 채팅」으로 돌아온 첫 화면
 //   다른 spec이 잰다 Host 답 머리 없음 · 도구 없는 턴의 구분선 사라짐(`thread`) · 승인 단추 글자 ·
 //                   ↵ · esc · 숫자 키 없음 · 답한 질문 한 줄(`thread-approval`) · Thread 안에 고르는 Work 칩 없음(`thread-work`) · 넓힌
 //                   카드의 줄 · 480 · 작은 카드 앞 16(`thread-work-card`) · 첫 화면 Work 칩의 스위치 · 기억(`thread-work-chip`) · 트레이의
@@ -54,9 +54,9 @@ const 입력창 = (page: Page) => 입력칸(page).locator("xpath=ancestor::form[
 const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact: true });
 const 머리줄 = (page: Page) => page.locator('[data-slot="screen-head"]');
 const 요약토글 = (page: Page) => page.getByRole("button", { name: "요약 고정", exact: true });
-const Thread메뉴 = (page: Page) => page.getByRole("button", { name: "Thread 메뉴", exact: true });
+const Thread메뉴 = (page: Page) => page.getByRole("button", { name: "채팅 메뉴", exact: true });
 const 사이드바Thread = (page: Page, title: string) =>
-  page.getByRole("region", { name: "Thread", exact: true }).getByRole("button").filter({ hasText: title });
+  page.getByRole("region", { name: "채팅", exact: true }).getByRole("button").filter({ hasText: title });
 
 type Box = { x: number; y: number; width: number; height: number; right: number; bottom: number };
 const 상자 = (target: Locator): Promise<Box> =>
@@ -91,14 +91,14 @@ async function openThread(page: Page, view: ThreadView, lines: readonly RecordLi
   await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true })).toBeVisible({ timeout: 20_000 });
 }
 
-test("머리 줄 — Work에 이은 Thread는 「폴더 · Work 이름 ›」 뒤에 이름이 서서 그 자리에서 바뀌고, 오른쪽 끝 「…」 · 요약 고정 토글이 카드를 여닫으며, Work 이름이 카드를 연다", async ({
+test("머리 줄 — Work에 이은 Thread는 「폴더 · 작업공간 이름 ›」 뒤에 이름이 서서 그 자리에서 바뀌고, 오른쪽 끝 「…」 · 요약 고정 토글이 카드를 여닫으며, Work 이름이 카드를 연다", async ({
   page,
 }) => {
   await openThread(page, linkedView, made, { list_works: [...WORKS, workView(MADE, { docs: MADE_DOCS })] });
 
   // 이름 앞의 Work — 폴더 14 · Work 이름 14/400 #898a8b(`fg-titlebar`), 그 뒤 8에 「›」(그림이라 이름에 들지 않는다), 다시 8에 Thread
   // 이름 14/500(02 §6 · 시안 `.tb-c`).
-  const work = page.getByRole("button", { name: `Work 열기: ${MADE.title}`, exact: true });
+  const work = page.getByRole("button", { name: `작업공간 열기: ${MADE.title}`, exact: true });
   const workName = work.getByText(MADE.title, { exact: true });
   const crumb = 머리줄(page).getByText("›", { exact: true });
   const name = 머리줄(page).getByText(linkedView.title, { exact: true });
@@ -137,7 +137,7 @@ test("머리 줄 — Work에 이은 Thread는 「폴더 · Work 이름 ›」 �
   // 제자리 바꾸기 — 이름을 두 번 누르면 그 자리가 입력칸이 되고, Enter가 새 이름을 보낸다. 입력칸이 걷히면 포커스는 이름으로 돌아온다.
   const renamed = "환불 버그 고친 이야기";
   await replaceAnswer(page, "thread_rename", { ...summaryOf(linkedView), title: renamed });
-  const 이름칸 = 머리줄(page).getByRole("textbox", { name: "Thread 이름", exact: true });
+  const 이름칸 = 머리줄(page).getByRole("textbox", { name: "채팅 이름", exact: true });
   await name.dblclick();
   await expect(이름칸).toBeFocused();
   await expect(이름칸).toHaveValue(linkedView.title);
@@ -158,7 +158,7 @@ test("머리 줄 — Work에 이은 Thread는 「폴더 · Work 이름 ›」 �
 
   // 「…」는 이 Thread의 대상 메뉴 — 「이름 바꾸기」(F2) 하나다. 고르면 이름 자리가 입력칸이 되고 포커스가 그 칸에 남는다(S15).
   await Thread메뉴(page).click();
-  const menu = page.getByRole("menu", { name: "Thread 메뉴", exact: true });
+  const menu = page.getByRole("menu", { name: "채팅 메뉴", exact: true });
   await expect(menu.getByRole("menuitem")).toHaveText([/^이름 바꾸기\s*F2$/]);
   await menu.getByRole("menuitem", { name: "이름 바꾸기", exact: true }).click();
   await expect(menu).toHaveCount(0);
@@ -177,7 +177,7 @@ test("머리 줄 — 지워진 Work의 읽기만 Thread는 이름을 바꾸지 �
   await openThread(page, removed, made);
   const name = 머리줄(page).getByText(removed.title, { exact: true });
   await expect(name).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Work 열기: / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^작업공간 열기: / })).toHaveCount(0);
   await expect(요약토글(page)).toHaveCount(0);
   await expect(카드(page)).toHaveCount(0);
 
@@ -234,7 +234,7 @@ test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차
   await expect(card.locator("[data-changes]")).toHaveText(/^변경 사항\s*\+6\s*−3$/);
   await expect(card.getByRole("button", { name: new RegExp(`^PR #${OPENED.number}`) })).toBeVisible();
   await expect(card.locator(":scope > *").first()).toHaveText(PR_WORK.title);
-  await expect(card.locator(":scope > *").first().getByRole("button", { name: "Work 메뉴", exact: true })).toBeVisible();
+  await expect(card.locator(":scope > *").first().getByRole("button", { name: "작업공간 메뉴", exact: true })).toBeVisible();
   expect(
     await card.evaluate((el) =>
       [...el.querySelectorAll("[data-changes], [data-pr-icon], section[aria-label]")].map((one) =>
@@ -342,7 +342,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(card).toBeVisible();
   await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
   await expect(card.locator("[data-changes]")).toHaveCount(0);
-  await expect(card.getByRole("button", { name: "Work 메뉴", exact: true })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "작업공간 메뉴", exact: true })).toHaveCount(0);
   expect(await card.evaluate((el) => [...el.querySelectorAll("section[aria-label]")].map((one) => one.getAttribute("aria-label")))).toEqual(
     ["결과물", "소스"],
   );
@@ -372,7 +372,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 Work에서 편집은 늘 허용」이고, 고르면 다시 묻지 않기로 적어 답한다. 카드는 입력창 자리의 한 겉이다", async ({
+test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작업공간에서 편집은 늘 허용」이고, 고르면 다시 묻지 않기로 적어 답한다. 카드는 입력창 자리의 한 겉이다", async ({
   page,
 }) => {
   // Work를 만든 뒤 Host가 spec 폴더에 첫 문서를 쓰려고 묻기 바로 앞이다.
@@ -386,13 +386,13 @@ test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 Work
   await expect(card).toBeVisible();
   // 늘 허용을 둘 자리는 이은 Work다(S18) — 단추 글이 그 자리를 말한다. 고르면 그 허락을 Atelier가 적어 두고(`remember`) 이번 요청에는
   // 「이번만」으로 답한다(`cardChoices` — Claude의 Session 허락으로 넘기지 않는다).
-  await expect(card.getByRole("button")).toHaveText([/^아니요, 다르게/, "이 Work에서 편집은 늘 허용", /^이번만 허용/]);
+  await expect(card.getByRole("button")).toHaveText([/^아니요, 다르게/, "이 작업공간에서 편집은 늘 허용", /^이번만 허용/]);
   // 입력창 자리 카드의 한 겉(02 §10 · 스토리 68) — 1px 테두리 · 그림자 없음 · 폭이 입력창(열 737)과 같다.
   expect((await 상자(card)).width).toBe(열폭);
   expect(await 모양(card, ["border-top-width", "box-shadow"])).toEqual({ "border-top-width": "1px", "box-shadow": "none" });
 
   await page.waitForTimeout(ARMING_MS);
-  await card.getByRole("button", { name: "이 Work에서 편집은 늘 허용", exact: true }).click();
+  await card.getByRole("button", { name: "이 작업공간에서 편집은 늘 허용", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args))
     .toEqual([
@@ -455,7 +455,7 @@ test("작업 중에는 입력창 위 가운데에 작업 중 점이 서고, 그�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("첫 말을 보낸 뒤 Thread 화면이 서기 전에 「새 Thread」로 돌아오면, 첫 화면은 「시작하는 중」에 멈추지 않고 빈 채로 다시 선다", async ({
+test("첫 말을 보낸 뒤 Thread 화면이 서기 전에 「새 채팅」으로 돌아오면, 첫 화면은 「시작하는 중」에 멈추지 않고 빈 채로 다시 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -481,15 +481,15 @@ test("첫 말을 보낸 뒤 Thread 화면이 서기 전에 「새 Thread」로 �
   await 입력칸(page).press("Enter");
   await expect(page).toHaveURL(`/threads/${FIXTURE_THREAD.id}`);
   await expect.poll(() => caught.length).toBeGreaterThan(0);
-  await page.locator("aside[data-sidebar]").getByRole("button", { name: "새 Thread", exact: true }).click();
+  await page.locator("aside[data-sidebar]").getByRole("button", { name: "새 채팅", exact: true }).click();
 
-  // 빈 첫 화면 — 물음 · 비운 입력창 · 트레이의 Work 칩(처음 고른 곳 — 기억이 없으면 「새 Work」, 03 §5 S2)이 서고, 보낸 말과 「생각 중」은
+  // 빈 첫 화면 — 물음 · 비운 입력창 · 트레이의 Work 칩(처음 고른 곳 — 기억이 없으면 「새 작업공간」, 03 §5 S2)이 서고, 보낸 말과 「생각 중」은
   // 없다.
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible();
   await expect(입력칸(page)).toHaveAttribute("placeholder", "만들 기능이나 고칠 문제를 적어 주세요");
   await expect(입력칸(page)).toHaveValue("");
-  await expect(page.getByRole("button", { name: "어디서 일할지 새 Work", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "어디서 일할지 새 작업공간", exact: true })).toBeVisible();
   await expect(흐름(page).getByText(first.text, { exact: true })).toHaveCount(0);
   await expect(흐름(page).getByText("생각 중", { exact: true })).toHaveCount(0);
   release();

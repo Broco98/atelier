@@ -301,7 +301,7 @@ for (const { name, setUp, went } of 대상들.filter((one) => one.went !== undef
 test("다른 work를 아카이브하는 동안 ⋯는 꺼지지만 바쁘다고 하지 않고 본문을 안 덮는다 — 이 work면 바쁘다고 하고 덮는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
-  const more = page.getByRole("button", { name: "작업 메뉴", exact: true });
+  const more = page.getByRole("button", { name: "작업공간 메뉴", exact: true });
   const 막 = page.getByRole("status").filter({ hasText: "아카이빙 중…" });
   await expect(more).toBeEnabled();
 
@@ -357,7 +357,7 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   const badge = (await head.getByRole("button", { name: pinnedWork.status, exact: true }).boundingBox())!;
   const list = (await page.locator("[data-worklist]").boundingBox())!;
   const lastRow = (await page.locator("[data-work-row]").last().boundingBox())!;
-  const nav = (await page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).boundingBox())!;
+  const nav = (await page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }).boundingBox())!;
   const bar = (await page.locator("[data-slot=path-bar]").first().boundingBox())!;
   const viewport = page.viewportSize()!;
   const spots: Array<[string, number, number]> = [

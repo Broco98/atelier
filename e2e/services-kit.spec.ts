@@ -33,7 +33,7 @@ import type { Service, ServiceDetail, ServiceDraft } from "@/features/services/t
 // 「무엇이 나갔나」(IPC와 그 인자)와 「받은 답을 어떻게 그렸나」다. 파일 글이 그대로 남는지 · 검사가 맞는지는 core 단위 표(L1)가 잰다.
 //
 // 다른 흐름이 재는 칸은 여기서 다시 재지 않는다 — 「입력창에서 고름」(빈 Service 칩 · 범위 줄)은 트레이 흐름, 「대화로 만듦」 결과 카드 · 「그
-// Service에 있던 대화」 줄은 대화 속 Service 흐름이 잰다. 「Work 화면에서 붙이기」 칸은 다음 판(Work 화면)이다. 시작 단추(새 Work · Host와
+// Service에 있던 대화」 줄은 대화 속 Service 흐름이 잰다. 「작업공간 화면에서 붙이기」 칸은 다음 판(Work 화면)이다. 시작 단추(새 Work · Host와
 // 고치기 · Host와 만들기)는 여는 주소까지 재고, 그 씨앗이 칩 · 입력 글로 서는 것은 트레이 흐름이 잰다.
 
 const [결제, 원장도구] = SERVICES;
@@ -162,7 +162,7 @@ test.describe("상세", () => {
   test("머리 줄은 「Service / 결제」, 제목 아래 만든 이 · 만든 때 · Project 수, 관계 그래프 · 함께 쓰는 Service · Work 묶음이 서고 점선 Service를 누르면 그쪽 상세다", async ({
     page,
   }) => {
-    // 「Work」 묶음 — 이 Service에 이은 진행 중인 Work 줄(05). 픽스처 Work 하나를 이 Service에 잇는다.
+    // 「작업공간」 묶음 — 이 Service에 이은 진행 중인 Work 줄(05). 픽스처 Work 하나를 이 Service에 잇는다.
     const 이은Work = { ...WORKS[1], service: 결제.slug };
     await page.clock.setFixedTime(new Date("2026-10-26T12:00:00"));
     await installFixtureBackend(page, { list_works: [WORKS[0], 이은Work, ...WORKS.slice(2)] });
@@ -190,7 +190,7 @@ test.describe("상세", () => {
     // 오른쪽 칸 — 함께 쓰는 Service(이름 · 겹치는 Project)와 Work(이 Service에 이은 진행 중인 Work).
     const 정보 = 본문칸.getByRole("complementary", { name: "Service 정보", exact: true });
     await expect(정보.getByRole("button", { name: `${원장도구.name} ledger`, exact: true })).toBeVisible();
-    const 묶음Work = 정보.getByRole("region", { name: "Work", exact: true });
+    const 묶음Work = 정보.getByRole("region", { name: "작업공간", exact: true });
     await expect(묶음Work.getByRole("link")).toHaveText([이은Work.title]);
 
     // 점선 Service를 누르면 그 Service 상세 — 거기서는 이쪽이 점선이고, 그 Service에 없는 Project가 옅게 곁에 선다. Work는 「아직 없음」.
@@ -201,7 +201,7 @@ test.describe("상세", () => {
     await expect(저쪽.getByText(결제.name, { exact: true })).toBeVisible();
     await expect(저쪽.getByText(billing.slug, { exact: true })).toBeVisible();
     await expect(본문칸.getByText("직접 만듦", { exact: true })).toBeVisible();
-    await expect(정보.getByRole("region", { name: "Work", exact: true }).getByText("아직 없음", { exact: true })).toBeVisible();
+    await expect(정보.getByRole("region", { name: "작업공간", exact: true }).getByText("아직 없음", { exact: true })).toBeVisible();
 
     // Work 줄을 누르면 그 Work로.
     await page.goBack();
@@ -334,14 +334,14 @@ test.describe("상세", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("머리의 「새 Work」는 이 Service를 쥔 「새 Work」로, 「Host와 고치기」는 이 Service를 쥔 Work 없는 대화에 고쳐 달라는 말을 넣어 첫 화면을 연다", async ({
+  test("머리의 「작업공간 만들기」는 이 Service를 쥔 「새 작업공간」으로, 「Host와 고치기」는 이 Service를 쥔 Work 없는 대화에 고쳐 달라는 말을 넣어 첫 화면을 연다", async ({
     page,
   }) => {
     await installFixtureBackend(page);
     await page.goto(`/services/${결제.slug}`);
     const 본문칸 = 본문(page, "Service 상세");
 
-    await 본문칸.getByRole("button", { name: "새 Work", exact: true }).click();
+    await 본문칸.getByRole("button", { name: "작업공간 만들기", exact: true }).click();
     await expect(첫화면(page)).toBeVisible();
     expect(씨앗(page)).toEqual({ new: "work", service: 결제.slug });
 
@@ -426,7 +426,7 @@ test.describe("지우기", () => {
     expect(await ipcArgs(page, "service_usage", "slug")).toEqual([{ slug: 결제.slug }]);
     await expect(창.getByText("billing · ledger", { exact: true })).toBeVisible();
     await expect(창).toHaveAccessibleDescription(
-      "Thread 3개 · Work 1개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
+      "채팅 3개 · 작업공간 1개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
     );
     await expect(창.getByRole("button", { name: "삭제", exact: true })).toBeFocused();
     await 창.getByRole("button", { name: "삭제", exact: true }).click();

@@ -26,7 +26,7 @@ export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void
     <>
       <button
         type="button"
-        aria-label={`Work 열기: ${title}`}
+        aria-label={`작업공간 열기: ${title}`}
         onClick={onOpen}
         className="flex min-w-0 items-center gap-2 rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring"
       >
@@ -41,7 +41,7 @@ export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void
 }
 
 /**
- * Work 없는 Thread의 머리 줄 이름 앞 Service(03 §10 · F4-KitChat 「Work 없음 · Service 있음」) — 「흐린 Service / Thread 이름」. 흐린 Service를 누르면 그
+ * Work 없는 Thread의 머리 줄 이름 앞 Service(03 §10 · F4-KitChat 「작업공간 없음 · Service 있음」) — 「흐린 Service / 채팅 이름」. 흐린 Service를 누르면 그
  * Service 상세로 간다. 글자 · 사이는 Work 화면 머리 줄의 Service(`WorkServiceCrumb`)와 같다 — `fg-titlebar` · 사이 8 · 「/」는 그림이라 이름에 들지
  * 않는다. Service가 없으면 서지 않는다(이름만 — `headService`).
  */
@@ -75,7 +75,7 @@ export function HeadWork({ slug, archived, onOpen }: { slug: string; archived: b
 }
 
 /**
- * **대상 메뉴 「Thread」의 정의 — 한 자리다**(02 S15 · 결정 「06 · Thread 대상 메뉴」). 지금 사이드바 Thread 줄에는 대상 메뉴가 없고,
+ * **대상 메뉴 「채팅」의 정의 — 한 자리다**(02 S15 · 결정 「06 · 채팅 대상 메뉴」). 지금 사이드바 Thread 줄에는 대상 메뉴가 없고,
  * Thread에 할 수 있는 일은 이름 바꾸기 하나다 — 그래서 항목은 「이름 바꾸기」 하나다. 머리 줄 「…」(`ThreadMenu`)가 이것을 편다.
  * 항목은 ⋯ 메뉴와 우클릭 메뉴가 함께 쓰는 부품이라(`context-menu.tsx` 머리말) 사이드바 줄에 우클릭 메뉴로 달면 같은 줄이 선다. 훅이
  * 없다 — 상태를 쥘 수 없는 자리(사이드바 줄)에서도 펼 수 있게(work 메뉴 `WorkMenuItems`와 같은 꼴).
@@ -114,7 +114,7 @@ export function ThreadMenu({ rename }: { rename: (() => void) | null }) {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <Hint
-        text="Thread 메뉴"
+        text="채팅 메뉴"
         announce="name"
         render={
           <DropdownMenuTrigger className={headButton(open ? "open" : "rest")} />
@@ -124,7 +124,7 @@ export function ThreadMenu({ rename }: { rename: (() => void) | null }) {
       </Hint>
       <DropdownMenuContent
         align="end"
-        aria-label="Thread 메뉴"
+        aria-label="채팅 메뉴"
         finalFocus={() => {
           if (!renamed.current) return true;
           renamed.current = false;

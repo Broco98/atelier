@@ -60,8 +60,8 @@ export function branchGroups(git: GitInfo | null): BranchGroup[] {
  */
 export function baseNote(project: ProjectView, changed: boolean): string {
   if (project.missing) return "폴더를 찾아야 브랜치를 읽을 수 있어요";
-  if (changed) return `바꿨어요 — 새 Work부터 ${project.baseBranch}에서 갈라져요`;
-  return "새 Work의 브랜치가 여기서 갈라져요";
+  if (changed) return `바꿨어요 — 새 작업공간부터 ${project.baseBranch}에서 갈라져요`;
+  return "새 작업공간의 브랜치가 여기서 갈라져요";
 }
 
 /** 제목을 고치는 동안 아래 한 줄(스토리 122 · 123) — 파일 이름은 slug라 이름을 바꿔도 그대로다. */
@@ -73,7 +73,7 @@ export function renameHint(project: ProjectView): string {
 export function missingNotice(project: ProjectView): { title: string; body: string } {
   return {
     title: "Project를 찾을 수 없어요",
-    body: `${project.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 Work는 고칠 수 없어요.`,
+    body: `${project.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 작업공간은 고칠 수 없어요.`,
   };
 }
 

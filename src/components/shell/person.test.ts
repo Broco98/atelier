@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialOf, PERSON_FALLBACK } from "./person";
 
-// 사람 메뉴의 얼굴 글자(v1 티켓 07 · 캔버스 「Thread 목록과 아바타」 보드 「사람은 글자」). seam은 순수 함수 `initialOf`다.
+// 사람 메뉴의 얼굴 글자(v1 티켓 07 · 캔버스 「채팅 목록과 아바타」 보드 「사람은 글자」). seam은 순수 함수 `initialOf`다.
 describe("사람의 얼굴 글자", () => {
   // 보드는 세 음절 이름을 둘째 글자로 그렸다 — 세 음절 한국 이름은 성을 뺀 이름의 첫 글자다.
   it("세 음절 한글 이름은 이름의 첫 글자다", () => {

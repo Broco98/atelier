@@ -69,7 +69,7 @@ test("요약 카드 「…」에서 보관하면 그 Thread는 읽기만이 되�
 
   // 요약 카드 머리 「…」(Work 메뉴)의 「보관」 — 지금의 보관 흐름(확인 창)이 그 Work를 보관한다.
   await expect(카드(page)).toContainText(MADE.title);
-  await 카드(page).getByRole("button", { name: "Work 메뉴", exact: true }).click();
+  await 카드(page).getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   await page.getByRole("menuitem", { name: "보관", exact: true }).click();
   const confirm = page.getByRole("alertdialog", { name: `'${MADE.title}' 아카이빙`, exact: true });
   await confirm.getByRole("button", { name: "아카이빙", exact: true }).click();
@@ -87,7 +87,7 @@ test("요약 카드 「…」에서 보관하면 그 Thread는 읽기만이 되�
   await fireSummary(page, shelved);
 
   // 입력창 자리가 안내로 바뀐다 — 보낼 칸이 없다. 턴이 돌지 않으니 멈추기도 없다.
-  const notice = page.getByRole("status").filter({ hasText: "보관된 Work의 Thread는 읽기만 돼요" });
+  const notice = page.getByRole("status").filter({ hasText: "보관된 작업공간의 채팅은 읽기만 돼요" });
   await expect(notice).toBeVisible();
   await expect(입력칸(page)).toHaveCount(0);
   await expect(notice.getByRole("button")).toHaveCount(0);
@@ -96,10 +96,10 @@ test("요약 카드 「…」에서 보관하면 그 Thread는 읽기만이 되�
   await expect(카드(page)).toContainText(`${MADE.title}보관됨`);
   await expect(카드(page).locator("[data-doc]")).toHaveText(DOCS);
   await expect(카드(page).locator("button[data-doc]")).toHaveCount(0);
-  for (const name of ["문서 추가", "Project 붙이기", "Work 메뉴"]) {
+  for (const name of ["문서 추가", "Project 붙이기", "작업공간 메뉴"]) {
     await expect(카드(page).getByRole("button", { name, exact: true })).toHaveCount(0);
   }
-  await expect(page.getByRole("button", { name: `Work 열기: ${MADE.title}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: `작업공간 열기: ${MADE.title}`, exact: true })).toBeVisible();
 
   // 사이드바에서 그 Work와 Thread가 빠진다 — Thread 묶음에도 서지 않는다.
   await expect(workRow(page, MADE.slug)).toHaveCount(0);

@@ -53,7 +53,7 @@ function FilesTree({
   return (
     <div data-files-tree="" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
       {work.worktrees.length === 0 ? (
-        <span className={NOTE}>이 work에는 프로젝트가 없어요</span>
+        <span className={NOTE}>이 작업공간에는 프로젝트가 없어요</span>
       ) : (
         work.worktrees.map((worktree) => (
           <ProjectSection

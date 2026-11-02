@@ -890,7 +890,7 @@ function WorksPage({
   // 분할 토글 하나다. 사이의 세로선과 간격은 틀이 그린다(`Frame`의 `FrameHead`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위 줄의 오른쪽
   // 끝 묶음에, 그다음 머리 카드에 섰다. 패널 토글은 화면이 건네지 않는다 — 틀이 분할 뒤 오른쪽 맨 끝에 세운다(레일이 서도 같다).
   //
-  // 지금 선 work(`selected`)가 없으면 머리 줄에는 화면 이름 「Works」 하나가 선다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
+  // 지금 선 work(`selected`)가 없으면 머리 줄에는 화면 이름 「작업공간」 하나가 선다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
   // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
   const head: HeadSlot = selected
     ? {
@@ -913,7 +913,7 @@ function WorksPage({
           onStart: () => setRenamingHead(selected.slug),
           onEnd: () => setRenamingHead(null),
           onCommit: (title) => setTitle.mutate({ slug: selected.slug, title }),
-          label: "작업 이름",
+          label: "작업공간 이름",
         },
         // 이름 뒤의 ⑂ 브랜치 — 프로젝트가 붙은 work만 선다. 프로젝트가 없으면 이름이 미리 정해졌어도(`start_work`의 `branch`) 그
         // 이름을 가진 저장소도 worktree도 아직 없다 — ⑂는 실제 git 브랜치의 말이다(프로젝트 화면 Works 행도 worktree가 있을 때만 ⑂를
@@ -1048,7 +1048,7 @@ function WorksPage({
           <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
           <EmptyDescription>
             {needsProject
-              ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+              ? "작업공간은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
               : emptyScreen.body}
           </EmptyDescription>
         </EmptyHeader>
@@ -1108,7 +1108,7 @@ function WorksPage({
               open: workPanelOpen,
               onToggle: () => setWorkPanelOpen((open) => !open),
               size: panelSize,
-              label: "작업 패널",
+              label: "작업공간 패널",
               children: (
                 <WorkPanel
                   work={panelWork}
@@ -1332,7 +1332,7 @@ function WorkMenu({
           가림막(`LifecycleOverlay`)이 말하고, 다른 work의 조작이면 이 화면에서는 아무것도 말하지 않는다 — ⋯가 꺼져
           있을 뿐이고, 끝은 그 work이 목록에서 사라지거나(성공) 「…하지 못했습니다」 창이 서는 것(실패)으로 보인다. */}
       <Hint
-        text="작업 메뉴"
+        text="작업공간 메뉴"
         announce="name"
         disabled={busy}
         render={

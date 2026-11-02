@@ -80,7 +80,7 @@ describe("Service 칩의 갈래", () => {
     expect(serviceChip(PAYMENTS_ON, false)).toEqual({ kind: "on", slug: "결제-서비스", name: "결제 서비스", end: "remove" });
   });
 
-  it("바꾸는 것이 Work의 Service면 × 대신 ▾ — 빼기도 메뉴에서만 한다(「최근 Work를 고름」 · 「Work로 시작한 대화」 칸)", () => {
+  it("바꾸는 것이 Work의 Service면 × 대신 ▾ — 빼기도 메뉴에서만 한다(「최근 작업공간을 고름」 · 「작업공간으로 시작한 대화」 칸)", () => {
     expect(serviceChip(PAYMENTS_ON, true)).toEqual({ kind: "on", slug: "결제-서비스", name: "결제 서비스", end: "menu" });
   });
 });
@@ -110,7 +110,7 @@ describe("고른 것이 가는 때 — 첫 말 전에는 입력창이 쥐고 첫
   const REFUND = { kind: "work", slug: "refund-api" } as const;
   const SHOWN_TOOLS = { slug: "사내-도구", name: "사내 도구", troubled: false };
 
-  it("주소 씨앗(`?service=`)이 처음 쥔 Service다 — 「새 Work」 · 「Work 없이 대화」를 오가도 남는다", () => {
+  it("주소 씨앗(`?service=`)이 처음 쥔 Service다 — 「새 작업공간」 · 「작업공간 없이 대화」를 오가도 남는다", () => {
     const hold = holdOf({ link: NEW_WORK, service: "결제-서비스" });
     expect(heldService(NEW_WORK, hold, null)).toBe("결제-서비스");
     expect(heldService(NO_WORK, hold, null)).toBe("결제-서비스");
@@ -148,7 +148,7 @@ describe("고른 것이 가는 때 — 첫 말 전에는 입력창이 쥐고 첫
   });
 });
 
-// 03 구현 스펙 §10 · F4-KitChat 「머리 줄」 칸 — Work 없는 Thread는 「흐린 Service / Thread 이름」, Service가 없으면 이름만, Work에 이은 Thread는
+// 03 구현 스펙 §10 · F4-KitChat 「머리 줄」 칸 — Work 없는 Thread는 「흐린 Service / 채팅 이름」, Service가 없으면 이름만, Work에 이은 Thread는
 // 02 그대로 Work 단추만(Service는 그 Work의 것이라 트레이의 Service 칩이 말한다).
 describe("Thread 머리 줄 이름 앞의 Service", () => {
   const scoped = scope({ service: PAYMENTS_ON, kind: "service" });

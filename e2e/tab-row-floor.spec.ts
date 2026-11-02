@@ -57,7 +57,7 @@ async function layoutOf(page: Page) {
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
     // 패널 토글은 머리 줄 오른쪽 끝 묶음의 맨 끝(`aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
-      .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
+      .querySelector('button[aria-label="작업공간 패널 접기"], button[aria-label="작업공간 패널 펼치기"]')
       ?.getBoundingClientRect();
     const panelAside = document.querySelectorAll("aside")[1] as HTMLElement | undefined;
     return {

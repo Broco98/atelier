@@ -76,8 +76,8 @@ describe("기준 브랜치 목록", () => {
 
 describe("상세 조각의 글", () => {
   it("기준 브랜치 아래 한 줄 — 갈라지는 자리, 바꾼 뒤, 폴더를 찾을 수 없을 때", () => {
-    expect(baseNote(project(), false)).toBe("새 Work의 브랜치가 여기서 갈라져요");
-    expect(baseNote(project({ baseBranch: "origin/release/2.5" }), true)).toBe("바꿨어요 — 새 Work부터 origin/release/2.5에서 갈라져요");
+    expect(baseNote(project(), false)).toBe("새 작업공간의 브랜치가 여기서 갈라져요");
+    expect(baseNote(project({ baseBranch: "origin/release/2.5" }), true)).toBe("바꿨어요 — 새 작업공간부터 origin/release/2.5에서 갈라져요");
     expect(baseNote(PLAYGROUND, false)).toBe("폴더를 찾아야 브랜치를 읽을 수 있어요");
   });
 
@@ -88,7 +88,7 @@ describe("상세 조각의 글", () => {
   it("폴더를 찾을 수 없음 — 그 경로와 재설정 · 이 Project를 쓰는 Work", () => {
     expect(missingNotice(PLAYGROUND)).toEqual({
       title: "Project를 찾을 수 없어요",
-      body: "~/MyProjects/playground에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 Work는 고칠 수 없어요.",
+      body: "~/MyProjects/playground에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 작업공간은 고칠 수 없어요.",
     });
   });
 });

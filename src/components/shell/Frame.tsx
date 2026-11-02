@@ -162,7 +162,7 @@ export interface HeadRename {
   onEnd: () => void;
   /** 바뀐 이름으로 저장한다. 그대로이거나 비운 이름(원래 이름)은 부르지 않는다(`InlineRename`). */
   onCommit: (name: string) => void;
-  /** 입력칸의 이름(`aria-label`) — 「작업 이름」 · 「프로젝트 이름」. */
+  /** 입력칸의 이름(`aria-label`) — 「작업공간 이름」 · 「프로젝트 이름」. */
   label: string;
 }
 

@@ -15,7 +15,7 @@ const [work] = WORKS;
 
 const 레일칸 = (page: Page, name: "spec" | "files") =>
   page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업공간 패널", exact: true });
 /** 트리의 행 — 폴더 행은 이름이 곧 이름이고, 파일 행은 확장자 꼬리표가 앞에 붙는다(`TS index.ts`). */
 const 패널행 = (page: Page, name: string): Locator => 작업패널(page).getByRole("button", { name, exact: true });
 
@@ -30,7 +30,7 @@ const 셸칸이름 = (page: Page) => page.locator('[data-tab="shell"] button[ari
 /** 코드 카드 — 접근 이름이 그 파일의 경로다(스토리 89). */
 const 코드카드 = (page: Page, ref: string) => page.getByRole("main", { name: ref, exact: true });
 const 히스토리길이 = (page: Page) => page.evaluate(() => window.history.length);
-const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
+const 토글 = (page: Page) => page.getByRole("button", { name: /^작업공간 패널 (접기|펼치기)$/ });
 
 /**
  * 패널보다 **긴** 트리 — 앞 폴더(`many`)를 펼치면 행이 마흔 줄 넘게 서서, 뒤에 선 파일은 스크롤해야 보인다. 「행이 보이는

@@ -358,7 +358,7 @@ fn 없는_기준_브랜치는_쓰지_않고_고를_수_있는_브랜치를_돌�
         cards,
         [
             json!({"action": "project-edited", "slug": "web-app", "name": "web-app",
-                   "title": "web-app의 기준 브랜치를 develop으로 바꿨어요", "detail": "새 Work부터 develop에서 갈라져요"}),
+                   "title": "web-app의 기준 브랜치를 develop으로 바꿨어요", "detail": "새 작업공간부터 develop에서 갈라져요"}),
             json!({"action": "project-edited", "slug": "web-app", "name": "웹 앱",
                    "title": "웹 앱의 이름 · 설명을 바꿨어요", "detail": "파일 이름(web-app.md)과 경로는 그대로예요 · 환불 버튼 화면"}),
         ],
@@ -514,7 +514,7 @@ fn host가_대화로_한_설정_넷의_턴의_기록이_검사_자료와_같다(
         cards,
         [
             (&json!("Project를 추가했어요 — landing-page"), &json!(format!("{}/landing-page · git 레포 · 기준 브랜치 main", repos(&sandbox).display()))),
-            (&json!("web-app의 기준 브랜치를 main으로 바꿨어요"), &json!("새 Work부터 main에서 갈라져요")),
+            (&json!("web-app의 기준 브랜치를 main으로 바꿨어요"), &json!("새 작업공간부터 main에서 갈라져요")),
             (&json!("결제 서비스에 backoffice를 넣었어요"), &json!("Project 3 · 함께 쓰는 Service 1")),
             (&json!("Service를 만들었어요 — 정산"), &json!(format!("api-server · {}", atelier_core::services_in(&sandbox.data_root()).join("정산.md").display()))),
         ],

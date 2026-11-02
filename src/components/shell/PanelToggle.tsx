@@ -4,7 +4,7 @@ import { pressed, type KeyChord } from "@/lib/hotkeys";
 import { HEAD_GLYPH, headButton } from "./ShellHead";
 
 interface PanelToggleProps {
-  /** 여닫는 패널의 이름 — 토글의 이름 · 도움말이 그 뒤에 할 일을 붙인다(「작업 패널 접기」 · 「spec 목록 펼치기」). */
+  /** 여닫는 패널의 이름 — 토글의 이름 · 도움말이 그 뒤에 할 일을 붙인다(「작업공간 패널 접기」 · 「spec 목록 펼치기」). */
   name: string;
   open: boolean;
   onToggle: () => void;

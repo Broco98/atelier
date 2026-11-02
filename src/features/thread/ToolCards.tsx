@@ -117,14 +117,14 @@ function ToolQuestionSlot<A extends ToolCardAsk, T>({
 }
 
 /**
- * Work 만들기 결정 줄(화면 2 보드 `.done-line` · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양이다. 만들었으면 ✓와 「Work
- * 만들기 · api-server · fix/refund-api」, 아니면 →와 「Work 없이 계속함」.
+ * Work 만들기 결정 줄(화면 2 보드 `.done-line` · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양이다. 만들었으면 ✓와 「작업공간
+ * 만들기 · api-server · fix/refund-api」, 아니면 →와 「작업공간 없이 계속함」.
  */
 function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
   const Icon = entry.created ? Check : ArrowRight;
   const text = entry.created
-    ? ["Work 만들기", ...entry.projects, ...(entry.branch ? [entry.branch] : [])].join(" · ")
-    : "Work 없이 계속함";
+    ? ["작업공간 만들기", ...entry.projects, ...(entry.branch ? [entry.branch] : [])].join(" · ")
+    : "작업공간 없이 계속함";
   return (
     <p
       data-decision={entry.created ? "work-created" : "work-skipped"}
@@ -138,7 +138,7 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
 
 /**
  * Work 밖 Project 결정 줄(v1 티켓 32 · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양에 폴더 글리프, Project 이름은
- * `fg-secondary`(보드 `.o`)다. 「web-app을 이 Work에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을 고치지 않기로 함」.
+ * `fg-secondary`(보드 `.o`)다. 「web-app을 이 작업공간에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을 고치지 않기로 함」.
  */
 function ProjectChoiceRow({ entry }: { entry: ProjectChoiceEntry }) {
   const { name, after } = projectChoiceText(entry.choice, entry.project);

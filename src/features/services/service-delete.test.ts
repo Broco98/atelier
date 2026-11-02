@@ -22,16 +22,16 @@ describe("지우기 확인 창", () => {
       title: "결제 서비스 Service를 삭제할까요?",
       name: "결제 서비스",
       projects: "web-app · api-server",
-      body: "Thread 3개 · Work 1개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
+      body: "채팅 3개 · 작업공간 1개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
     });
   });
 
   it("한쪽만 있으면 그 수만 말한다", () => {
     expect(deleteDialog(service(), { threads: 2, works: 0 }).body).toBe(
-      "Thread 2개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
+      "채팅 2개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
     );
     expect(deleteDialog(service(), { threads: 0, works: 1 }).body).toBe(
-      "Work 1개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
+      "작업공간 1개가 이 Service에서 빠져 「Service 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
     );
   });
 

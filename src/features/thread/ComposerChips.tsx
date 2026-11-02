@@ -30,7 +30,7 @@ import type { LockedWork } from "./work-chip";
 // - **모델 · 생각 깊이**(「Opus · 높음」)는 그 채팅의 값이다(스토리 33). 앞에 Runtime 표시(Claude 마크)가 선다.
 //   누르면 16 반경 메뉴에 「Claude Code」 모델 목록과 「생각 깊이」 칸 줄이 선다. 생각 깊이는 턴이 도는 동안 바꿀 수 없다(엔진이
 //   거절한다 — 그래서 그동안 잠근다). 목록이 없으면(앉지 않은 Agent를 멘션했다) 보이기만 한다.
-// - **Work 칩**(03 §5 · F4-KitComposer · F4-HomeWorkMenu)은 스위치다 — 첫 말 전의 메뉴에 「새 Work」 · 「Work 없이 대화」(설명 한 줄 · 지금
+// - **Work 칩**(03 §5 · F4-KitComposer · F4-HomeWorkMenu)은 스위치다 — 첫 말 전의 메뉴에 「새 작업공간」 · 「작업공간 없이 대화」(설명 한 줄 · 지금
 //   것에 ✓)와 최근 Work 다섯(줄 끝에 그 Work의 Service 이름)이 선다. 입력창의 `/work`도 이 메뉴를 연다. 첫 말을 보낸 뒤에는 잠겨 보이기만
 //   한다(연결을 끊는 길은 없다 — v1 §11). Work에 이은 칩만 누를 수 있고, 누르면 그 Work 화면으로 간다.
 // - **Service 칩**(03 §5 · 티켓 06 · F4-HomeSpaceMenu · F4-HomeSpacePicked)은 Work 칩 바로 뒤다 — 비어 있으면 흐린 「Service 넣기」, 고르면 흰 칩
@@ -54,7 +54,7 @@ const TRAY_CHIP = cn(TRAY_FACE, "h-6.5 shrink rounded-full px-2");
 const PICK_CHIP = cn(TRAY_CHIP, "text-fg transition-colors quiet-hover data-[popup-open]:bg-fill-hover");
 /** 트레이 칩 이름의 폭 — 긴 Work 제목이 범위 줄(03 티켓 06)의 자리를 다 먹지 않게. */
 const TRAY_NAME = "max-w-44 min-w-0 truncate";
-/** Work 칩의 접근성 이름 — 칩 글자(「새 Work」 · 「Work 없이 대화」 · 제목)만으로는 무엇을 고르는 칩인지 말하지 않는다. */
+/** Work 칩의 접근성 이름 — 칩 글자(「새 작업공간」 · 「작업공간 없이 대화」 · 제목)만으로는 무엇을 고르는 칩인지 말하지 않는다. */
 const workName = (label: string) => `어디서 일할지 ${label}`;
 /** 고른 것의 글리프 — 새 Work는 폴더 더하기, Work 없이 대화는 말풍선, Work는 폴더다(시안 v52). */
 const WORK_GLYPH: Record<ThreadLink["kind"], LucideIcon> = { "new-work": FolderPlus, "no-work": MessageSquare, work: Folder };
@@ -153,7 +153,7 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
 /** 고르는 Work 칩이 받는 것 — 칩 글자와 고르기(첫 말 전의 새 Thread). */
 export interface WorkChoice {
   kind: "pick";
-  /** 칩 글자 — 「새 Work」 · 「Work 없이 대화」 · Work 제목(`workHome`). */
+  /** 칩 글자 — 「새 작업공간」 · 「작업공간 없이 대화」 · Work 제목(`workHome`). */
   label: string;
   link: ThreadLink;
   /** 골랐다 — 최근 Work면 그 제목도 함께 온다(입력창 안내가 쓴다). */
@@ -196,14 +196,14 @@ const valueOf = (link: ThreadLink): string => (link.kind === "work" ? `work:${li
 
 /** 스위치 둘 — 차례 · 이름 · 설명 한 줄이 시안 v52 그대로다(03 §5 · 스토리 15–17). */
 const SWITCHES = [
-  { kind: "new-work", name: "새 Work", description: "첫 말로 Work를 만들고 그 안에서 시작해요" },
-  { kind: "no-work", name: "Work 없이 대화", description: "묻고 답하기 · 나중에 제안을 받아 Work가 될 수 있어요" },
+  { kind: "new-work", name: "새 작업공간", description: "첫 말로 작업공간을 만들고 그 안에서 시작해요" },
+  { kind: "no-work", name: "작업공간 없이 대화", description: "묻고 답하기 · 나중에 제안을 받아 작업공간이 될 수 있어요" },
 ] as const;
 
 /**
- * 고르는 Work 칩과 메뉴(03 §5 · F4-HomeWorkMenu · F4-KitComposer 「Work 칩 메뉴」) — 칩 아래로 연다. 위에 스위치 둘(설명 한 줄 · 지금 것에 ✓),
- * 구분선 아래 「최근 Work — 그 Work에 새 Thread로」와 진행 중인 Work 다섯이 선다. Work가 하나도 없으면 그 묶음 대신 「아직 Work가 없어요」
- * 한 줄이다(시안 「Work 칩 메뉴 — Work가 없을 때」). 최근 Work를 아직 읽지 못했으면 스위치 둘만 선다. 메뉴의 열림은 `/work`도 연다.
+ * 고르는 Work 칩과 메뉴(03 §5 · F4-HomeWorkMenu · F4-KitComposer 「작업공간 칩 메뉴」) — 칩 아래로 연다. 위에 스위치 둘(설명 한 줄 · 지금 것에 ✓),
+ * 구분선 아래 「최근 작업공간 — 그 작업공간에 새 채팅으로」와 진행 중인 Work 다섯이 선다. Work가 하나도 없으면 그 묶음 대신 「아직 작업공간이 없어요」
+ * 한 줄이다(시안 「작업공간 칩 메뉴 — 작업공간이 없을 때」). 최근 Work를 아직 읽지 못했으면 스위치 둘만 선다. 메뉴의 열림은 `/work`도 연다.
  */
 export function WorkChip({
   label,
@@ -257,7 +257,7 @@ export function WorkChip({
               <DropdownMenuSeparator />
               {recent.length > 0 ? (
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>최근 Work — 그 Work에 새 Thread로</DropdownMenuLabel>
+                  <DropdownMenuLabel>최근 작업공간 — 그 작업공간에 새 채팅으로</DropdownMenuLabel>
                   {recent.map((work) => (
                     <DropdownMenuRadioItem
                       key={work.slug}
@@ -275,7 +275,7 @@ export function WorkChip({
                 </DropdownMenuGroup>
               ) : (
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>아직 Work가 없어요</DropdownMenuLabel>
+                  <DropdownMenuLabel>아직 작업공간이 없어요</DropdownMenuLabel>
                 </DropdownMenuGroup>
               )}
             </>
@@ -288,7 +288,7 @@ export function WorkChip({
 
 /**
  * 잠긴 Work 칩(03 §5 · S3 · F4-KitComposer 「첫 말 뒤」) — 메뉴 없이 보이기만 한다(시안 `.tc.lock` — 글자 60% · 글리프 40%, 셰브런 없음).
- * Work에 이은 칩은 누르면 그 Work 화면으로 가는 단추다. 아직 Work가 서지 않은 「새 Work」는 더 흐리다(`.tc.ghost`) — 「Work를 만드는 중」이다.
+ * Work에 이은 칩은 누르면 그 Work 화면으로 가는 단추다. 아직 Work가 서지 않은 「새 작업공간」은 더 흐리다(`.tc.ghost`) — 「작업공간을 만드는 중」이다.
  */
 export function LockedWorkChip({ locked, onOpen }: LockedChoice) {
   const Glyph = WORK_GLYPH[locked.kind];
@@ -311,7 +311,7 @@ export function LockedWorkChip({ locked, onOpen }: LockedChoice) {
     <button
       type="button"
       data-slot="work-chip"
-      aria-label={`Work로 가기: ${locked.label}`}
+      aria-label={`작업공간으로 가기: ${locked.label}`}
       onClick={() => onOpen(slug)}
       className={cn(TRAY_CHIP, "text-fg-tray-locked transition-colors quiet-hover")}
     >

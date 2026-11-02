@@ -58,7 +58,7 @@ test("Project 상세에는 Work 묶음이 없고, 오른쪽 칸에 기준 브랜
   await expect(rail.getByRole("region", { name: "경로", exact: true })).toContainText(project.path);
   // 앵커(상세가 섰다) 뒤에 — 본문에 그 Project의 Work가 서지 않는다(사이드바의 같은 이름은 본문 밖이다).
   await expect(page.locator("main").getByText(work.title)).toHaveCount(0);
-  await expect(page.locator("main").getByRole("heading", { name: "Works", exact: true })).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { name: "작업공간", exact: true })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -80,7 +80,7 @@ test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서
   const trigger = 기준브랜치(page);
   const list = page.getByRole("listbox");
   await expect(trigger).toContainText(project.baseBranch);
-  await expect(page.getByText("새 Work의 브랜치가 여기서 갈라져요", { exact: true })).toBeVisible();
+  await expect(page.getByText("새 작업공간의 브랜치가 여기서 갈라져요", { exact: true })).toBeVisible();
 
   await trigger.focus();
   await page.keyboard.press("ArrowDown");
@@ -105,7 +105,7 @@ test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서
     .poll(() => ipcArgs(page, "update_project", "slug"))
     .toEqual([{ slug: project.slug, baseBranch: "release" }]);
   // 바꾼 뒤에는 단추 아래 한 줄이 그 뒤의 일을 말한다(F1-ProjectDetail — 픽스처가 값을 기억하지 않아 이름은 옛 값이다).
-  await expect(page.getByText(/^바꿨어요 — 새 Work부터 .+에서 갈라져요$/)).toBeVisible();
+  await expect(page.getByText(/^바꿨어요 — 새 작업공간부터 .+에서 갈라져요$/)).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -83,7 +83,7 @@ export interface ServiceDraft {
 
 // ── 지우기(03 구현 스펙 §9 · §14 · 티켓 07) ────────────────────────────────────────────────────────────────────────────────
 
-/** 쓰임 — 지우기 확인 창의 「Thread 3개 · Work 1개가 이 Service에서 빠져 …」. Thread는 Work 없는 Thread와 이은 Work의 Thread다. */
+/** 쓰임 — 지우기 확인 창의 「채팅 3개 · 작업공간 1개가 이 Service에서 빠져 …」. Thread는 Work 없는 Thread와 이은 Work의 Thread다. */
 export interface ServiceUsage {
   works: number;
   threads: number;

@@ -1,7 +1,7 @@
 import type { StatusMarkKind } from "@/components/shell/status-mark";
 import type { ThreadSummary } from "./types";
 
-// 사이드바 Work 묶음이 품는 Thread(v1 티켓 37 · 구현 스펙 §13 · 스토리 104 · 캔버스 「Thread 목록과 아바타」 보드)의 **순수 함수**다. ▸로
+// 사이드바 Work 묶음이 품는 Thread(v1 티켓 37 · 구현 스펙 §13 · 스토리 104 · 캔버스 「채팅 목록과 아바타」 보드)의 **순수 함수**다. ▸로
 // 펼치면 그 Work에 이은 Thread들이 Work 아래에 한 줄씩 선다(02 티켓 05). Work 줄 오른쪽 끝의 상태 표시는 그 Thread들의 표시를 모아 고른다
 // (`workMarks` → `features/works/work-mark.ts`) — Thread 수는 줄을 떠나 호버 카드에 선다(02 S9). Work 줄을 누르면 그 Work에서 가장 최근의
 // Thread로 가고, 없으면 그 Work에 이은 새 Thread로 간다. 자료는 사이드바 Thread 묶음과 같은 목록 요약(`work`)이다 — Thread 묶음은 Work
@@ -53,7 +53,7 @@ export function threadsOf(threads: readonly ThreadSummary[], work: string): Thre
 export type WorkLanding = { kind: "thread"; id: string } | { kind: "new"; work: string };
 
 /**
- * Work 줄을 누르면 갈 곳(구현 스펙 §13 「가장 최근의 Thread」). 최근은 **마지막 말의 때**다(`lastSaid` — 부르는 쪽이 기록에서 읽어
+ * Work 줄을 누르면 갈 곳(구현 스펙 §13 「가장 최근의 채팅」). 최근은 **마지막 말의 때**다(`lastSaid` — 부르는 쪽이 기록에서 읽어
  * 건넨다) — 하던 대화로 돌아가는 길이라 선 때가 아니다. 말이 아직 없으면 선 때로 견주고, 때가 같으면 목록의 앞(새것)이다. 열 수 없는
  * Thread로는 가지 않는다 — 그런 Thread뿐이거나 하나도 없으면 그 Work에 이은 새 Thread다.
  */

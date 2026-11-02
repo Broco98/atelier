@@ -90,7 +90,7 @@ test("머리 줄 이름을 두 번 누르면 그 자리가 지금 이름을 전�
 
   await 머리이름(page, plainWork.title).dblclick();
 
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await expect(input).toHaveValue(plainWork.title);
   await expect.poll(() => 고른자리(input)).toEqual([0, plainWork.title.length]);
@@ -117,7 +117,7 @@ test("머리 줄 이름에서 F2를 누르면 입력칸이 되고, Esc는 고친
   await name.focus();
   await page.keyboard.press("F2");
 
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await input.fill("고치다 만 이름");
   await input.press("Escape");
@@ -134,7 +134,7 @@ test("한글 조합 중의 Enter는 저장하지 않고 입력칸이 남으며, 
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await input.fill("조합 중인 이름");
 
   await input.evaluate((el) =>
@@ -156,7 +156,7 @@ test("입력기가 문 Enter · Esc(keyCode 229)는 끝내지 않고 입력칸�
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await input.fill("입력기가 쥔 이름");
 
   for (const key of ["Enter", "Escape"] as const) {
@@ -176,11 +176,11 @@ test("⋯ 메뉴의 「이름 바꾸기」는 머리 줄 이름을 입력칸으�
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
 
-  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
   // 메뉴가 닫히며 포커스를 ⋯로 되돌려 막 선 입력칸을 빼앗지 않는다 — 빼앗으면 「다른 곳 = 저장」으로 곧바로 닫힌다.
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(input).toBeFocused();
   await input.fill("메뉴로 바꾼 이름");
@@ -198,7 +198,7 @@ test("머리 줄 이름의 우클릭 메뉴 「이름 바꾸기」도 그 자리
   await 머리이름(page, plainWork.title).click({ button: "right" });
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(input).toBeFocused();
   await input.fill("우클릭으로 바꾼 이름");
@@ -219,7 +219,7 @@ for (const [what, value] of [
     await page.goto(`/works/${plainWork.slug}`);
 
     await 머리이름(page, plainWork.title).dblclick();
-    const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+    const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
     await input.fill(value);
     await input.press("Enter");
 
@@ -235,7 +235,7 @@ test("빈 이름으로 다른 곳을 눌러도 부르지 않고 원래 이름이
   await page.goto(`/works/${plainWork.slug}`);
 
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await input.fill("");
   await 다른곳을누른다(page);
 
@@ -253,7 +253,7 @@ test("머리 줄 이름을 고치는 동안 바깥이 이름을 바꾸면, 손�
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
 
   await 바깥이이름을바꾼다(page, plainWork.slug, "바깥에서 바꾼 이름");
@@ -273,7 +273,7 @@ test("손댄 입력칸은 바깥이 바꾼 이름이 덮지 않고, Enter는 친
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await input.fill("내가 친 이름");
 
   await 바깥이이름을바꾼다(page, plainWork.slug, "바깥에서 바꾼 이름");
@@ -293,7 +293,7 @@ test("머리 줄 이름을 고치는 중에 ⌘,로 설정에 가면 친 이름�
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await input.fill("설정에 가기 전에 친 이름");
   await expect(input).toBeFocused();
 
@@ -317,7 +317,7 @@ test("머리 줄 이름을 고치는 중에 ⌘J로 다른 work에 가면 친 �
   await 작업화면으로(page, pinnedWork);
 
   await 머리이름(page, pinnedWork.title).dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await input.fill("옮기기 전에 친 이름");
   await expect(input).toBeFocused();
   await page.keyboard.press("Meta+j");
@@ -327,7 +327,7 @@ test("머리 줄 이름을 고치는 중에 ⌘J로 다른 work에 가면 친 �
 
   await 작업화면으로(page, pinnedWork);
   await expect(머리이름(page, pinnedWork.title)).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "작업 이름" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "작업공간 이름" })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -345,7 +345,7 @@ test("머리 줄의 입력칸은 이름 글자만큼이고, 친 글자를 따라
   });
 
   await name.dblclick();
-  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   const 폭 = async () => (await input.boundingBox())!.width;
   const 처음 = await 폭();
@@ -374,7 +374,7 @@ test("사이드바 행에서 F2를 누르면 그 행의 이름이 입력칸이 �
   await row.focus();
   await page.keyboard.press("F2");
 
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await expect(input).toHaveValue(pinnedWork.title);
   // 입력칸을 눌러도 행이 열리지 않는다.
@@ -400,7 +400,7 @@ test("사이드바 행의 우클릭 메뉴 「이름 바꾸기」는 그 행을 
   await 행버튼(page, pinnedWork.title).click({ button: "right" });
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(input).toBeFocused();
   await input.fill("고치다 만 이름");
@@ -418,7 +418,7 @@ test("사이드바 행을 고치다 다른 곳을 누르면 그 행의 work 이�
   await page.goto(`/works/${plainWork.slug}`);
   await 행버튼(page, pinnedWork.title).focus();
   await page.keyboard.press("F2");
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await input.fill("다른 곳을 눌러 바꾼 이름");
 
@@ -435,7 +435,7 @@ test("사이드바 행을 고치다 다른 행을 누르면 고치던 행의 wor
   await page.goto(`/works/${plainWork.slug}`);
   await 행버튼(page, pinnedWork.title).focus();
   await page.keyboard.press("F2");
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await input.fill("다른 행을 눌러 바꾼 이름");
 
@@ -454,7 +454,7 @@ test("고치는 사이드바 행이 바깥에서 사라졌다 돌아오면 입�
   await page.goto(`/works/${plainWork.slug}`);
   await 행버튼(page, pinnedWork.title).focus();
   await page.keyboard.press("F2");
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
 
   await archiveByMcp(page, WORKS, pinnedWork.slug);
@@ -464,7 +464,7 @@ test("고치는 사이드바 행이 바깥에서 사라졌다 돌아오면 입�
   await fireEvent(page, "works:changed", null);
 
   await expect(행버튼(page, pinnedWork.title)).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "작업 이름" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "작업공간 이름" })).toHaveCount(0);
   expect(await callCount(page, "set_work_title")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -481,7 +481,7 @@ test("고치는 사이드바 행에는 호버 카드가 서지 않는다 — 올
 
   await 행버튼(page, pinnedWork.title).focus();
   await page.keyboard.press("F2");
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await expect(card).toHaveCount(0);
 
@@ -502,7 +502,7 @@ test("사이드바 행을 두 번 누르면 그 work가 열리고 이름은 입�
   await 행버튼(page, pinnedWork.title).dblclick();
 
   await expect(page).toHaveURL(Work줄이가는곳(pinnedWork.slug));
-  await expect(page.getByRole("textbox", { name: "작업 이름" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "작업공간 이름" })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -518,7 +518,7 @@ test("알림 띠 줄의 메뉴 「이름 바꾸기」는 그 work의 사이드�
   await 띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
-  const input = workRow(page, plainWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, plainWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   await input.fill("띠에서 바꾼 이름");
   await input.press("Enter");
@@ -546,7 +546,7 @@ test("알림 띠에서 「이름 바꾸기」를 고른 work의 행이 접힌 �
   await 띠(page).getByRole("button", { name: `${pinnedWork.title} — 나를 기다림`, exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
-  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(header).toHaveAttribute("aria-expanded", "true");
   await expect(input).toBeFocused();
   await input.press("Escape");

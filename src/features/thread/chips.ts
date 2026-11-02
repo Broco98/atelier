@@ -46,8 +46,8 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
  * 23). `/model`은 모델 칩 메뉴(모델과 생각 깊이)를 연다(구현 스펙 §14, 코드 리뷰 1차 B8).
  */
 export const THREAD_COMMANDS: readonly CommandOption[] = [
-  { name: "new", description: "새 Thread", aliases: [], thread: true },
-  { name: "work", description: "Work 만들기 · 붙이기", aliases: [], thread: true },
+  { name: "new", description: "새 채팅", aliases: [], thread: true },
+  { name: "work", description: "작업공간 만들기 · 붙이기", aliases: [], thread: true },
   { name: "plan", description: "계획만 세우고 멈추기", aliases: [], thread: true },
   { name: "model", description: "모델과 생각 깊이", aliases: [], thread: true },
   { name: "policy", description: "언제 물어볼지", aliases: [], thread: true },

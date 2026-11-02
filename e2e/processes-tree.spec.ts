@@ -430,7 +430,7 @@ test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 �
 
   // 줄 — 갈래마다 높이 · 글자 단계 · 색, 안쪽 좌우 12.
   const 줄표: Array<[string, Locator, string[]]> = [
-    ["작업", 작업줄, ["40px", "14px", "20px", "500", 진한글자, "12px", "12px"]],
+    ["작업공간", 작업줄, ["40px", "14px", "20px", "500", 진한글자, "12px", "12px"]],
     ["셸", 셸행(page, 1), ["32px", "13px", "18px", "400", 진한글자, "12px", "12px"]],
     ["프로세스", 프로세스줄, ["30px", "13px", "18px", "400", 흐린글자, "12px", "12px"]],
     ["셸 도우미", 도우미줄, ["28px", "12px", "18px", "400", 옅은글자, "12px", "12px"]],
@@ -482,9 +482,9 @@ test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 �
   expect(Math.round(열머리상자!.y - (요약상자!.y + 요약상자!.height)), "요약 타일과 열 머리 사이").toBe(22);
 
   // 구획 머리 — 36 · 안쪽 12, 제목 13/18 600, 수 13 · 400 `fg-tertiary`.
-  const 구획머리 = page.getByRole("region", { name: "작업", exact: true }).locator(":scope > div").first();
+  const 구획머리 = page.getByRole("region", { name: "작업공간", exact: true }).locator(":scope > div").first();
   expect(await 칠한값(구획머리, "height", "padding-left", "padding-right"), "구획 머리").toEqual(["36px", "12px", "12px"]);
-  expect(await 칠한값(구획머리.getByText("작업", { exact: true }), "font-size", "line-height", "font-weight"), "구획 제목").toEqual([
+  expect(await 칠한값(구획머리.getByText("작업공간", { exact: true }), "font-size", "line-height", "font-weight"), "구획 제목").toEqual([
     "13px",
     "18px",
     "600",

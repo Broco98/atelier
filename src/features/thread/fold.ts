@@ -26,7 +26,7 @@ import { particle } from "@/lib/particle";
 // - **채팅 하나가 Runtime 세션 하나다.** 줄에 말한 이가 없고 열린 턴도 하나다 — 말은 Runtime 이름으로 선다(`runtime.ts`). 세션이 죽거나
 //   닫히거나 앱을 다시 켜면(`goneThrough`) 그 턴과 걸린 물음이 끝난다.
 // - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 물어보는 정도 바꿈(`mode` —
-//   「Policy를 편집 자동으로 바꿈 · 이 Work에만」, v1 티켓 23). Work · PR 줄은 그 장(30 · 31 · 40)이 더한다.
+//   「Policy를 편집 자동으로 바꿈 · 이 작업공간에만」, v1 티켓 23). Work · PR 줄은 그 장(30 · 31 · 40)이 더한다.
 // - **도구 줄은 시작과 끝의 시각을 든다** — 작업 로그가 마우스를 올린 줄에 걸린 시간을 말한다(캔버스 WorkLog 보드). 사람이 거절한
 //   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`). 판정이 묻지 않고 허용한 도구 줄은 그 까닭을 든다
 //   (`allowed` — 방패 줄 「자동으로 허용함」, v1 티켓 23 · 구현 스펙 §9). 판정 줄(`decided`)의 고른 선택지가 허용 갈래일 때다 — 엔진의
@@ -34,10 +34,10 @@ import { particle } from "@/lib/particle";
 // - **사람이 승인 카드에서 고른 것은 결정 줄이다**(v1 티켓 24 · 캔버스 Cards · Approval 보드 「결정한 뒤」) — 답 줄(`answered`)이 오면
 //   카드가 걷히고 열린 턴에 결정 줄이 선다(허락인지 · 다시 묻지 않기로 준 허락 · 거절하며 남긴 말). 판정이 묻지 않고
 //   닫은 요청(`decided`)은 결정 줄이 아니다 — 그쪽은 위의 방패 줄이다.
-// - **Work 만들기 카드는 `question` 줄(`card: work`)이다**(v1 티켓 30 · 캔버스 Cards 보드 「Work 만들기」) — 제안 줄이 오면 카드가 권한
+// - **Work 만들기 카드는 `question` 줄(`card: work`)이다**(v1 티켓 30 · 캔버스 Cards 보드 「작업공간 만들기」) — 제안 줄이 오면 카드가 권한
 //   요청과 같은 물음 차례에 서고(`asks`), 답 줄이 오면 걷히며 그 제안을 낸 Thread 도구 줄(`atelier-thread.propose_work`) 자리에 결정 줄이
-//   선다(「✓ Work 만들기 · api-server · fix/refund-api」 · 「→ Work 없이 계속함」 — 화면 2 보드). 만들었으면 `work` 줄이 시스템 줄
-//   「Work … 을 만들고 이 Thread에 연결함」이 된다. 두 줄(도구 줄 · 제안 줄)은 다른 길로 적혀 엇갈릴 수 있다 — 먼저 온 쪽이 나중 것을
+//   선다(「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」 — 화면 2 보드). 만들었으면 `work` 줄이 시스템 줄
+//   「작업공간 … 을 만들고 이 채팅에 연결함」이 된다. 두 줄(도구 줄 · 제안 줄)은 다른 길로 적혀 엇갈릴 수 있다 — 먼저 온 쪽이 나중 것을
 //   기다린다.
 // - **Agent의 질문은 질문 줄이다**(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — `question` 줄(`card: question`)이 오면 승인 ·
 //   Work 만들기 카드와 같은 물음 차례(`asks`)에 질문으로 서고, 그 질문을 낸 도구 줄 자리를 질문 줄이 대신한다. 답하면 그 자리에
@@ -73,15 +73,15 @@ export type Entry =
   | ResultEntry;
 
 /**
- * Work 만들기 카드에서 사람이 고른 것(v1 티켓 30) — 「Work 만들기 · api-server · fix/refund-api」 또는 「Work 없이 계속함」. 그 제안을 낸
+ * Work 만들기 카드에서 사람이 고른 것(v1 티켓 30) — 「작업공간 만들기 · api-server · fix/refund-api」 또는 「작업공간 없이 계속함」. 그 제안을 낸
  * Thread 도구 줄의 자리를 대신한다.
  */
 export interface WorkChoiceEntry {
   kind: "work-choice";
   key: string;
-  /** Work를 만들었나 — 아니면 「Work 없이 계속」이다. */
+  /** Work를 만들었나 — 아니면 「작업공간 없이 계속」이다. */
   created: boolean;
-  /** 만든 Work의 Project들(카드에서 고친 것)과 브랜치. 「Work 없이 계속」이면 비었다. */
+  /** 만든 Work의 Project들(카드에서 고친 것)과 브랜치. 「작업공간 없이 계속」이면 비었다. */
   projects: string[];
   branch: string | null;
   /** 이 결정의 제안을 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
@@ -113,7 +113,7 @@ export interface AskedQuestion {
 }
 
 /**
- * Work 밖 Project 카드에서 사람이 고른 것(v1 티켓 32 · S22) — 「web-app을 이 Work에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을
+ * Work 밖 Project 카드에서 사람이 고른 것(v1 티켓 32 · S22) — 「web-app을 이 작업공간에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을
  * 고치지 않기로 함」. 그 카드를 낸 Thread 도구(「Project 고치기 시작」) 줄의 자리를 대신한다.
  */
 export interface ProjectChoiceEntry {
@@ -161,7 +161,7 @@ export interface ProjectAddChoiceEntry {
 }
 
 /**
- * 결정 줄(v1 티켓 24) — 사람이 승인 카드에서 고른 것. 문구는 `approval.ts`의 `decisionText`가 짓는다(「명령 실행을 승인함 · 이 Work에서는
+ * 결정 줄(v1 티켓 24) — 사람이 승인 카드에서 고른 것. 문구는 `approval.ts`의 `decisionText`가 짓는다(「명령 실행을 승인함 · 이 작업공간에서는
  * 다시 묻지 않음」).
  */
 export interface DecisionEntry {
@@ -259,7 +259,7 @@ export interface Notice {
 
 /**
  * 시스템 줄(캔버스 Messages 보드) — 가운데에 회색 한 줄, 굵게 쓰는 것은 이름(`name`)뿐이다. 문장은 `before` · `name` · `after`를 잇는다
- * (「Thread 이름을 」 · 「환불 API 버그」 · 「로 바꿈」). 끝에 고정폭 조각(`code` — 브랜치)이 붙을 수 있다(「api-server에 worktree를 만듦
+ * (「채팅 이름을 」 · 「환불 API 버그」 · 「로 바꿈」). 끝에 고정폭 조각(`code` — 브랜치)이 붙을 수 있다(「api-server에 worktree를 만듦
  * · `fix/refund-api`」).
  */
 export interface SystemLine {
@@ -469,7 +469,7 @@ export interface PendingPermission {
   planReview: boolean;
   /** 판정이 세운 카드 종류(v1 티켓 22) — 판정 없이 물은 옛 기록이면 null이다. */
   card: "command" | "edit" | "plan" | null;
-  /** 왜 묻는지 — 판정이 단 까닭(「매번 묻기」 · 「Thread 기록을 건드리기 전에 묻기」). 없으면 null이다. */
+  /** 왜 묻는지 — 판정이 단 까닭(「매번 묻기」 · 「채팅 기록을 건드리기 전에 묻기」). 없으면 null이다. */
   policy: string | null;
   /** 「다시 묻지 않기」를 고르면 줄 허락(규칙 이름들) — 비었으면 카드에 그 선택지가 없다(앱 경계가 물었다 · 계획 · 그 밖의 도구). */
   grant: string[];
@@ -828,11 +828,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         } else open?.entries.push(choice);
         break;
       }
-      // Work 연결(v1 티켓 30) — 「Work 환불 API 버그 수정을 만들고 이 Thread에 연결함」. worktree 생성(v1 티켓 32) — 「api-server에 worktree를
-      // 만듦 · fix/refund-api」. Project 붙임(`attached`)은 시스템 줄이 아니다 — 카드의 결정 줄 「web-app을 이 Work에 붙임」이 말한다.
+      // Work 연결(v1 티켓 30) — 「작업공간 환불 API 버그 수정을 만들고 이 채팅에 연결함」. worktree 생성(v1 티켓 32) — 「api-server에 worktree를
+      // 만듦 · fix/refund-api」. Project 붙임(`attached`)은 시스템 줄이 아니다 — 카드의 결정 줄 「web-app을 이 작업공간에 붙임」이 말한다.
       case "work": {
         const title = nonEmpty(payload.title) ?? nonEmpty(payload.slug);
-        if (payload.state === "created" && title) say(line.seq, "work", "Work ", title, `${particle(title, "을", "를")} 만들고 이 Thread에 연결함`);
+        if (payload.state === "created" && title) say(line.seq, "work", "작업공간 ", title, `${particle(title, "을", "를")} 만들고 이 채팅에 연결함`);
         const project = nonEmpty(payload.project);
         if (payload.state === "worktree" && project) {
           const branch = nonEmpty(payload.branch);
@@ -870,15 +870,15 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       }
       case "title": {
         const title = nonEmpty(payload.title);
-        if (title) say(line.seq, "title", "Thread 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
+        if (title) say(line.seq, "title", "채팅 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
         break;
       }
-      // 사람이 물어보는 정도를 바꿈(v1 티켓 23) — 「Policy를 편집 자동으로 바꿈 · 이 Work에만」. Work에 이은 Thread의 정도는 그 Work의
+      // 사람이 물어보는 정도를 바꿈(v1 티켓 23) — 「Policy를 편집 자동으로 바꿈 · 이 작업공간에만」. Work에 이은 Thread의 정도는 그 Work의
       // 것이라 같은 Work의 다른 Thread에도 든다는 것을 꼬리가 말한다.
       case "mode": {
         const level = askLevelOf(payload.mode);
         if (!level) break;
-        const scope = nonEmpty(payload.work) ? " · 이 Work에만" : "";
+        const scope = nonEmpty(payload.work) ? " · 이 작업공간에만" : "";
         say(line.seq, "mode", "Policy를 ", level.name, `${particle(level.name, "으로", "로")} 바꿈${scope}`);
         break;
       }

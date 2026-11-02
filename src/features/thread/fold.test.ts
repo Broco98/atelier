@@ -116,7 +116,7 @@ describe("작업 구분선", () => {
 });
 
 describe("시스템 줄", () => {
-  it("이름 바꾸기는 그 자리에 「Thread 이름을 X로 바꿈」으로 선다 — 조사는 이름의 받침을 따른다", () => {
+  it("이름 바꾸기는 그 자리에 「채팅 이름을 X로 바꿈」으로 선다 — 조사는 이름의 받침을 따른다", () => {
     const lines: RecordLine[] = [
       ...blessed.slice(0, 8),
       { seq: 30, at: at(3), kind: "title", payload: { title: "환불 API 버그", before: "세 낱말로" } },
@@ -125,8 +125,8 @@ describe("시스템 줄", () => {
     ];
     const { system } = foldThread(lines);
     expect(system.map((line) => [line.before, line.name, line.after, line.turnsBefore])).toEqual([
-      ["Thread 이름을 ", "환불 API 버그", "로 바꿈", 1],
-      ["Thread 이름을 ", "결제 흐름", "으로 바꿈", 2],
+      ["채팅 이름을 ", "환불 API 버그", "로 바꿈", 1],
+      ["채팅 이름을 ", "결제 흐름", "으로 바꿈", 2],
     ]);
   });
 
@@ -134,7 +134,7 @@ describe("시스템 줄", () => {
     // 엔진 검사가 축복한 기록 — Host가 첫 턴에서 `rename_thread`를 불렀다. `title` 줄은 도구 줄과 그 끝 사이에 있다.
     const model = foldThread(record("thread-rename"));
     expect(model.system.map((line) => [`${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
-      ["Thread 이름을 환불 API 버그로 바꿈", 1],
+      ["채팅 이름을 환불 API 버그로 바꿈", 1],
     ]);
     expect(model.turns).toHaveLength(1);
     const [turn] = model.turns;
@@ -261,7 +261,7 @@ describe("도구 줄의 끝", () => {
       { optionId: "allow_once", name: "Yes", kind: "allow_once" },
       { optionId: "reject", name: "No", kind: "reject_once" },
     ];
-    const reason = "「장바구니 수량을 고쳐 줘」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+    const reason = "「장바구니 수량을 고쳐 줘」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요";
     // v1 티켓 18 — 다른 Session이 쓰기 자리를 쥐었다: 물음 줄 없이 판정 줄 하나다.
     const model = foldThread([
       ...blessed,
@@ -502,7 +502,7 @@ describe("물어보는 정도(v1 티켓 23)", () => {
   /** 「편집 자동」으로 세운 Thread의 첫 편집을 판정이 묻지 않고 허용한 축복 기록 — 물음 줄 없이 판정 줄(`decided`) 하나다. */
   const auto = record("thread-auto-allow");
 
-  it("바꾼 정도는 「Policy를 X로 바꿈」 시스템 줄이고, Work에 이은 Thread면 「· 이 Work에만」이 붙는다", () => {
+  it("바꾼 정도는 「Policy를 X로 바꿈」 시스템 줄이고, Work에 이은 Thread면 「· 이 작업공간에만」이 붙는다", () => {
     const lines: RecordLine[] = [
       ...blessed,
       { seq: 25, at: at(5), kind: "mode", payload: { mode: "edits", work: "cart" } },
@@ -512,7 +512,7 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     ];
     const { system } = foldThread(lines);
     expect(system.map((line) => [line.kind, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
-      ["mode", "Policy를 편집 자동으로 바꿈 · 이 Work에만", 2],
+      ["mode", "Policy를 편집 자동으로 바꿈 · 이 작업공간에만", 2],
       ["mode", "Policy를 매번 묻기로 바꿈", 2],
       ["mode", "Policy를 계획으로 바꿈", 2],
     ]);
@@ -599,7 +599,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
   const firstLines = (model: ThreadModel) =>
     finalMessages(model.turns[0]).map((entry) => (entry.kind === "message" ? entry.text.split("\n")[0] : null));
 
-  it("제안 줄이 오면 카드가 서고 — 제목 · 까닭 · 브랜치와 등록된 Project(Host 추천이 먼저) — 그 도구 줄은 「Work 만들기를 묻는 중」이다", () => {
+  it("제안 줄이 오면 카드가 서고 — 제목 · 까닭 · 브랜치와 등록된 Project(Host 추천이 먼저) — 그 도구 줄은 「작업공간 만들기를 묻는 중」이다", () => {
     const model = foldThread(through(working, 55));
     expect(cards(model).map((one) => [one.requestId, one.title, one.reason, one.slug, one.branch])).toEqual([
       [
@@ -629,7 +629,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
       },
     ]);
     const tool = model.turns[0].entries.find((entry) => entry.kind === "tool" && entry.call.title === PROPOSE);
-    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Work 만들기를 묻는 중");
+    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("작업공간 만들기를 묻는 중");
   });
 
   it("Service에 이은 Thread의 카드는 새 Work로 옮겨 갈 Service를 싣고, Service가 없으면 그 칸이 비었다(03 S8)", () => {
@@ -640,7 +640,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     expect(cards(foldThread(serviced))[0].service).toEqual({ slug: "결제-서비스", name: "결제 서비스" });
   });
 
-  it("만들면 카드가 걷히고, 그 도구 줄 자리에 「Work 만들기」 결정 줄이, 턴 뒤에 「Work … 을 만들고 이 Thread에 연결함」 시스템 줄이 선다", () => {
+  it("만들면 카드가 걷히고, 그 도구 줄 자리에 「작업공간 만들기」 결정 줄이, 턴 뒤에 「작업공간 … 을 만들고 이 채팅에 연결함」 시스템 줄이 선다", () => {
     const model = foldThread(working);
     expect(cards(model)).toEqual([]);
     const entries = model.turns[0].entries;
@@ -650,8 +650,8 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     expect(toolTitles(model)).not.toContain(PROPOSE);
     // 제안 앞에 Host가 바꾼 이름 줄이 먼저 선다(진짜 Host는 Thread 이름을 바꾸고 제안한다).
     expect(model.system.map((line) => [line.kind, line.before, line.name, line.after, line.turnsBefore])).toEqual([
-      ["title", "Thread 이름을 ", "환불 API 부분 환불 버그 (#31)", "로 바꿈", 1],
-      ["work", "Work ", "환불 API 부분 환불 버그 수정 (#31)", "을 만들고 이 Thread에 연결함", 1],
+      ["title", "채팅 이름을 ", "환불 API 부분 환불 버그 (#31)", "로 바꿈", 1],
+      ["work", "작업공간 ", "환불 API 부분 환불 버그 수정 (#31)", "을 만들고 이 채팅에 연결함", 1],
     ]);
     expect(firstLines(model)).toEqual(["버그는 찾았고, 재현도 해 봤어요. 코드는 아직 고치지 않았습니다. 고치기 전에 아래 설계를 확인받고 싶어요."]);
   });
@@ -680,7 +680,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     expect(firstLines(foldThread(lines))).toEqual(["이 일을 Work로 만들어 둘까요?", "Work를 만들었어요."]);
   });
 
-  it("「Work 없이 계속」은 시스템 줄 없이 결정 줄만 서고, 멈춤으로 거둔 카드는 결정 줄 없이 걷힌다", () => {
+  it("「작업공간 없이 계속」은 시스템 줄 없이 결정 줄만 서고, 멈춤으로 거둔 카드는 결정 줄 없이 걷힌다", () => {
     const answered = (payload: Record<string, unknown>): RecordLine => ({
       seq: 56,
       at: "2026-10-10T10:00:56.000+09:00",
@@ -698,7 +698,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     expect(toolTitles(withdrawn)).toContain(PROPOSE);
   });
 
-  it("Project 목록 · Work 읽기 도구 줄은 사람의 말로 선다 — 「Project 2개 목록 확인함」 · 「Work 읽음」", () => {
+  it("Project 목록 · Work 읽기 도구 줄은 사람의 말로 선다 — 「Project 2개 목록 확인함」 · 「작업공간 읽음」", () => {
     const tool = (seq: number, id: string, name: string, status: string, text?: string) =>
       update(seq, seq, {
         sessionUpdate: seq === 2 || seq === 4 ? "tool_call" : "tool_call_update",
@@ -716,7 +716,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
       tool(4, "w", "mcp__atelier-thread__get_work", "in_progress"),
     ]);
     const phrases = model.turns[0].entries.map((entry) => entry.kind === "tool" && phraseText(describeTool(entry).phrase));
-    expect(phrases).toEqual(["Project 2개 목록 확인함", "Work 읽는 중"]);
+    expect(phrases).toEqual(["Project 2개 목록 확인함", "작업공간 읽는 중"]);
   });
 
   it("제안한 Session이 끝나면 카드도 걷힌다 — 답할 곳이 없다", () => {
@@ -845,7 +845,7 @@ describe("Work 밖 Project 카드(v1 티켓 32)", () => {
     expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("web-app 고치기 시작하는 중");
   });
 
-  it("붙이면 카드가 걷히고, 그 도구 줄 자리에 「web-app을 이 Work에 붙임」 결정 줄이, 턴 안에 「web-app에 worktree를 만듦 · 브랜치」 시스템 줄이 선다", () => {
+  it("붙이면 카드가 걷히고, 그 도구 줄 자리에 「web-app을 이 작업공간에 붙임」 결정 줄이, 턴 안에 「web-app에 worktree를 만듦 · 브랜치」 시스템 줄이 선다", () => {
     const model = foldThread(attaching);
     expect(cards(model)).toEqual([]);
     const entries = model.turns[0].entries;

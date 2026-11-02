@@ -260,7 +260,7 @@ impl Writer {
             .ok()
             .filter(|title| !title.is_empty())
             .unwrap_or_else(|| owner.to_owned());
-        format!("「{title}」 Thread가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요")
+        format!("「{title}」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요")
     }
 }
 

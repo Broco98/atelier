@@ -93,16 +93,16 @@ test("작업 화면의 Tab은 창 컨트롤 → 머리 줄 → 사이드바 → 
     "Service: 없음",
     pinnedWork.title,
     pinnedWork.status,
-    "작업 메뉴",
+    "작업공간 메뉴",
     "분할",
-    "작업 패널 접기",
+    "작업공간 패널 접기",
   ]);
   expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
   // 사이드바는 위 줄 nav 하나 · work 목록 하나 · 바닥 사람 줄이다(v1 티켓 07 · 42 — 맨 위의 검색 칸은 46이 걷었다, 검색은 창
   // 컨트롤의 🔍다. 「전체 | 내 차례」 마디는 02 티켓 04가 걷어 「내 차례」가 nav의 한 줄이 됐다). nav의 정류장은 첫 항목(켜진 것이
   // 없다), 목록의 정류장은 고른 행이다. 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
   expect(자리들.filter(({ 영역 }) => 영역 === "사이드바").map(({ 이름, 행 }) => [이름, 행])).toEqual([
-    ["새 Thread", "new-thread"],
+    ["새 채팅", "new-thread"],
     [pinnedWork.title, pinnedWork.slug],
     ["홍길동 — 사람 메뉴", null],
   ]);
@@ -295,12 +295,12 @@ test("사이드바 work 목록은 ↑↓로 구획 머리와 행을 지나고, �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// nav는 「새 Thread」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19, 02 티켓 04 — 「내 차례」가 마디에서 nav로 왔다). 지금
+// nav는 「새 채팅」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19, 02 티켓 04 — 「내 차례」가 마디에서 nav로 왔다). 지금
 // 화면들로 가는 옛 main nav 넷은 사람 메뉴로 갔다(S27).
 test("nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
-  await 탭으로(page, page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }));
+  await 탭으로(page, page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }));
   await 간다(page, "ArrowUp", "new-thread");
   await 간다(page, "ArrowDown", "mine");
   await 간다(page, "ArrowDown", "library");
@@ -469,7 +469,7 @@ test("↓로 옮겨 간 work 행에서도 F2가 그 행의 이름을 고치고, 
   await 탭으로(page, 목록행(page, 고정머리));
   await 간다(page, "ArrowDown", pinnedWork.slug);
   await page.keyboard.press("F2");
-  const 작업이름 = page.getByRole("textbox", { name: "작업 이름", exact: true });
+  const 작업이름 = page.getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(작업이름).toBeFocused();
   await expect(작업이름).toHaveValue(pinnedWork.title);
   await page.keyboard.press("Escape");
@@ -506,7 +506,7 @@ test("포커스를 품은 채 ⌘Enter로 작업 패널을 접으면 포커스�
 
   // 작업 패널은 접힐 때 트리를 새로 세운다(`WorkPanel`의 `treeGeneration`) — 포커스를 쥔 행이 문서에서 빠져도 토글로 간다.
   await page.keyboard.press("Meta+Enter");
-  await expect(page.getByRole("button", { name: "작업 패널 펼치기", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "작업공간 패널 펼치기", exact: true })).toBeFocused();
   expect(영역차례(await 탭차례(page))).not.toContain("패널");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

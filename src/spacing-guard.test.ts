@@ -433,12 +433,12 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/features/works/SpecTree.tsx",
       className: "gap-px",
-      why: "작업 패널 트리 — 줄 사이 1(DS `.at-tree`)",
+      why: "작업공간 패널 트리 — 줄 사이 1(DS `.at-tree`)",
     },
     {
       file: "src/features/files/FilesTree.tsx",
       className: "gap-px",
-      why: "작업 패널 files 트리 — spec 트리와 같은 줄 사이 1(DS `.at-tree`)",
+      why: "작업공간 패널 files 트리 — spec 트리와 같은 줄 사이 1(DS `.at-tree`)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",

@@ -59,8 +59,8 @@ describe("내 차례만", () => {
     expect(text.indexOf("환불 API 버그 고쳐줘")).toBeLessThan(text.indexOf("결제 페이지 리디자인"));
   });
 
-  it("비었으면 「지금은 나를 기다리는 Thread가 없어요」 한 줄이다", () => {
-    expect(textOf(list([]))).toBe("지금은 나를 기다리는 Thread가 없어요");
+  it("비었으면 「지금은 나를 기다리는 채팅이 없어요」 한 줄이다", () => {
+    expect(textOf(list([]))).toBe("지금은 나를 기다리는 채팅이 없어요");
   });
 });
 

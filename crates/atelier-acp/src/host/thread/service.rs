@@ -83,7 +83,7 @@ impl ConversationHost {
             return Ok(());
         }
         let changed = atelier_core::update_work_service(&atelier_core::works_in(&self.data_root), work, service)
-            .map_err(|error| HostError::Record(format!("Work의 Service를 적지 못했습니다: {error}")))?;
+            .map_err(|error| HostError::Record(format!("작업공간의 Service를 적지 못했습니다: {error}")))?;
         let threads: Vec<String> = self.with_index(|index| index.of_work(work).iter().map(|summary| summary.id.clone()).collect())?;
         for thread in threads.iter().filter(|thread| Some(thread.as_str()) != folded) {
             let file = self.read_thread_file(thread)?;
@@ -148,7 +148,7 @@ impl ConversationHost {
                     let still = atelier_core::read_work(&works, work).is_ok_and(|meta| meta.service.as_deref() == Some(slug.as_str()));
                     if still {
                         atelier_core::update_work_service(&works, work, None)
-                            .map_err(|error| HostError::Record(format!("Work의 Service를 비우지 못했습니다: {error}")))?;
+                            .map_err(|error| HostError::Record(format!("작업공간의 Service를 비우지 못했습니다: {error}")))?;
                     }
                     still
                 };

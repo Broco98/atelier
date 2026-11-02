@@ -668,7 +668,7 @@ test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 
 // `aside`이고 그 폭이 칸의 폭이라, 접으면 선도 함께 걷혀 문서 칸이 레일 열 앞까지 넓어진다. 폭 손잡이는 패널 칸의 왼쪽 가장자리 안이다
 // (`ResizeHandle`의 `edge` — 넘침을 숨기는 상자라 선 위에 걸치면 반이 잘린다).
 const [pinnedWork, plainWork] = WORKS;
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업공간 패널", exact: true });
 /** 레일 열 — 칸 묶음(「레일」)을 품은 열이다(`Rail`). 레일 칸이 둘 이상인 작업 화면에만 선다. */
 const 레일열 = (page: Page) => page.getByRole("group", { name: "레일", exact: true }).locator("..");
 
@@ -715,7 +715,7 @@ test("Works: 판 안에 문서 칸과 작업 패널 칸이 선 하나로 맞닿�
   // ⌘Enter로 접으면 선이 칸과 함께 걷혀 문서 칸이 레일 열 앞까지 넓어진다 — 닫힌 칸 옆에 선 · 틈이 겹쳐 남지 않는다.
   await page.keyboard.press("Meta+Enter");
   await expect.poll(async () => (await boxOf(doc)).right).toBe(rail.x);
-  await page.getByRole("button", { name: "작업 패널 펼치기", exact: true }).click();
+  await page.getByRole("button", { name: "작업공간 패널 펼치기", exact: true }).click();
   await expect.poll(async () => (await boxOf(panel)).x - (await boxOf(doc)).right).toBe(0);
   expect((await boxOf(panel)).right, "다시 펴면 레일 열 앞까지").toBe(rail.x);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -736,7 +736,7 @@ async function 패널정류장(page: Page, 번 = 60): Promise<number> {
 // 않는 트리 행에 선다(옛 Archive는 행 안에 펼친 트리를 `inert`로 막았다). 열린 동안은 그 행(폴더 머리)이 Tab 정류장이라 두 상태를
 // 같은 길로 잰다 — 열린 쪽이 0이면 닫힌 쪽의 0도 아무것도 말하지 않는다. 칸은 두 화면이 한 벌이다(작업 패널 · spec 목록 패널).
 const PANEL_SCREENS = [
-  { name: "Works", url: `/works/${pinnedWork.slug}`, panel: "작업 패널" },
+  { name: "작업공간", url: `/works/${pinnedWork.slug}`, panel: "작업공간 패널" },
   { name: "Archive", url: `/archive/${ARCHIVE[0].slug}`, panel: "spec 목록" },
 ] as const;
 
@@ -755,7 +755,7 @@ for (const screen of PANEL_SCREENS) {
   });
 }
 
-// codex-ds 티켓 18 — **작업 패널 머리는 「spec」과 spec 폴더 열기다**(codex-ds 스펙 §4 「패널 머리」 · §6 「작업 패널」). 제목은 DS 패널 머리
+// codex-ds 티켓 18 — **작업 패널 머리는 「spec」과 spec 폴더 열기다**(codex-ds 스펙 §4 「패널 머리」 · §6 「작업공간 패널」). 제목은 DS 패널 머리
 // 제목(`.at-panel-head .title` — 14/20 · 500)이고, 글자가 카드 + 16에 선다(머리 여백 8 + 제목 안쪽 8 — 행 글자 16, 스펙 §4 「여백」).
 // 버튼은 머리 오른쪽 끝, 머리 줄의 가운데에 선다.
 test("Works: 작업 패널 머리 제목이 DS 패널 머리 제목(14/20 · 500)이고 글자가 카드 + 16에 서며, spec 폴더 열기는 머리 오른쪽 끝이다", async ({
@@ -839,10 +839,10 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Service / ⚡ · wo
   // 줄에 선다. 이름은 그 앞에서 끝난다. 패널 토글은 레일이 서도 레일 위가 아니라 이 묶음의 맨 끝이다(한때 DS `.at-railtop`).
   const parts = [
     head.getByRole("button", { name: pinnedWork.status, exact: true }),
-    head.getByRole("button", { name: "작업 메뉴", exact: true }),
+    head.getByRole("button", { name: "작업공간 메뉴", exact: true }),
     head.getByRole("separator"),
     head.getByRole("button", { name: "분할", exact: true }),
-    head.getByRole("button", { name: "작업 패널 접기", exact: true }),
+    head.getByRole("button", { name: "작업공간 패널 접기", exact: true }),
   ];
   await expect(head.getByRole("button")).toHaveCount(5);
   const boxes = await Promise.all(parts.map(boxOf));
@@ -857,7 +857,7 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Service / ⚡ · wo
 
   // 작업 패널을 접어도 화면 자리는 그대로다 — 패널 토글도 제자리에서 「펼치기」가 된다.
   await page.keyboard.press("Meta+Enter");
-  const closed = head.getByRole("button", { name: "작업 패널 펼치기", exact: true });
+  const closed = head.getByRole("button", { name: "작업공간 패널 펼치기", exact: true });
   await expect(closed).toBeVisible();
   expect(await boxOf(closed)).toEqual(boxes[4]);
   expect(await boxOf(head)).toEqual(slot);
@@ -888,7 +888,7 @@ test("Works: 머리 줄의 이름 칸은 520까지이고 긴 이름은 그 안�
   expect((await boxOf(name)).width, "이름 상자 — DS `.at-wtitle` 상한").toBe(520);
   expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth), "이름이 말줄임으로 준다").toBe(true);
   // 묶음의 끝은 패널 토글이다(`FrameHead`의 `toggle` — 보기 배치 뒤).
-  const last = await boxOf(head.getByRole("button", { name: "작업 패널 접기", exact: true }));
+  const last = await boxOf(head.getByRole("button", { name: "작업공간 패널 접기", exact: true }));
   const [padding] = await 칠한값(head, "padding-right");
   expect(last.right, "할 일 묶음이 화면 자리 안쪽 오른쪽 끝").toBe(slot.right - parseFloat(padding));
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -931,7 +931,7 @@ test("Works: 머리 줄 이름의 hover 면이 ⚡ · 이름 · 연필을 함께
   expect(await 자리(), "hover — 글리프 제자리").toEqual(쉴때);
 
   await name.dblclick();
-  const input = head.getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = head.getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   // 입력칸은 안쪽 여백이 없어 그 상자의 왼쪽이 글자의 왼쪽이다.
   expect((await 칠한값(input, "padding-left"))[0]).toBe("0px");
@@ -1092,7 +1092,7 @@ test("Works: 창 컨트롤 넷이 머리 줄 가운데에 28 · 사이 6으로 x
   expect(await 칠한값(앞으로, "color", "opacity"), "갈 수 없는 앞으로").toEqual([옅은색, "1"]);
 
   // 오른쪽 끝 묶음 — 단추 사이 2, 단추 28, 패널 토글이 맨 끝이고 머리 줄 오른쪽 끝 8 앞이다. 레일 · `aside` · `nav`의 자손이 아니다.
-  const toggle = page.getByRole("button", { name: "작업 패널 접기", exact: true });
+  const toggle = page.getByRole("button", { name: "작업공간 패널 접기", exact: true });
   expect((await 칠한값(head.locator("[data-head-actions]"), "column-gap"))[0], "묶음의 단추 사이").toBe("2px");
   expect(
     await toggle.evaluate((el) => {
@@ -1117,10 +1117,10 @@ test("Works: 창 컨트롤 넷이 머리 줄 가운데에 28 · 사이 6으로 x
 // 상태 배지의 ⌄는 DS 미리보기의 `s12`다.
 const HEAD_GLYPH_SCREENS = [
   {
-    name: "Works",
+    name: "작업공간",
     url: `/works/${pinnedWork.slug}`,
     icon: "zap",
-    buttons: ["작업 메뉴", "분할", "작업 패널 접기"],
+    buttons: ["작업공간 메뉴", "분할", "작업공간 패널 접기"],
     chevron: pinnedWork.status,
   },
   { name: "Archive", url: `/archive/${ARCHIVE[0].slug}`, icon: "zap", buttons: ["아카이브 메뉴", "spec 목록 접기"] },
@@ -1179,7 +1179,7 @@ test("Works: 머리 줄의 빈 자리 · 셸 컨트롤 사이 · 브랜치가 �
   const viewport = page.viewportSize()!;
   const slot = await boxOf(head);
   const middle = slot.y + slot.height / 2;
-  const knob = await boxOf(page.getByRole("button", { name: "작업 패널 접기", exact: true }));
+  const knob = await boxOf(page.getByRole("button", { name: "작업공간 패널 접기", exact: true }));
   const sidebarToggle = await boxOf(page.getByRole("button", { name: "사이드바 토글", exact: true }));
   const back = await boxOf(page.getByRole("button", { name: "뒤로", exact: true }));
   const nameEl = head.getByText(pinnedWork.title, { exact: true });
@@ -1188,7 +1188,7 @@ test("Works: 머리 줄의 빈 자리 · 셸 컨트롤 사이 · 브랜치가 �
   const fork = await boxOf(head.locator("svg.lucide-git-fork"));
   const branch = await boxOf(head.getByText(pinnedWork.branch!, { exact: true }));
   const badge = await boxOf(head.getByRole("button", { name: pinnedWork.status, exact: true }));
-  const menu = await boxOf(head.getByRole("button", { name: "작업 메뉴", exact: true }));
+  const menu = await boxOf(head.getByRole("button", { name: "작업공간 메뉴", exact: true }));
   const split = await boxOf(head.getByRole("button", { name: "분할", exact: true }));
   // 앵커: 브랜치와 배지 사이에 빈 자리가 있다 — 붙어 있으면 아래 「화면 자리 안 빈 자리」가 글자나 버튼 위에 떨어진다.
   expect(badge.x - branch.right).toBeGreaterThan(8);
@@ -1222,7 +1222,7 @@ test("Works: 머리 줄의 빈 자리 · 셸 컨트롤 사이 · 브랜치가 �
 
   // 고치는 동안의 이름 상자도 끌지 않는다 — 입력칸 둘레 · 그 앞 ⚡를 누르거나 두 번 눌러도 창이 끌리거나 커지지 않는다.
   await nameEl.dblclick();
-  const input = head.getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = head.getByRole("textbox", { name: "작업공간 이름", exact: true });
   await expect(input).toBeFocused();
   const field = await boxOf(input);
   expect(await 끄는자리(page, zap.x + zap.width / 2, middle), "고칠 때 ⚡").toBe(false);
@@ -1286,7 +1286,7 @@ test("Works: 판 안 칸(문서 · 작업 패널)은 둥글기 0에 고리가 �
 
   for (const [자리, card] of [
     ["문서 칸", page.locator("main")],
-    ["작업 패널 칸", panel],
+    ["작업공간 패널 칸", panel],
   ] as const) {
     expect(await 칠한값(card, "border-top-left-radius", "border-bottom-right-radius", "box-shadow"), `${자리} 둥글기 · 그림자`).toEqual([
       "0px",
@@ -1406,7 +1406,7 @@ test("Works: 사이드바와 머리 줄 왼쪽 칸은 duration-sidebar(300) · e
     ["사이드바", page.locator("aside").first(), 사이드길이, 사이드곡선],
     // 머리 줄 왼쪽 칸 — 신호등 자리와 셸 컨트롤이 서고, 그 폭이 화면 자리의 왼쪽 끝이다(`ShellHeadRow`).
     ["머리 줄 왼쪽 칸", page.locator("header > div").first(), 사이드길이, 사이드곡선],
-    ["작업 패널", page.locator("aside").nth(1), 패널길이, 패널곡선],
+    ["작업공간 패널", page.locator("aside").nth(1), 패널길이, 패널곡선],
   ] as const;
   for (const [자리, box, 길이, 곡선] of 움직이는칸) {
     expect(await 칠한값(box, "transition-duration", "transition-timing-function"), 자리).toEqual([길이, 곡선]);
@@ -1415,7 +1415,7 @@ test("Works: 사이드바와 머리 줄 왼쪽 칸은 duration-sidebar(300) · e
   // 펴진 칸의 안쪽 열은 옅음을 그 박자로 걷고, 바깥 폭이 다 온 뒤에 상한을 받는다 — 그 늦음이 같은 토큰이다.
   for (const [자리, inner, 길이] of [
     ["사이드바", page.locator("aside").first().locator(":scope > div").first(), 사이드길이],
-    ["작업 패널", page.locator("aside").nth(1).locator(":scope > div").first(), 패널길이],
+    ["작업공간 패널", page.locator("aside").nth(1).locator(":scope > div").first(), 패널길이],
   ] as const) {
     const [속성, 늦음] = await 칠한값(inner, "transition-property", "transition-delay");
     expect([속성, 늦음.split(",").map((one) => one.trim())], `${자리} 안쪽 열`).toEqual(["opacity, max-width", ["0s", 길이]]);
@@ -1458,7 +1458,7 @@ test("Works: 작업 ⋯ 메뉴는 폭 260 · 반경 16 · shadow-prominent 카�
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
-  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   const menu = page.getByRole("menu");
   const 줄 = menu.getByRole("menuitem");
   // 하위 메뉴를 여는 줄(▸ — Finder에서 열기 · 복사 · 상태)도 같은 줄이다(`menu-row`). 순서는 `works-floating.spec.ts`의 work 메뉴 절이 잰다.
@@ -1555,7 +1555,7 @@ test("Works · Archive: 상태 메뉴와 정렬 · 거르기 메뉴의 라디오
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
 
-  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   const 작업메뉴 = page.getByRole("menu");
   const 보통 = 작업메뉴.getByRole("menuitem", { name: /^(이름 바꾸기|복사)$/ });
   await expect(보통).toHaveCount(2);
@@ -1596,7 +1596,7 @@ test("Works: work 메뉴 Finder ▸에서 폴더가 사라진 worktree 줄은 55
     ),
   });
   await page.goto(`/works/${multiWork.slug}`);
-  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   await page.getByRole("menu").getByRole("menuitem", { name: "Finder에서 열기", exact: true }).hover();
   const 하위 = page.locator("[data-slot=dropdown-menu-sub-content]");
   const 끈줄 = 하위.getByRole("menuitem", { name: /^ledger/ });
@@ -1626,7 +1626,7 @@ test("Works: work 메뉴 Finder ▸에서 폴더가 사라진 worktree 줄은 55
 test("Works: 레일(spec · files)이 판 안 오른쪽 끝 열에 서고 — 패널 토글은 머리 줄에 있으며 — 패널을 닫아도 남는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
-  const toggle = page.getByRole("button", { name: "작업 패널 접기", exact: true });
+  const toggle = page.getByRole("button", { name: "작업공간 패널 접기", exact: true });
   const group = page.getByRole("group", { name: "레일", exact: true });
   await expect(작업패널(page)).toBeVisible();
   await expect(toggle).toBeVisible();
@@ -1671,7 +1671,7 @@ test("Works: 레일(spec · files)이 판 안 오른쪽 끝 열에 서고 — �
   // 패널을 닫아도 레일 · 토글은 그 자리다 — 칸으로 다시 열 길이 닫힌 패널과 함께 사라지지 않는다(ui-refresh 결정 10). 문서 칸은 레일
   // 열 앞까지 넓어진다.
   await toggle.click();
-  const closed = page.getByRole("button", { name: "작업 패널 펼치기", exact: true });
+  const closed = page.getByRole("button", { name: "작업공간 패널 펼치기", exact: true });
   await expect(closed).toHaveAttribute("aria-expanded", "false");
   await expect.poll(async () => (await boxOf(page.locator("main"))).right).toBe(column.x);
   expect(await boxOf(closed)).toEqual(knob);
@@ -1692,10 +1692,10 @@ test("Works: 고른 작업이 없는 빈 화면에는 레일 · 패널 토글이
   await page.goto("/works");
   await expect(page.locator("main")).toBeVisible();
   await expect(page.getByRole("group", { name: "레일", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ })).toHaveCount(0);
-  // 머리 줄 화면 자리는 화면 이름 「Works」만 든다 — 지금 보는 work가 없어 그 할 일도 없다(codex-ds 티켓 14).
+  await expect(page.getByRole("button", { name: /^작업공간 패널 (접기|펼치기)$/ })).toHaveCount(0);
+  // 머리 줄 화면 자리는 화면 이름 「작업공간」만 든다 — 지금 보는 work가 없어 그 할 일도 없다(codex-ds 티켓 14).
   await expect(page.locator("header")).toHaveCount(1);
-  await expect(화면머리(page)).toHaveText("Works");
+  await expect(화면머리(page)).toHaveText("작업공간");
   await expect(화면머리(page).getByRole("button")).toHaveCount(0);
   const card = await cardOf(page);
   expect(card.right, "본문 칸 오른쪽 = 판 안 오른쪽 끝").toBe((await 흰판안(page)).right);
@@ -1765,7 +1765,7 @@ test("Works: 셸 칸을 끄는 동안 겹판이 탭 줄 아래 칸 줄을 덮고
   // 토스트 — 셸 0개 화면에서도 서는 말이 아니라, 이 화면이 내는 복사 확인으로 세운다(work 메뉴의 복사 ▸ slug).
   await recordClipboard(page);
   await page.reload();
-  await 화면머리(page).getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await 화면머리(page).getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   await page.getByRole("menu").getByRole("menuitem", { name: "복사", exact: true }).hover();
   await page.locator("[data-slot=dropdown-menu-sub-content]").getByRole("menuitem").filter({ hasText: "slug" }).click();
   const toast = page.getByRole("region", { name: "메시지", exact: true }).locator('[data-slot="toast"]');

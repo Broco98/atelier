@@ -54,7 +54,7 @@ test("단축키가 있는 머리 줄 버튼은 표의 글자를 설명으로, �
   const 버튼들 = [
     { 버튼: 사이드바토글(page), 글자: "⌘B", 값: "Meta+B" },
     { 버튼: 창검색버튼(page), 글자: "⌘K", 값: "Meta+K" },
-    { 버튼: page.getByRole("button", { name: "작업 패널 접기", exact: true }), 글자: "⌘Enter", 값: "Meta+Enter" },
+    { 버튼: page.getByRole("button", { name: "작업공간 패널 접기", exact: true }), 글자: "⌘Enter", 값: "Meta+Enter" },
   ];
   for (const { 버튼, 글자, 값 } of 버튼들) {
     await expect(버튼).toHaveAccessibleDescription(글자);
@@ -146,7 +146,7 @@ test("메뉴 바 흉내로 보낸 ⌘B · ⌘Enter · ⌘T · ⌘1이 키를 누
   await expect.poll(() => 사이드바폭(page)).toBeGreaterThan(0);
 
   // ⌘Enter — 작업 패널을 여닫는다.
-  const 패널토글 = page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
+  const 패널토글 = page.getByRole("button", { name: /^작업공간 패널 (접기|펼치기)$/ });
   await expect(패널토글).toHaveAttribute("aria-expanded", "true");
   await 메뉴로("Enter");
   await expect(패널토글).toHaveAttribute("aria-expanded", "false");

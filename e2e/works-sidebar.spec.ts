@@ -1960,9 +1960,9 @@ test("nav 행은 30 · radius-row · 400 · 아이콘 16이고, 고른 행 · �
 
   // 배경은 이름 버튼이 아니라 바깥 상자(행)가 든다(`SidebarItem`). 지금 화면이 새 Thread라 그 행이 고른 행이다 — 위 줄은 「새
   // Thread」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19 · 02 티켓 04, 지금 화면들은 사람 메뉴로 갔다).
-  const navButton = (page: Page, label: "새 Thread" | "Library") =>
+  const navButton = (page: Page, label: "새 채팅" | "Library") =>
     page.locator("aside nav").getByRole("button", { name: label, exact: true });
-  const 고른nav = navButton(page, "새 Thread").locator("xpath=..");
+  const 고른nav = navButton(page, "새 채팅").locator("xpath=..");
   await expect(고른nav).toHaveClass(/selected-row/);
   await 면이된다(고른nav, 면);
   await 글자가된다(고른nav, 진한글자);
@@ -1974,12 +1974,12 @@ test("nav 행은 30 · radius-row · 400 · 아이콘 16이고, 고른 행 · �
   expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — 못박은 수").toEqual(["30px", "10px"]);
   // 글자는 work 행과 같은 `text-sm`(14/20 400)이다 — Codex 사이드바는 줄마다 보통 굵기이고 고른 줄은 면으로만 드러난다(v1 티켓 46 —
   // 한때 nav만 `nav-row` 500이었다).
-  expect(await 칠한값(navButton(page, "새 Thread"), "font-size", "line-height", "font-weight"), "nav 글자").toEqual([
+  expect(await 칠한값(navButton(page, "새 채팅"), "font-size", "line-height", "font-weight"), "nav 글자").toEqual([
     "14px",
     "20px",
     "400",
   ]);
-  const 아이콘 = (await navButton(page, "새 Thread").locator("svg").boundingBox())!;
+  const 아이콘 = (await navButton(page, "새 채팅").locator("svg").boundingBox())!;
   expect([아이콘.width, 아이콘.height], "nav 아이콘").toEqual([16, 16]);
 
   // 고른 행은 올려도 그 면이다. 지나는 행은 쉴 때 면이 없다가(앵커) 올리면 같은 면이 서고, 글자는 쉬는 글자 그대로다.

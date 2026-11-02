@@ -60,8 +60,8 @@ import type { SearchHit } from "./types";
 const GROUP_NAMES: Record<SearchHit["kind"], string> = {
   destination: "가는 곳",
   // 둘은 사이드바의 Work · Thread 묶음 머리와 같은 말이다 — 화면에서도 영어로 쓰는 도메인 낱말이다(v1 구현 스펙 S2).
-  work: "Work",
-  thread: "Thread",
+  work: "작업공간",
+  thread: "채팅",
   project: "프로젝트",
   doc: "문서",
   text: "본문",

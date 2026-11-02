@@ -326,7 +326,7 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goToShell, searchOpen, queryClient, router, navigate]);
 
-  // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 줄 「새 Thread」와 ⌘N(아래)이 함께 부른다. 가는 곳은
+  // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 줄 「새 채팅」과 ⌘N(아래)이 함께 부른다. 가는 곳은
   // **씨앗 없는 새 Thread**(`/`)다 — 이미 거기면 아무것도 하지 않는다(같은 주소가 히스토리에 한 칸 더 쌓이지 않게 — 사람 메뉴 `onSelect`와 같은
   // 가드). 씨앗을 단 새 Thread(`/?work=<slug>` · `/?new=work`)에서는 씨앗이 걷힌 첫 화면으로 간다 — 한때 가드가 경로만 봐서 거기서 키가 먹지
   // 않았다(02 코드 리뷰 S1). 그 물음은 그 행의 고른 모양과 같은 하나다(`isBlankNewThread`). 주소는 **누를 때** 읽는다 — 셸이 그것을
@@ -336,7 +336,7 @@ function AppShell() {
   }, [router, navigate]);
 
   // ⌘N(단축키 표의 `newThread`)은 **어느 화면에서나 새 Thread를 연다**(02 구현 스펙 §4 · 스토리 10). 셸에 포커스가 있어도 먹는다 — xterm은
-  // ⌘가 붙은 글자 키를 앱으로 올리고(`keyRoute`), spec 문서의 프레임에 포커스가 있으면 메뉴의 `View ▸ New Thread`가 먼저 받아 합성 keydown으로
+  // ⌘가 붙은 글자 키를 앱으로 올리고(`keyRoute`), spec 문서의 프레임에 포커스가 있으면 메뉴의 `View ▸ New Chat`가 먼저 받아 합성 keydown으로
   // 이 리스너에 온다(`menu-hotkey.ts`). 앱 포커스에서는 여기서 `preventDefault`해 메뉴가 같은 키를 다시 받지 않는다.
   //
   // **확인 창이나 팔레트가 떠 있으면 안 먹는다** — ⌘J와 같은 게이트다(위 그 주석): 답을 기다리는 동안 화면을 옮기지 않고, 팔레트가 빌린

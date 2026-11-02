@@ -44,7 +44,7 @@ const FIELD_MAX = 200;
 
 /** 비어 있을 때의 말(보드) — 첫 말을 보내는 중(Screen-Live 단계 1 — 시안의 「채팅」은 이 앱의 Thread다) · 도는 동안 · 우리가 멈춘 뒤 · 그 밖. */
 const PLACEHOLDER = {
-  starting: "Thread를 시작하는 중…",
+  starting: "채팅을 시작하는 중…",
   idle: "무엇이든 요청하세요",
   running: "이어서 말하면 다음 차례에 전달합니다",
   stopped: "무엇을 다르게 할지 말해 주세요",

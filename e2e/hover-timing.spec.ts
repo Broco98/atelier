@@ -368,7 +368,7 @@ test("포인터로 누른 행은 떠날 때까지 카드가 안 서고, 키로 �
 
 for (const { name, trigger, text } of [
   { name: "상태 메뉴", trigger: (page: Page) => page.getByRole("button", { name: pinnedWork.status, exact: true }), text: "상태 변경" },
-  { name: "⋯ 메뉴", trigger: (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true }), text: "작업 메뉴" },
+  { name: "⋯ 메뉴", trigger: (page: Page) => page.getByRole("button", { name: "작업공간 메뉴", exact: true }), text: "작업공간 메뉴" },
 ]) {
   test(`${name}가 열린 동안은 그 버튼에 다시 올려도 툴팁이 없고, 행에 걸어 둔 카드도 서지 않는다`, async ({ page }) => {
     const { tip, peek } = await 연다(page);

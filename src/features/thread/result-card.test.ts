@@ -20,7 +20,7 @@ describe("결과 카드", () => {
   it("넷의 아이콘 · 두 줄 · 단추 · 갈 곳 — Project는 Project 상세로, Service는 Service 상세로, Service 고침은 「관계 보기」다", () => {
     const cards = [
       card({}),
-      card({ action: "project-edited", slug: "web-app", name: "web-app", title: "web-app의 기준 브랜치를 main으로 바꿨어요", detail: "새 Work부터 main에서 갈라져요" }),
+      card({ action: "project-edited", slug: "web-app", name: "web-app", title: "web-app의 기준 브랜치를 main으로 바꿨어요", detail: "새 작업공간부터 main에서 갈라져요" }),
       card({ action: "service-created", slug: "정산", name: "정산", title: "Service를 만들었어요 — 정산", detail: "api-server · ~/.atelier/services/정산.md" }),
       card({ action: "service-edited", slug: "결제-서비스", name: "결제 서비스", title: "결제 서비스에 backoffice를 넣었어요", detail: "Project 3 · 함께 쓰는 Service 1" }),
     ];
@@ -36,7 +36,7 @@ describe("결과 카드", () => {
       {
         icon: "project",
         title: "web-app의 기준 브랜치를 main으로 바꿨어요",
-        detail: "새 Work부터 main에서 갈라져요",
+        detail: "새 작업공간부터 main에서 갈라져요",
         action: "열기",
         to: { to: "/projects/$slug", params: { slug: "web-app" } },
         gone: false,

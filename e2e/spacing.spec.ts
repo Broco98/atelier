@@ -75,8 +75,8 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
   expect(sidebar.x, "사이드바가 창 왼쪽 끝 + 5에 선다").toBe(5);
 
   const 자리: [string, Promise<number>][] = [
-    // nav의 첫 항목은 「새 Thread」다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
-    ["nav 아이콘", 아이콘(page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true })).then((box) => box.x)],
+    // nav의 첫 항목은 「새 채팅」이다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
+    ["nav 아이콘", 아이콘(page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true })).then((box) => box.x)],
     ["알림 띠 머리 글자", 첫글자(띠(page)).then((box) => box.x)],
     ["알림 띠 줄의 점 레인", 상자(띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림` }).locator("span").first()).then((box) => box.x)],
     ["구획 소제목 글자", 첫글자(page.locator("aside [data-section]").first()).then((box) => box.x)],

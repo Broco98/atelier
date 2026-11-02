@@ -70,7 +70,7 @@ describe("「/」 명령(v1 티켓 23)", () => {
       { name: "compact", description: "맥락 줄이기", aliases: [] },
     ];
     expect(slashCommands(runtime).map((command) => [command.name, command.description])).toEqual([
-      ["new", "새 Thread"],
+      ["new", "새 채팅"],
       ["plan", "계획만 세우고 멈추기"],
       ["model", "모델과 생각 깊이"],
       ["policy", "언제 물어볼지"],
@@ -80,8 +80,8 @@ describe("「/」 명령(v1 티켓 23)", () => {
 
   it("Work 칩을 고를 수 있으면(첫 말 전) `/work`가 `/new` 뒤에 선다 — 보드의 차례다(v1 티켓 31)", () => {
     expect(slashCommands([], { work: true }).map((command) => [command.name, command.description])).toEqual([
-      ["new", "새 Thread"],
-      ["work", "Work 만들기 · 붙이기"],
+      ["new", "새 채팅"],
+      ["work", "작업공간 만들기 · 붙이기"],
       ["plan", "계획만 세우고 멈추기"],
       ["model", "모델과 생각 깊이"],
       ["policy", "언제 물어볼지"],

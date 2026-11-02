@@ -22,7 +22,7 @@ import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 // - **이름은 그 자리에서 바꾼다**(두 번 클릭 · F2) — 공용 틀 화면의 머리 줄 이름과 같은 길이다(`HeadRename` · `InlineRename`).
 
 interface PlainHeadProps {
-  /** 이름 앞 — Thread가 이은 Work의 「폴더 · Work 이름 ›」(02 §6 · S13). */
+  /** 이름 앞 — Thread가 이은 Work의 「폴더 · 작업공간 이름 ›」(02 §6 · S13). */
   lead?: ReactNode;
   /** 머리 줄의 이름 — 없으면 머리 줄 가운데가 빈다(새 Thread). */
   title?: { name: string; rename?: HeadRename };

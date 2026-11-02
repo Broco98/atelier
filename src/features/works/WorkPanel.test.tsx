@@ -70,7 +70,7 @@ describe("WorkPanel 머리와 몸", () => {
 
   it("머리는 고른 칸의 이름 `spec`과 그 칸의 할 일(spec 폴더 열기) 하나다 — 탭도 닫는 `×`도 없다", () => {
     // ui-refresh 결정 9 · 10. 칸을 고르는 자리(레일)와 여닫는 자리(패널 토글)가 패널 밖으로 나갔다 — 머리에 탭이나 `×`가
-    // 남으면 같은 일을 하는 컨트롤이 한 화면에 둘이 된다. 할 일은 codex-ds 스펙 §6 「작업 패널」의 spec 폴더 열기다.
+    // 남으면 같은 일을 하는 컨트롤이 한 화면에 둘이 된다. 할 일은 codex-ds 스펙 §6 「작업공간 패널」의 spec 폴더 열기다.
     const head = headOf(render(true));
     expect(head, "패널 머리를 찾지 못했다").not.toBe("");
     expect(head).toMatch(/>spec</);
@@ -78,7 +78,7 @@ describe("WorkPanel 머리와 몸", () => {
     const markup = render(true);
     expect(markup).not.toMatch(/role="tab/);
     expect(markup).not.toMatch(/aria-selected/);
-    expect(markup).not.toContain('aria-label="작업 패널 접기"');
+    expect(markup).not.toContain('aria-label="작업공간 패널 접기"');
     // 라벨은 **소문자 영어다**(결정 41) — 탭 줄의 `spec`과 한 가족이다.
     expect(head).not.toMatch(/>정보</);
     expect(head).not.toContain("문서");

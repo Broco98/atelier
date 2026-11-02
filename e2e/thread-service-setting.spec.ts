@@ -111,7 +111,7 @@ test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Host ·
 
   // 기다리는 동안 — 턴 머리줄이 무엇을 기다리는지 말하고, 사이드바의 그 줄은 「내 차례」다.
   await expect(흐름(page).getByText("Service 답을 기다려요", { exact: true })).toBeVisible();
-  const row = 사이드바(page).getByRole("region", { name: "Thread", exact: true }).getByRole("button").filter({ hasText: view.title });
+  const row = 사이드바(page).getByRole("region", { name: "채팅", exact: true }).getByRole("button").filter({ hasText: view.title });
   await expect(row).toHaveAttribute("data-status", "mine");
 
   // 키 — ↵는 켜진 줄(추천), ↓↵는 다음 줄, 숫자는 그 줄, esc는 「나중에」다(마지막 줄 「Service 없이」가 아니다 — 범위를 바꾸는 답이다). 한
@@ -246,7 +246,7 @@ test("결과 카드 넷 — 대화로 한 설정마다 그 턴 안 도구 줄 �
   ]);
   await expect(cards).toHaveText([
     "Project를 추가했어요 — landing-page~/MyProjects/landing-page · git 레포 · 기준 브랜치 main열기",
-    "web-app의 기준 브랜치를 main으로 바꿨어요새 Work부터 main에서 갈라져요열기",
+    "web-app의 기준 브랜치를 main으로 바꿨어요새 작업공간부터 main에서 갈라져요열기",
     "결제 서비스에 backoffice를 넣었어요Project 3 · 함께 쓰는 Service 1관계 보기",
     "Service를 만들었어요 — 정산api-server · ~/.atelier/services/정산.md열기",
   ]);
@@ -305,7 +305,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
   await expect(card.getByRole("button", { name: /^나중에/ })).toHaveCount(0);
   // 기다리는 동안 — Service 카드와 같다: 턴 머리줄이 무엇을 기다리는지 말하고, 사이드바의 그 줄은 「내 차례」다.
   await expect(흐름(page).getByText("Project 추가 답을 기다려요", { exact: true })).toBeVisible();
-  const row = 사이드바(page).getByRole("region", { name: "Thread", exact: true }).getByRole("button").filter({ hasText: view.title });
+  const row = 사이드바(page).getByRole("region", { name: "채팅", exact: true }).getByRole("button").filter({ hasText: view.title });
   await expect(row).toHaveAttribute("data-status", "mine");
 
   // 키 — ↵는 추천(init), 2는 「추가하지 않기」, esc도 마지막 줄 「추가하지 않기」다(「나중에」가 없다).
@@ -378,7 +378,7 @@ test("머리 줄 — Work 없는 대화는 「흐린 Service / 이름」(누르�
   await expect.poll(() => 경로(page)).toBe(`/services/${PAYMENTS.slug}`);
   await expect(page.getByRole("main").getByText(PAYMENTS.name, { exact: true }).first()).toBeVisible();
 
-  // Work 화면 · Service 있음 — 흐린 Service를 누르면 Service 메뉴다(「Work 화면 · Service 메뉴」): 맨 위 「Service 빼기 · 등록된 Project 3개를 모두
+  // Work 화면 · Service 있음 — 흐린 Service를 누르면 Service 메뉴다(「작업공간 화면 · Service 메뉴」): 맨 위 「Service 빼기 · 등록된 Project 3개를 모두
   // 읽어요」, Service 목록(지금 것 ✓), 「Service 관리」. 고르면 그 Work의 Service가 바뀐다(그 Work의 Thread마다 Service 줄 — L1).
   await 주소로간다(page, `/works/${REFUND.slug}`);
   const workService = page.locator('[data-slot="work-service"]');
@@ -434,7 +434,7 @@ test("Work 만들기 카드 — Work 없이 한 대화에 Service가 있으면 �
   await openThread(page, view);
   await streamLines(page, view.id, [WORK_ASKED_IN_SERVICE]);
 
-  const card = page.getByRole("group", { name: "이 일을 Work로 묶을까요?", exact: true });
+  const card = page.getByRole("group", { name: "이 일을 작업공간으로 묶을까요?", exact: true });
   await expect(card).toBeVisible();
   const line = card.locator('[data-slot="proposal-service"]');
   await expect(line).toHaveText(`${PAYMENTS.name} · Service`);

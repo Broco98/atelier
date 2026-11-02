@@ -317,7 +317,7 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   // 세로선을 사이에 두고 한 줄에 서고, 머리 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다. 한때 머리
   // 카드의 DS `.at-ib.xs`(24 · `radius-md`)였다.
   await page.goto(`/works/${plainWork.slug}`);
-  for (const name of ["작업 메뉴", "분할"]) {
+  for (const name of ["작업공간 메뉴", "분할"]) {
     expect(
       await 칠한값(화면머리(page).getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
       name,
@@ -333,7 +333,7 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
  */
 async function 삭제를묻는다(page: Page): Promise<Locator> {
   await page.goto(`/works/${plainWork.slug}`);
-  await 화면머리(page).getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await 화면머리(page).getByRole("button", { name: "작업공간 메뉴", exact: true }).click();
   await page.getByRole("menuitem", { name: "삭제", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: `'${plainWork.title}' 삭제` });
   await expect(dialog).toBeVisible();

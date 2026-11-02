@@ -128,11 +128,11 @@ describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같�
   });
   const commandAsks: RecordLine[] = [sent(1, "e2e 돌려 줘"), toolCall(2, playwright), asked(3, playwright, "0"), proposed(4)];
 
-  it("먼저 온 승인 카드 뒤에 Work 만들기 카드가 「다음 · Work 만들기 답을 기다려요」로 선다", () => {
+  it("먼저 온 승인 카드 뒤에 Work 만들기 카드가 「다음 · 작업공간 만들기 답을 기다려요」로 선다", () => {
     const turn = askTurn(foldThread(commandAsks));
     expect(order(turn)).toEqual(["0", { at: 1, total: 2 }, "w-1"]);
     expect(turn?.next && nextOf(turn.next)).toEqual({
-      subject: "Work 만들기",
+      subject: "작업공간 만들기",
       mono: false,
       what: "답을 기다려요",
     });

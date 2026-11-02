@@ -225,14 +225,19 @@ xterm.js가 들고 있는 지나간 줄들.
 
 ## Thread
 
-화면의 도메인 낱말은 영어다 — 라벨에서도 문장에서도 Thread · Session · Runtime으로 쓰고, 문장의 나머지는
-한국어다(「Thread 3개」). three-axes가 Work 안에 세웠던 대화창과 그 말들(「대화」 · 「대화창」 · 「에이전트」)은 v1 티켓 08이 걷었다 —
+화면에는 채팅 · 작업공간 · Service · Session · Runtime을 쓴다 — 코드의 `Thread`와 `Work`는 이름을 바꾸지 않아서, 화면 글자만
+「채팅」 · 「작업공간」이다. 이 문서는 개념을 Thread · Work로 적고 화면에 서는 글자는 「」 안에 그대로 적는다. Session · Service · Runtime은
+라벨에서도 문장에서도 영어이고, 문장의 나머지는 한국어다(「채팅 3개」). three-axes가 Work 안에 세웠던 대화창과 그 말들(「대화」 · 「대화창」 · 「에이전트」)은 v1 티켓 08이 걷었다 —
 대화는 Thread가, 에이전트는 Runtime(돌리는 프로그램)이 넘겨받았다.
 
 **Thread**:
-사람과 Runtime이 주고받는 말의 흐름 하나. 앱을 열면 새 Thread가 뜬다. 어디에도 속하지 않은 채 시작하고, 나중에 Work에 이어질 수
-있다. Thread 하나가 Session 하나를 이어서 쓴다. 이름은 첫 말에서 저절로 붙고 사람이나 Runtime이 바꿀 수 있다. 세는 말은 「Thread 3개」다.
-_피할 말_: 채팅, 채널, 스레드, 대화 탭
+화면의 글자는 「채팅」이다. 사람과 Runtime이 주고받는 말의 흐름 하나. 앱을 열면 새 Thread가 뜬다. 어디에도 속하지 않은 채 시작하고, 나중에
+Work에 이어질 수 있다. Thread 하나가 Session 하나를 이어서 쓴다. 이름은 첫 말에서 저절로 붙고 사람이나 Runtime이 바꿀 수 있다. 세는 말은 「채팅 3개」다.
+_피할 말_: 채널, 스레드, 대화 탭
+
+**Work**:
+화면의 글자는 「작업공간」이다. 한 일을 묶는 단위 — 브랜치 이름 하나, Project마다의 worktree, spec 폴더 하나를 쥔다. Thread가 Work에 이어지면 그
+자리에서 일한다. 세는 말은 「작업공간 3개」다.
 
 **Session**:
 한 Thread 안에서 Runtime이 이어 쓰는 실행 — 맥락이 여기 이어진다. **앱의 개념이다**: 앱이 Session을 열고, 세고, 화면에
@@ -265,12 +270,12 @@ Runtime의 권한 · 일하는 방식(계획 모드 같은 것). 화면에서 �
 뒤로 숨는다). 띠 안의 칩 모양은 두 자리에서 같다. 입력창 자리에 카드가 서면 함께 걷힌다. 입력창 안은 `+` · 물어보는 정도 · 모델 칩뿐이다.
 
 **Work 칩**:
-트레이의 첫 칩 — 새 Thread가 어디서 시작하나를 고르는 스위치다. 칩 아래로 여는 메뉴의 위에 「새 Work」(첫 말로 Work를 만들고 그 안에서
-시작한다)와 「Work 없이 대화」(묻고 답하기 · 나중에 제안을 받아 Work가 될 수 있다)가 설명 한 줄과 함께 서고 지금 것에 ✓가 붙는다. 그 아래
-최근 Work 다섯이 「그 Work에 새 Thread로」 줄 끝에 그 Work의 Service 이름을 흐리게 달고 선다. 앱은 마지막에 고른 스위치 쪽만 기억하고(처음
-쓰는 사람에겐 「새 Work」), 최근 Work를 고른 것은 기억하지 않는다. 주소의 씨앗(`?work=` · `?new=work` · `?new=thread`)은 기억보다 앞선다. 첫 말을 보내면 잠긴다 — 메뉴 없이 보이기만
-하고, Work에 이은 Thread면 그 Work 이름(누르면 그 Work 화면), Work 없는 Thread면 「Work 없이 대화」, 「새 Work」로 시작해 아직 Work가 없으면
-흐린 「새 Work」다. 새 Work는 칩이 아니라 첫 말과 Work 만들기 카드로 생긴다.
+트레이의 첫 칩 — 새 Thread가 어디서 시작하나를 고르는 스위치다. 칩 아래로 여는 메뉴의 위에 「새 작업공간」(첫 말로 Work를 만들고 그 안에서
+시작한다)과 「작업공간 없이 대화」(묻고 답하기 · 나중에 제안을 받아 Work가 될 수 있다)가 설명 한 줄과 함께 서고 지금 것에 ✓가 붙는다. 그 아래
+최근 Work 다섯이 「그 작업공간에 새 채팅으로」 줄 끝에 그 Work의 Service 이름을 흐리게 달고 선다. 앱은 마지막에 고른 스위치 쪽만 기억하고(처음
+쓰는 사람에겐 「새 작업공간」), 최근 Work를 고른 것은 기억하지 않는다. 주소의 씨앗(`?work=` · `?new=work` · `?new=thread`)은 기억보다 앞선다. 첫 말을 보내면 잠긴다 — 메뉴 없이 보이기만
+하고, Work에 이은 Thread면 그 Work 이름(누르면 그 Work 화면), Work 없는 Thread면 「작업공간 없이 대화」, 「새 작업공간」으로 시작해 아직 Work가 없으면
+흐린 「새 작업공간」이다. 새 Work는 칩이 아니라 첫 말과 Work 만들기 카드로 생긴다.
 
 **Service**:
 Project들을 묶은 논리적 단위 — 「결제 시스템」 = `backend` + `front`. `~/.atelier/services/<slug>.md` 파일 하나가 Service 하나이고, Thread나
@@ -312,7 +317,7 @@ Service 파일을 지웠으면 그 Thread의 다음 말을 보낼 때 같은 「
 하나를 묻지 않고 붙이면 「결제 서비스 Service에 넣었어요 — web-app · api-server를 읽어요」가 선다.
 
 **Service 메뉴**:
-Service를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Service / Work 이름」에서 흐린 Service(없으면 흐린 「Service 없음」)를 누르면 열리고, 트레이의
+Service를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Service / 작업공간 이름」에서 흐린 Service(없으면 흐린 「Service 없음」)를 누르면 열리고, 트레이의
 Service 칩도 같은 메뉴를 연다(칩에서는 맨 위가 늘 「Service 없음 — 등록된 Project 3개 읽기」다 — 고르면 뺀다. ×가 있는 칩은 ×로도 뺀다). Work 화면에서 맨 위는
 「Service 빼기」(Service가 없으면 ✓가 붙은 「Service 없음」)와 빼면 읽는 것(「등록된 Project 3개를 모두 읽어요」)이고, 그 아래 「Service — 고르면 그
 안의 Project만 읽어요」 묶음에 Service마다 이름과 적힌 Project가 서며 지금 것에 ✓가 붙는다. 파일에 문제가 있는 Service도 이름 뒤 「문제 있음」을
@@ -322,7 +327,7 @@ Service 칩도 같은 메뉴를 연다(칩에서는 맨 위가 늘 「Service �
 **물어보는 정도**:
 Runtime이 언제 사람에게 묻는지 — 매번 묻기 · 편집 자동 · 계획 · 묻지 않음 넷 가운데 하나다. 입력창 안 칩(`/policy` · `/plan`)에서
 고른다. Work에 이은 Thread면 그 Work의 것이라 같은 Work의 Thread들이 함께 쓴다. Work 없는 새 Thread는 편집 자동으로 시작하고 첫 말과 함께 그 값을 파일에 적는다.
-값이 없는 Work나 깨진 값은 매번 묻기로 읽는다. 바꾸면 흐름에 「Policy를 편집 자동으로 바꿈 · 이 Work에만」 한 줄이 남는다.
+값이 없는 Work나 깨진 값은 매번 묻기로 읽는다. 바꾸면 흐름에 「Policy를 편집 자동으로 바꿈 · 이 작업공간에만」 한 줄이 남는다.
 _피할 말_: 권한 모드, 승인 모드
 
 **방패 줄**:
@@ -357,18 +362,18 @@ Runtime에게 간다.
 _피할 말_: 승인 큐, 권한 대기열
 
 **Work 만들기 카드**:
-Runtime이 대화 중에 「이 일을 Work로 묶을까요?」를 묻는 카드 — 입력창 자리 · 물음 차례에 승인 카드와 함께 선다. 제목 · 까닭과 등록된
-Project(추천이 먼저 골라져 있다), 브랜치 이름을 보이고 사람이 넣고 빼고 고친다. 「Work 만들기」는 worktree 없이 Work를 만들고 그
-Thread를 잇는다(흐름에 「Work … 을 만들고 이 Thread에 연결함」). 그 Thread가 Service에 이어져 있으면 카드에 「◇ 결제 서비스 · Service」 한 줄이
-서고, 만들면 그 Service가 새 Work로 옮겨 간다 — 카드에서 바꾸지 않는다(받아들인 뒤 Service 메뉴로 바꾼다). 「Work 없이 계속」은 아무것도 만들지
+Runtime이 대화 중에 「이 일을 작업공간으로 묶을까요?」를 묻는 카드 — 입력창 자리 · 물음 차례에 승인 카드와 함께 선다. 제목 · 까닭과 등록된
+Project(추천이 먼저 골라져 있다), 브랜치 이름을 보이고 사람이 넣고 빼고 고친다. 「작업공간 만들기」는 worktree 없이 Work를 만들고 그
+Thread를 잇는다(흐름에 「작업공간 … 을 만들고 이 채팅에 연결함」). 그 Thread가 Service에 이어져 있으면 카드에 「◇ 결제 서비스 · Service」 한 줄이
+서고, 만들면 그 Service가 새 Work로 옮겨 간다 — 카드에서 바꾸지 않는다(받아들인 뒤 Service 메뉴로 바꾼다). 「작업공간 없이 계속」은 아무것도 만들지
 않는다.
 _피할 말_: Work 생성 모달, Work 마법사
 
 **Work 밖 Project 카드**:
-Runtime이 이은 Work에 없는 Project를 고치려 할 때 입력창 자리 · 물음 차례에 서는 카드 — 고치려는 Project와 까닭, 「이 Work에 붙어 있지
-않음」을 보이고 「web-app을 이 Work에 붙이고 고치기」 · 「읽기만 하기」 · 「아니요, api-server에서만 고쳐 주세요」를 숫자 · Enter · Esc로
+Runtime이 이은 Work에 없는 Project를 고치려 할 때 입력창 자리 · 물음 차례에 서는 카드 — 고치려는 Project와 까닭, 「이 작업공간에 붙어 있지
+않음」을 보이고 「web-app을 이 작업공간에 붙이고 고치기」 · 「읽기만 하기」 · 「아니요, api-server에서만 고쳐 주세요」를 숫자 · Enter · Esc로
 고른다. 붙이면 그 Project에 worktree가 생기고, 읽기만 하기는 Work에 붙이지 않고 다음 턴부터 그 폴더를 읽게만 한다. 고르면 흐름에
-「web-app을 이 Work에 붙임」 같은 결정 줄이 남는다. Work에 있는 Project는 묻지 않는다 — Runtime이 처음 고치기 전에 그 Project에만
+「web-app을 이 작업공간에 붙임」 같은 결정 줄이 남는다. Work에 있는 Project는 묻지 않는다 — Runtime이 처음 고치기 전에 그 Project에만
 worktree가 생기고 흐름에 「api-server에 worktree를 만듦 · fix/refund-api」 한 줄이 남는다.
 _피할 말_: Project 추가 팝업
 

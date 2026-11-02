@@ -120,13 +120,13 @@ function reason(kind: GuideKind, url: string | null, login: EngineView["login"])
   if (kind === "logging-in") {
     return url
       ? "브라우저에서 로그인을 마쳐 주세요. 브라우저가 열리지 않았으면 「링크 복사」로 직접 열어요."
-      : "브라우저를 여는 중이에요. 로그인을 마치면 저절로 Thread로 돌아가요.";
+      : "브라우저를 여는 중이에요. 로그인을 마치면 저절로 채팅으로 돌아가요.";
   }
   if (login?.state === "ended" && !login.cancelled) {
     const code = login.exitCode === null ? "" : `(exit code ${login.exitCode})`;
     return `로그인 명령이 끝났지만${code} 아직 로그인되지 않았어요. 다시 「로그인」을 누르거나 「명령 복사」로 터미널에서 해 보세요.`;
   }
-  return "「로그인」을 누르면 브라우저가 열려요. 로그인을 마치면 저절로 Thread로 돌아가요.";
+  return "「로그인」을 누르면 브라우저가 열려요. 로그인을 마치면 저절로 채팅으로 돌아가요.";
 }
 
 export default GuideCard;

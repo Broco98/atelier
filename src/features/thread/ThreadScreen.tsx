@@ -67,7 +67,7 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 // - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 흰 판 — 02 구현 스펙 §3) — 이 화면은 머리 줄에 놓을 것과 판 안의 본문만 건넨다
 //   (`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
 // - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
-//   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · Work 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
+//   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
 //   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 오른쪽
 //   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
 //   다 없다, S23). 옛 Work 알약(브랜치)은 걷었다(S14). 시안의 머리 줄 Work
@@ -76,13 +76,13 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 //   아래 28에 입력창과 트레이뿐이다. 시안의 Service 제안 줄은 짓지 않는다(03
 //   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 Work와
 //   Service를 고른다(03 §5). 고른 Service는 입력창이 쥐었다가 첫 말과 함께 간다(`service-chip.ts` — 씨앗 `?service=`가 처음 쥔다). 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을
-//   이미 말한다). 처음 고를 곳은 주소 씨앗 › 기억한 스위치 쪽 › 「새 Work」다(S2 · `startLink`) — 메뉴에서 고른 스위치 쪽은 다음 새
+//   이미 말한다). 처음 고를 곳은 주소 씨앗 › 기억한 스위치 쪽 › 「새 작업공간」이다(S2 · `startLink`) — 메뉴에서 고른 스위치 쪽은 다음 새
 //   Thread를 위해 기억한다. 입력 글 씨앗(`?say=`)은 입력창에 넣기만 한다. Work 칩이 고른 것(새 Work · Work 없이 대화 · 최근 Work)을 입력창
 //   안내가 따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로
 //   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **트레이**(03 §5) — Thread 화면에도 선다. 입력창이 화면 아래에 붙으므로 상자 위다. Work 칩은 첫 말 뒤라 잠겨 보이기만 한다(`lockedWork`
-//   — 이은 Work 이름은 누르면 그 Work 화면, 「Work 없이 대화」, 아직 Work가 서지 않은 흐린 「새 Work」). 첫 말을 보내 Session이 열리기를
+//   — 이은 Work 이름은 누르면 그 Work 화면, 「작업공간 없이 대화」, 아직 Work가 서지 않은 흐린 「새 작업공간」). 첫 말을 보내 Session이 열리기를
 //   기다리는 동안도 같은 잠긴 트레이가 바닥 입력창 위에 선다. Service 칩은 첫 말 뒤에도 바꾼다 — 곧바로 적혀 흐름에 Service 줄이 남는다.
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
@@ -103,7 +103,7 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 //   내용만큼이다. Work에 이은 Thread는 머리 · 변경 사항 · 결과물 · 소스, 보관된 Work의 Thread는 같은 카드에 「보관됨」, Work 없는 Thread는
 //   결과물 · 소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 머리 줄의 요약 고정 토글이 여닫고 머리 줄 Work 이름이 열며, 열림은
 //   **Thread마다** 기억한다(S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 왼쪽으로 비켜나고, 열고 닫을 때
-//   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
+//   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 작업공간에서 새 채팅」은 그 Work를 고른 새 Thread(`/?work=`)다.
 // - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드 — 02 §7 「넓힌 카드는 그대로다」) — 요약 카드의 줄 · 대화 속 문서 카드를
 //   누르면 카드가 넓어진다. 대화는 왼쪽 480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그
 //   오른쪽을 작은 카드와 같은 띄움 8까지 채운다. 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면
@@ -128,15 +128,15 @@ function useOpenWork(): (slug: string) => void {
 }
 
 /**
- * 새 Thread(`/`). `seed`는 주소가 말하는 처음 것이다 — Work 칩의 씨앗(요약 카드 「…」의 「이 Work에서 새 Thread」 `/?work=`는 그 Work, 사이드바
- * Work 묶음 머리의 + `/?new=work`는 「새 Work」, `/?new=thread`는 「Work 없이 대화」, 없으면 기억한 쪽)과 입력 글(`?say=`). 첫 말 전의 이
+ * 새 Thread(`/`). `seed`는 주소가 말하는 처음 것이다 — Work 칩의 씨앗(요약 카드 「…」의 「이 작업공간에서 새 채팅」 `/?work=`는 그 Work, 사이드바
+ * Work 묶음 머리의 + `/?new=work`는 「새 작업공간」, `/?new=thread`는 「작업공간 없이 대화」, 없으면 기억한 쪽)과 입력 글(`?say=`). 첫 말 전의 이
  * 화면에는 요약 카드도 토글도 없다(02 S23) — 첫 말을 보내 Thread가 서면(`/threads/<id>`) 나타난다.
  */
 export function NewThreadScreen({ seed = { link: null, say: null, service: null } }: { seed?: NewThreadSeed }) {
   const navigate = useNavigate();
   const router = useRouter();
   const openWork = useOpenWork();
-  // 어디서 일할지(v1 티켓 31 · 03 §5) — Work 칩이 고른다. 처음은 씨앗 › 기억 › 「새 Work」다(S2). 최근 Work면 그 제목도 쥔다(칩 글자 ·
+  // 어디서 일할지(v1 티켓 31 · 03 §5) — Work 칩이 고른다. 처음은 씨앗 › 기억 › 「새 작업공간」이다(S2). 최근 Work면 그 제목도 쥔다(칩 글자 ·
   // 입력창 안내).
   const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({ link: startLink(seed.link), title: null }));
   const pick = (link: ThreadLink, title: string | null) => {
@@ -185,7 +185,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null 
       setStarting(null);
       throw error;
     }
-    // 새 id의 주소로 갈아 선다. Thread 화면(나눠 받는 라우트 청크)이 서기 전에 「새 Thread」 · ⌘N으로 `/`에 다시 오면 이 화면이 그대로
+    // 새 id의 주소로 갈아 선다. Thread 화면(나눠 받는 라우트 청크)이 서기 전에 「새 채팅」 · ⌘N으로 `/`에 다시 오면 이 화면이 그대로
     // 남는다 — 같은 주소의 같은 화면이라 새로 서지 않고, 「시작하는 중」에 멈춘다(02 티켓 13b 「앱의 틈」). 그때는 막 선 화면처럼 비운다.
     void navigate({ to: "/threads/$id", params: { id }, replace: true }).then(() => {
       if (router.state.location.pathname !== "/") return;
@@ -226,7 +226,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null 
     />
   );
   return (
-    <PlainFrame label="새 Thread">
+    <PlainFrame label="새 채팅">
       <ArrivalScope>
         {guide ? (
           <GuidePlace>
@@ -273,7 +273,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
   const [renaming, setRenaming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => checkEngineOnce(), []);
-  const name = view?.title || "Thread";
+  const name = view?.title || "채팅";
   const work = view?.work ?? null;
   // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 「보관됨」이며, 지워진 Work에는 카드가 없다.
   const gone = view?.readOnly ?? null;
@@ -332,7 +332,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
             setProblem(null);
             rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
           },
-          label: "Thread 이름",
+          label: "채팅 이름",
         }
       : undefined;
   return (
@@ -408,7 +408,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
       ) : (
         <GuidePlace>
           <p className="text-chat-meta text-fg-tertiary">
-            {isPending ? "Thread를 여는 중이에요" : `Thread를 열지 못했어요 — ${String(error)}`}
+            {isPending ? "채팅을 여는 중이에요" : `채팅을 열지 못했어요 — ${String(error)}`}
           </p>
         </GuidePlace>
       )}

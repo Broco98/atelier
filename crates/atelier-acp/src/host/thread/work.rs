@@ -4,12 +4,12 @@
 //!   `question` 줄(`card: work`)로 세우고, 사람이 고를 때까지 그 도구 호출(연결마다의 스레드)이 기다린다. 카드에는 등록된 Project가
 //!   모두 선다 — Host가 추천한 것이 먼저 그 까닭과 함께, 나머지는 사람이 넣을 수 있게(스토리 90). 저장소의 브랜치들도 싣는다 — 카드의
 //!   브랜치 칸이 그것으로 「api-server의 fix/... 규칙을 따름」을 말한다.
-//! - **「Work 만들기」**([`ConversationHost::answer_work`]) — core가 worktree 없이 Work를 만든다(S21 · v1 티켓 29). 그리고 이 Thread의
+//! - **「작업공간 만들기」**([`ConversationHost::answer_work`]) — core가 worktree 없이 Work를 만든다(S21 · v1 티켓 29). 그리고 이 Thread의
 //!   `work`를 적고(연결은 `thread.json`의 `work` 한 곳이다 — §19) `work` 줄 「Work … 을 만들고 이 Thread에 연결함」을 남긴다. 그
 //!   Thread의 떠 있는 Session들은 곧바로 그 Work의 판정 · 쓰기 자리를 쓴다 — 턴 가운데라도 Host가 spec 폴더에 설계 문서를 쓸 수 있게.
 //!   만들지 못하면(브랜치가 저장소에 이미 있다 · 사라진 Project) 아무것도 적지 않고 그 까닭으로 실패한다 — 카드는 그대로 서 있고 사람이
 //!   고쳐 다시 고른다.
-//! - **「Work 없이 계속」**은 도구의 결과로 그렇게 돌려준다. 아무것도 만들지 않는다.
+//! - **「작업공간 없이 계속」**은 도구의 결과로 그렇게 돌려준다. 아무것도 만들지 않는다.
 //! - 사람이 Thread를 멈추면 서 있는 카드를 거둔다(`withdrawn` — 도구는 「사람이 멈춤」). 그 Session을 표에서 꺼내면(죽음 · 다시 띄우기 ·
 //!   끄기) 카드도 닫힌다.
 //! - **카드를 세우고 기다리는 길은 하나다**([`ConversationHost::ask_card`]) — Work 밖 Project 카드(v1 티켓 32, [`super::project`])도 같은
@@ -34,9 +34,9 @@ use crate::HostError;
 /// Work 만들기 카드에서 사람이 고른 것.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkChoice {
-    /// 「Work 만들기」 — 카드에서 고친 Project들과 브랜치(Project가 없으면 없어도 된다).
+    /// 「작업공간 만들기」 — 카드에서 고친 Project들과 브랜치(Project가 없으면 없어도 된다).
     Create { projects: Vec<String>, branch: Option<String> },
-    /// 「Work 없이 계속」.
+    /// 「작업공간 없이 계속」.
     Continue,
 }
 
@@ -94,7 +94,7 @@ pub(super) enum Settled {
     Stopped,
 }
 
-/// 「Work 없이 계속」의 도구 결과(S13 표 「사용자가 Work 없이 계속하기로 함」).
+/// 「작업공간 없이 계속」의 도구 결과(S13 표 「사용자가 Work 없이 계속하기로 함」).
 const CONTINUED: &str = "사용자가 Work 없이 계속하기로 함 — Work를 만들지 않고 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.";
 
 impl Asked {
@@ -140,7 +140,7 @@ impl Proposals {
 }
 
 impl ConversationHost {
-    /// Work 만들기 카드의 답(v1 티켓 30 · §11) — 사람이 고른 것으로 그 카드를 닫는다. 「Work 만들기」는 core로 Work를 만들고 이 Thread를
+    /// Work 만들기 카드의 답(v1 티켓 30 · §11) — 사람이 고른 것으로 그 카드를 닫는다. 「작업공간 만들기」는 core로 Work를 만들고 이 Thread를
     /// 잇는다 — 만들지 못하면 아무것도 적지 않고 그 까닭으로 실패하며 카드는 그대로 서 있다. 이미 닫힌 카드면
     /// [`HostError::QuestionClosed`]다. 기다리지 않는다 — 도구의 결과와 Host의 다음 말은 기록 줄로 온다.
     pub fn answer_work(&self, thread: &str, request: &str, choice: WorkChoice) -> Result<(), HostError> {
@@ -168,19 +168,19 @@ impl ConversationHost {
         Ok(())
     }
 
-    /// 「Work 만들기」 — Work를 worktree 없이 만들고 이 Thread를 잇는다. Agent에게 돌려줄 글을 돌려준다.
+    /// 「작업공간 만들기」 — Work를 worktree 없이 만들고 이 Thread를 잇는다. Agent에게 돌려줄 글을 돌려준다.
     fn create_work(&self, request: &str, asked: &Asked, projects: &[String], branch: Option<&str>) -> Result<String, HostError> {
         let thread = &asked.thread;
         let not_created = |why: String| HostError::WorkNotCreated(why);
         let file = self.read_thread_file(thread)?;
         if let Some(work) = &file.work {
-            return Err(not_created(format!("이 Thread는 이미 Work `{work}`에 이어져 있어요")));
+            return Err(not_created(format!("이 채팅은 이미 작업공간 `{work}`에 이어져 있어요")));
         }
         let Card::Work(proposal) = &asked.card else { unreachable!("Work 만들기 카드만 꺼냈다") };
         // 같은 slug의 Work가 그사이 섰으면 core는 그 Work를 「다시 연다」 — 새 Work가 아니다.
         let works = atelier_core::works_in(&self.data_root);
         if atelier_core::read_work(&works, &proposal.slug).is_ok() {
-            return Err(not_created(format!("Work `{}`가 이미 있어요 — 다른 slug로 다시 제안해 달라고 해 주세요", proposal.slug)));
+            return Err(not_created(format!("작업공간 `{}`가 이미 있어요 — 다른 slug로 다시 제안해 달라고 해 주세요", proposal.slug)));
         }
         let branch = if projects.is_empty() { None } else { branch.map(str::trim).filter(|branch| !branch.is_empty()) };
         atelier_core::start_work_deferred(

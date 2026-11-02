@@ -156,7 +156,7 @@ fn 줄_허락이_없는_물음에는_다시_묻지_않기를_줄_수_없고_요�
     let thread = host.start_thread("배경 작업을 돌려 줘", ThreadLink::NoWork).expect("새 Thread");
 
     let asked = wait_permission(&sandbox, &thread, "asked", 1);
-    assert_eq!(asked["payload"]["policy"], "Thread 기록을 건드리기 전에 묻기");
+    assert_eq!(asked["payload"]["policy"], "채팅 기록을 건드리기 전에 묻기");
     assert!(asked["payload"].get("grant").is_none(), "허락이 넘기지 못하는 물음이다 — 내밀지 않는다: {asked}");
     let refused = reply(&host, &thread, &asked, &remember("allow_once")).expect_err("줄 허락이 없다");
     assert!(matches!(refused, HostError::PermissionNoGrant { .. }), "{refused:?}");

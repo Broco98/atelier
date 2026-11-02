@@ -31,8 +31,8 @@ const EVENT = "works:changed";
 const [, plainWork] = WORKS;
 const [service] = SERVICES;
 /**
- * 그 Service에 이은 work — Service 상세의 「Work」 묶음에 선다(03 §14). 픽스처 work은 Service가 없어 이 검사만 하나를 잇는다. 한때 프로젝트
- * 상세의 「Works」 목록이 이 자리였다 — 03이 Project 상세에서 Work 묶음을 걷었다(S21).
+ * 그 Service에 이은 work — Service 상세의 「작업공간」 묶음에 선다(03 §14). 픽스처 work은 Service가 없어 이 검사만 하나를 잇는다. 한때 프로젝트
+ * 상세의 「작업공간」 목록이 이 자리였다 — 03이 Project 상세에서 Work 묶음을 걷었다(S21).
  */
 const serviceWork = { ...plainWork, service: service.slug };
 const [shipped] = ARCHIVE;
@@ -73,8 +73,8 @@ test("작업 화면 · Service 상세 · 아카이브에 차례로 서도 works:
   await 사람메뉴로간다(page, "Service");
   await page.getByRole("table", { name: "Service 목록", exact: true }).getByRole("link", { name: service.name, exact: true }).click();
   await expect(page).toHaveURL(`/services/${encodeURIComponent(service.slug)}`);
-  // 앵커: Service 상세가 목록을 읽어 그렸다. 사이드바 행도 같은 제목이라 「Work」 묶음으로 좁힌다.
-  await expect(page.getByRole("region", { name: "Work", exact: true }).getByRole("link", { name: serviceWork.title })).toBeVisible();
+  // 앵커: Service 상세가 목록을 읽어 그렸다. 사이드바 행도 같은 제목이라 「작업공간」 묶음으로 좁힌다.
+  await expect(page.getByRole("region", { name: "작업공간", exact: true }).getByRole("link", { name: serviceWork.title })).toBeVisible();
   expect(await liveSubscriptions(page, EVENT), "Service 상세").toBe(1);
 
   await 사람메뉴로간다(page, "Archive");

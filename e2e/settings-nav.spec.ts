@@ -62,7 +62,7 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   await expect(page).not.toHaveURL(/tab=terminal/);
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop" });
-  const nav = aside(page).getByRole("button", { name: "새 Thread", exact: true });
+  const nav = aside(page).getByRole("button", { name: "새 채팅", exact: true });
   const 작업행 = aside(page).getByRole("button", { name: pinned.title, exact: true });
   const 사람 = 사람줄(page);
   for (const one of [nav, 띠(page), 작업행, 사람]) await expect(one).toHaveCount(1);

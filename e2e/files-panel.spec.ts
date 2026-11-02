@@ -33,8 +33,8 @@ const FOLDER = "list_worktree_folder";
 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
 const 레일칸 = (page: Page, name: "spec" | "files") => 레일(page).getByRole("button", { name, exact: true });
-const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
+const 토글 = (page: Page) => page.getByRole("button", { name: /^작업공간 패널 (접기|펼치기)$/ });
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업공간 패널", exact: true });
 const 패널머리 = (page: Page) => 작업패널(page).locator('[data-slot="card-head"]');
 /** 트리의 행 — 폴더 행은 이름이 곧 이름이고, 파일 행은 확장자 꼬리표가 앞에 붙는다(`MD README.md`). */
 const 행 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });

@@ -324,7 +324,7 @@ export function viewSearch<T extends object>(
  * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 여럿이기 때문이다** — 주소
  * 정규화(`-works-view`), 「앱으로 돌아가기」(`appReturnTarget`), 셸로 가는 길(`useGoToShell` — 알림 띠의
  * 줄과 ⌘J 방금 부른 셸로), 팔레트의 work 줄과 문서·본문 줄(`hit-target`), 잠긴 Work 칩(`ThreadScreen`의 `useOpenWork`), 그리고
- * `<Link>`로 여는 문(아래 `workDoor` — Service 상세의 「Work」 묶음 줄 · Project 제거 창의 Work 줄). 사이드바의 Work 행은 한때 여기 들었는데
+ * `<Link>`로 여는 문(아래 `workDoor` — Service 상세의 「작업공간」 묶음 줄 · Project 제거 창의 Work 줄). 사이드바의 Work 행은 한때 여기 들었는데
  * 이제 그 Work의 대화(가장 최근 Thread)로 간다(v1 티켓 37). Projects 상세의 「이 프로젝트에서 시작된 작업」 행도 한때 여기 들었는데, 상세가
  * 기준 브랜치 · 경로 · 설명만 들게 되며 걷혔다(03 S21).
  * 합성을 자리마다 손으로 다시 적으면 **빠뜨린 문 하나가 조용하다**: 그 문으로 들어온 work은

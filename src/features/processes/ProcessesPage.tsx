@@ -183,7 +183,7 @@ function ProcessesPage() {
                   // **작업 구획**(판 06 문구 표 R6) — 셸 묶음의 머리다. 수는 그 안의 셸이다.
                   <Section
                     icon={Folder}
-                    title="작업"
+                    title="작업공간"
                     note={shellCount(tree.reduce((sum, group) => sum + group.shells.length, 0))}
                     fold={folds.section("works")}
                   >

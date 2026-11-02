@@ -9,7 +9,7 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 // 답 줄이 오면 카드가 걷히며 그 자리에 결정 줄이 선다**(v1 티켓 24 · 26 · 구현 스펙 §9 카드 · S18 · 경계 ② 「입력창 자리」). three-axes
 // `chat-approval`(작업 패널의 승인 카드)을 Thread로 옮긴 것이다 — 승인 카드와 Agent의 질문 카드가 같은 자리에 선다.
 //
-// 줄은 L1이 축복한 기록을 그대로 쏜다 — 「Thread 폴더 안 파일 쓰기를 매번 묻기로 물어 허락받은 턴」(`thread-permission.jsonl`)과 진짜
+// 줄은 L1이 축복한 기록을 그대로 쏜다 — 「채팅 폴더 안 파일 쓰기를 매번 묻기로 물어 허락받은 턴」(`thread-permission.jsonl`)과 진짜
 // claude 2.1.309의 녹음을 되감은 「물음 둘을 한 번에 묻고 답받은 턴」(`thread-question.jsonl`, v1 티켓 27). 보낸 말 · 물음 · 답은 그
 // 기록에서 읽는다(스토리 137).
 
@@ -70,7 +70,7 @@ test("승인 카드가 입력창 자리에 서서 누가 · 무엇을 · 왜 묻
   await expect(card).toContainText("Host · 파일 고치기 · 「매번 묻기」");
   await expect(card.getByRole("figure", { name: /allowed\.txt 변경$/ })).toContainText("+x");
   const 선택지 = card.getByRole("button");
-  const names = ["아니요, 다르게", "이 Thread에서 편집은 늘 허용", "이번만 허용"];
+  const names = ["아니요, 다르게", "이 채팅에서 편집은 늘 허용", "이번만 허용"];
   await expect(선택지).toHaveCount(names.length);
   for (const [at, name] of names.entries()) await expect(선택지.nth(at)).toHaveAccessibleName(name);
   // 글쇠는 단추 끝에 옅게 선다 — 「아니요, 다르게」에 esc, 「이번만 허용」에 ↵. 켜진 줄이 옮겨 다니지 않으니 글쇠도 그 자리다.

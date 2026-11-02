@@ -23,7 +23,7 @@ export function removeDialog(usage: ProjectUsage): RemoveDialog {
     return {
       kind: "blocked",
       title: "아직 제거할 수 없어요",
-      lines: [`진행 중인 Work ${usage.works.length}개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요.`],
+      lines: [`진행 중인 작업공간 ${usage.works.length}개가 이 Project를 고치고 있어요. 작업공간을 끝내 보관하면 제거할 수 있어요.`],
       works: usage.works,
       cancel: "닫기",
       canRemove: false,

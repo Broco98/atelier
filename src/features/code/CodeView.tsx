@@ -77,7 +77,7 @@ export function DiffView({ slug, project, path, wide }: { slug: string; project:
     case "unchanged":
       return <Notice icon={FileCheck} title="바뀐 것이 없어요" detail="base와 같은 파일이에요." />;
     case "worktreeMissing":
-      return <Notice icon={FolderX} title="워크트리 없음" detail={`이 Work에 ${project} 워크트리가 없어요.`} />;
+      return <Notice icon={FolderX} title="워크트리 없음" detail={`이 작업공간에 ${project} 워크트리가 없어요.`} />;
     case "baseUnknown":
       return (
         <Notice
@@ -158,7 +158,7 @@ function FileBody({
       // 열린 탭의 파일이 지워져도 탭은 남는다 — 닫는 것은 사람이다(결정 「묻지 않고 둔 기본값」).
       return <Notice icon={FileX} title="지워진 파일" detail="워크트리에 이 파일이 없어요." />;
     case "worktreeMissing":
-      return <Notice icon={FolderX} title="워크트리 없음" detail={`이 작업에 ${target.project} 워크트리가 없어요.`} />;
+      return <Notice icon={FolderX} title="워크트리 없음" detail={`이 작업공간에 ${target.project} 워크트리가 없어요.`} />;
     case "outsideLink":
       // 코어가 그 대상을 읽지 않았다(스토리 78) — 어디를 가리키는지만 말한다.
       return (

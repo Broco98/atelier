@@ -45,7 +45,7 @@ const body = (input: SummaryInput, over: Partial<Parameters<typeof SummaryBody>[
   renderToStaticMarkup(
     <SummaryBody
       sections={summarySections(input)}
-      menu={<button type="button" aria-label="Work 메뉴" />}
+      menu={<button type="button" aria-label="작업공간 메뉴" />}
       changes={input.changes}
       fresh={{ keys: NOTHING, flash: 0 }}
       written={{ keys: NOTHING, flash: 0 }}
@@ -66,7 +66,7 @@ describe("요약 카드의 몸", () => {
     expect(text(markup)).toBe(
       "환불 API 버그 수정 변경 사항 +18 −6 PR #142 CI 통과 · 승인 1개 결과물 파일 또는 문서 만들기 소스 설계.md web-app 읽기만",
     );
-    expect(markup).toMatch(/환불 API 버그 수정.*aria-label="Work 메뉴"/);
+    expect(markup).toMatch(/환불 API 버그 수정.*aria-label="작업공간 메뉴"/);
     expect(sectionNames(markup)).toEqual(["결과물", "소스"]);
   });
 

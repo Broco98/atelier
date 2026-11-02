@@ -162,7 +162,7 @@ fn 빈_이름으로_부르면_도구가_거절_까닭을_돌려주고_아무것�
 
     let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread))[0]["call"];
     assert_eq!(answer["isError"], true, "{answer}");
-    assert_eq!(answer["content"][0]["text"], "Thread 이름이 비었어요", "거절 까닭을 글로 돌려준다");
+    assert_eq!(answer["content"][0]["text"], "채팅 이름이 비었어요", "거절 까닭을 글로 돌려준다");
     assert_eq!(sandbox.thread_json(&thread)["title"], "환불이 두 번 빠져요");
     assert!(of_kind(&record, "title").is_empty(), "{}", common::lines_text(&record));
 }

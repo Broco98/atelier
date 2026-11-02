@@ -43,7 +43,7 @@ const READ = "read_worktree_file";
 
 const 레일칸 = (page: Page, name: "spec" | "files") =>
   page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업공간 패널", exact: true });
 /** 트리의 행 — 파일 행은 확장자 꼬리표가 앞에 붙는다(`MD README.md`). */
 const 패널행 = (page: Page, name: string) => 작업패널(page).getByRole("button", { name, exact: true });
 

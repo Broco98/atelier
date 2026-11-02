@@ -163,17 +163,24 @@ describe("말의 사전", () => {
     expect(bodyOf("패널 토글")).toContain("⌘Enter");
   });
 
-  // v1 티켓 05 · 08 · 구현 스펙 S2. 앱을 열면 새 Thread가 뜨고 Runtime이 답한다 — 화면의 도메인 낱말은 영어다(Thread · Session ·
-  // Runtime). 사전이 그 말들을 모르면 다음 사람이 Thread를 「채팅」·「채널」로, Runtime을 「엔진」·「봇」·「어시스턴트」로 부른다. 거부어에
-  // 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes의 대화 탭 이름도 Thread의 거부어다 (S2 「피할 말은 채팅 · 채널 · 대화
-  // 탭」). 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 파일 첨부 단추).
-  it("「Thread」·「Session」·「Runtime」이 등재돼 있고, Thread가 「채팅」·「채널」·「대화 탭」을, Runtime이 「봇」·「어시스턴트」를 거부한다", () => {
-    expect(names).toEqual(expect.arrayContaining(["Thread", "Session", "Runtime"]));
-    expect(bodyOf("Thread")).toContain("_피할 말_: 채팅, 채널, 스레드, 대화 탭");
-    expect(bodyOf("Thread")).toContain("「Thread 3개」");
-    expect(refused).toEqual(expect.arrayContaining(["채팅", "채널", "스레드", "대화 탭", "봇", "어시스턴트"]));
+  // v1 티켓 05 · 08 · 구현 스펙 S2. 앱을 열면 새 채팅이 뜨고 Runtime이 답한다. 사전이 그 말들을 모르면 다음 사람이 Thread를 「채널」로,
+  // Runtime을 「엔진」·「봇」·「어시스턴트」로 부른다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes의 대화 탭 이름도 Thread의
+  // 거부어다. 구현 스펙 「기준과 진행 · 말」로 화면 글자가 채팅 · 작업공간이 됐고 코드의 `Thread` · `Work`는 그대로다 — 항목이 그 둘을 이어 주지 않으면
+  // 코드를 읽는 사람이 화면의 말을 찾지 못한다. 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 파일 첨부 단추).
+  it("「Thread」·「Work」·「Session」·「Runtime」이 등재돼 있고, Thread · Work가 화면 글자를 말하며, Thread가 「채널」·「대화 탭」을, Runtime이 「봇」·「어시스턴트」를 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Thread", "Work", "Session", "Runtime"]));
+    expect(bodyOf("Thread")).toContain("화면의 글자는 「채팅」이다");
+    expect(bodyOf("Work")).toContain("화면의 글자는 「작업공간」이다");
+    expect(bodyOf("Thread")).toContain("_피할 말_: 채널, 스레드, 대화 탭");
+    expect(bodyOf("Thread")).toContain("「채팅 3개」");
+    expect(refused).toEqual(expect.arrayContaining(["채널", "스레드", "대화 탭", "봇", "어시스턴트"]));
     expect(bodyOf("Runtime")).toContain("_피할 말_: 하네스, 엔진, 봇, 어시스턴트");
     expect(ariaLabels).toContain("파일 첨부");
+  });
+
+  // 구현 스펙 「기준과 진행 · 말」 · 티켓 01a-12. 코드 이름은 코드에만 산다 — 컨트롤의 이름에 새면 화면이 옛 말로 돌아간다.
+  it("접근성 이름에 코드 이름 Thread · Work가 없다", () => {
+    expect(ariaLabels.filter((label) => /Thread|Work/.test(label))).toEqual([]);
   });
 
   // 구현 스펙 「기준과 진행 · 말」 · 티켓 01a-8. Agent 개념을 걷었다 — 항목이나 문장에 그 말이 남으면 다음 사람이 없는 개념으로 새 화면을
@@ -238,7 +245,7 @@ describe("말의 사전", () => {
   it("「트레이」가 두 자리를 말하고, 「Work 칩」이 스위치 둘 · 기억 · 최근 Work · 첫 말 뒤 잠김을 말한다", () => {
     expect(names).toEqual(expect.arrayContaining(["트레이", "Work 칩"]));
     for (const piece of ["회색 띠", "상자 아래", "상자 위"]) expect(bodyOf("트레이"), piece).toContain(piece);
-    for (const piece of ["「새 Work」", "「Work 없이 대화」", "최근 Work", "기억", "잠긴다"]) {
+    for (const piece of ["「새 작업공간」", "「작업공간 없이 대화」", "최근 Work", "기억", "잠긴다"]) {
       expect(bodyOf("Work 칩"), piece).toContain(piece);
     }
   });

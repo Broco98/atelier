@@ -234,7 +234,7 @@ async function askToArchive(page: Page, path: string, menu: string, title: strin
 
 test("아카이브 확인 창이 셸 수 뒤에 띄운 프로세스 수를 붙인다", async ({ page }) => {
   await installFixtureBackend(page, { pty_close_checks: { 1: { command: true, descendants: 2 } } });
-  const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업 메뉴", plainWork.title);
+  const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업공간 메뉴", plainWork.title);
 
   expect(lastLine(await bodyLines(dialog))).toBe("셸 1개가 닫혀요(띄운 프로세스 2개 포함).");
   // 셸 하나의 물음을 셸마다 부르지 않는다 — 스냅샷 한 장짜리 배치 한 번이다.
@@ -247,7 +247,7 @@ test("아카이브 확인 창이 셸 수 뒤에 띄운 프로세스 수를 붙�
 
 test("띄운 프로세스가 없으면 아카이브 확인 창은 셸 수만 말한다", async ({ page }) => {
   await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
-  const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업 메뉴", plainWork.title);
+  const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업공간 메뉴", plainWork.title);
 
   // 앵커: 물음이 나갔다 — 안 물어서 안 붙은 것이 아니다.
   expect(await callCount(page, "pty_close_checks")).toBe(1);
@@ -258,7 +258,7 @@ test("띄운 프로세스가 없으면 아카이브 확인 창은 셸 수만 말
 // 못 얻으면 붙이지 않는다 — 모르는 수를 말하지 않고, 그렇다고 아카이브를 막지도 않는다.
 test("물음이 거절되면 아카이브 확인 창은 셸 수만 말하고 그대로 뜬다", async ({ page }) => {
   await installFixtureBackend(page, { pty_close_checks: ipcFailure("PTY 풀을 읽지 못했습니다") });
-  const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업 메뉴", plainWork.title);
+  const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업공간 메뉴", plainWork.title);
 
   expect(await callCount(page, "pty_close_checks")).toBe(1);
   expect(lastLine(await bodyLines(dialog))).toBe("셸 1개가 닫혀요.");

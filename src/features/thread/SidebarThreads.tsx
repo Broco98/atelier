@@ -24,7 +24,7 @@ import type { Waiting } from "./waiting";
 //   모두 이 하나로 모였다. **줄은 자리를 지키고 상태 칸만 바뀐다**(Motion 보드 「목록 상태 바뀜」) — 바뀐 표시만 떠오른다.
 // - 상태의 바탕은 Thread를 열 때와 같은 읽기다(`threadQuery` — `get`의 살아 있음 · 기록 끝, 그리고 기록) — 열린 캐시를 Thread 화면과
 //   함께 쓴다. 읽은 자리(`lastRead`)는 요약의 것이다: Thread 화면이 맨 아래를 보면 적고(S38), 요약 이벤트가 이 줄을 고친다.
-// - 깨진 Thread도 줄이 선다(「열 수 없는 Thread」 — 무엇이 깨졌는지는 열면 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에
+// - 깨진 Thread도 줄이 선다(「열 수 없는 채팅」 — 무엇이 깨졌는지는 열면 말한다) — 목록에서 조용히 빠지면 「내 채팅이 어디 갔지」에
 //   답할 자리가 없다.
 // - **「내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」 · 02 구현 스펙 §4) — 사이드바 위 줄의 「내 차례」 행을
 //   켜면 Work 묶음과 이 묶음 대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가
@@ -36,7 +36,7 @@ import type { Waiting } from "./waiting";
 /** Thread 묶음이 무엇을 세우나 — 전체(Work 묶음 · Thread 묶음) 또는 나를 기다리는 Thread만. */
 export type ThreadListFilter = "all" | "mine";
 
-// 소제목과 줄 목록의 꼴 — 「Thread」와 「기다리는 순서」가 한 벌이고, 리듬은 사이드바 줄 한 벌(`sidebar-look` — Work 묶음과 같다)이다.
+// 소제목과 줄 목록의 꼴 — 「채팅」과 「기다리는 순서」가 한 벌이고, 리듬은 사이드바 줄 한 벌(`sidebar-look` — Work 묶음과 같다)이다.
 // 위 사이는 놓인 자리가 고른다.
 const HEADING = cn(SIDEBAR_HEADING, "text-sm text-fg-tertiary");
 const ROWS = cn(SIDEBAR_ROWS, "min-h-0 overflow-y-auto scroll-quiet");
@@ -48,9 +48,9 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const loose = threads.filter((thread) => thread.work === null);
   if (loose.length === 0) return null;
   return (
-    <section aria-label="Thread" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
+    <section aria-label="채팅" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
       {/* 소제목은 Work 묶음의 소제목과 같은 꼴 · 같은 사이다(`WorkSectionList`의 `SectionHeader` — Codex 「최근」). */}
-      <h2 className={cn(SIDEBAR_AFTER_SECTION, HEADING)}>Thread</h2>
+      <h2 className={cn(SIDEBAR_AFTER_SECTION, HEADING)}>채팅</h2>
       <ul className={ROWS}>
         {loose.map((thread) => (
           <li key={thread.id}>
@@ -131,7 +131,7 @@ export function WaitingList({
   return (
     <section aria-label="내 차례" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
       {waiting.length === 0 ? (
-        <p className="px-2.5 pt-5 pb-6 text-center text-chat-meta text-fg-tertiary">지금은 나를 기다리는 Thread가 없어요</p>
+        <p className="px-2.5 pt-5 pb-6 text-center text-chat-meta text-fg-tertiary">지금은 나를 기다리는 채팅이 없어요</p>
       ) : (
         <>
           {/* 위 12는 Work 묶음의 첫 소제목과 같은 자리다(`WorkSectionList`의 `SectionHeader`): 「내 차례」에서는 Work 묶음이 없어 이
@@ -181,7 +181,7 @@ export function ThreadRow({
   // 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 표시가 상태를 열쇠로 새로 서므로. `ready`는
   // 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
   const moved = useChanged(mark, ready);
-  const title = thread.broken ? "열 수 없는 Thread" : thread.title || "새 Thread";
+  const title = thread.broken ? "열 수 없는 채팅" : thread.title || "새 채팅";
   return (
     <button
       type="button"

@@ -22,7 +22,7 @@ export const SIDEBAR_ROWS = "flex flex-col gap-px";
 
 /**
  * 묶음 소제목의 줄 — 높이 30에 라벨을 가운데 세우고 아래 3을 둔다. 줄 사이 1과 더해 소제목 가운데 → 첫 줄 가운데가 34다(15 + 3 + 1 + 15,
- * Codex 「프로젝트」 · 「최근」). 글자는 부르는 쪽이 정한다(머리 단추는 라벨 칸이, 「Thread」 소제목은 제 글자가).
+ * Codex 「프로젝트」 · 「최근」). 글자는 부르는 쪽이 정한다(머리 단추는 라벨 칸이, 「채팅」 소제목은 제 글자가).
  */
 export const SIDEBAR_HEADING = "mb-0.75 flex h-7.5 shrink-0 items-center px-2";
 

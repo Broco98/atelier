@@ -1,7 +1,7 @@
 import { finalMessages, foldThread, type Turn } from "./fold";
 import type { RecordLine } from "./types";
 
-// 사이드바 Thread 줄의 둘째 줄 — 마지막 말(v1 티켓 07 · 구현 스펙 스토리 128 · 캔버스 「Thread 목록과 아바타」 보드). **순수 함수다**:
+// 사이드바 Thread 줄의 둘째 줄 — 마지막 말(v1 티켓 07 · 구현 스펙 스토리 128 · 캔버스 「채팅 목록과 아바타」 보드). **순수 함수다**:
 // 기록 줄을 접어(`foldThread` — Thread 화면과 같은 접기) 턴마다의 「말」 가운데 **말한 때가 가장 늦은** 것을 고른다. 때가 같으면 뒤에 선 턴의
 // 말이다.
 //

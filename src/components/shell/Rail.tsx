@@ -101,7 +101,7 @@ function Rail<Id extends string>({
       {/* 칸 묶음 — 세그먼트를 세우고 색을 뒤집은 것이다(DS `.at-seg.vert` · codex-ds 결정 29). 홈은 옆 패널 카드와 같은 흰 면
           (`surface` · `shadow-hairline` · `radius-lg`, 안쪽 2 · 칸 사이 2)이고 칸은 28 · `radius-md`라 홈 폭이 줄 폭(32)이다. 켜진 칸은
           패널 트리의 고른 행과 같은 `fill-selected`이고, 꺼진 칸의 hover는 `fill-soft`다 — 켜진 칸은 hover해도 그 면 그대로다(DS
-          `.is-on:hover`). 이름은 패널(`작업 패널`)과 다르다 — 같으면 「작업 패널」로 집는 자리가 둘이 된다. */}
+          `.is-on:hover`). 이름은 패널(`작업 패널`)과 다르다 — 같으면 「작업공간 패널」로 집는 자리가 둘이 된다. */}
       <div role="group" aria-label="레일" className="flex flex-col gap-0.5 rounded-lg bg-surface p-0.5 shadow-hairline">
         {items.map(({ id, label, icon: Icon }) => {
           const on = open && id === active;

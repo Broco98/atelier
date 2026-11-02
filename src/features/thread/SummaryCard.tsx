@@ -128,7 +128,7 @@ interface WorkSummaryProps {
   /** 지금 Thread — 넓힌 카드의 인용이 이 입력창으로 간다. */
   thread: string;
   slug: string;
-  /** 「이 Work에서 새 Thread」(머리 「…」). */
+  /** 「이 작업공간에서 새 채팅」(머리 「…」). */
   onNewThread: () => void;
   /** 넓힌 카드가 연 것(v1 티켓 35) — 없으면 작은 카드다. */
   opened: Opened | null;
@@ -336,7 +336,7 @@ function WorkMenu({ work, onNewThread }: { work: WorkView; onNewThread: () => vo
   return (
     <DropdownMenu>
       <Hint
-        text="Work 메뉴"
+        text="작업공간 메뉴"
         announce="name"
         disabled={flows.busy}
         render={
@@ -351,7 +351,7 @@ function WorkMenu({ work, onNewThread }: { work: WorkView; onNewThread: () => vo
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onNewThread}>
           <Plus />
-          <span className="min-w-0 flex-1 truncate">이 Work에서 새 Thread</span>
+          <span className="min-w-0 flex-1 truncate">이 작업공간에서 새 채팅</span>
         </DropdownMenuItem>
         {/* 지금 Work 화면(`/works/<slug>`) — 그 Work의 셸 탭이 서는 자리다. */}
         <DropdownMenuItem onClick={() => void navigate({ to: "/works/$slug", params: { slug: work.slug }, search: {} })}>

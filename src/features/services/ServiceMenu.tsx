@@ -27,7 +27,7 @@ import { HOST_MAKE, serviceMenu, serviceName } from "./service-view";
 //   ──
 //   ⚙ Service 관리                            메뉴 › Service
 //
-// - 하나도 없으면 목록 자리에 「아직 Service가 없어요」 · 「대화로 Service 만들기」(첫 화면을 「Work 없이 대화」와 입력 글로 연다 — §14 S16)다.
+// - 하나도 없으면 목록 자리에 「아직 Service가 없어요」 · 「대화로 Service 만들기」(첫 화면을 「작업공간 없이 대화」와 입력 글로 연다 — §14 S16)다.
 // - 줄은 시안 `.pmenu .mi2`(min 32 · 13.5/19 · 곁말 12/16)를 앱의 두 줄 항목(`size="note"`)이 그린다 — 폭은 내용을 따르되 300부터(`note`).
 // - 고른 것은 부르는 쪽이 적는다(`onPick` — Work면 그 Work, Service 칩이면 Thread · 입력창). 같은 것을 다시 고르면 아무것도 하지 않는다.
 
@@ -143,7 +143,7 @@ export function ServiceMenuItems({
 }
 
 /**
- * Work 화면 머리 줄 이름 앞의 Service(§10 · 시안 F4-KitChat 「Work 화면 · Service 있음」) — 「흐린 Service / Work 이름」, Service가 없으면 흐린
+ * Work 화면 머리 줄 이름 앞의 Service(§10 · 시안 F4-KitChat 「작업공간 화면 · Service 있음」) — 「흐린 Service / 작업공간 이름」, Service가 없으면 흐린
  * 「Service 없음」이다. 누르면 Service 메뉴가 열리고, 고르면 그 Work의 Service가 바뀐다 — 그 Work의 Thread마다 Service 줄이 선다(S9). 글자는
  * 머리 줄의 흐린 글자(`fg-titlebar` — 시안 `.muted` #898a8b)이고 사이는 8이다(시안 `.tb-c` gap 8). Service 목록을 아직 못 읽었으면 slug다.
  */

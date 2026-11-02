@@ -233,7 +233,7 @@ describe("Service 화면의 시작 단추가 여는 첫 화면", () => {
     });
   });
 
-  it("상세의 「새 Work」는 그 Service를 고른 「새 Work」, 「대화로 고치기」는 그 Service를 붙인 Work 없는 대화와 고쳐 달라는 말이다(S17)", () => {
+  it("상세의 「작업공간 만들기」는 그 Service를 고른 「새 작업공간」, 「대화로 고치기」는 그 Service를 붙인 Work 없는 대화와 고쳐 달라는 말이다(S17)", () => {
     expect(serviceStarts(service())).toEqual({
       newWork: { new: "work", service: "결제-서비스" },
       hostEdit: { new: "thread", service: "결제-서비스", say: "결제 서비스 Service를 고치고 싶어요. " },

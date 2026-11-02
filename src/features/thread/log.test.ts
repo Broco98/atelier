@@ -102,7 +102,7 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
           _meta: claude("mcp__atelier__get_work"),
         }),
       ).mcp;
-    expect(got("Work 1개 · Project api-server · worktree 아직 없음")).toMatchObject({ receivedCode: false });
+    expect(got("작업공간 1개 · Project api-server · worktree 아직 없음")).toMatchObject({ receivedCode: false });
     expect(got('{"slug":"refund-api"}')).toMatchObject({ received: '{\n  "slug": "refund-api"\n}', receivedCode: true });
   });
 
@@ -161,7 +161,7 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
 });
 
 // 도구 줄 앞의 종류 글리프(02 구현 스펙 §8 · 스토리 50) — 읽기 · 편집 · 명령 · 검색 · 웹 · MCP · 그 밖 일곱 갈래다. 문장을 다 읽지 않고도
-// 무슨 일인지 알게 하는 것이라 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말(「Work 읽음」)로 서니 MCP 플러그가 아니라
+// 무슨 일인지 알게 하는 것이라 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말(「작업공간 읽음」)로 서니 MCP 플러그가 아니라
 // 그 말의 갈래다.
 describe("도구 줄의 종류 글리프", () => {
   const glyphOf = (call: Record<string, unknown>) => describeTool(tool({ status: "completed", ...call })).glyph;

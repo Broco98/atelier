@@ -96,7 +96,7 @@ test("구획 머리에 hover해도 배경이 안 칠해지고 글자만 진해�
 
   for (const [name, word] of [
     [PINNED_HEADER, "고정"],
-    [MAIN_HEADER, "Work"],
+    [MAIN_HEADER, "작업공간"],
   ] as const) {
     const header = page.getByRole("button", { name, exact: true });
     const label = header.getByText(word, { exact: true });
@@ -114,8 +114,8 @@ test("구획 머리에 hover해도 배경이 안 칠해지고 글자만 진해�
   for (const work of [plainWork, pinnedWork]) {
     await hover배경이칠해진다(page.getByRole("button", { name: work.title, exact: true }).locator("xpath=.."));
   }
-  // **nav도 그대로다**(티켓 본문). 지금 화면이 아닌 항목이라야 선택 배경과 안 섞인다 — Projects에서는 「새 Thread」가 그렇다.
-  await hover배경이칠해진다(page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).locator("xpath=.."));
+  // **nav도 그대로다**(티켓 본문). 지금 화면이 아닌 항목이라야 선택 배경과 안 섞인다 — Projects에서는 「새 채팅」이 그렇다.
+  await hover배경이칠해진다(page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }).locator("xpath=.."));
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

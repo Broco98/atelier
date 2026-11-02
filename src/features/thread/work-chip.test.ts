@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SearchHit } from "@/features/search/types";
 import { lockedWork, recentWorks, rememberSwitch, startLink, workHome } from "./work-chip";
 
-// 입력창 Work 칩(v1 티켓 31 · 03 구현 스펙 §5 · 캔버스 v52 F4-KitComposer · F4-HomeWorkMenu) — 첫 말 전에는 「새 Work」 · 「Work 없이 대화」
-// 스위치와 최근 Work를 고르고, 고른 것이 칩 글자 · 입력창 안내를 바꾼다. 처음 고를 곳은 주소 씨앗 › 기억한 스위치 쪽 › 「새 Work」다(S2).
+// 입력창 Work 칩(v1 티켓 31 · 03 구현 스펙 §5 · 캔버스 v52 F4-KitComposer · F4-HomeWorkMenu) — 첫 말 전에는 「새 작업공간」 · 「작업공간 없이 대화」
+// 스위치와 최근 Work를 고르고, 고른 것이 칩 글자 · 입력창 안내를 바꾼다. 처음 고를 곳은 주소 씨앗 › 기억한 스위치 쪽 › 「새 작업공간」이다(S2).
 // 첫 말 뒤에는 잠겨 보이기만 한다(S3). 메뉴의 최근 Work는 마지막으로 연 차례(⌘K의 빈 화면과 같은 차례 — `recent.rs`)다.
 
 describe("Work 칩이 고른 것", () => {
   it("칩 글자 · 입력창 안내가 고른 것을 따른다", () => {
-    expect(workHome({ kind: "no-work" }, null)).toEqual({ chip: "Work 없이 대화", placeholder: "무엇이든 요청하세요" });
-    expect(workHome({ kind: "new-work" }, null)).toEqual({ chip: "새 Work", placeholder: "만들 기능이나 고칠 문제를 적어 주세요" });
+    expect(workHome({ kind: "no-work" }, null)).toEqual({ chip: "작업공간 없이 대화", placeholder: "무엇이든 요청하세요" });
+    expect(workHome({ kind: "new-work" }, null)).toEqual({ chip: "새 작업공간", placeholder: "만들 기능이나 고칠 문제를 적어 주세요" });
     expect(workHome({ kind: "work", slug: "refund-api" }, "환불 API 버그 수정")).toEqual({
       chip: "환불 API 버그 수정",
       placeholder: "환불 API 버그 수정에서 무엇을 할까요?",
@@ -21,7 +21,7 @@ describe("Work 칩이 고른 것", () => {
   });
 });
 
-describe("처음 고를 곳 — 주소 씨앗 › 기억한 스위치 쪽 › 「새 Work」(03 §5 · S2)", () => {
+describe("처음 고를 곳 — 주소 씨앗 › 기억한 스위치 쪽 › 「새 작업공간」(03 §5 · S2)", () => {
   const stored = new Map<string, string>();
   beforeEach(() => {
     stored.clear();
@@ -35,7 +35,7 @@ describe("처음 고를 곳 — 주소 씨앗 › 기억한 스위치 쪽 › �
     delete globalThis.localStorage;
   });
 
-  it("처음 쓰는 사람에겐 「새 Work」다 — 대표 길이 기본이다(스토리 14)", () => {
+  it("처음 쓰는 사람에겐 「새 작업공간」이다 — 대표 길이 기본이다(스토리 14)", () => {
     expect(startLink(null)).toEqual({ kind: "new-work" });
   });
 
@@ -60,7 +60,7 @@ describe("처음 고를 곳 — 주소 씨앗 › 기억한 스위치 쪽 › �
     expect(startLink({ kind: "no-work" })).toEqual({ kind: "no-work" });
   });
 
-  it("저장소를 읽지 못하거나 모르는 값이 적혀 있으면 「새 Work」다", () => {
+  it("저장소를 읽지 못하거나 모르는 값이 적혀 있으면 「새 작업공간」이다", () => {
     stored.set("work-chip-switch", "work:refund-api");
     expect(startLink(null)).toEqual({ kind: "new-work" });
     globalThis.localStorage = {
@@ -86,12 +86,12 @@ describe("잠긴 Work 칩 — 첫 말 뒤(03 §5 · S3)", () => {
     expect(lockedWork("refund-api", null, false)).toEqual({ kind: "work", slug: "refund-api", label: "refund-api" });
   });
 
-  it("Work 없는 Thread는 「Work 없이 대화」다", () => {
-    expect(lockedWork(null, null, false)).toEqual({ kind: "no-work", label: "Work 없이 대화" });
+  it("Work 없는 Thread는 「작업공간 없이 대화」다", () => {
+    expect(lockedWork(null, null, false)).toEqual({ kind: "no-work", label: "작업공간 없이 대화" });
   });
 
-  it("「새 Work」로 시작해 아직 Work가 서지 않았으면 「새 Work」이고, Work 만들기 카드를 받아들이면 그 Work 이름이 된다", () => {
-    expect(lockedWork(null, null, true)).toEqual({ kind: "new-work", label: "새 Work" });
+  it("「새 작업공간」으로 시작해 아직 Work가 서지 않았으면 「새 작업공간」이고, Work 만들기 카드를 받아들이면 그 Work 이름이 된다", () => {
+    expect(lockedWork(null, null, true)).toEqual({ kind: "new-work", label: "새 작업공간" });
     expect(lockedWork("refund-api", "환불 API 버그 수정", true)).toEqual({
       kind: "work",
       slug: "refund-api",

@@ -10,8 +10,8 @@ import type { WorkGone } from "./types";
 // - 캔버스에 이 자리의 그림이 없다 — 입력창의 면과 안내 글(14 · `fg-secondary`)을 따른다.
 
 const TEXT: Record<WorkGone, string> = {
-  archived: "보관된 Work의 Thread는 읽기만 돼요",
-  removed: "지워진 Work의 Thread는 읽기만 돼요",
+  archived: "보관된 작업공간의 채팅은 읽기만 돼요",
+  removed: "지워진 작업공간의 채팅은 읽기만 돼요",
 };
 
 interface ReadOnlyNoticeProps {

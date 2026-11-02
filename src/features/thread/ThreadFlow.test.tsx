@@ -68,8 +68,8 @@ describe("흐름의 물음 자리", () => {
     const waiting = (lines: readonly RecordLine[]) => /<span class="text-link">([^<]*)<\/span>/.exec(flow(lines))?.[1] ?? null;
     expect(waiting(through(record("thread-permission"), 8))).toBe("승인을 기다립니다");
     expect(waiting(through(record("thread-question"), 7))).toBe("질문의 답을 기다려요");
-    expect(waiting(through(record("thread-work"), 55))).toBe("Work 만들기 답을 기다려요");
-    expect(waiting(through(record("thread-project"), 7))).toBe("Work 밖 Project 답을 기다려요");
+    expect(waiting(through(record("thread-work"), 55))).toBe("작업공간 만들기 답을 기다려요");
+    expect(waiting(through(record("thread-project"), 7))).toBe("작업공간 밖 Project 답을 기다려요");
     expect(waiting(through(record("thread-service-ask"), 7))).toBe("Service 답을 기다려요");
     expect(waiting(through(record("thread-project-add"), 7))).toBe("Project 추가 답을 기다려요");
   });
@@ -77,9 +77,9 @@ describe("흐름의 물음 자리", () => {
   // 답한 카드의 상자는 무슨 카드였나(`data-answered`)와 고른 갈래(`data-choice`)를 따로 든다(03 코드 리뷰 — 한때 질문만 답 갈래를 `data-answered`에 실었다).
   it("답한 카드는 그 도구 줄 자리에 결정 줄 한 줄로 선다 — 갈래는 속성에, 글은 고른 것이다", () => {
     expect(rowText(flow(record("thread-work")), 'data-decision="work-created"')).toBe(
-      "Work 만들기 · api-server · fix/refund-partial-amount",
+      "작업공간 만들기 · api-server · fix/refund-partial-amount",
     );
-    expect(rowText(flow(record("thread-project")), 'data-decision="project-attach"')).toBe("web-app을 이 Work에 붙임");
+    expect(rowText(flow(record("thread-project")), 'data-decision="project-attach"')).toBe("web-app을 이 작업공간에 붙임");
     expect(rowText(flow(record("thread-question")), 'data-answered="question" data-choice="answer"')).toBe(
       "부분 환불 수수료는 어떻게 할까요?비율대로 돌려준다어느 화면에 보일까요?주문 상세, 환불 내역",
     );

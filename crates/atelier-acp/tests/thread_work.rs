@@ -1,9 +1,9 @@
 //! L1 — Work와 이어짐(v1 티켓 30 · 구현 스펙 §7 S13 · §11 · S21): Thread 도구 「Project 목록」 · 「Work 읽기」 · 「Work 만들기 제안」.
 //!
 //! - Host가 「Work 만들기 제안」을 부르면 Work 만들기 카드가 `question` 줄로 서고, 도구는 사람이 고를 때까지 기다린다.
-//! - 「Work 만들기」 — core가 worktree 없이 Work를 만들고(v1 티켓 29), `thread.json`의 `work`가 서고, `work` 줄 「Work … 을 만들고 이
+//! - 「작업공간 만들기」 — core가 worktree 없이 Work를 만들고(v1 티켓 29), `thread.json`의 `work`가 서고, `work` 줄 「Work … 을 만들고 이
 //!   Thread에 연결함」이 남고, 도구가 만든 Work를 돌려준다.
-//! - 「Work 없이 계속」 — 아무것도 만들지 않고, 도구가 「사용자가 Work 없이 계속하기로 함」을 돌려준다.
+//! - 「작업공간 없이 계속」 — 아무것도 만들지 않고, 도구가 「사용자가 Work 없이 계속하기로 함」을 돌려준다.
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 폴더(`thread.json` · `events.jsonl`) · works 폴더 · 등록한 저장소 · 가짜 claude의 MCP 영수증만
 //! 본다.
@@ -27,7 +27,7 @@ fn tool(name: &str, arguments: Value) -> Value {
     json!({"tool": name, "arguments": arguments})
 }
 
-/// 「환불 API 버그 고쳐줘」에 Host가 내미는 제안 — api-server를 고를 Project로 추천한다(캔버스 Cards 보드 「Work 만들기」).
+/// 「환불 API 버그 고쳐줘」에 Host가 내미는 제안 — api-server를 고를 Project로 추천한다(캔버스 Cards 보드 「작업공간 만들기」).
 fn refund_proposal() -> Value {
     tool(
         "propose_work",
@@ -147,7 +147,7 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
         linked[0]["payload"],
         json!({"state": "created", "slug": "refund-api", "title": "환불 API 버그 수정", "branch": "fix/refund-api",
                "projects": ["api-server", "web-app"]}),
-        "시스템 줄 「Work 환불 API 버그 수정을 만들고 이 Thread에 연결함」이 이것을 읽는다"
+        "시스템 줄 「작업공간 환불 API 버그 수정을 만들고 이 채팅에 연결함」이 이것을 읽는다"
     );
     let at = |line: &Value| record.iter().position(|seen| seen == line).unwrap();
     let ended = record.iter().position(|line| line["kind"] == "turn-end").unwrap();
@@ -178,7 +178,7 @@ fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사�
     assert_eq!(
         wait_card(&sandbox, &thread, "answered")["payload"],
         json!({"state": "answered", "requestId": request_of(&asked), "card": "work", "choice": "continue"}),
-        "결정한 뒤 「Work 없이 계속함」이 이 줄을 읽는다"
+        "결정한 뒤 「작업공간 없이 계속함」이 이 줄을 읽는다"
     );
     let answer = &answers(&sandbox, &thread)[0];
     assert_ne!(answer["isError"], true, "고른 것이지 실패가 아니다: {answer}");
@@ -325,7 +325,7 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     assert!(work.get("branch").is_none_or(Value::is_null), "Project가 없으면 브랜치를 정하지 않는다");
 }
 
-/// 03 구현 스펙 §9 · S8 — Work 없이 한 대화의 Service는 Work 만들기 카드에 한 줄(「◇ 결제 서비스 · Service」)로 서고, 「Work 만들기」가 그
+/// 03 구현 스펙 §9 · S8 — Work 없이 한 대화의 Service는 Work 만들기 카드에 한 줄(「◇ 결제 서비스 · Service」)로 서고, 「작업공간 만들기」가 그
 /// Service를 새 Work로 옮기고 Thread의 칸은 비운다 — 이은 뒤로는 Work의 Service를 따른다(스토리 72 · 73).
 #[test]
 fn thread의_service는_work_만들기_카드에_서고_만든_work로_옮겨_가며_thread의_칸은_비운다() {

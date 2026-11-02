@@ -41,11 +41,11 @@ import type { ServiceDetail as Detail, ServicePatch, ServiceProblemKind } from "
 // 고치기 하나로 그 칸만 바꾼다(`update_service`). 빼면 「되돌리기」 토스트가 잠깐 서고, 누르면 뺀 Project를 제자리에 다시 넣는다.
 //
 // 관계 그래프의 「편집」과 문제 상자의 「관계 편집에서 고치기」는 그 Service 파일을 글 그대로 고치는 화면(`/services/$slug/edit` — 04)으로 간다.
-// 오른쪽 칸 「Work」 묶음은 이 Service에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
+// 오른쪽 칸 「작업공간」 묶음은 이 Service에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
 //
 // 판 안 맨 위 「← Service」 줄 오른쪽에 ⋯와 시작 단추 둘이 선다(시안 F1-SpaceDetail `.topbar`). ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인
 // 창을 거쳐 목록으로 가고, 목록에 「… Service를 지웠어요 · 되돌리기」 토스트가 선다. 시작 단추는 「대화로 고치기」(이 Service를 붙인 Work 없는
-// 새 대화에 고쳐 달라는 말, S17)와 「새 Work」(이 Service를 고른 「새 Work」 — 스토리 159)다(06) — 둘 다 첫 화면을 씨앗과 함께 열 뿐이고
+// 새 대화에 고쳐 달라는 말, S17)와 「작업공간 만들기」(이 Service를 고른 「새 작업공간」 — 스토리 159)다(06) — 둘 다 첫 화면을 씨앗과 함께 열 뿐이고
 // 보내기는 사람이 한다.
 
 export default function ServiceDetail({ slug }: { slug: string }) {
@@ -83,7 +83,7 @@ export default function ServiceDetail({ slug }: { slug: string }) {
 }
 
 /**
- * 시작 단추 둘(§14 · 시안 F1-SpaceDetail — 맨 위 줄 오른쪽 끝 ⋯ 뒤, 사이 6) — 테두리 알약 「대화로 고치기」(S17)와 짙은 알약 「+ 새 Work」(스토리
+ * 시작 단추 둘(§14 · 시안 F1-SpaceDetail — 맨 위 줄 오른쪽 끝 ⋯ 뒤, 사이 6) — 테두리 알약 「대화로 고치기」(S17)와 짙은 알약 「+ 작업공간 만들기」(스토리
  * 159). 시안 `.btn.lg`의 34 · 좌우 14 · 14px다.
  */
 function ServiceStarts({ service }: { service: Detail }) {
@@ -96,7 +96,7 @@ function ServiceStarts({ service }: { service: Detail }) {
         대화로 고치기
       </Button>
       <Button size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.newWork })}>
-        <Plus aria-hidden className="size-3.5" />새 Work
+        <Plus aria-hidden className="size-3.5" />작업공간 만들기
       </Button>
     </>
   );
@@ -214,7 +214,7 @@ function ServiceBody({ service, onOpenService }: { service: Detail; onOpenServic
 }
 
 /**
- * 오른쪽 칸의 「Work」 묶음(§14 · 시안 F1-SpaceDetail `.rs`) — 머리 끝에 수, 이 Service에 이은 Work마다 📁 이름과 끝의 상태 표시 하나(사이드바 Work
+ * 오른쪽 칸의 「작업공간」 묶음(§14 · 시안 F1-SpaceDetail `.rs`) — 머리 끝에 수, 이 Service에 이은 Work마다 📁 이름과 끝의 상태 표시 하나(사이드바 Work
  * 줄과 같은 것 — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호 · `workMark`). 누르면 그 Work 화면이다. 없으면 「아직 없음」.
  */
 function ServiceWorks({ slug }: { slug: string }) {
@@ -224,9 +224,9 @@ function ServiceWorks({ slug }: { slug: string }) {
   const linked = serviceWorks(works, slug);
   return (
     // 앞 묶음과 1px 선으로 가르고 위아래 16이다(시안 `.rs` — 첫 묶음만 선 없이 위 4). 머리 끝의 수는 머리와 같은 글자다(`.rl .end`).
-    <section aria-label="Work" className="border-t border-separator-soft py-4">
+    <section aria-label="작업공간" className="border-t border-separator-soft py-4">
       <h2 className="mb-2 flex items-center text-sm text-fg-secondary">
-        Work
+        작업공간
         {linked.length > 0 && <span className="ml-auto">{linked.length}</span>}
       </h2>
       {linked.length === 0 ? (

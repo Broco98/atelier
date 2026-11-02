@@ -66,7 +66,7 @@ const PROJECT_ADD_CHOICES: readonly ProjectAddAnswer[] = ["init", "root", "as-is
 
 /** 카드 갈래마다 한 줄 — 차례는 카드가 더해진 차례다(v1 티켓 30 · 32 · 03 티켓 08 · 12). */
 const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
-  // Work 만들기 제안(v1 티켓 30) — 「✓ Work 만들기 · api-server · fix/refund-api」 · 「→ Work 없이 계속함」.
+  // Work 만들기 제안(v1 티켓 30) — 「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」.
   work: {
     tool: "mcp__atelier-thread__propose_work",
     choice: "work-choice",
@@ -82,11 +82,11 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
         toolCallId: at.toolCallId,
       };
     },
-    waiting: "Work 만들기 답을 기다려요",
-    status: (card) => `Work 만들기 · ${card.title}`,
-    next: () => "Work 만들기",
+    waiting: "작업공간 만들기 답을 기다려요",
+    status: (card) => `작업공간 만들기 · ${card.title}`,
+    next: () => "작업공간 만들기",
   },
-  // Project 고치기 시작(v1 티켓 32 — Work에 없는 Project면 묻는다) — 「web-app을 이 Work에 붙임」 · 「… 읽기만 하기로 함」 · 「… 고치지 않기로 함」.
+  // Project 고치기 시작(v1 티켓 32 — Work에 없는 Project면 묻는다) — 「web-app을 이 작업공간에 붙임」 · 「… 읽기만 하기로 함」 · 「… 고치지 않기로 함」.
   project: {
     tool: "mcp__atelier-thread__start_editing",
     choice: "project-choice",
@@ -98,8 +98,8 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
       project: text(payload.project) ?? "",
       toolCallId: at.toolCallId,
     }),
-    waiting: "Work 밖 Project 답을 기다려요",
-    status: (card) => `Work 밖 Project · ${card.name}`,
+    waiting: "작업공간 밖 Project 답을 기다려요",
+    status: (card) => `작업공간 밖 Project · ${card.name}`,
     next: (card) => `${card.name} 고치기`,
   },
   // Service 붙이기(03 티켓 08 — 「묻지 않음」이 아니면 묻는다) — 「✓ 어느 Service에서 할까요? · 결제 서비스」.

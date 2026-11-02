@@ -27,7 +27,7 @@ describe("결과 카드", () => {
   it("기록의 설정 줄 넷이 시안의 글 그대로 선다 — Service 고침만 「관계 보기」다", () => {
     expect(drawn().map(text)).toEqual([
       "Project를 추가했어요 — landing-page ~/MyProjects/landing-page · git 레포 · 기준 브랜치 main 열기",
-      "web-app의 기준 브랜치를 main으로 바꿨어요 새 Work부터 main에서 갈라져요 열기",
+      "web-app의 기준 브랜치를 main으로 바꿨어요 새 작업공간부터 main에서 갈라져요 열기",
       "결제 서비스에 backoffice를 넣었어요 Project 3 · 함께 쓰는 Service 1 관계 보기",
       "Service를 만들었어요 — 정산 api-server · ~/.atelier/services/정산.md 열기",
     ]);

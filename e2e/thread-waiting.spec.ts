@@ -11,7 +11,7 @@ import type { ThreadView } from "@/features/thread/types";
 // 여기는 기록 줄 이벤트가 수 · 목록을 바꾸고 키가 주소를 옮기는 한 바퀴다. 부른 셸이 없는 자리라 마지막 Thread 다음은 처음으로 돈다.
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Work에 이은 Thread에서 Host가 Work 밖 Project를 고치려 해 물은 턴(`thread-project`),
-// Work 없는 Thread에서 파일 쓰기를 매번 묻기로 물은 턴(`thread-permission`), 다 읽은 「새 Thread 두 턴」(`thread-two-turns`). 기다리기 시작한
+// Work 없는 Thread에서 파일 쓰기를 매번 묻기로 물은 턴(`thread-permission`), 다 읽은 「새 채팅 두 턴」(`thread-two-turns`). 기다리기 시작한
 // 때(물음 줄의 시각)가 차례다 — Project 물음이 승인 물음보다 1초 먼저다.
 //
 // 「내 차례」는 한때 맨 위 「전체 | 내 차례」 마디의 칸이었다 — 02 티켓 04가 마디를 걷어 위 줄(새 Thread · 내 차례 · Library)의 한 행이
@@ -77,7 +77,7 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
   await expect(줄제목들(page)).toHaveText([제목(inWork), 제목(loose)]);
   await expect(줄제목들(page).locator('[data-mark="mine"]')).toHaveText(["내 차례", "내 차례"]);
   await expect(사이드바(page).locator("[data-worklist]")).toHaveCount(0);
-  await expect(사이드바(page).getByRole("region", { name: "Thread", exact: true })).toHaveCount(0);
+  await expect(사이드바(page).getByRole("region", { name: "채팅", exact: true })).toHaveCount(0);
 
   // ⌘J — 가장 오래 기다린 Thread, 그다음, 그리고 부른 셸이 없으니 처음으로 돈다.
   for (const view of [inWork, loose, inWork]) {
@@ -87,8 +87,8 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
 
   // 답하면 그 Thread가 차례에서 빠지고 수가 준다 — 다음 ⌘J는 남은 Thread다.
   await page
-    .getByRole("group", { name: "Host가 이 Work에 없는 Project를 고치려고 해요", exact: true })
-    .getByRole("button", { name: `${ASK.project}을 이 Work에 붙이고 고치기`, exact: true })
+    .getByRole("group", { name: "Host가 이 작업공간에 없는 Project를 고치려고 해요", exact: true })
+    .getByRole("button", { name: `${ASK.project}을 이 작업공간에 붙이고 고치기`, exact: true })
     .click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_project", "thread")).map(({ args }) => args.thread))
@@ -106,12 +106,12 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
     .toEqual([loose.id]);
   await streamLines(page, loose.id, [ANSWERED]);
   await expect(위줄(page, "내 차례")).toHaveAttribute("aria-pressed", "true");
-  await expect(내차례(page)).toHaveText("지금은 나를 기다리는 Thread가 없어요");
+  await expect(내차례(page)).toHaveText("지금은 나를 기다리는 채팅이 없어요");
 
   // 「내 차례」를 다시 누르면 끄고, Work 묶음과 Thread 묶음이 다시 선다(「전체」 칸은 없다).
   await 위줄(page, "내 차례").click();
   await expect(위줄(page, "내 차례")).toHaveAttribute("aria-pressed", "false");
   await expect(사이드바(page).locator("[data-worklist]")).toBeVisible();
-  await expect(사이드바(page).getByRole("region", { name: "Thread", exact: true })).toBeVisible();
+  await expect(사이드바(page).getByRole("region", { name: "채팅", exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

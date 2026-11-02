@@ -1232,7 +1232,7 @@ export const 포커스자리 = (page: Page): Promise<포커스자리 | null> =>
               : el.closest('[data-slot="card"], main')
                 ? "본문"
                 : "그 밖";
-    // 글자는 보조 기술이 읽는 것만 — `aria-hidden` 글자(「새 Thread」 끝의 ⌘N 같은)는 뺀다.
+    // 글자는 보조 기술이 읽는 것만 — `aria-hidden` 글자(「새 채팅」 끝의 ⌘N 같은)는 뺀다.
     const 글 = el.cloneNode(true) as HTMLElement;
     for (const hidden of 글.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
     const 이름 = (el.getAttribute("aria-label") ?? 글.textContent ?? "").trim();
@@ -1593,7 +1593,7 @@ export const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
 export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
 
 /** 주인 잃은 셸 토스트의 문구(프로세스 스펙 S45). */
-export const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
+export const ownerlessText = (count: number) => `아카이브된 작업공간의 셸 ${count}개에 아직 도는 것이 있어요`;
 
 /** spec 레이아웃 편집기의 주소 — 레이아웃은 하나라 고정 경로다(ui-refresh 결정 23). */
 export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/edit";

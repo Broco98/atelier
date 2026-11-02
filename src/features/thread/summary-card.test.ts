@@ -305,7 +305,7 @@ describe("소스의 Project — 읽는 범위(03 §7)", () => {
   });
 
   it("Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저 서고, 그 뒤에 범위의 Project가 「읽기만」으로 선다", () => {
-    // 범위는 worktree에서 일하는 Project를 이미 뺐다(§7 규칙 4) — worktree가 없는 Work의 Project(web-app)는 범위가 「Work」로 싣는다.
+    // 범위는 worktree에서 일하는 Project를 이미 뺐다(§7 규칙 4) — worktree가 없는 Work의 Project(web-app)는 범위가 「작업공간」으로 싣는다.
     expect(sourceProjects(scope(["backoffice", "all"], ["web-app", "work"]), work(["api-server"]))).toEqual([
       { project: "api-server", editing: true },
       { project: "backoffice", editing: false },

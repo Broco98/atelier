@@ -187,7 +187,7 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
 pub fn reading_scope_of(data_root: &Path, thread: Option<&str>, work: Option<&str>, service: Option<&str>) -> Result<ReadingScope> {
     let works = crate::paths::works_in(data_root);
     if thread.is_some() && (work.is_some() || service.is_some()) {
-        return Err(crate::Error::Validation("읽는 범위는 Thread 하나이거나 입력창의 Work · Service다 — 둘을 함께 주지 않는다".to_owned()));
+        return Err(crate::Error::Validation("읽는 범위는 채팅 하나이거나 입력창의 작업공간 · Service다 — 둘을 함께 주지 않는다".to_owned()));
     }
     if let Some(thread) = thread {
         let file = crate::threads::read_thread(data_root, thread)?;

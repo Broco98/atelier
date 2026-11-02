@@ -177,7 +177,7 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
 
   // 분할로 들어오면 패널이 접혀 있다(결정 88) — 머리 줄의 패널 토글이 「펼치기」인 것이 그 모습이다. 누르면 이름이
   // 「접기」로 바뀌어(ui-refresh 결정 9) 이 이름의 버튼이 없어진다.
-  const opener = page.getByRole("button", { name: "작업 패널 펼치기" });
+  const opener = page.getByRole("button", { name: "작업공간 패널 펼치기" });
   await expect(opener).toBeVisible();
   await opener.click();
   await expect(opener).toHaveCount(0);
@@ -338,7 +338,7 @@ test("분할 중에 문서를 골라도 분할이 남는다", async ({ page }) =
   await page.goto(`/works/${pinnedWork.slug}?split=lr`);
 
   // 분할로 들어오면 패널이 접혀 있다(결정 88). 트리를 보려면 사람이 다시 연다.
-  await page.getByRole("button", { name: "작업 패널 펼치기" }).click();
+  await page.getByRole("button", { name: "작업공간 패널 펼치기" }).click();
   await page.getByRole("button", { name: pinnedWork.specFiles[0], exact: true }).click();
 
   await expect(page).toHaveURL(/file=/);
@@ -611,7 +611,7 @@ test("분할 중 트리에서 연 파일이 묶음 열에 서고, 다시 누르�
   const files = page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name: "files", exact: true });
   await files.click();
   await expect(files).toHaveAttribute("aria-pressed", "true");
-  const row = page.getByRole("region", { name: "작업 패널", exact: true }).getByRole("button", { name: "MD README.md", exact: true });
+  const row = page.getByRole("region", { name: "작업공간 패널", exact: true }).getByRole("button", { name: "MD README.md", exact: true });
   await row.click();
 
   await expect(page).toHaveURL(/split=lr/);

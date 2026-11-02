@@ -129,7 +129,7 @@ pub(crate) fn create_thread_at(
         effort: thread.effort,
         ..blank_thread()
     };
-    crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "Thread를")?;
+    crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "채팅을")?;
     let mut log = RecordLog::open(&dir.join(RECORD_FILE))?;
     let first = log.append(kind, payload)?;
     Ok(CreatedThread { id, log, first, file })
@@ -165,7 +165,7 @@ fn claim_id(threads: &Path, at: DateTime<FixedOffset>) -> Result<(String, PathBu
 /// (slug와 같은 규칙, `slug.rs`의 `is_safe_slug`).
 pub fn thread_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
     if !crate::slug::is_safe_slug(id) {
-        return Err(crate::Error::Validation(format!("Thread id가 아닙니다: {id:?}")));
+        return Err(crate::Error::Validation(format!("채팅 id가 아닙니다: {id:?}")));
     }
     Ok(crate::paths::threads_in(data_root).join(id))
 }
@@ -186,7 +186,7 @@ pub fn read_thread(data_root: &Path, id: &str) -> Result<ThreadFile> {
 }
 
 fn not_found(id: &str) -> crate::Error {
-    std::io::Error::new(std::io::ErrorKind::NotFound, format!("Thread를 찾지 못했습니다: {id}")).into()
+    std::io::Error::new(std::io::ErrorKind::NotFound, format!("채팅을 찾지 못했습니다: {id}")).into()
 }
 
 /// `thread.json`을 읽어 고쳐 쓰고, 고친 값을 돌려준다. tmp에 쓴 뒤 rename한다.
@@ -213,7 +213,7 @@ pub fn update_thread(data_root: &Path, id: &str, change: impl FnOnce(&mut Thread
         }
     };
     change(&mut thread);
-    crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &thread, "Thread를")?;
+    crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &thread, "채팅을")?;
     Ok(thread)
 }
 

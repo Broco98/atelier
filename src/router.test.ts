@@ -149,16 +149,16 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it("`/?work=<slug>`도 새 Thread다 — 요약 카드 「…」의 「이 Work에서 새 Thread」가 그 Work를 고른 채 연다(v1 티켓 34)", async () => {
+  it("`/?work=<slug>`도 새 Thread다 — 요약 카드 「…」의 「이 작업공간에서 새 채팅」이 그 Work를 고른 채 연다(v1 티켓 34)", async () => {
     const { router } = setup(["/?work=refund-api"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/");
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ work: "refund-api" });
   });
 
-  // 02 구현 스펙 S5 · 티켓 05 — 사이드바 Work 묶음 머리의 +가 「새 Work」 칩을 고른 새 Thread를 연다(결정.md 조정자 「05 · 「새 Work」+」).
+  // 02 구현 스펙 S5 · 티켓 05 — 사이드바 Work 묶음 머리의 +가 「새 작업공간」 칩을 고른 새 Thread를 연다(결정.md 조정자 「05 · 「새 작업공간」+」).
   // 주소의 모양은 검증기의 타입이 든다 — +가 부르는 것과 같은 `navigate`라, 그 갈래가 없으면 타입 검사(L0)가 이 줄에서 빨개진다.
-  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 Work 칩을 「새 Work」로 둔 채 연다", async () => {
+  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 Work 칩을 「새 작업공간」으로 둔 채 연다", async () => {
     const { router } = setup(["/threads/20261010-100000"]);
     await router.load();
     await router.navigate({ to: "/", search: { new: "work" } });
@@ -166,9 +166,9 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work" });
   });
 
-  // 03 구현 스펙 §5 · 티켓 02 — 「Work 없이 대화」 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「대화로 만들기」(S16)는 둘을 함께
+  // 03 구현 스펙 §5 · 티켓 02 — 「작업공간 없이 대화」 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「대화로 만들기」(S16)는 둘을 함께
   // 싣는다 — Work 없는 새 대화의 입력창에 맡기는 말을 넣는다(보내지 않는다).
-  it("`/?new=thread&say=…`도 새 Thread다 — 「Work 없이 대화」와 입력 글이 함께 선다", async () => {
+  it("`/?new=thread&say=…`도 새 Thread다 — 「작업공간 없이 대화」와 입력 글이 함께 선다", async () => {
     const { router } = setup(["/threads/20261010-100000"]);
     await router.load();
     await router.navigate({ to: "/", search: { new: "thread", say: "결제 서비스 Service를 만들고 싶어" } });
@@ -179,7 +179,7 @@ describe("진입은 새 Thread다", () => {
     });
   });
 
-  // 03 구현 스펙 §5 · §14 · 티켓 06 — Service 씨앗(`?service=<slug>`)을 더했다. Service 상세의 「새 Work」(`?new=work&service=`)와 「대화로 고치기」
+  // 03 구현 스펙 §5 · §14 · 티켓 06 — Service 씨앗(`?service=<slug>`)을 더했다. Service 상세의 「작업공간 만들기」(`?new=work&service=`)와 「대화로 고치기」
   // (`?new=thread&service=&say=`)가 그 Service를 Service 칩에 고른 채 연다.
   it("`/?new=work&service=…`도 새 Thread다 — Service 칩이 그 Service를 고른 채 선다", async () => {
     const { router } = setup(["/services/결제-서비스"]);
@@ -197,8 +197,8 @@ describe("진입은 새 Thread다", () => {
   });
 });
 
-// 02 구현 스펙 §4 · 스토리 10 · 02 코드 리뷰 S1. **⌘N과 위 줄 「새 Thread」는 씨앗 없는 새 Thread로 간다** — 씨앗을 단 새 Thread(`/?work=<slug>` ·
-// `/?new=work`)도 `/`라, 한때 「`/`에 있으면 아무것도 하지 않는다」는 가드가 거기서 키를 삼켜 「새 Work」 칩이 그대로 남았다. 가드와 그 행의
+// 02 구현 스펙 §4 · 스토리 10 · 02 코드 리뷰 S1. **⌘N과 위 줄 「새 채팅」은 씨앗 없는 새 Thread로 간다** — 씨앗을 단 새 Thread(`/?work=<slug>` ·
+// `/?new=work`)도 `/`라, 한때 「`/`에 있으면 아무것도 하지 않는다」는 가드가 거기서 키를 삼켜 「새 작업공간」 칩이 그대로 남았다. 가드와 그 행의
 // 고른 모양이 같은 물음(`isBlankNewThread`)을 읽는다 — 고른 모양이면 눌러도 그 자리이고, 아니면 누르면 간다.
 describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
   const blankAt = async (entry: string) => {

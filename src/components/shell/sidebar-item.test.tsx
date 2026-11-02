@@ -35,14 +35,14 @@ describe("위 줄 「내 차례」 행", () => {
   });
 });
 
-describe("위 줄 「새 Thread」 행", () => {
+describe("위 줄 「새 채팅」 행", () => {
   it("끝에 ⌘N이 옅게 서되 이름에 들지 않고, 키는 `aria-keyshortcuts`가 말한다", () => {
     const html = render(<NewThreadRow active={false} stop={false} onClick={() => {}} />);
     // 단축키 표의 글자다(`hotkeys.json`의 `newThread`) — 보이는 글은 이름 뒤에 그 글자가 선다.
-    expect(textOf(buttonOf(html))).toBe("새 Thread ⌘N");
+    expect(textOf(buttonOf(html))).toBe("새 채팅 ⌘N");
     expect(html).toMatch(/<span aria-hidden="true"[^>]*>⌘N<\/span>/);
     expect(openTagOf(html)).toContain('aria-keyshortcuts="Meta+N"');
-    // 「새 Thread」는 누르면 가는 행이다 — 누름 상태를 말하지 않는다.
+    // 「새 채팅」은 누르면 가는 행이다 — 누름 상태를 말하지 않는다.
     expect(openTagOf(html)).not.toContain("aria-pressed");
   });
 });

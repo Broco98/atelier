@@ -78,7 +78,7 @@ function ProjectRemoveDialog({
               ))}
             </AlertDialogDescription>
             {dialog.works.length > 0 && (
-              <ul aria-label="이 Project를 고치는 Work" className="flex flex-col overflow-hidden rounded-xl border border-border">
+              <ul aria-label="이 Project를 고치는 작업공간" className="flex flex-col overflow-hidden rounded-xl border border-border">
                 {dialog.works.map((work) => (
                   <li key={work.slug} className="border-t-[0.5px] border-separator first:border-t-0">
                     {/* 누르면 그 Work로 — 창을 닫고 간다(스토리 132). 그 Work의 마지막 화면이다(`workDoor`, 03 코드 리뷰 A1). */}

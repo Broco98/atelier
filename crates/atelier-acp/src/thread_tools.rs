@@ -127,10 +127,10 @@ const SET_SERVICE_GUIDE: &str = "이 Thread의 Service를 붙이고 · 바꾸고
 const PROPOSE_WORK_GUIDE: &str = "이 Thread의 일을 Work로 묶자고 사람에게 묻는다. 일이 커지면 부른다 — 여러 파일을 고치거나 \
 며칠 이어질 일이다. 먼저 list_projects로 고칠 Project와 그 저장소의 브랜치 이름 규칙(localBranches)을 본다.\n\n\
 사람의 입력창 자리에 Work 만들기 카드가 서고, 사람이 고를 때까지 기다린다. 사람은 카드에서 Project를 넣고 빼고 브랜치 이름을 고친 \
-뒤 「Work 만들기」나 「Work 없이 계속」을 고른다.\n\
+뒤 「작업공간 만들기」나 「작업공간 없이 계속」을 고른다.\n\
 - 만들면 이 Thread가 그 Work에 이어지고, 결과로 Work의 spec 폴더(설계 문서를 쓰는 곳) · 브랜치 · Project가 온다. 사람이 고친 \
 것이 정본이다. worktree는 아직 없다 — Project는 처음 고칠 때까지 읽기만이다.\n\
-- 「Work 없이 계속」이면 Work 없이 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.\n\n\
+- 「작업공간 없이 계속」이면 Work 없이 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.\n\n\
 Work는 사람이 설치한 atelier MCP의 atelier_start_work가 아니라 이 도구로 만든다 — 그래야 이 Thread가 그 Work에 이어진다. 이미 \
 Work에 이어진 Thread에서는 부를 수 없다(get_work로 그 Work를 읽는다).";
 

@@ -84,7 +84,7 @@ const CHANGES: ProjectChanges[] = [
 ];
 
 // 작은 카드가 열린 동안 대화 열이 카드를 비켜날 자리가 있는 창(시안 1440) — 좁은 창에서는 열이 판 왼쪽에서 멈추고 카드가 덮는다(그 갈래는
-// 흐름 「Thread 화면」이 잰다).
+// 흐름 「채팅 화면」이 잰다).
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const 흐름 = (page: Page) => page.getByRole("main");

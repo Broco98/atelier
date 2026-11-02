@@ -301,10 +301,10 @@ describe("사이드바의 차례가 시안의 차례다", () => {
     expect(sidebar.slice(menuAt)).toContain("navItems.map(");
   });
 
-  // 02 코드 리뷰 S1 — 「새 Thread」 행의 고른 모양은 앱 셸의 가드와 **같은 물음**이다(`isBlankNewThread`): 고른 모양이면 눌러도 그 자리이고,
-  // 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서는 고른 모양이 아니라 누르면 씨앗 없는 첫 화면으로 간다. 경로만 보면 「+로 연 새 Work」에서
+  // 02 코드 리뷰 S1 — 「새 채팅」 행의 고른 모양은 앱 셸의 가드와 **같은 물음**이다(`isBlankNewThread`): 고른 모양이면 눌러도 그 자리이고,
+  // 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서는 고른 모양이 아니라 누르면 씨앗 없는 첫 화면으로 간다. 경로만 보면 「+로 연 새 작업공간」에서
   // 이 행이 고른 줄로 서서, 눌러도 아무 일이 없을 것처럼 보인다. 값은 `router.test.ts`가 진짜 라우터의 주소로 잰다.
-  it("「새 Thread」 행은 씨앗 없는 새 Thread에서만 고른 줄이다 — 앱 셸의 가드와 같은 물음이다", () => {
+  it("「새 채팅」 행은 씨앗 없는 새 Thread에서만 고른 줄이다 — 앱 셸의 가드와 같은 물음이다", () => {
     const at = sidebar.indexOf("function NewThreadItem(");
     const item = sidebar.slice(at, sidebar.indexOf("\n}\n", at));
     expect(item).toContain("useRouterState({ select: (state) => isBlankNewThread(state.location) })");

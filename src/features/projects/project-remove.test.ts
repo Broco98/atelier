@@ -41,7 +41,7 @@ describe("제거 창", () => {
     expect(removeDialog(usage({ services: [service("결제 서비스")], works }))).toEqual({
       kind: "blocked",
       title: "아직 제거할 수 없어요",
-      lines: ["진행 중인 Work 2개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요."],
+      lines: ["진행 중인 작업공간 2개가 이 Project를 고치고 있어요. 작업공간을 끝내 보관하면 제거할 수 있어요."],
       works,
       cancel: "닫기",
       canRemove: false,

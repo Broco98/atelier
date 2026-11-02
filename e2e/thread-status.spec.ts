@@ -11,7 +11,7 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 // 기록 줄 이벤트가 사이드바 줄을 바꾸고 그 줄을 열면 읽은 자리가 나가는 한 바퀴다.
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — 「파일 쓰기를 매번 묻기로 물어 허락받은 턴」(`thread-permission`), 진짜 claude 2.1.309가
-// 「알아서」로 돌던 명령을 사람이 멈춘 턴(`thread-stopped`, v1 티켓 44), 「새 Thread 두 턴」(`thread-two-turns`)의 둘째 턴이 도는 중에 앱이
+// 「알아서」로 돌던 명령을 사람이 멈춘 턴(`thread-stopped`, v1 티켓 44), 「새 채팅 두 턴」(`thread-two-turns`)의 둘째 턴이 도는 중에 앱이
 // 꺼진 꼴. 제목은 기록에서 읽는다.
 //
 // **상태는 줄 오른쪽 끝의 표시 하나다**(02 티켓 05 · 구현 스펙 §4 · S11 — `StatusMark`). 내 차례는 「내 차례」 알약, 작업 중은 스피너(그림
@@ -41,7 +41,7 @@ const cut = threadOf("20261024-090300", twoTurns, { live: false, lastSeq: CUT })
 
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 const 줄 = (page: Page, view: ThreadView) =>
-  사이드바(page).getByRole("region", { name: "Thread", exact: true }).getByRole("button").filter({ hasText: view.title });
+  사이드바(page).getByRole("region", { name: "채팅", exact: true }).getByRole("button").filter({ hasText: view.title });
 /** 그 줄 끝의 상태 표시(`data-mark`) — 줄마다 많아야 하나다. */
 const 표시 = (page: Page, view: ThreadView) => 줄(page, view).locator("[data-mark]");
 
@@ -99,7 +99,7 @@ test("사이드바 Thread 줄이 내 차례 · 작업 중 · 새 결과 · 실�
 
   // 다른 곳에 있는 동안 턴이 끝난다 — 새 결과다. 끝에 파란 점(그림 이름 「새 결과」)이 서고, 제목은 굵어지지 않는다(굵은 제목이 표시
   // 하나로 모였다).
-  await 사이드바(page).getByRole("button", { name: "새 Thread", exact: true }).click();
+  await 사이드바(page).getByRole("button", { name: "새 채팅", exact: true }).click();
   await expect(page).toHaveURL("/");
   await streamLines(page, asking.id, linesAfter(permission, ANSWERED.seq));
   await expect(줄(page, asking)).toHaveAttribute("data-status", "new");

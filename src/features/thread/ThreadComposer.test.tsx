@@ -54,9 +54,9 @@ describe("트레이의 자리", () => {
 
   it("첫 화면(입력창이 가운데)에서는 상자 아래에 서고, 고르는 Work 칩이 든다 — 입력창 안에는 없다", () => {
     const markup = composer({
-      tray: { at: "below", work: { kind: "pick", label: "새 Work", link: { kind: "new-work" }, onPick: none } },
+      tray: { at: "below", work: { kind: "pick", label: "새 작업공간", link: { kind: "new-work" }, onPick: none } },
     });
-    expect(trayOf(markup)).toContain('aria-label="어디서 일할지 새 Work"');
+    expect(trayOf(markup)).toContain('aria-label="어디서 일할지 새 작업공간"');
     expect(formOf(markup)).not.toContain("어디서 일할지");
     expect(sideOf(markup)).toBe("below");
   });
@@ -66,7 +66,7 @@ describe("트레이의 자리", () => {
       tray: { at: "above", work: { kind: "locked", locked: lockedWork(null, null, false), onOpen: none } },
     });
     expect(sideOf(markup)).toBe("above");
-    expect(trayOf(markup)).toContain("Work 없이 대화");
+    expect(trayOf(markup)).toContain("작업공간 없이 대화");
     expect(trayOf(markup)).not.toContain("어디서 일할지");
     expect(trayOf(markup)).not.toContain("aria-haspopup");
   });
@@ -85,14 +85,14 @@ describe("잠긴 Work 칩(03 §5 · S3)", () => {
     const tray = trayOf(
       composer({ tray: { at: "above", work: { kind: "locked", locked: lockedWork("refund-api", "환불 API 버그 수정", false), onOpen: none } } }),
     );
-    expect(tray).toContain('aria-label="Work로 가기: 환불 API 버그 수정"');
+    expect(tray).toContain('aria-label="작업공간으로 가기: 환불 API 버그 수정"');
     expect(tray).toContain("환불 API 버그 수정");
   });
 
-  it("Work 없는 Thread · 아직 Work가 없는 「새 Work」 Thread는 보이기만 한다 — 누를 것이 없다", () => {
+  it("Work 없는 Thread · 아직 Work가 없는 「새 작업공간」 Thread는 보이기만 한다 — 누를 것이 없다", () => {
     for (const [locked, text] of [
-      [lockedWork(null, null, false), "Work 없이 대화"],
-      [lockedWork(null, null, true), "새 Work"],
+      [lockedWork(null, null, false), "작업공간 없이 대화"],
+      [lockedWork(null, null, true), "새 작업공간"],
     ] as const) {
       const tray = trayOf(composer({ tray: { at: "above", work: { kind: "locked", locked, onOpen: none } } })) ?? "";
       expect(tray, text).toContain(text);

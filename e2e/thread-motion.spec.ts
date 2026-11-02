@@ -22,7 +22,7 @@ const ANSWERED = lineOf(permission, "permission", "answered");
 const view: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(permission)[0].text, live: true, lastSeq: ASKED.seq - 1 };
 
 /**
- * 들어서는 움직임의 이름들(`index.css` 「Thread의 움직임」) — 이미 있던 것이 다시 서면 이 가운데 하나가 걸린다. 보내기 원의 글리프
+ * 들어서는 움직임의 이름들(`index.css` 「채팅의 움직임」) — 이미 있던 것이 다시 서면 이 가운데 하나가 걸린다. 보내기 원의 글리프
  * 모핑(`morph-in` · `morph-out`, 02 티켓 10)은 글리프가 바뀔 때만 걸린다.
  */
 const 들어섬 = ["word-in", "chip-in", "card-rise", "row-in", "morph-in", "morph-out", "jump-in"];

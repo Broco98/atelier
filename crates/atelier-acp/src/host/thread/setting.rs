@@ -493,7 +493,7 @@ fn project_edited(before: &Project, after: &Project) -> Option<(String, String)>
     if before.base_branch != after.base_branch {
         let base = &after.base_branch;
         let title = format!("{}의 기준 브랜치를 {base}{} 바꿨어요", after.name, particle(base, "으로", "로"));
-        changed.push(("기준 브랜치", title, format!("새 Work부터 {base}에서 갈라져요")));
+        changed.push(("기준 브랜치", title, format!("새 작업공간부터 {base}에서 갈라져요")));
     }
     match changed.as_slice() {
         [] => None,

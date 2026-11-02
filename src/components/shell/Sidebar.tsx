@@ -53,7 +53,7 @@ interface SidebarProps {
   open: boolean;
   /** 폭(끌어서 바꾸고 기억한다) — 앱 셸이 쥐고 뿌리에 싣는다(`--sidebar-width` · `--sidebar-min` — 머리 줄의 이름 자리도 같은 값을 읽는다). */
   size: ResizableWidth;
-  /** 「새 Thread」(v1 티켓 05) — 앱 셸이 씨앗 없는 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
+  /** 「새 채팅」(v1 티켓 05) — 앱 셸이 씨앗 없는 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
   /** 지금 선 화면이 사람 메뉴의 어느 곳인가 — 그 밖(Thread · Works)이면 `null`이다. */
   activeKey: NavKey | null;
@@ -152,7 +152,7 @@ function Sidebar({
   const [threadFilter, setThreadFilter] = useState<ThreadListFilter>("all");
   // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
   // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
-  // nav에는 위 줄 둘 — 「새 Thread」 · 「내 차례」가 선다(v1 티켓 07 · 02 스펙 §4 — 지금 화면들은 사람 메뉴로 갔다).
+  // nav에는 위 줄 둘 — 「새 채팅」 · 「내 차례」가 선다(v1 티켓 07 · 02 스펙 §4 — 지금 화면들은 사람 메뉴로 갔다).
   const navRoving = useRoving([NEW_THREAD_KEY, MINE_KEY], null);
   const settingsRoving = useRoving(
     SETTINGS_ITEMS.map((item) => item.key),
@@ -188,7 +188,7 @@ function Sidebar({
       {/* **위 줄이 맨 위다**(02 구현 스펙 §4 · 스토리 9 — 시안 F1-Home · Diff-Frame 「제안」). 거르기 머리(옛 「전체 | 내 차례」 마디 — v1
           티켓 42)를 걷고 「내 차례」가 위 줄의 행이 됐다. 그 행을 켜면 Work 묶음과 Thread 묶음 대신 나를 기다리는 Thread만 기다린 순서로
           선다 — 위 줄 · 알림 띠는 그대로다(셸의 띠와 Thread 목록은 섞지 않는다 — v1 구현 스펙 §17). 켜진 동안은 그 행 하나가 고른 줄이다
-          — 「새 Thread」는 주소가 그쪽이어도 고른 모양을 내려놓는다(위 줄이 「지금 무엇을 보나」 하나를 답한다).
+          — 「새 채팅」은 주소가 그쪽이어도 고른 모양을 내려놓는다(위 줄이 「지금 무엇을 보나」 하나를 답한다).
 
           거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다. 지금 화면들로 가는 줄(옛 main nav 넷)은 사람
           메뉴로 갔다(S27). */}
@@ -350,7 +350,7 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 읽혔다. 대비를 재는 e2e는 처음 만나는 불투명한 바탕(앱 셸 뿌리의 크롬)에서 잰다(하네스 `글자대비`).
     //
     // **가로만 자른다**(`overflow-x-clip`) — 폭이 줄며 내용이 잘리는 것은 가로다. 세로까지 자르면(한때 `overflow-hidden`) 위 2에 선
-    // 「새 Thread」의 링(바깥 4)이 사이드바 위끝에서 잘린다(03 티켓 13a — e2e `primitives`의 링 잘림 검사). `clip`은 한 축만 잘라도
+    // 「새 채팅」의 링(바깥 4)이 사이드바 위끝에서 잘린다(03 티켓 13a — e2e `primitives`의 링 잘림 검사). `clip`은 한 축만 잘라도
     // 다른 축이 `visible`로 남는다(`hidden`은 다른 축도 구르는 상자로 만든다).
     "relative overflow-x-clip",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
@@ -600,7 +600,7 @@ function useNow(ticking: boolean): number {
 // 메뉴의 `Terminal` 줄로, Processes 메타는 사람 줄 오른쪽으로 옮겼다가 메뉴의 `Processes` 줄 끝으로 갔다(02 스펙 S12 · `PersonMenu`).
 
 /**
- * 「새 Thread」 항목(v1 티켓 05) — **씨앗 없는 새 Thread**(`/`)에 서 있으면 켜진다. 앱 셸의 가드와 같은 물음이다(`isBlankNewThread`): 켜져
+ * 「새 채팅」 항목(v1 티켓 05) — **씨앗 없는 새 Thread**(`/`)에 서 있으면 켜진다. 앱 셸의 가드와 같은 물음이다(`isBlankNewThread`): 켜져
  * 있으면 눌러도 그 자리이고, 씨앗을 단 새 Thread(+로 연 `/?new=work` · 이 Work에서 새 Thread `/?work=<slug>`)에서는 켜지지 않아 누르면
  * 씨앗이 걷힌 첫 화면으로 간다(02 코드 리뷰 S1 — 한때 경로만 봐서 거기서도 켜진 채 눌러도 아무 일이 없었다).
  *

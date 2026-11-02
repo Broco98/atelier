@@ -278,7 +278,7 @@ impl ThreadLog {
     /// 적힌 줄 전부 — 파일에서 다시 읽는다(쓰는 잠금을 쥐지 않는다). 쓰는 중인 끝 줄은 읽지 않는다.
     pub(crate) fn lines(&self) -> Result<Vec<RecordLine>, RecordError> {
         atelier_core::read_thread_records(&self.root, &self.thread, 0)
-            .map_err(|error| format!("Thread 기록을 읽지 못했습니다: {} — {error}", self.thread))
+            .map_err(|error| format!("채팅 기록을 읽지 못했습니다: {} — {error}", self.thread))
     }
 
     pub(crate) fn last_seq(&self) -> u64 {
@@ -290,7 +290,7 @@ impl ThreadLog {
         let mut log = self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let line = log
             .append(kind, payload)
-            .map_err(|error| format!("Thread 기록을 쓰지 못했습니다: {} — {error}", self.thread))?;
+            .map_err(|error| format!("채팅 기록을 쓰지 못했습니다: {} — {error}", self.thread))?;
         (self.emit)(HostEvent::ThreadRecord { thread: self.thread.clone(), line: line.clone() });
         Ok(line)
     }

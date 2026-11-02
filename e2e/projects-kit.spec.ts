@@ -239,7 +239,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(이름칸(page)).toHaveAttribute("placeholder", "예: web-app");
     await expect(추가창(page).getByRole("button", { name: "이 컴퓨터의 폴더 추가", exact: true })).toBeVisible();
     await expect(
-      추가창(page).getByText("Project는 git 레포 하나예요. Service로 묶으면 Agent가 함께 읽고, Work는 고칠 Project에만 worktree를 만들어요.", {
+      추가창(page).getByText("Project는 git 레포 하나예요. Service로 묶으면 Agent가 함께 읽고, 작업공간은 고칠 Project에만 worktree를 만들어요.", {
         exact: true,
       }),
     ).toBeVisible();
@@ -545,8 +545,8 @@ test.describe("제거 창", () => {
     await 제거를묻는다(page, billing);
 
     const 창 = 제거창(page, "아직 제거할 수 없어요");
-    await expect(창).toHaveAccessibleDescription("진행 중인 Work 2개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요.");
-    const 줄들 = 창.getByRole("list", { name: "이 Project를 고치는 Work", exact: true }).getByRole("link");
+    await expect(창).toHaveAccessibleDescription("진행 중인 작업공간 2개가 이 Project를 고치고 있어요. 작업공간을 끝내 보관하면 제거할 수 있어요.");
+    const 줄들 = 창.getByRole("list", { name: "이 Project를 고치는 작업공간", exact: true }).getByRole("link");
     await expect(줄들).toHaveText([`${고치는[0].title}fix/refund-api`, 고치는[1].title]);
     // 첫 포커스는 「닫기」 — 할 수 있는 일이 그것뿐이다.
     await expect(창.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
@@ -567,7 +567,7 @@ test.describe("제거 창", () => {
     await 제거창(page, "목록에서 제거할까요?").getByRole("button", { name: "제거", exact: true }).click();
 
     const 막힘 = 제거창(page, "아직 제거할 수 없어요");
-    await expect(막힘).toHaveAccessibleDescription("진행 중인 Work 1개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요.");
+    await expect(막힘).toHaveAccessibleDescription("진행 중인 작업공간 1개가 이 Project를 고치고 있어요. 작업공간을 끝내 보관하면 제거할 수 있어요.");
     await expect(막힘.getByRole("link")).toHaveText([붙인.title]);
     await expect(화면토스트(page, `목록에서 뺐어요 — ${ledger.name}`)).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
@@ -613,7 +613,7 @@ test.describe("상세 조각", () => {
 
     const 안내 = 본문칸.getByRole("status");
     await expect(안내).toHaveText(
-      `Project를 찾을 수 없어요${playground.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 Work는 고칠 수 없어요.재설정`,
+      `Project를 찾을 수 없어요${playground.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 작업공간은 고칠 수 없어요.재설정`,
     );
     const 정보 = 본문칸.getByRole("complementary", { name: "Project 정보", exact: true });
     await expect(정보.getByRole("combobox", { name: "기준 브랜치", exact: true })).toBeDisabled();

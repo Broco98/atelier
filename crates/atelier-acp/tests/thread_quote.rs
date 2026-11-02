@@ -90,7 +90,7 @@ fn 인용이_spec_폴더_밖을_가리키거나_work_없는_thread면_보내기_
     sandbox.wait_thread_kind(&loose, "turn-end", 1);
     let before = sandbox.thread_record(&loose).len();
     let refused = host.send_to_thread_quoting(&loose, "이것도", &[], Some(&picked())).unwrap_err();
-    assert_eq!(refused.to_string(), "Work에 이어지지 않은 Thread에는 인용을 붙일 수 없습니다");
+    assert_eq!(refused.to_string(), "작업공간에 이어지지 않은 채팅에는 인용을 붙일 수 없습니다");
     assert_eq!(sandbox.thread_record(&loose).len(), before, "기록에 아무것도 적지 않는다");
 
     host.shut_down();

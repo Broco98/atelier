@@ -48,11 +48,11 @@ test("문서 h1 · h2 · 본문이 DS heading-lg · heading-sm · chat-body다",
 });
 
 test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
-  // 사이드바 위 줄 「새 Thread」 끝의 단축키 「⌘N」 — DS 「글자」 표의 `text-xs`(행 끝 글자)다(02 티켓 04). 늘 서는 12px 글자라 이 단계를
+  // 사이드바 위 줄 「새 채팅」 끝의 단축키 「⌘N」 — DS 「글자」 표의 `text-xs`(행 끝 글자)다(02 티켓 04). 늘 서는 12px 글자라 이 단계를
   // 잰다. 한때 Work 줄의 이은 Thread 수를 쟀는데 02 티켓 05가 그 수를 호버 카드로 옮겼다(S9).
   await installFixtureBackend(page);
   await page.goto("/projects");
-  const 단축키 = page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).getByText("⌘N", { exact: true });
+  const 단축키 = page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }).getByText("⌘N", { exact: true });
   await expect(단축키).toBeVisible();
 
   expect(await 글자(단축키)).toEqual({ size: "12px", line: "18px", weight: "400", tracking: "0.3px" });

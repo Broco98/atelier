@@ -9,7 +9,7 @@ import type { ThreadView } from "@/features/thread/types";
 // 접히며, 다시 켜도 같은 Thread가 기록으로 이어진다**(v1 티켓 05 · 구현 스펙 §13 · §14 · S26). 펼칠 것 없이 답만 한 턴에는 구분선이
 // 서지 않는다(02 구현 스펙 §8 · 02 티켓 09 — 이 판의 「도구 없는 턴의 구분선 사라짐」은 여기서 한 번 잰다).
 //
-// 엔진은 목업 백엔드의 답과 이 검사가 쏘는 기록 줄 이벤트로 선다. 줄은 L1이 축복한 「새 Thread 두 턴」(`thread-two-turns.jsonl`)을
+// 엔진은 목업 백엔드의 답과 이 검사가 쏘는 기록 줄 이벤트로 선다. 줄은 L1이 축복한 「새 채팅 두 턴」(`thread-two-turns.jsonl`)을
 // 그대로 쏜다(`thread-records.ts`) — 첫 턴은 답만 하고(「hello from turn」, 4초), 둘째 턴은 `Write` · `Read` · `Bash` 뒤에 「5」로 답한다
 // (10초). 보낼 글도 그 기록의 `sent` 줄에서 읽는다 — 화면에 선 말과 엔진이 적은 말이 같은 사실이다(스토리 137).
 
@@ -48,7 +48,7 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page).toHaveURL("/");
 
-  // 첫 말 — 새 Thread가 연결 방식(기억이 없으면 「새 Work」 — 03 §5 S2)과 함께 선다. 칩에서 고르지 않은 정도 · 모델 · 생각 깊이 ·
+  // 첫 말 — 새 Thread가 연결 방식(기억이 없으면 「새 작업공간」 — 03 §5 S2)과 함께 선다. 칩에서 고르지 않은 정도 · 모델 · 생각 깊이 ·
   // Service는 `null`이다(받는 Agent의 값 · 이은 Work의 Service를 건드리지 않음). 새 id의 주소로 갈아 선다(히스토리를 늘리지 않는다).
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
@@ -125,7 +125,7 @@ test("다시 켜면 앱은 새 Thread로 열리고, 사이드바의 그 Thread�
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
   // 사이드바 Thread 줄 — 제목 한 줄이다(02 티켓 05 — 마지막 말 미리보기는 걷었다).
-  const 줄 = page.getByRole("region", { name: "Thread", exact: true }).getByRole("button").filter({ hasText: first.text });
+  const 줄 = page.getByRole("region", { name: "채팅", exact: true }).getByRole("button").filter({ hasText: first.text });
   await expect(줄).toHaveText(first.text);
   await 줄.click();
   await expect(page).toHaveURL(`/threads/${reopened.id}`);

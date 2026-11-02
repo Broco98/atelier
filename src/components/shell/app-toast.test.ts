@@ -27,7 +27,7 @@ describe("토스트의 수명", () => {
     let ran = 0;
     const options = toastOptionsOf({
       id: "ownerless-shells",
-      text: "아카이브된 작업의 셸 2개에 아직 도는 것이 있어요",
+      text: "아카이브된 작업공간의 셸 2개에 아직 도는 것이 있어요",
       actions: [{ label: "모두 닫기", run: () => (ran += 1) }],
     });
     expect(options.id).toBe("ownerless-shells");
@@ -44,7 +44,7 @@ describe("토스트의 수명", () => {
     const ran: string[] = [];
     const options = toastOptionsOf({
       id: "ownerless",
-      text: "아카이브된 작업의 셸 1개에 아직 도는 것이 있어요",
+      text: "아카이브된 작업공간의 셸 1개에 아직 도는 것이 있어요",
       actions: [
         { label: "모두 닫기", run: () => ran.push("모두 닫기") },
         { label: "보기", run: () => ran.push("보기") },

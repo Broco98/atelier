@@ -48,7 +48,7 @@ const WORKS_EXPANDED_KEY = "sidebar-works-expanded";
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 //
-// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드). 줄 오른쪽 끝에 그 Thread들
+// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「채팅 목록과 아바타」 보드). 줄 오른쪽 끝에 그 Thread들
 // 가운데 가장 센 상태 표시 하나가 서고(02 티켓 05 · S8 — Thread 수는 호버 카드로, S9), ▸로 펴면 그 Thread들이 줄 아래에 한 줄씩 들여 선다
 // (펼침은 기억한다). 줄을 누르면 그 Work에서 가장 최근의 Thread로 가고, 없으면 그
 // Work를 고른 새 Thread로 간다 — 옛 작업 화면(`/works/<slug>`)은 ⌘K에서 연다. 지금 보는 Thread가 접힌 Work 안에 있으면 그 Work 줄이
