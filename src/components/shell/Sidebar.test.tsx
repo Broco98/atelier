@@ -227,8 +227,7 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
     expect(body).toContain('open ? "w-(--sidebar-width) min-w-(--sidebar-min)"');
     // 문자열 리터럴 안의 클래스만 센다 — 주석이 「`shrink-0`이 없다」고 적어 둔다.
     expect(body).not.toMatch(/"[^"\n]*\bshrink-0\b[^"\n]*"/);
-    // 그 변수는 폭 훅이 받은 최소 폭 하나에서 온다 — 수를 여기 적지 않는다. 폭은 앱 셸이 쥐고 뿌리에 싣는다(머리 줄의 이름 자리도
-    // 사이드바 끝을 따라 같은 값을 읽는다 — 02 구현 스펙 §3).
+    // 그 변수는 폭 훅이 받은 최소 폭 하나에서 온다 — 수를 여기 적지 않는다. 폭은 앱 셸이 쥐고 뿌리에 싣는다.
     expect(read("AppShell.tsx")).toContain('"--sidebar-min": `${sidebarSize.min}px`');
     expect(sidebar).not.toContain("useResizableWidth(");
   });

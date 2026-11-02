@@ -9,12 +9,15 @@ import { useArchivedWork } from "./SummaryCard";
 // **Thread 화면의 머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · Diff-Frame 「머리 줄」 줄) — 화면은 이 조각들을 머리 줄
 // 화면 자리로 보낸다(`PlainFrame`의 `lead` · `end` — 포털, `ShellHead`). Codex 크롬 줄 그대로다.
 //
-//   [폴더 · Work 이름 ›](이은 Work만)  Thread 이름(14/500 · 그 자리에서 바꾼다) ············  […] [요약 고정]
-//   [흐린 Service /](Work 없는 Thread에 Service가 있으면 — 03 §10)
+//   │ [폴더 · Work 이름 ›](이은 Work만)  Thread 이름(14/500 · 그 자리에서 바꾼다) […] ············  [요약 고정]
+//   │ [흐린 Service /](Work 없는 Thread에 Service가 있으면 — 03 §10)
+//   └ 셸 컨트롤 뒤 세로선(`ShellHead`)
 //
+// - **탭 줄이 없는 채팅의 머리다**(restart 02a-7 · 시안 MainLoose · Shell 「어디에 서나」) — 작업공간 밖 채팅과 읽기만 되는 채팅만 이 머리를
+//   쓴다. 작업공간의 채팅은 탭이 이름과 ⋯를 맡는다(02a-5).
+// - **「…」는 이름 바로 뒤다**(시안 `.ra-crumb` 뒤 `.ra-tbtn`) — 한때 오른쪽 끝 요약 고정 토글 앞이었다.
 // - **걷은 것**: 옛 Work 알약(브랜치) · v1 카드 토글(요약 고정 토글이 그
 //   자리를 잇는다).
-// - **시안의 머리 줄 Work 탭은 짓지 않는다** — Work 화면 몫이다(스펙 §6). 머리 줄에는 이름만 선다.
 
 /**
  * 머리 줄 Thread 이름 앞의 Work(02 §6 · S13) — 폴더 14 · Work 이름 14/400 `fg-titlebar`(#898a8b), 그 뒤 「›」. Work 이름이 누르는 자리이고
@@ -94,7 +97,7 @@ export function ThreadMenuItems({ rename }: { rename: (() => void) | null }) {
 }
 
 /**
- * 머리 줄 오른쪽의 「…」(02 §6 · 시안 Screen-Live — 28 · `radius-lg`, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
+ * 머리 줄 이름 바로 뒤의 「…」(02 §6 · restart 02a-7 시안 MainLoose — 28 · `radius-lg`, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
  * 연다. 열린 동안은 hover와 같은 면이다. 여닫이 · 줄 옮기기 · Esc · 바깥 누르기는 메뉴 부품이 한다(work 메뉴 ⋯와 같다). 모양은 머리 줄의
  * 아이콘 단추 한 벌이다(`ShellHead`의 `headButton` — 공용 틀 화면의 ⋯ · 분할 · 패널 토글도 같은 것을 쓴다).
  *

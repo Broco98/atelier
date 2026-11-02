@@ -71,10 +71,10 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   본문 카드에 들 것만 건넨다(`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
 // - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
-//   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 오른쪽
-//   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
-//   다 없다, S23). 옛 Work 알약(브랜치)은 걷었다(S14). 시안의 머리 줄 Work
-//   탭은 짓지 않는다 — Work 화면 몫이다.
+//   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 이름 바로
+//   뒤에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)가, 오른쪽 끝에 요약 고정 토글이 선다(restart 02a-7 · 시안 MainLoose 창
+//   머리 — 한때 「…」도 오른쪽 끝이었다. Work 없는 Thread에도 선다 — 첫 말 전의 새 Thread에는 둘 다 없다, S23). 옛 Work 알약(브랜치)은
+//   걷었다(S14). 이 화면은 탭 줄이 없는 채팅 — 작업공간 밖 채팅과 읽기만 되는 채팅 — 의 자리다(restart 02a-4 · 02a-7).
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
 //   아래 28에 입력창과 트레이뿐이다. 시안의 Service 제안 줄은 짓지 않는다(03
 //   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 범위를
@@ -328,14 +328,9 @@ export function ThreadScreen({ thread }: { thread: string }) {
         ) : undefined
       }
       title={{ name, rename: renameName }}
-      end={
-        view ? (
-          <>
-            <ThreadMenu key={thread} rename={renameName?.onStart ?? null} />
-            {card.hasCard && <SummaryToggle open={card.cardOpen} onToggle={card.toggle} />}
-          </>
-        ) : undefined
-      }
+      // ⋯는 제목 바로 뒤다(restart 02a-7 · 시안 MainLoose 창 머리) — 오른쪽 끝에는 요약 단추만 선다.
+      menu={view ? <ThreadMenu key={thread} rename={renameName?.onStart ?? null} /> : undefined}
+      end={card.hasCard ? <SummaryToggle open={card.cardOpen} onToggle={card.toggle} /> : undefined}
     >
       <ThreadPane thread={thread} view={view} error={error} isPending={isPending} card={card} problem={problem} />
     </PlainFrame>
@@ -630,8 +625,10 @@ function ThreadBody({
   };
 
   const last = model.turns[model.turns.length - 1];
-  // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」).
-  const changes = last ? changedFiles(last) : null;
+  // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」). 작업공간 밖
+  // 채팅에는 서지 않는다 — 열 곳(넓힌 카드)이 없다(restart 02a-7 · 구현 스펙 「02a — 작업공간 밖 채팅」). 대화의 문서 카드도 같은 까닭으로
+  // 서지 않는다 — 문서를 가릴 spec 폴더가 없어 `DocPlace`가 비어 있다(`ThreadPane`의 `docPlace`).
+  const changes = last && view.work !== null ? changedFiles(last) : null;
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
   const askingCwd = asking ? view.cwd : null;

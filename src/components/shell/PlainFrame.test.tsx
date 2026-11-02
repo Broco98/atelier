@@ -39,12 +39,18 @@ describe("Thread 화면의 틀", () => {
 
 describe("머리 줄에 보내는 것", () => {
   // Codex 머리 줄(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽에 (이은 Work면 흐린 「폴더 · 작업공간 이름 ›」 뒤에) 이름이, 오른쪽 끝에 할 일이 선다.
-  // 그릇은 셸의 화면 자리이고(포털 — `ShellHead.test.tsx`), 여기서는 보내는 차례를 잰다.
-  it("이름 앞(lead) → 이름 → 오른쪽 끝(end) 차례다", () => {
+  // 이름의 ⋯는 이름 바로 뒤다(restart 02a-7 · 시안 MainLoose 창 머리) — 오른쪽 끝 묶음에 들지 않는다. 그릇은 셸의 화면 자리이고(포털 —
+  // `ShellHead.test.tsx`), 여기서는 보내는 차례를 잰다.
+  it("이름 앞(lead) → 이름 → 이름의 ⋯(menu) → 오른쪽 끝(end) 차례다", () => {
     const html = renderToStaticMarkup(
-      <PlainHead lead={<button type="button">작업공간 열기</button>} title={{ name: "구현" }} end={<button type="button">요약 고정</button>} />,
+      <PlainHead
+        lead={<button type="button">작업공간 열기</button>}
+        title={{ name: "구현" }}
+        menu={<button type="button">채팅 메뉴</button>}
+        end={<button type="button">요약 고정</button>}
+      />,
     );
-    const at = ["작업공간 열기", "구현", "요약 고정"].map((text) => html.indexOf(text));
+    const at = ["작업공간 열기", "구현", "채팅 메뉴", "data-head-actions", "요약 고정"].map((text) => html.indexOf(text));
     expect(at.every((one) => one > -1)).toBe(true);
     expect(at).toEqual([...at].sort((a, b) => a - b));
   });
