@@ -36,12 +36,16 @@ export function useProcessSnapshot() {
 }
 
 /**
- * **다시 읽기**(restart 03-9 · 스토리 132) — 박자(2초)를 기다리지 않고 **곧바로 한 번** 스냅샷을 묻는다. 묻는 중인 박자가 있으면 그것을 버리고
- * 새로 묻는다(`cancelRefetch` — 멎은 물음을 기다리지 않는다). 실패하면 쿼리에 실패가 앉아 멈춤이 남는다(`beatOf`). 화면의 쿼리를 그대로
- * 다시 묻는다 — 보는 쪽을 하나 더 세우면 박자가 하나 더 걸린다(`useProcessSnapshot`의 머리말).
+ * **다시 읽기**(restart 03-9 · 스토리 132) — 박자(2초)를 기다리지 않고 **곧바로 한 번** 스냅샷을 묻는다. 묻는 중인 물음이 있으면 그것을 버리고
+ * 새로 묻는다 — 멎은 물음(답이 안 오는 IPC)을 기다리면 영영 안 풀린다. `cancelRefetch`는 값이 있는 쿼리의 물음만 버리므로(react-query
+ * `Query.fetch`) 값이 한 번도 안 온 채 멎은 첫 물음은 먼저 거둔다(`cancelQueries` — 쿼리를 그 물음 전으로 되돌린다). 버린 물음의 답이 늦게
+ * 와도 쿼리에 안 앉는다. 실패하면 쿼리에 실패가 앉아 멈춤이 남는다(`beatOf`). 화면의 쿼리를 그대로 다시 묻는다 — 보는 쪽을 하나 더 세우면
+ * 박자가 하나 더 걸린다(`useProcessSnapshot`의 머리말).
  */
 export function readSnapshotNow(client: QueryClient): Promise<void> {
-  return client.refetchQueries({ queryKey: snapshotQuery.queryKey, exact: true }, { cancelRefetch: true });
+  const filters = { queryKey: snapshotQuery.queryKey, exact: true };
+  void client.cancelQueries(filters);
+  return client.refetchQueries(filters, { cancelRefetch: true });
 }
 
 /**

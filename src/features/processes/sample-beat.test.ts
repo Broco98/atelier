@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { systemNote, unreadNote } from "./breakdown";
 import { readSnapshotNow, snapshotQuery } from "./hooks";
@@ -62,10 +62,46 @@ describe("머리의 표본 상태", () => {
     expect(beatOf(상태(잰장, 시각(14, 3, 0), 시각(14, 2, 58)), 연때).kind).toBe("live");
   });
 
+  // **답이 안 오는 물음도 값이 멎은 것이다**(스펙 「값이 멎으면 멈춤 상태가 선다」) — 묻는 중인 물음이 안 끝나면 react-query의 박자가 그
+  // 물음에 묶여 실패도 새 값도 안 온다. 묻는 중이고 마지막 값이 6초를 넘었으면 멈춤이다. 몇 초째인지는 마지막 값부터 지금까지다(화면의 시계 —
+  // 묻는 동안만 돈다). 물음이 끝났으면 시계를 안 읽는다 — 창이 가려져 박자가 쉬는 것은 멈춤이 아니다.
+  it("묻는 중인 물음이 안 끝나고 마지막 값이 6초를 넘으면 멈춤이다", () => {
+    const 받은때 = 시각(14, 2, 32);
+    const 묻는중 = { ...상태(잰장, 받은때), fetchStatus: "fetching" as const };
+    const 물은때 = 받은때 + 2_000;
+    expect(beatOf(묻는중, 연때, { askedAt: 물은때, now: 받은때 + 5_900 }).kind).toBe("live");
+    expect(beatOf(묻는중, 연때, { askedAt: 물은때, now: 받은때 + 6_100 })).toEqual({
+      kind: "stalled",
+      quietMs: 6_100,
+      measuredAt: 시각(14, 2, 31),
+    });
+    expect(beatText(beatOf(묻는중, 연때, { askedAt: 물은때, now: 받은때 + 9_000 }))).toBe("9초째 새 값이 없어요");
+    expect(beatOf({ ...묻는중, fetchStatus: "idle" }, 연때, { askedAt: 물은때, now: 받은때 + 60_000 }).kind, "쉬는 박자를 멈춤으로 셌다").toBe(
+      "live",
+    );
+  });
+
+  // **막 나간 물음은 멈춤이 아니다** — 화면을 떠났다 돌아오면 캐시의 1분 전 값이 선 채 새 물음이 나간다. 그 물음이 한 박자(2초)를 넘겨야
+  // 멈춤이다 — 아니면 화면을 열 때마다 「60초째 새 값이 없어요」가 번쩍인다.
+  it("오래된 값이 선 채 막 나간 물음은 한 박자를 넘겨야 멈춤이다", () => {
+    const 받은때 = 시각(14, 2, 32);
+    const 옛값 = { ...상태(잰장, 받은때), fetchStatus: "fetching" as const };
+    const 다시연때 = 받은때 + 60_000;
+    expect(beatOf(옛값, 다시연때, { askedAt: 다시연때, now: 다시연때 + 1_500 }).kind).toBe("live");
+    expect(beatOf(옛값, 다시연때, { askedAt: 다시연때, now: 다시연때 + 2_500 })).toEqual({
+      kind: "stalled",
+      quietMs: 62_500,
+      measuredAt: 시각(14, 2, 31),
+    });
+  });
+
   // 값이 한 번도 안 왔으면 화면을 연 때부터 센다 — 첫 스냅샷부터 실패하는 앱도 멈춤을 말한다.
   it("값이 한 번도 없이 실패가 이어지면 화면을 연 때부터 센다", () => {
     expect(beatOf(상태(undefined, 0, 연때 + 4_000), 연때)).toEqual({ kind: "waiting" });
     expect(beatOf(상태(undefined, 0, 연때 + 8_000), 연때)).toEqual({ kind: "stalled", quietMs: 8_000, measuredAt: null });
+    const 첫물음 = { ...상태(undefined, 0), fetchStatus: "fetching" as const };
+    expect(beatOf(첫물음, 연때, { askedAt: 연때, now: 연때 + 5_000 })).toEqual({ kind: "waiting" });
+    expect(beatOf(첫물음, 연때, { askedAt: 연때, now: 연때 + 6_500 })).toEqual({ kind: "stalled", quietMs: 6_500, measuredAt: null });
   });
 });
 
@@ -117,6 +153,14 @@ describe("시스템 · 못 읽음 줄의 못 읽은 수", () => {
   });
 });
 
+/** 화면처럼 스냅샷 쿼리를 보는 쪽 하나 — 박자는 안 건다(시험이 시계를 쥔다). 돌려준 함수로 내려간다. */
+function 화면이본다(client: QueryClient): () => void {
+  return new QueryObserver(client, { ...snapshotQuery, refetchInterval: false }).subscribe(() => undefined);
+}
+
+/** 영영 안 끝나는 물음 — 멎은 IPC. */
+const 멎은물음 = () => new Promise<never>(() => undefined);
+
 describe("다시 읽기", () => {
   // **누르면 곧바로 한 번 잰다**(스토리 132 · AC) — 박자(2초)를 기다리지 않고 스냅샷을 한 번 묻는다. 실패하면 멈춤이 남고, 값이 오면 풀린다.
   // 재는 것은 IPC에 간 물음과 쿼리의 상태에서 읽은 머리다.
@@ -139,5 +183,50 @@ describe("다시 읽기", () => {
     await readSnapshotNow(client);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(머리()).toEqual({ kind: "live", measuredAt: MEASURED_AT });
+  });
+
+  // **답이 안 오는 물음도 멈춤이고, 다시 읽기는 그 물음을 버리고 새로 묻는다**(조정자 지시 · 스펙 「값이 멎으면 멈춤 상태가 선다」). 박자가 멎은
+  // 물음에 묶여 있으니 새 물음을 보내지 않으면 영영 안 풀린다. 새 물음이 값을 가져오면 풀린다.
+  it("묻는 중인 물음이 안 끝나면 6초 뒤 멈춤이고, 다시 읽기가 새 물음을 보내고 성공하면 풀린다", async () => {
+    const client = new QueryClient();
+    invoke.mockResolvedValue(잰장);
+    const 내려간다 = 화면이본다(client);
+    await vi.waitFor(() => expect(client.getQueryState(snapshotQuery.queryKey)?.data).toBeDefined());
+    const 받은때 = client.getQueryState(snapshotQuery.queryKey)!.dataUpdatedAt;
+
+    invoke.mockClear();
+    invoke.mockImplementation(멎은물음);
+    void client.refetchQueries({ queryKey: snapshotQuery.queryKey });
+    const 물은때 = Date.now();
+    const 머리 = (now: number) => beatOf(client.getQueryState(snapshotQuery.queryKey)!, 받은때, { askedAt: 물은때, now });
+    expect(invoke, "박자의 물음이 나갔다").toHaveBeenCalledTimes(1);
+    expect(머리(받은때 + 4_000).kind, "6초가 안 됐다").toBe("live");
+    expect(머리(받은때 + 6_500).kind, "물음이 6초 넘게 안 끝났는데 멈춤이 아니다").toBe("stalled");
+
+    invoke.mockClear();
+    invoke.mockResolvedValue({ ...잰장, measuredAt: 시각(14, 2, 41) });
+    const pressed = readSnapshotNow(client);
+    expect(invoke.mock.calls, "다시 읽기가 멎은 물음을 기다리고 새로 묻지 않았다").toEqual([["processes_snapshot"]]);
+    await pressed;
+    expect(머리(받은때 + 9_000)).toEqual({ kind: "live", measuredAt: 시각(14, 2, 41) });
+    내려간다();
+  });
+
+  // 값이 한 번도 안 온 채 첫 물음이 멎었어도 다시 읽기는 새로 묻는다 — react-query는 값이 없는 쿼리의 묻는 중인 물음을 `cancelRefetch`로 버리지 않는다.
+  it("값 없이 첫 물음이 멎었어도 다시 읽기는 새로 묻는다", async () => {
+    const client = new QueryClient();
+    invoke.mockReset();
+    invoke.mockImplementation(멎은물음);
+    const 내려간다 = 화면이본다(client);
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    expect(client.getQueryState(snapshotQuery.queryKey)?.fetchStatus).toBe("fetching");
+
+    invoke.mockClear();
+    invoke.mockResolvedValue(snapshotFixture());
+    const pressed = readSnapshotNow(client);
+    expect(invoke.mock.calls, "다시 읽기가 멎은 첫 물음을 기다린다").toEqual([["processes_snapshot"]]);
+    await pressed;
+    expect(beatOf(client.getQueryState(snapshotQuery.queryKey)!, 0)).toEqual({ kind: "live", measuredAt: MEASURED_AT });
+    내려간다();
   });
 });
