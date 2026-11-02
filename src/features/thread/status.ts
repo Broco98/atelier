@@ -125,8 +125,7 @@ function lastEnded(turns: readonly Turn[]): Turn | null {
 /** 승인이 기다리는 것 — 명령, 파일 이름, 그 밖의 대상(주소 · MCP 도구), 계획이면 물음이다. 승인 카드와 같은 값에서 읽는다. */
 function waitingFor(request: PendingPermission): string {
   const view = describeApproval(request, "", null);
-  if (view.command) return view.command;
-  if (view.kind === "edit") return baseName(view.diff?.path ?? view.subject ?? "");
+  if (view.kind === "edit") return baseName(view.subject ?? "");
   return view.subject ?? view.title;
 }
 

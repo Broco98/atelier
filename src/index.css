@@ -541,9 +541,11 @@
      row          10         12.5         사이드바 줄(05)
      summary      12         15           한때 요약 카드(07) — restart 02b-8 뒤로 카드는 앱 틀의 `card` 8이라 읽는 자리가 없다
      tray         15          —           첫 화면 입력창 밑 트레이의 아래 두 모서리(10) — 시안에서도 둥근 15 하나다
-     slot         20         25           입력창 자리 카드 — 승인 · 계획 · 질문 · Work 만들기 · Project 붙이기(11)
-     prompt       22          —           입력창(10) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는 round」). DS `composer`(28)는
-                                          입력창 자리 카드 · 알림 카드 · 읽기만 줄 · 끌어 놓기 자리도 읽어 그대로 둔다
+     slot         20         25           한때 입력창 자리 카드(11) — restart 02b-5 뒤로 그 카드들은 시안 Cards `.ra-ask`의 `prompt` 22라 읽는
+                                          자리가 없다
+     prompt       22          —           입력창(10)과 입력창 자리 카드(restart 02b-5 — 승인 · 계획 · 질문 · 로그인 · Runtime 없음, 둥글기만
+                                          맞춘 작업공간 제안 · Project · 도구 질문) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는
+                                          round」 · Cards `.ra-ask`)
    - 둥근 네모 값은 아래 `@theme`에, superellipse 값은 그 뒤 `@supports (corner-shape: superellipse(1.5))`의 `:root`가 다시 세운다(층 밖
      선언이 `@theme`의 층 안 선언을 이긴다). **superellipse 단계를 쓰는 자리는 `corner-superellipse`를 함께 단다** — 모서리 모양도 같은 창에서만
      바뀐다. 짝이 빠지면 그 창에서 둥근 네모가 25% 커진다(`type-scale.test.ts`가 짝을 잰다).
@@ -2212,6 +2214,11 @@ body[data-palette-open] [data-scrollbar] {
 @utility diff-overflow-fade {
     -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent);
     mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent);
+}
+/* 승인 카드의 줄어든 diff(Cards 보드 `.ra-mdiff` — 132까지)가 넘치면 아래 30%가 옅어진다(restart 02b-5). */
+@utility ask-diff-fade {
+    -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+    mask-image: linear-gradient(180deg, #000 70%, transparent);
 }
 @utility diff-bar-deleted {
     background: repeating-linear-gradient(135deg, var(--diff-deleted) 0 1px, transparent 1px 2.8px);

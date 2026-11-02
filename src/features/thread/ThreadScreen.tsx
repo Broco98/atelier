@@ -23,7 +23,6 @@ import ApprovalCard from "./ApprovalCard";
 import { ArrivalScope, Arriving } from "./arrival";
 import QuestionCard from "./QuestionCard";
 import { threadApi } from "./api";
-import { placeOf } from "./approval";
 import { askTurn, nextOf } from "./asks";
 import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
@@ -94,8 +93,8 @@ import { startLink, startPlaceholder } from "./work-chip";
 //   기다리는 동안)에는 트레이가 없다(시안 Thread 보드) — 어디서 일하는지는 탭 줄 · 창 머리가 말하고, 범위는 대화로 바꾼다(Service 도구).
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 원 안에 점 셋이 선다(02
-//   §10 — 바닥에서는 원이 없다, States 보드 · restart 02b-1). 흐름은 위 32 · 아래 28을 띄운다(Thread 보드 `.ra-col`). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
-//   자리는 그 Session의 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
+//   §10 — 바닥에서는 원이 없다, States 보드 · restart 02b-1). 흐름은 위 32 · 아래 28을 띄운다(Thread 보드 `.ra-col`). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 사람의 답을 기다리는 카드가 선다(v1 티켓 24 ·
+//   restart 02b-5 — Cards 보드 `.ra-ask`). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
 //   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 선다.
@@ -894,9 +893,6 @@ function ThreadBody({
   // 카드를 세우지 않는다. 확인은 세션을 열 때 Host가 하고 이벤트로 알린다. 읽기만인 채팅에는 열 세션이 없다.
   const engine = useStore(threadEngineStore, (state) => engineOf(state, view.runtime));
   const guide = view.readOnly ? null : guideKind(engine, awaitingLogin(lines));
-  const { data: works } = useWorks();
-  const linked = view.work ? (works?.find((one) => one.slug === view.work) ?? null) : null;
-
   const last = model.turns[model.turns.length - 1];
   // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」). 작업공간 밖
   // 채팅에는 서지 않는다 — 열 곳(넓힌 카드)이 없다(restart 02a-7 · 구현 스펙 「02a — 작업공간 밖 채팅」). 대화의 문서 카드도 같은 까닭으로
@@ -1114,7 +1110,6 @@ function ThreadBody({
                         request={asking}
                         scope={view.work ? "work" : "thread"}
                         cwd={askingCwd}
-                        place={placeOf(askingCwd, linked)}
                         count={slot.count}
                         next={slot.next}
                       />

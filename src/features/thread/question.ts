@@ -8,7 +8,15 @@ import type { QuestionAnswer } from "./types";
 //
 // - **한 물음에 답은 하나다** — 하나만 고르는 물음은 고른 선택지 하나이거나 직접 쓴 말이다(나중 것이 앞의 것을 지운다). 여럿 고르는
 //   물음은 고른 이름들에 직접 쓴 말을 더해 쉼표로 잇는다 — claude의 질문 도구가 여럿 고른 답을 그 꼴로 읽는다.
-// - **모든 물음에 답해야 「답하기」가 선다** — 비운 물음을 남기려면 「나중에」다.
+// - **모든 물음에 답해야 「답하기」가 선다** — 비운 물음을 남기려면 「나중에」다. 물음 하나에 하나만 고르면 고르는 것이 곧 답이다(`answersAtOnce`).
+
+/**
+ * 고르는 것이 곧 답인가(Cards 보드 「질문」 · restart 02b-5) — 물음 하나에 하나만 고르면 선택지 알약을 누르는 순간 그 답이 간다(보드에 「답하기」가
+ * 없다). 여럿 고르는 물음이나 물음이 여럿이면 고른 뒤 「답하기」로 보낸다.
+ */
+export function answersAtOnce(questions: readonly AskedQuestion[]): boolean {
+  return questions.length === 1 && !questions[0].multiSelect;
+}
 
 /** 물음 하나에 사람이 한 것 — 고른 선택지의 자리들과 직접 쓴 말. */
 export interface QuestionPick {
