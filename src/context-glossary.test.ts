@@ -508,7 +508,7 @@ describe("말의 사전", () => {
   it("「요약 카드」가 등재돼 있고 「Work 카드」를 거부하며, Work 없는 Thread · 오른쪽 자리를 말한다", () => {
     expect(names).not.toContain("Work 카드");
     expect(refused).toEqual(expect.arrayContaining(["Work 카드", "Work 패널"]));
-    for (const piece of ["Work 없는 Thread면 결과물 · 소스만", "오른쪽 자리의 값이다", "「모두 보기」", "보관됨"]) {
+    for (const piece of ["Work 없는 Thread면 소스만", "오른쪽 자리의 값이다", "「모두 보기」", "보관됨"]) {
       expect(bodyOf("요약 카드"), piece).toContain(piece);
     }
     expect(bodyOf("Processes")).toContain("합계 카드");

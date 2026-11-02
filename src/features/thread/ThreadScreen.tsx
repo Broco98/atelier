@@ -109,12 +109,13 @@ import { startLink, startPlaceholder } from "./work-chip";
 //   첫 Session이 뜬다 — `?work=`로 열었으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
 //   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다.
 // - **요약 카드**(02 구현 스펙 §7 · Screen-Live — v1 Work 카드를 바꿨다, `SummaryCard`) — 판 오른쪽 위에 위 · 오른쪽 8 띄워 떠 있고 높이는
-//   내용만큼이다. Work에 이은 Thread는 머리 · 변경 사항 · 결과물 · 소스, 보관된 Work의 Thread는 같은 카드에 「보관됨」, Work 없는 Thread는
-//   결과물 · 소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 창 머리의 요약 단추(「요약 카드」)가 여닫고 머리 줄 Work 이름이 연다.
+//   내용만큼이다. Work에 이은 Thread는 머리 · 변경 사항 · 소스, 보관된 Work의 Thread는 같은 카드에 「보관됨」, Work 없는 Thread는
+//   소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 창 머리의 요약 단추(「요약 카드」)가 여닫고 머리 줄 Work 이름이 연다.
 //   **열림은 오른쪽 자리의 값이다**(restart 02a-9 · `right-place.ts`) — spec 패널과 한 자리를 나눠 쓰는 값 하나로, 작업공간의 채팅 탭은 작업공간
 //   화면이 작업공간마다, 이 화면은 채팅마다 쥔다. 처음 열면 닫혀 있다(SummarySheet 표 첫 줄 — 한때 Thread마다 이 컴퓨터에 적었고 처음엔 열려
-//   있었다, S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 왼쪽으로 비켜나고, 열고 닫을 때
-//   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 작업공간에서 새 채팅」은 그 작업공간의 새 채팅 탭이다(restart 02a-8).
+//   있었다, S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 앞에서 멈추도록 왼쪽으로 비켜나고(좁으면 열이 줄어든다), 열고 닫을 때
+//   패널 박자(500ms spring)로 옮겨 간다(`Beside`). 카드는 오른쪽 위 (4, −4) · .98에서 선다(`CardSlot`). 카드 머리 「…」의 「이 작업공간에서 새
+//   채팅」은 그 작업공간의 새 채팅 탭이다(restart 02a-8).
 //   작업공간의 새 채팅 탭에도 같은 카드와 넓힌 카드가 선다(restart 02a-11 · `WorkNewChat`) — 소스는 그 작업공간의 읽는 범위이고, 문서 인용은
 //   그 탭의 입력창으로 간다. 홈의 새 채팅에는 카드도 토글도 없다(02 S23).
 // - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드 — 02 §7 「넓힌 카드는 그대로다」) — 요약 카드의 줄 · 대화 속 문서 카드를
@@ -124,7 +125,8 @@ import { startLink, startPlaceholder } from "./work-chip";
 //   닫으면 넓힌 것도 걷힌다. 탭 줄이 없는 채팅(이 화면)에는 넓힌 카드가 없다 — 작은 카드만 쓴다(구현 스펙 「02a — 작업공간 밖 채팅」).
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 들어서며 움직인다(`ArrivalScope` — Thread를 열 때 이미 있던 줄은
 //   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오른다.
-//   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리는 사이드바와 같은 패널 박자로 옮겨 간다(`duration-panel` · `ease-panel`).
+//   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리 · 카드 높이 · 목록 폭은 패널 박자로 한 번에 옮겨 간다(`PANEL_MOTION` — 500ms spring, Motion
+//   「카드가 넓어진다」).
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
 //   결과」(줄 오른쪽 끝 파란 점 — 02 티켓 05)가 그것으로 걷힌다.
@@ -238,7 +240,8 @@ export function WorkNewChat({
           draftKey={draftKey}
           onStarted={onStarted}
           drops={shown}
-          beside={open}
+          // 넓힌 카드면 대화 자리가 이미 왼쪽 480이라 비킬 몫이 없다(보드 Main `beside: summaryShown && !wide`).
+          beside={open && opened === null}
           toasts={opened === null}
         />
       </ArrivalScope>
@@ -698,7 +701,8 @@ function ThreadPane({
           key={thread}
           view={view}
           problem={problem}
-          beside={cardOpen}
+          // 넓힌 카드면 대화 자리가 이미 왼쪽 480이라 비킬 몫이 없다(보드 Main `beside: summaryShown && !wide`).
+          beside={cardOpen && !expanded}
           toasts={!expanded}
           onShowChanges={card.onShowChanges}
           place={place}
@@ -730,6 +734,10 @@ function CardRoom({
   card: ReactNode;
   children: ReactNode;
 }) {
+  // 이 자리가 처음 그려진 뒤인가 — 그 뒤에 열린 카드만 들어선다(`CardSlot`). 처음 그림에 이미 열려 있던 카드(다른 채팅 탭에서 돌아옴 ·
+  // 첫 말로 새 채팅 탭이 채팅 탭이 됨)는 같은 카드가 자리를 옮겨 다시 선 것이라 움직이지 않는다(Motion 머리말).
+  const [settled, setSettled] = useState(false);
+  useEffect(() => setSettled(true), []);
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* 폭은 두 갈래 모두 적어 둔다. 폭이 늘 길이라야 넓어지고 접히는 동안 패널 박자로 옮겨 간다. */}
@@ -739,21 +747,37 @@ function CardRoom({
       >
         {children}
       </div>
-      {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
-          넓어지면 자리가 왼쪽 480까지 자라 카드가 그것을 채운다. 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이 굴러야
-          한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). */}
       {open && (
-        <div
-          className={cn(
-            "pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end",
-            PANEL_MOTION,
-            "transition-[left] motion-reduce:transition-none",
-          )}
-          style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
-        >
+        <CardSlot arrive={settled} expanded={expanded}>
           {card}
-        </div>
+        </CardSlot>
       )}
+    </div>
+  );
+}
+
+/**
+ * 카드 자리 — 위 · 오른쪽 · 아래 8(보드 `.ra-sumslot`). 작은 카드는 자리 폭(300)을 채우고 오른쪽 위에 내용만큼 서며(`items-end`), 넓어지면
+ * 자리가 왼쪽 480까지 자라 카드가 그것을 채운다(패널 박자 — 500ms spring). 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이
+ * 굴러야 한다. 카드는 흐름 · 입력창 위에 선다 — 대화 열은 카드를 비켜 줄어들어(`Beside`) 카드가 글을 덮지 않는다.
+ *
+ * **열릴 때 오른쪽 위 (4, −4) · 배율 .98에서 선다**(Motion 「요약 카드가 열린다」 — `summary-in`, 220ms `ease-enter-snappy`). 자리를 움직인다 —
+ * 카드가 그 오른쪽 위에 붙어 있어 같은 그림이고, 카드가 넓어지고 접혀도 자리는 그대로라 다시 돌지 않는다. 들어설지는 자리가 설 때
+ * 정한다(`arrive`). 닫을 때는 곧바로 걷힌다. 열리는 동안 spec 패널이 접혀 판이 넓어지면 자리는 판 오른쪽 끝을 따라간다.
+ */
+function CardSlot({ arrive, expanded, children }: { arrive: boolean; expanded: boolean; children: ReactNode }) {
+  const [arrived] = useState(arrive);
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end",
+        PANEL_MOTION,
+        "transition-[left] motion-reduce:transition-none",
+        arrived && "summary-in",
+      )}
+      style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
+    >
+      {children}
     </div>
   );
 }
@@ -795,25 +819,24 @@ const CARD_ROOM = "calc(var(--size-summary) + 8px)";
 const THREAD_BESIDE = "var(--size-thread-beside)";
 
 /**
- * 대화 열이 요약 카드를 비켜나는 칸(02 §7 · Screen-Live `.chat{padding-right:324px; transition: padding-right .22s cubic-bezier(.2,0,0,1)}`)
- * — 열(737)은 폭을 그대로 두고, 카드가 열려 있으면 오른쪽 몫(`--size-summary-room` 308)을 비운 남은 자리 가운데로 옮겨 간다. 그래서 열 ·
- * 입력창의 오른쪽 끝이 카드 왼쪽 끝 16 앞에서 멈춘다. 남은 자리가 열보다 좁으면(좁은 창) 열은 판 왼쪽 안쪽 여백(16)까지만 가고 카드가
- * 열의 끝을 덮는다 — 열이 줄지 않는다.
+ * 대화 열이 요약 카드를 비켜나는 칸(02 §7 · SummarySheet 규격 「대화가 비켜나는 몫」 · 보드 `.ra-threadroot[data-beside]`) — 작은 카드가 열려
+ * 있으면 오른쪽 몫(`--size-summary-room` 308)을 비운 남은 자리에 열(737)이 선다(넓힌 카드면 몫이 없다 — 대화 자리가 왼쪽 480이다).
+ * 그래서 열 · 입력창의 오른쪽 끝이 카드 왼쪽 끝 앞에서 멈춘다. **남은 자리가 열보다 좁으면(좁은 창) 열이 줄어든다** — 카드가 글을 덮지 않는다(한때 열은 줄지 않고 카드가 열의 끝을 덮었다).
  *
- * 셈은 빈 칸 둘이 든다: 왼쪽 빈 칸(자람 1 · 기본 0)과 오른쪽 빈 칸(자람 1 · 기본 = 몫 · 줄어듦 1) 사이에 열(줄지 않음)이 선다. 남는 자리는
- * 두 빈 칸이 반씩 나눠 열이 남은 자리 가운데에 서고, 모자라면 오른쪽 빈 칸만 줄어 열이 왼쪽 끝에 붙는다. 몫은 오른쪽 빈 칸의 기본
- * 길이(`flex-basis`)라 열고 닫을 때 패널 박자(220ms 감속 — `duration-panel` · `ease-panel`, 02 §12)로 미끄러지고, 동작 줄이기에서는
- * 곧바로 바뀐다.
+ * 셈은 빈 칸 둘이 든다: 왼쪽 빈 칸(자람 1 · 기본 0)과 오른쪽 빈 칸(자람 1 · 기본 = 몫 · 줄지 않음) 사이에 열(줄어듦 1)이 선다. 남는 자리는
+ * 두 빈 칸이 반씩 나눠 열이 남은 자리 가운데에 서고, 모자라면 열만 줄어든다(왼쪽 빈 칸은 이미 0이다). 몫은 오른쪽 빈 칸의 기본
+ * 길이(`flex-basis`)라 열고 닫을 때 패널 박자(500ms spring — `duration-panel-open` · `ease-spring`, SummarySheet 움직임 「대화가 비켜난다」)로
+ * 옮겨 간다 — 같은 때 spec 패널이 같은 박자로 접히며 몫을 내주므로 열이 제자리에 가깝게 남는다. 동작 줄이기에서는 곧바로 바뀐다.
  */
 function Beside({ open, children }: { open: boolean; children: ReactNode }) {
   return (
     <div className="flex">
       <span aria-hidden className="min-w-0 flex-1" />
-      <div className="flex w-full max-w-(--size-column) shrink-0 flex-col">{children}</div>
+      <div className="flex w-full max-w-(--size-column) min-w-0 flex-col">{children}</div>
       <span
         aria-hidden
         className={cn(
-          "min-w-0 grow transition-[flex-basis] duration-panel ease-panel motion-reduce:transition-none",
+          "shrink-0 grow transition-[flex-basis] duration-panel-open ease-spring motion-reduce:transition-none",
           open ? "basis-(--size-summary-room)" : "basis-0",
         )}
       />

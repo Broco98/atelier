@@ -1734,7 +1734,7 @@ describe("WorksPage 새 채팅 탭", () => {
       expect(bodyOf(markup, first)).not.toContain("data-quote");
       const read = (file: string) => readFileSync(fileURLToPath(new URL(`../thread/${file}`, import.meta.url)), "utf8");
       expect(read("ThreadScreen.tsx")).toContain("<WorkSummaryCard\n            key={draftKey}\n            draftKey={draftKey}\n            slug={work}");
-      expect(read("SummaryCard.tsx")).toContain("<ExpandedViewer\n        draftKey={draftKey}");
+      expect(read("SummaryCard.tsx")).toContain("<ExpandedViewer\n            draftKey={draftKey}");
       expect(read("ExpandedViewer.tsx")).toContain("onQuote={(quote) => setQuote(draftKey, quote)}");
     });
 
@@ -1745,6 +1745,8 @@ describe("WorksPage 새 채팅 탭", () => {
       expect(shown).toMatch(/<section[^>]*aria-label="요약"[^>]*data-expanded=""/);
       expect(shown).toContain("width:var(--size-thread-beside)");
       expect(shown).toContain("left:var(--size-thread-beside)");
+      // 대화 자리가 이미 480이라 물음 · 입력창이 카드를 비키지 않는다(보드 Main `beside: summaryShown && !wide`).
+      expect(shown).not.toContain("basis-(--size-summary-room)");
     });
   });
 

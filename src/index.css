@@ -349,10 +349,13 @@
          modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`), 「LLM이 받는
                                         텍스트」 창(같은 DS `Dialog`)과 검색 팔레트(DS `.at-palette`)
          raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`)와 사이드바의 알림 띠(DS `.at-band`)
-         lifted   hairline + card       글 위에 떠 있는 알약 — 지금은 Thread 입력창 위의 「N개 파일 변경됨」(DS `.at-floatpill`)과 「맨 아래로」 */
+         lifted   hairline + card       글 위에 떠 있는 알약 — 지금은 Thread 입력창 위의 「N개 파일 변경됨」(DS `.at-floatpill`)과 「맨 아래로」,
+                                        넓힌 요약 카드 문서의 「이 자리를 두고 말하기」(restart SummarySheet `.ra-quote` · 02b-8)
+         sheet    hairline + summary    대화 오른쪽 위에 뜬 요약 카드(restart SummarySheet `.ra-sum` · 02b-8) — 작은 카드와 넓힌 카드가 한 상자다 */
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
     --shadow-lifted: var(--shadow-hairline), var(--shadow-card);
+    --shadow-sheet: var(--shadow-hairline), var(--shadow-summary);
     /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — DS 2판 표 밖의 값이다. 값은 아래 `:root`의 「Codex 실측 그림자」가 든다. */
     --shadow-panel: var(--shadow-panel);
     --shadow-menu: var(--shadow-menu);
@@ -536,7 +539,7 @@
      이름       둥근 네모  superellipse  쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓)
      codespan      6          7.5         답 안 인라인 코드(08)
      row          10         12.5         사이드바 줄(05)
-     summary      12         15           요약 카드(07)
+     summary      12         15           한때 요약 카드(07) — restart 02b-8 뒤로 카드는 앱 틀의 `card` 8이라 읽는 자리가 없다
      tray         15          —           첫 화면 입력창 밑 트레이의 아래 두 모서리(10) — 시안에서도 둥근 15 하나다
      slot         20         25           입력창 자리 카드 — 승인 · 계획 · 질문 · Work 만들기 · Project 붙이기(11)
      prompt       22          —           입력창(10) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는 round」). DS `composer`(28)는
@@ -610,7 +613,8 @@
      한 축만 정하는 자리는 `h-(--size-head)` · `w-(--size-menu)`로 읽는다. `head`부터 아래는 Atelier가 더한 것이다(DS 「간격 ·
      반경 · 크기」).
    - **모션 보드의 토큰**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 「모션 토큰」 표). 표의 줄이 시간 하나 ·
-     곡선 하나로 선다. DS에 같은 이름 · 같은 값이 이미 있는 둘(칩 나타남 `chip` · 세 점 `pulse` — 지금은 요약 카드 소스의 쓰는 중 점)은 그
+     곡선 하나로 선다. DS에 같은 이름 · 같은 값이 이미 있는 둘(칩 나타남 `chip` · 세 점 `pulse` — 한때 요약 카드 소스의 쓰는 중 점, 지금은
+     읽는 곳이 없다)은 그
      토큰이고, 보드의 가감속(.4,0,.2,1)은 DS `ease-default`와 같은 값이다. 나머지는 보드가 더한 것이다 — 시간 여섯(`card` 승인 카드 ·
      `swap` 줄 바뀜 · `jump` 아래로 버튼 · `flash` 문서 강조 · `shimmer` 반짝임 · `spin` 회전)과 보드의 감속 곡선
      `ease-settle`(.2,.8,.2,1 — 제자리에 내려앉는다). 02가 Codex 값으로 바꾼 줄(단어 도착 `word` · 로그 펼침 `log` · 버튼 바뀜
@@ -624,7 +628,7 @@
        툴팁                    `delay-tip`(200) · 움직임 없음. 같은 무리의 호버 카드(`hover-group.ts`)는 `--duration-tip`(150) 그대로다(12)
        사이드바 열고 닫기      `duration-sidebar`(.3s) · `ease-spring` — spring {duration .3, bounce .1}을 옮긴 `linear()`(Motion 보드 `--cx-spring`).
                                사이드바 · 머리 줄 왼쪽 칸이 `SIDEBAR_MOTION`으로 읽는다. 작업 패널은 아래 `panel-open`이다(12 · 02a-2)
-       요약 카드 비켜나기      `duration-panel` · `ease-panel`(07)
+       요약 카드 비켜나기      아래 `panel-open` · `ease-spring`이다(02b-8 — 한때 `duration-panel` · `ease-panel`, 07)
        펼침 · 접힘             `duration-relaxed` · `ease-enter` — 높이 0 → auto + 투명도. 꺾쇠 회전도 .3s(09)
        생각 중                 `duration-think`(4s 한 바퀴 — 띠는 첫 25%인 1s에 지나가고 쉰다) · `delay-think`(보인 뒤 600ms) · `ease-shimmer`
                                (`steps(48)`). 띠는 `shimmer-band`, 글자는 `fg-thinking`(위 「Codex 실측 색」)(12)
@@ -645,9 +649,12 @@
        rise        320ms  보낸 말 말풍선이 아래 12 · .985배에서 자리에 섬 — 곡선 `ease-enter-snappy`(02b-7)
        bar         400ms  Processes의 막대 · 쌓인 막대가 폭만 옮겨 감 — 곡선 `ease-panel`(시안 ProcessSheet 「보기와 움직임」 · 03-11)
        beat        700ms  Processes 머리의 표본 점이 새 값마다 한 번 번짐 — 곡선 `ease-out`(같은 표 · 03-11)
+       writing     1600ms 요약 카드 소스의 쓰는 중 점이 숨 쉬듯 옅어졌다 돌아옴(.35) — 곡선 `ease-default`(SummarySheet 움직임 「쓰는 중」 · 02b-8)
        skeleton   1400ms  입력창 모델 칩 자리의 스켈레톤 빛 — 곡선 `linear` · 반복(시안 Composer 「세션 여는 중」 `.ra-skel` · 02b-2)
        delay-fold  700ms  성공한 명령 출력이 끝나고 스스로 접히기까지(Tools 보드 「명령 출력 — 성공」 · 02b-4). 움직임이 아니라 기다림이라 `WorkLog`의
                           `useShellOpen`이 읽는다 — 접힘 자체는 `unfold`다
+     요약 카드가 열릴 때(`summary-in`)는 `panel`(220) · `ease-enter-snappy`, 카드가 넓어질 때 보기가 옅음에서 서는 것(`view-in`)은
+     `panel-open` · `ease-panel`이다(SummarySheet 움직임 · Motion 「요약 카드가 열린다」 · 보드 `.ra-vw` — 02b-8).
      Motion 보드의 「목록에서 상세로」 240ms는 보드가 토큰 이름 없이 적은 값이라 여기 두지 않는다. */
 @theme static {
     --duration-basic: 150ms;
@@ -674,6 +681,7 @@
     --duration-rise: 320ms;
     --duration-bar: 400ms;
     --duration-beat: 700ms;
+    --duration-writing: 1600ms;
     --duration-skeleton: 1400ms;
 
     --stagger-wave: 100ms;
@@ -928,12 +936,12 @@
          mine                  내 차례 알약의 글자(05) · 위 칸 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
          surface-tray          첫 화면 입력창 밑 트레이(10) · 대기 메시지(11)
          border-panel          흰 판의 0.5 테두리(02). 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
-         border-summary        요약 카드의 0.5 테두리(07)
+         border-summary        한때 요약 카드의 0.5 테두리(07) — restart 02b-8이 카드 겉을 0.5 링 그림자(`shadow-sheet`)로 옮겨 앱이 읽지 않는다
          border-slot           입력창 자리 카드의 1px 테두리(11)
          border-faint          작업 중 점의 흰 원(32) 1px 테두리(11)
          separator             머리 줄 가운데 앞 세로선(02) · 한때 사람 메뉴의 구분선(04 — restart 02a-3이 메뉴를 걷었다)
-         separator-soft        요약 카드의 칸 구분선(07) · 답한 질문 카드의 테두리(11) · 한때 작업 구분선 아래 선(09 — restart 02b-1이 턴 머리
-                               아래 0.5 `border-heavy`로 옮겼다)
+         separator-soft        답한 질문 카드의 테두리(11) · 한때 요약 카드의 칸 구분선(07 — restart 02b-8 뒤로 `border-heavy`) · 한때 작업 구분선
+                               아래 선(09 — restart 02b-1이 턴 머리 아래 0.5 `border-heavy`로 옮겼다)
          fill-nav-selected     한때 사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말). restart 02a-3 뒤로 앱이 읽지 않는다
          fill-toggle-on        Thread 머리 줄 요약 단추의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
@@ -1051,7 +1059,7 @@
     /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — 위 「Codex 실측 색」처럼 다크 값이 없다.
          panel    흰 판의 위 그림자(02) — 테두리는 `border-panel` 0.5. 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
          menu     한때 사람 메뉴(04) — 0.5 링이 그림자 첫 겹에 든다. 02a-3이 메뉴를 걷은 뒤로 사이드바는 읽지 않는다
-         summary  요약 카드(07) — 테두리는 `border-summary` 0.5
+         summary  요약 카드(07) — restart 02b-8부터 0.5 링 `hairline`과 겹친 `sheet`(위 `@theme`)로 읽는다
          prompt   한때 입력창(10) — DS `composer`의 바깥 흐림 40이 Codex에서 80이다(스펙 §9). restart 02b-2가 입력창을 시안(Composer의
                   `--shadow-composer`, 흐림 40 · 다크는 안쪽 실선)으로 돌려 앱에는 읽는 자리가 없다 */
     --shadow-panel: 0 -1px 8px rgba(0, 0, 0, 0.03);
@@ -1359,7 +1367,10 @@
 }
 
 /* shadcn 바탕 CSS. registry가 모든 요소에 걸던 `outline-ring/50`(브라우저 포커스 테두리의 색)은 걷었다 — 키보드 포커스의 모양은
-   아래 `focus-ring` 하나가 든다. 그 유틸리티를 안 단 요소는 브라우저 기본 테두리를 그대로 입는다. */
+   아래 `focus-ring` 하나가 든다. 그 유틸리티를 안 단 요소는 브라우저 기본 테두리를 그대로 입는다.
+   **글자 다듬기는 뿌리 한 곳이다**(restart 02b-8) — 시안은 앱 틀 · 대화창 · 시트 · Processes · 목록 뿌리에 모두 `-webkit-font-smoothing:
+   antialiased`를 둔다(`restart-chat.css`의 `.ra-app`). 없으면 WebKit(앱 · L3)이 서브픽셀로 그려 다크의 밝은 글자가 한 단 굵다.
+   `type-scale.test.ts`가 이 자리 밖에서 다시 적지 않는지 잰다. */
 @layer base {
   * {
     @apply border-border;
@@ -1368,7 +1379,7 @@
     @apply bg-background text-foreground;
     }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
     }
 }
 
@@ -1881,6 +1892,26 @@ body.dragging-row * {
                       흐린 글자(`--fg-tertiary`)와 같은 단이다 — 행의 확장자 꼬리표 · 글리프가 이미 그 색이라 걸린 행은 한 색으로 눕는다 */
 [data-files-tree] {
     --tree-row-dim: var(--fg-tertiary);
+    /* 넓힌 요약 카드 Project 트리(02b-8)에서 이 Work가 바꾼 파일 — 이름 글자와 줄 끝 6 점. 시안(SummarySheet 「Project」
+       `.ra-tree-row[data-changed]` · `.mod`)이 두 테마에 같은 날값을 쓴다 */
+    --tree-row-changed: #71a3ef;
+    --tree-row-changed-dot: #2b7deb;
+}
+
+/* **확장자 글자 한 자**(restart SummarySheet 「Project」 `.ra-ext` · 02b-8) — 넓힌 요약 카드 Project 트리의 파일 줄 앞 14×14 칸에 선
+   고정폭 9 / 14 · 600 한 글자다. 9는 글자 단계 밖이다 — 시안이 줄 글리프 자리에 맞춘 값이라 이 한 자리에만 둔다. 색은 부르는 자리
+   (`SpecTree`의 `ExtMark`)가 확장자마다 단다 */
+@utility ext-mark {
+    display: flex;
+    width: 14px;
+    height: 14px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 14px;
+    font-weight: 600;
 }
 
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
@@ -1959,6 +1990,9 @@ body[data-palette-open] [data-scrollbar] {
      보내기 모핑   morph-in · morph-out           morph · default · .6배         보내기 원의 글리프 ↑ · 스피너 · ■(면 색 · 옅음은 `duration-morph ease-default`)
      아래로 버튼   jump-in                        jump · settle · 아래 6에서     「맨 아래로」
      문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    요약 카드의 새로 바뀐 줄 · 막 쓴 문서 줄 · 넓힌 카드 문서의 바뀐 줄
+     요약 카드     summary-in                     panel · enter-snappy · (4,−4) .98  요약 카드가 열린다(Motion · 02b-8) — 카드 자리(`CardSlot`)
+     넓힌 카드 보기 view-in                       panel-open · panel · 옅음에서   카드가 넓어지거나 다른 파일을 열면 선다(보드 `.ra-vw` · 02b-8)
+     쓰는 중 점    writing-pulse                  writing · default · .35         요약 카드 소스의 쓰는 중인 문서(SummarySheet 움직임 · 02b-8)
      반짝임        chat-shimmer                   shimmer · shimmer · 흰 띠      도는 도구 줄 · 「N초 동안 작업 중입니다」 · 호출 줄 · 「CI 확인 중」(02 §12)
      생각 중       think-shimmer                  think · shimmer · 600ms 뒤     「생각 중」(02 §12)
      작업 중 점    typing-dots                    wave · wave · 점마다 .1s       입력창 위 원 · 「답하는 중」(02 §12)
@@ -1970,9 +2004,10 @@ body[data-palette-open] [data-scrollbar] {
      `menu-enter` 머리말). 불투명도 · 자리 · 크기만 움직인다.
    - **동작 줄이기에서는 모두 멈춘 모양이다** — 들고 서는 것은 곧바로 서고, 반짝임 · 생각 중은 띠 없는 글자, 작업 중 점은 멎은 점,
      흐르는 답은 끝이 옅지 않고, 회전은 원이다(보드 「모션 토큰」 머리말 · 02 §12 「띠 · 점 · 페이드 없이」). 그 갈래는 유틸리티마다 파일 맨 끝의 동작 줄이기 블록 한 곳에 적는다.
-   - 요약 카드 소스의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — v1 세 점의 박자(`duration-pulse`)를 그대로 쓴다.
-   - 넓힌 카드(v1 티켓 35)의 보기는 모션 보드가 아니라 패널 박자다(`view-in` — `duration-panel` · `ease-panel`). 카드가 넓어지는 그
-     때 사이드바가 같은 박자로 접힌다. */
+   - 요약 카드 소스의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 SummarySheet 움직임 「쓰는 중」의 박자다 — 1.6초 되풀이 · 가운데에서 .35까지
+     옅어진다(`duration-writing`). 한때 v1 세 점의 박자(`duration-pulse` 1250 · .3)를 썼다(02b-8).
+   - 넓힌 카드(v1 티켓 35)의 보기는 카드가 넓어지는 박자(500ms)로 옅음에서 선다(`view-in` — `duration-panel-open` · `ease-panel`, 보드
+     `.ra-vw`). 한때 220ms(`duration-panel`)였다(02b-8). 카드가 넓어지는 그때 사이드바 · spec 패널이 함께 접힌다. */
 
 /* **반짝임**(02 구현 스펙 §12 「작업 중」 · Motion 보드 「도는 도구 줄 반짝임」 · Screen-Live `.working` — Codex `.loading-shimmer`) — 옅은
    글자 위로 흰 띠(`shimmer-band`, 흰 75%)가 지나가며 글자를 **밝게 바래게** 한다. 2s(`duration-shimmer`) `steps(48)`(`ease-shimmer`)로
@@ -2269,26 +2304,40 @@ body[data-palette-open] [data-scrollbar] {
     animation: doc-flash var(--duration-flash) var(--ease-default);
 }
 
-/* **요약 카드 소스의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 v1 세 점의
-   것(`duration-pulse`)이다(섹션 머리말). 동작을 줄여 둔 사람에게는 멎은 점이다. */
+/* **요약 카드 소스의 쓰는 중 점**(v1 티켓 34 · SummarySheet 움직임 「쓰는 중」 · 보드 `.ra-sumdot`) — 쓰는 중인 문서 줄 끝의 파란 점이 숨 쉬듯
+   옅어졌다 돌아온다 — 1.6초 되풀이 · 가운데에서 .35(섹션 머리말). 동작을 줄여 둔 사람에게는 멎은 점이다. */
 @keyframes writing-pulse {
     50% {
-        opacity: 0.3;
+        opacity: 0.35;
     }
 }
 @utility writing-pulse {
-    animation: writing-pulse var(--duration-pulse) var(--ease-default) infinite;
+    animation: writing-pulse var(--duration-writing) var(--ease-default) infinite;
 }
 
-/* **넓힌 카드의 보기**(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.viewer`) — 카드가 넓어지거나 다른 파일을 열면 보기가 옅음에서 선다. 박자는
-   카드 폭과 같은 패널 박자다(섹션 머리말). */
+/* **요약 카드가 열린다**(Motion 「요약 카드가 열린다」 · SummarySheet 움직임 · 보드 `sum-in`) — 오른쪽 위 (4, −4) · 배율 .98 · 옅음에서 제자리로
+   선다. 오른쪽 위를 기준점으로 커진다. 닫을 때는 곧바로 걷힌다. 거는 자리는 카드 자리(`ThreadScreen`의 `CardSlot`)다 — 카드가 그 오른쪽 위에
+   붙어 있어 같은 그림이고, 카드가 넓어지고 접혀도 자리는 그대로라 다시 돌지 않는다. */
+@keyframes summary-in {
+    from {
+        opacity: 0;
+        transform: translate(4px, -4px) scale(0.98);
+    }
+}
+@utility summary-in {
+    transform-origin: top right;
+    animation: summary-in var(--duration-panel) var(--ease-enter-snappy) both;
+}
+
+/* **넓힌 카드의 보기**(v1 티켓 35 · 보드 `.ra-vw`) — 카드가 넓어지거나 다른 파일을 열면 보기가 옅음에서 선다. 박자는 카드가 넓어지는
+   500ms에 패널 곡선이다(섹션 머리말). */
 @keyframes view-in {
     from {
         opacity: 0;
     }
 }
 @utility view-in {
-    animation: view-in var(--duration-panel) var(--ease-panel) both;
+    animation: view-in var(--duration-panel-open) var(--ease-panel) both;
 }
 
 /* **회전**(보드 「회전」 0.9s · 일정 · 반복) — Thread 줄의 「작업 중」 스피너(DS `Spinner`의 호)가 모션 보드의 박자로 돈다. `Spinner`를 감싼
@@ -2430,6 +2479,7 @@ body[data-palette-open] [data-scrollbar] {
     .row-flash,
     [data-doc-flash],
     .writing-pulse,
+    .summary-in,
     .view-in,
     .typing-dots > i,
     .spin-thread [data-slot="spinner-arc"],

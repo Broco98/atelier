@@ -211,8 +211,8 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
   };
   const kinds = (input: SummaryInput) => summarySections(input).map((one) => one.kind);
 
-  it("Work에 이은 Thread는 머리 → 변경 사항(+/− · PR 줄) → 결과물 → 소스 차례다", () => {
-    expect(kinds(live)).toEqual(["head", "changes", "outputs", "sources"]);
+  it("Work에 이은 Thread는 머리 → 변경 사항(+/− · PR 줄) → 소스 차례다 — 결과물 자리표시는 없다(SummarySheet 규격)", () => {
+    expect(kinds(live)).toEqual(["head", "changes", "sources"]);
     const [head, changes] = summarySections(live);
     expect(head).toEqual({ kind: "head", title: "환불 API 버그 수정", archived: false });
     expect(changes).toEqual({ kind: "changes", additions: 18, deletions: 6, prs: [pr] });
@@ -222,10 +222,11 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
     expect(summarySections({ ...live, changes: null, prs: [] })[1]).toEqual({ kind: "changes", additions: 0, deletions: 0, prs: [] });
   });
 
-  it("Work 없는 Thread는 결과물 · 소스만이고, 소스가 없으면 결과물 하나다(S20)", () => {
+  it("Work 없는 Thread는 소스(읽는 범위)만이다 — 읽는 Project가 없어도 빈 소스 칸이 선다(카드가 빈 상자로 서지 않는다)", () => {
     const loose: SummaryInput = { work: null, changes: null, prs: [], docs: [], projects: [{ project: "api-server", editing: false }] };
-    expect(kinds(loose)).toEqual(["outputs", "sources"]);
-    expect(kinds({ ...loose, projects: [] })).toEqual(["outputs"]);
+    expect(kinds(loose)).toEqual(["sources"]);
+    expect(summarySections({ ...loose, projects: [] })).toEqual([{ kind: "sources", shown: [], hidden: [] }]);
+    expect(kinds({ ...live, docs: [], projects: [] })).toEqual(["head", "changes"]);
   });
 
   it("소스는 spec 문서가 먼저, 그 뒤에 Project다 — 셋을 넘으면 셋만 보이고 나머지는 접힌다(S21)", () => {
@@ -240,7 +241,7 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
         { project: "web-app", editing: false },
       ],
     };
-    const sources = summarySections(many)[3];
+    const sources = summarySections(many)[2];
     expect(sources).toEqual({
       kind: "sources",
       shown: [
@@ -250,14 +251,39 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
       ],
       hidden: [{ kind: "project", project: "web-app", editing: false }],
     });
-    const three = summarySections({ ...many, projects: many.projects.slice(0, 1) })[3];
+    const three = summarySections({ ...many, projects: many.projects.slice(0, 1) })[2];
     expect(three).toMatchObject({ hidden: [] });
     expect(three.kind === "sources" && three.shown).toHaveLength(3);
   });
 
+  it("쓰는 중인 문서는 소스 맨 위에 선다 — 「모두 보기」 뒤에 숨지 않는다(SummarySheet 「문서를 쓰는 중」)", () => {
+    const docs = [
+      { path: "overview.md", writer: null },
+      { path: "decisions.md", writer: null },
+      { path: "01-실패-신호/구현-스펙.md", writer: null },
+      { path: "01-실패-신호/재시도-규칙.md", writer: { path: "01-실패-신호/재시도-규칙.md", thread: "a" } },
+    ];
+    const sources = summarySections({ ...live, docs })[2];
+    expect(sources.kind === "sources" && sources.shown.map((row) => (row.kind === "doc" ? row.path : row.project))).toEqual([
+      "01-실패-신호/재시도-규칙.md",
+      "overview.md",
+      "decisions.md",
+    ]);
+  });
+
+  it("막 쓴 문서도 빛나는 동안은 맨 위에 남는다 — 쓰기를 마친 순간 「모두 보기」 뒤로 숨어 빛이 보이지 않는 일이 없다", () => {
+    const docs = ["overview.md", "decisions.md", "plan.md", "재시도-규칙.md"].map((path) => ({ path, writer: null }));
+    const shown = (raised: ReadonlySet<string>) => {
+      const sources = summarySections({ ...live, docs, raised })[2];
+      return sources.kind === "sources" ? sources.shown.map((row) => (row.kind === "doc" ? row.path : row.project)) : [];
+    };
+    expect(shown(new Set(["재시도-규칙.md"]))).toEqual(["재시도-규칙.md", "overview.md", "decisions.md"]);
+    expect(shown(new Set())).toEqual(["overview.md", "decisions.md", "plan.md"]);
+  });
+
   it("보관된 Work의 Thread도 같은 칸 차례이고 머리가 보관됐음을 든다", () => {
     const shelved = summarySections({ ...live, work: { title: "결제 웹훅 재시도", archived: true }, changes: null, prs: [] });
-    expect(shelved.map((one) => one.kind)).toEqual(["head", "changes", "outputs", "sources"]);
+    expect(shelved.map((one) => one.kind)).toEqual(["head", "changes", "sources"]);
     expect(shelved[0]).toEqual({ kind: "head", title: "결제 웹훅 재시도", archived: true });
   });
 });

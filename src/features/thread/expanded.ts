@@ -43,8 +43,8 @@ export function isOpened(opened: Opened | null, row: RowTarget): boolean {
 }
 
 /**
- * 보기의 경로 줄(`PathBar`의 조각) — 보드 `.vh .path`의 앞머리를 따른다: 문서는 「문서 / design.md」, 변경은 「api-server / src/refunds /
- * refund.service.ts」, Project는 「Project / api-server」다.
+ * 넓힌 카드 보기 머리의 경로(`ViewerHead`의 조각 — SummarySheet 보드 `.ra-vwhead`): 문서는 「문서 / 01-실패-신호 / 재시도-규칙.md」, 변경은
+ * 「atelier / src-tauri / src / watcher.rs」, Project는 「Project / atelier」다.
  */
 export function viewerPath(opened: Opened): string[] {
   switch (opened.kind) {
