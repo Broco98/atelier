@@ -118,10 +118,10 @@ export const CLAUDE_MODELS: readonly ChoiceOption[] = [
  * 물음 까닭 · 자동 허용 까닭과 같은 글이다(`atelier_acp::AskLevel::name`).
  */
 export const ASK_LEVELS: readonly { value: AskLevel; name: string; description: string }[] = [
-  { value: "always", name: "매번 묻기", description: "편집과 명령마다 묻습니다" },
-  { value: "edits", name: "편집 자동", description: "파일 편집은 묻지 않고, 명령은 묻습니다" },
-  { value: "plan", name: "계획", description: "고치지 않고 계획만 세웁니다" },
-  { value: "auto", name: "묻지 않음", description: "모두 허용합니다" },
+  { value: "always", name: "매번 묻기", description: "편집과 명령마다 묻는다" },
+  { value: "edits", name: "편집 자동", description: "파일 편집은 묻지 않고, 명령은 묻는다" },
+  { value: "plan", name: "계획", description: "고치지 않고 계획만 세운다" },
+  { value: "auto", name: "묻지 않음", description: "모두 허용한다" },
 ];
 
 /** 저장 글자 → 물어보는 정도. 모르는 글자면 `null`이다. */

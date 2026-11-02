@@ -294,7 +294,8 @@ describe("Codex 실측 그림자", () => {
     "shadow-prompt": "0 0 0 1px #0000000a, 0 2px 8px #0000000a, 0 4px 80px 8px #00000006",
   };
 
-  // DS `composer`는 입력창 자리 카드 · 알림 카드 · 읽기만 줄도 읽는다 — 값을 고치지 않고 입력창의 새 이름(`prompt`)을 더했다.
+  // DS `composer`는 입력창 자리 카드 · 알림 카드도 읽는다 — 값을 고치지 않고 입력창의 새 이름(`prompt`)을 더했었다. restart 02b-2부터
+  // 입력창도 다시 이 값을 읽는다(시안 Composer `--shadow-composer`).
   it("DS 입력창 그림자는 그대로다", () => {
     expect(declared(blocks, "light", "shadow-composer")).toBe("0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006");
   });

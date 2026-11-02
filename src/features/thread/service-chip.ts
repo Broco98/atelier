@@ -49,17 +49,15 @@ export function scopeLine(scope: ReadingScope): ScopeLine {
 export type ShownScope = NonNullable<ScopePick> & { name: string };
 
 /**
- * 범위 칩의 모양(§5 · 시안 `.tc.ghost` · `.tc.on`) — 범위가 없으면 흐린 빈 칩, 있으면 흰 칩에 이름이다. 끝은 ×(빼기)인데, 그 칩이 바꾸는 것이
- * Work의 Service면(`?work=`로 연 첫 화면) × 대신 ▾다 — 빼기도 메뉴에서만 한다.
+ * 범위 칩의 모양(§5 · 시안 Composer 「새 채팅 · 범위 트레이」 · 「범위 메뉴」) — 범위가 없으면 「범위 없음」, 있으면 그 이름이다. 어느 쪽이든 끝은 ▾이고
+ * 누르면 범위 메뉴가 열린다 — 빼기는 메뉴의 「범위 없음」이다(× 는 「새 작업공간」 칩에만 있다).
  */
-export type ScopeChipLook =
-  | { kind: "ghost" }
-  | { kind: "on"; of: NonNullable<ScopePick>["kind"]; slug: string; name: string; end: "remove" | "menu" };
+export type ScopeChipLook = { kind: "ghost" } | { kind: "on"; of: NonNullable<ScopePick>["kind"]; slug: string; name: string };
 
 /** 칩이 보이는 범위(쥔 것이 없거나 그것이 사라졌으면 `null`)의 칩. */
-export function scopeChip(shown: ShownScope | null, ofWork: boolean): ScopeChipLook {
+export function scopeChip(shown: ShownScope | null): ScopeChipLook {
   if (shown === null) return { kind: "ghost" };
-  return { kind: "on", of: shown.kind, slug: shown.slug, name: shown.name, end: ofWork ? "menu" : "remove" };
+  return { kind: "on", of: shown.kind, slug: shown.slug, name: shown.name };
 }
 
 /**
