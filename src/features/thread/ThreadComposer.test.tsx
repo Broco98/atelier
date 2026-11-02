@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CODEX_DEFAULT_MODE, EFFORTS, type ChoiceOption } from "./chips";
-import ThreadComposer, { type ThreadComposerProps } from "./ThreadComposer";
+import ThreadComposer, { MentionPaint, type ThreadComposerProps } from "./ThreadComposer";
 import type { Attachment } from "./types";
 import { setAttachments } from "./attachments";
 import { mentionKey, type MentionPlace } from "./mentions";
@@ -157,6 +157,22 @@ describe("언급 칠", () => {
     const paint = paintOf(markup);
     expect(paint).toMatch(/<span[^>]*data-mention=""[^>]*>@src\/watcher\.rs<\/span> 이 파일에서 재시도 간격도 같이 봐 줘/);
     expect(markup).toMatch(/<textarea[^>]*class="[^"]*text-transparent/);
+  });
+
+  // 한글 조합 중(입력칸이 글자를 그린다 — `inkOf`)에는 칠 층이 면만 두고 글자는 투명이다. 면 · 글자 자리는 그대로라 조합이 끝나 글자를 되받아도
+  // 흔들리지 않는다. 조합 이벤트는 정적 그림에 없어 층만 따로 그린다 — 실제 조합은 WebKit에서 쟀다(`시안-비교/02b-3/차이.md`).
+  it("입력칸이 글자를 그리는 동안(한글 조합 중) 칠 층은 면만 두고 글자는 투명이다", () => {
+    const field = { current: null };
+    const parts = [
+      { text: "@src/watcher.rs", mention: true },
+      { text: " 이 파일", mention: false },
+    ];
+    const quiet = renderToStaticMarkup(<MentionPaint parts={parts} field={field} ink="field" />);
+    expect(quiet).toMatch(/<div[^>]*data-slot="mention-paint"[^>]*class="[^"]*text-transparent/);
+    expect(quiet).toMatch(/<span[^>]*data-mention=""[^>]*class="[^"]*bg-accent-soft[^"]*text-transparent/);
+    const inked = renderToStaticMarkup(<MentionPaint parts={parts} field={field} ink="paint" />);
+    expect(inked).toMatch(/<span[^>]*data-mention=""[^>]*class="[^"]*bg-accent-soft[^"]*text-link/);
+    expect(inked).not.toContain("text-transparent");
   });
 
   it("찾는 중인 `@wat`은 칠하지 않고 칠 층도 없다", () => {

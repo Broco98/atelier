@@ -127,6 +127,13 @@ export function insertMention(draft: string, found: MentionAt, path: string): { 
   return { draft: draft.slice(0, found.at) + mention + gap + rest, caret: found.at + mention.length + 1, mention };
 }
 
+/**
+ * 입력칸의 글자를 누가 그리나 — 언급이 서 있으면 칠 층(입력칸은 caret만), 아니면 입력칸이다. **한글을 조합하는 동안은 입력칸이 그린다** —
+ * 입력기는 조합 중인 글자의 밑줄을 입력칸의 글자색으로 긋는데, 칠 층이 그리는 동안 그 색은 투명이라 밑줄이 사라진다. 그동안 칠 층은 면만
+ * 둔다. 두 층의 글자 자리는 같아 갈아 그려도 흔들리지 않는다.
+ */
+export const inkOf = (painted: boolean, composing: boolean): "paint" | "field" => (painted && !composing ? "paint" : "field");
+
 /** 입력칸 글의 한 조각 — 언급 칠을 입는가. */
 export interface PaintedPart {
   text: string;

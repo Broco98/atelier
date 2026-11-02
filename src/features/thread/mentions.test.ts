@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { insertMention, matchMentions, mentionFiles, mentionQuery, paintMentions, type MentionPlace } from "./mentions";
+import { inkOf, insertMention, matchMentions, mentionFiles, mentionQuery, paintMentions, type MentionPlace } from "./mentions";
 
 // 「@」 언급(restart 02b-3 · 시안 Composer 「「@」 언급」 · 「첨부 · 언급」) — 입력칸의 커서 앞 낱말이 `@`로 시작하면 메뉴가 그 뒤의 글자로 파일을
 // 찾는다. 고르면 그 낱말이 `@경로`로 바뀌고 언급 칠을 입는다. 보낼 때는 글 그대로 간다.
@@ -125,5 +125,19 @@ describe("언급 칠", () => {
     expect(painted("@src/watcher.rs를 봐 줘", ["@src/watcher.rs"])).toEqual(["@src/watcher.rs"]);
     expect(painted("끝은 @src/watcher.rs.", ["@src/watcher.rs"])).toEqual(["@src/watcher.rs"]);
     expect(painted('@"spec/배너 시안.png" 봐 줘', ['@"spec/배너 시안.png"'])).toEqual(['@"spec/배너 시안.png"']);
+  });
+});
+
+// 한글 조합 — 입력기는 조합 중인 글자의 밑줄을 입력칸의 글자색으로 긋는다. 칠 층이 글자를 그리는 동안 입력칸 글자는 투명이라 밑줄이 사라진다.
+// 그래서 조합 중에는 입력칸이 글자를 그리고 칠 층은 면만 둔다 — 글자 자리는 두 층이 같아 흔들리지 않고, 조합이 끝나면 칠 층이 글자를 되받는다.
+describe("누가 글자를 그리나", () => {
+  it("언급이 서 있으면 칠 층이 그리고, 조합 중이면 입력칸이 그린다", () => {
+    expect(inkOf(true, false)).toBe("paint");
+    expect(inkOf(true, true)).toBe("field");
+  });
+
+  it("언급이 없으면 늘 입력칸이 그린다", () => {
+    expect(inkOf(false, false)).toBe("field");
+    expect(inkOf(false, true)).toBe("field");
   });
 });

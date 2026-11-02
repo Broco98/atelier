@@ -21,7 +21,17 @@ import {
 } from "./ComposerChips";
 import { runtimeNameOf } from "./runtime";
 import SlashMenu, { commandText, matchCommands, MentionMenu, optionId, slashQuery } from "./SlashMenu";
-import { insertMention, matchMentions, mentionFiles, mentionQuery, paintMentions, useMentionFiles, type MentionFile, type PaintedPart } from "./mentions";
+import {
+  inkOf,
+  insertMention,
+  matchMentions,
+  mentionFiles,
+  mentionQuery,
+  paintMentions,
+  useMentionFiles,
+  type MentionFile,
+  type PaintedPart,
+} from "./mentions";
 import { sendDraft } from "./send-draft";
 import { DraftQuoteChip } from "./QuoteChip";
 import { addMention, setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
@@ -48,8 +58,8 @@ import type { Attachment } from "./types";
 //   된다. `/plan` · `/policy`는 물어보는 정도 칩이 설 때만 선다 — Codex 채팅에서는 Codex의 `/plan`이 그 이름으로 선다(`threadCommands`).
 // - **「@」로 시작한 낱말이면 파일 메뉴**가 같은 자리에 선다(restart 02b-3 · Composer 「「@」 언급」 — `mentions.ts`). 찾는 자리는 부르는 쪽이 준
 //   채팅 · 새 채팅의 범위(`mentions`)이고, 고르면 그 낱말이 `@경로`가 되어 언급 칠(파란 면 · 링크 색 — `.ra-mention`)을 입는다. 입력칸은
-//   textarea라 칠을 그 밑의 층(`MentionPaint`)이 같은 자리에 그리고, 언급이 선 동안 입력칸은 글자를 그리지 않는다(caret만). 보내는 글은 입력칸
-//   그대로다.
+//   textarea라 칠을 그 밑의 층(`MentionPaint`)이 같은 자리에 그리고, 언급이 선 동안 입력칸은 글자를 그리지 않는다(caret만). 한글을 조합하는
+//   동안만은 입력칸이 글자를 그리고 칠 층은 면만 둔다 — 입력기의 밑줄이 입력칸 글자색으로 선다(`inkOf`). 보내는 글은 입력칸 그대로다.
 // - **칩의 메뉴는 입력창 위 8에 선다**(Composer `.ra-menu{bottom:calc(100% + 8px)}`) — 모드 메뉴는 상자 왼쪽 8, Runtime · 모델 메뉴는 오른쪽 8에
 //   맞춘다. 그래서 메뉴의 닻은 칩이 아니라 상자(`box`)다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
@@ -186,6 +196,9 @@ function ThreadComposer({
   const mentioned = useStore(threadUiStore, (state) => state.mentions[draftKey] ?? NO_MENTIONS);
   const parts = useMemo(() => paintMentions(draft, mentioned), [draft, mentioned]);
   const painted = parts.some((part) => part.mention);
+  // 한글을 조합하는 동안은 입력칸이 글자를 그린다 — 입력기의 밑줄이 입력칸 글자색으로 서야 한다(`inkOf`).
+  const [composing, setComposing] = useState(false);
+  const ink = inkOf(painted, composing);
   const pickFile = (file: MentionFile) => {
     if (mention === null) return;
     const next = insertMention(draft, mention, file.path);
@@ -332,7 +345,7 @@ function ThreadComposer({
           {quote && <DraftQuoteChip quote={quote} onDrop={() => setQuote(draftKey, null)} />}
           {attachments.length > 0 && <ComposerAttachmentChips draftKey={draftKey} attachments={attachments} />}
           <div className="relative flex">
-            {painted && <MentionPaint parts={parts} field={field} />}
+            {painted && <MentionPaint parts={parts} field={field} ink={ink} />}
             <textarea
               ref={field}
               aria-label="보낼 말"
@@ -356,6 +369,14 @@ function ThreadComposer({
               }}
               // 커서가 옮겨 가면(화살표 · 누르기) 찾는 낱말도 옮겨 간다.
               onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+              // 조합이 끝나면 칠 층이 글자를 되받는다 — 끝난 글을 그 자리에서 함께 적는다. 입력기에 따라 끝의 `input`이 `compositionend` 뒤에 와,
+              // 그 사이 한 장면 동안 칠 층이 확정된 글자 없이 그려지지 않게.
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={(event) => {
+                setComposing(false);
+                setDraft(draftKey, event.currentTarget.value);
+                setCaret(event.currentTarget.selectionStart);
+              }}
               aria-controls={menuOpen ? menuId : undefined}
               aria-autocomplete={menuOpen ? "list" : undefined}
               aria-activedescendant={menuOpen ? optionId(menuId, active) : undefined}
@@ -394,7 +415,7 @@ function ThreadComposer({
               // (Motion 「입력창 높이」 — 44 → 최대 204, 220ms). 언급이 서 있으면 글자는 밑의 칠 층이 그리고 입력칸은 caret만 그린다.
               className={cn(
                 "relative min-h-11 w-full resize-none overflow-y-auto bg-transparent px-1 text-chat-body tracking-[-0.15px] text-fg outline-none transition-[height] duration-panel ease-panel placeholder:text-fg-placeholder scroll-quiet motion-reduce:transition-none",
-                painted && "text-transparent caret-fg",
+                ink === "paint" && "text-transparent caret-fg",
               )}
             />
           </div>
@@ -450,9 +471,19 @@ const NO_MENTIONS: readonly string[] = [];
 /**
  * 언급 칠 층(Composer 「첨부 · 언급」 `.ra-mention`) — 입력칸(textarea)은 글 안에 칠을 넣지 못해, 그 밑에 같은 글을 같은 자리(안쪽 · 글꼴 · 줄 ·
  * 줄바꿈)에 그리고 언급만 파란 면(`accent-soft`) · 링크 색으로 칠한다. 면은 좌우 4 · 위아래 1 넓지만 글자 자리를 밀지 않는다(바깥 −4) — 입력칸의
- * caret과 고르기가 이 층의 글자와 한 자리에 선다. 입력칸이 구르면 같이 구른다. 누름은 받지 않는다.
+ * caret과 고르기가 이 층의 글자와 한 자리에 선다. 입력칸이 구르면 같이 구른다. 누름은 받지 않는다. 한글을 조합하는 동안은 입력칸이 글자를
+ * 그리고(입력기의 밑줄이 서게) 이 층은 면만 둔다 — 그동안 언급 글자는 링크 색이 아니라 입력칸 글자색이다.
  */
-function MentionPaint({ parts, field }: { parts: readonly PaintedPart[]; field: RefObject<HTMLTextAreaElement | null> }) {
+export function MentionPaint({
+  parts,
+  field,
+  ink,
+}: {
+  parts: readonly PaintedPart[];
+  field: RefObject<HTMLTextAreaElement | null>;
+  /** 글자를 누가 그리나(`inkOf`) — 입력칸이면(한글 조합 중) 이 층은 면만 두고 글자는 투명이다. */
+  ink: "paint" | "field";
+}) {
   const layer = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = field.current;
@@ -470,11 +501,18 @@ function MentionPaint({ parts, field }: { parts: readonly PaintedPart[]; field: 
       ref={layer}
       aria-hidden
       data-slot="mention-paint"
-      className="pointer-events-none absolute inset-0 overflow-hidden px-1 text-chat-body tracking-[-0.15px] break-words whitespace-pre-wrap text-fg"
+      className={cn(
+        "pointer-events-none absolute inset-0 overflow-hidden px-1 text-chat-body tracking-[-0.15px] break-words whitespace-pre-wrap",
+        ink === "paint" ? "text-fg" : "text-transparent",
+      )}
     >
       {parts.map((part, at) =>
         part.mention ? (
-          <span key={at} data-mention="" className="-mx-1 rounded-xs bg-accent-soft px-1 py-px text-link box-decoration-clone">
+          <span
+            key={at}
+            data-mention=""
+            className={cn("-mx-1 rounded-xs bg-accent-soft px-1 py-px box-decoration-clone", ink === "paint" ? "text-link" : "text-transparent")}
+          >
             {part.text}
           </span>
         ) : (
