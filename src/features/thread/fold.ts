@@ -26,7 +26,7 @@ import { particle } from "@/lib/particle";
 // - **채팅 하나가 Runtime 세션 하나다.** 줄에 말한 이가 없고 열린 턴도 하나다 — 말은 Runtime 이름으로 선다(`runtime.ts`). 세션이 죽거나
 //   닫히거나 앱을 다시 켜면(`goneThrough`) 그 턴과 걸린 물음이 끝난다.
 // - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 물어보는 정도 바꿈(`mode` —
-//   「Policy를 편집은 허용으로 바꿈 · 이 Work에만」, v1 티켓 23). Work · PR 줄은 그 장(30 · 31 · 40)이 더한다.
+//   「Policy를 편집 자동으로 바꿈 · 이 Work에만」, v1 티켓 23). Work · PR 줄은 그 장(30 · 31 · 40)이 더한다.
 // - **도구 줄은 시작과 끝의 시각을 든다** — 작업 로그가 마우스를 올린 줄에 걸린 시간을 말한다(캔버스 WorkLog 보드). 사람이 거절한
 //   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`). 판정이 묻지 않고 허용한 도구 줄은 그 까닭을 든다
 //   (`allowed` — 방패 줄 「자동으로 허용함」, v1 티켓 23 · 구현 스펙 §9). 판정 줄(`decided`)의 고른 선택지가 허용 갈래일 때다 — 엔진의
@@ -216,7 +216,7 @@ export interface ToolEntry {
   /** 이 도구가 물은 권한을 사람이 거절했나(거절 갈래의 선택지로 답했다). */
   denied: boolean;
   /**
-   * 판정이 묻지 않고 허용했으면 그 까닭 — 엔진이 적은 그대로다(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …). 아니면 null이다. 방패
+   * 판정이 묻지 않고 허용했으면 그 까닭 — 엔진이 적은 그대로다(「편집 자동」 · 「이 Work에서는 다시 묻지 않기」 …). 아니면 null이다. 방패
    * 줄은 화면의 말로 읽는다(`approval.ts`의 `autoAllowReason` — 「늘 허용」 허락은 카드의 말).
    */
   allowed: string | null;
@@ -396,7 +396,7 @@ export interface SpaceOption {
 
 /**
  * 답하지 않은 Space 질문 카드 하나(기록의 `question` `asked`, `card: space` — 03 티켓 08 · §11 · S12). Host가 다루는 Project로 Space를 붙이려
- * 하고, Atelier가 사람에게 묻기로 했다(「알아서」가 아니다 · 이미 붙어 있다 · 후보가 여럿).
+ * 하고, Atelier가 사람에게 묻기로 했다(「묻지 않음」이 아니다 · 이미 붙어 있다 · 후보가 여럿).
  */
 export interface PendingSpace {
   card: "space";
@@ -486,7 +486,7 @@ const TOOL_SEARCH = "ToolSearch";
 
 /**
  * Claude Code가 계획 모드에서 제 계획을 적는 파일(`~/.claude/plans/<이름>.md`, v1 티켓 27) — 진짜 claude 2.1.309는 계획을 이 파일에
- * 묻지 않고 쓴 뒤 `ExitPlanMode`로 묻는다. 계획은 계획 넘어가기 카드가 보이므로 작업 로그 · 바뀐 파일에 세우지 않는다 — 「계획만」인데
+ * 묻지 않고 쓴 뒤 `ExitPlanMode`로 묻는다. 계획은 계획 넘어가기 카드가 보이므로 작업 로그 · 바뀐 파일에 세우지 않는다 — 「계획」인데
  * 「파일 1개 바꿈」이 서지 않게.
  */
 const PLAN_FILE = /\/\.claude\/plans\/[^/]+\.md$/;
@@ -873,7 +873,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (title) say(line.seq, "title", "Thread 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
         break;
       }
-      // 사람이 물어보는 정도를 바꿈(v1 티켓 23) — 「Policy를 편집은 허용으로 바꿈 · 이 Work에만」. Work에 이은 Thread의 정도는 그 Work의
+      // 사람이 물어보는 정도를 바꿈(v1 티켓 23) — 「Policy를 편집 자동으로 바꿈 · 이 Work에만」. Work에 이은 Thread의 정도는 그 Work의
       // 것이라 같은 Work의 다른 Thread에도 든다는 것을 꼬리가 말한다.
       case "mode": {
         const level = askLevelOf(payload.mode);
@@ -899,7 +899,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (payload.change === "changed" && name) {
           say(line.seq, "space", "Space를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${readingText(projects)}`);
         }
-        // Host가 묻지 않고 붙임(03 티켓 08 — 「알아서」) — 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」.
+        // Host가 묻지 않고 붙임(03 티켓 08 — 「묻지 않음」) — 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」.
         if (payload.change === "attached" && name) {
           say(line.seq, "space", "", name, ` Space에 넣었어요 — ${readingText(projects)}`);
         }

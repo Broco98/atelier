@@ -102,7 +102,7 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
     status: (card) => `Work 밖 Project · ${card.name}`,
     next: (card) => `${card.name} 고치기`,
   },
-  // Space 붙이기(03 티켓 08 — 「알아서」가 아니면 묻는다) — 「✓ 어느 Space에서 할까요? · 결제 서비스」.
+  // Space 붙이기(03 티켓 08 — 「묻지 않음」이 아니면 묻는다) — 「✓ 어느 Space에서 할까요? · 결제 서비스」.
   space: {
     tool: "mcp__atelier-thread__set_space",
     choice: "space-choice",

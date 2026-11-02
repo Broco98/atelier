@@ -72,7 +72,7 @@ export const threadApi = {
   /** 지금 보내기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. */
   sendNow: (thread: string, queued: string) => invoke<void>("thread_send_now", { thread, queued }),
   /**
-   * 권한 답 — 세션이 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 「… 늘 허용」이면 `remember`, 「아니요,
+   * 권한 답 — 세션이 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 허락 문구면 `remember`, 「아니요,
    * 다르게」의 입력칸에 쓴 말이 있으면 `words`다.
    */
   answerPermission: (thread: string, request: string, option: string, remember = false, words: string | null = null) =>
@@ -117,7 +117,7 @@ export const threadApi = {
   /** 생각 깊이 바꾸기(스토리 33) — 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터 든다. 턴이 도는 동안은 거절된다. */
   setEffort: (thread: string, effort: string) => invoke<ChipValues>("thread_set_effort", { thread, effort }),
   /**
-   * 물어보는 정도 바꾸기(v1 티켓 23 · S18) — Work에 이은 Thread면 그 Work의 정도다. 다음 권한 요청부터 들고, 「계획만」으로 들고 나면
+   * 물어보는 정도 바꾸기(v1 티켓 23 · S18) — Work에 이은 Thread면 그 Work의 정도다. 다음 권한 요청부터 들고, 「계획」으로 들고 나면
    * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
    */
   setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),

@@ -1,6 +1,6 @@
 //! 판정 — 권한 요청 하나에 허용 · 거절 · 물음 가운데 하나를 내는 순수 함수(구현 스펙 「01a — 권한」, v1 티켓 22).
 //!
-//! **Atelier가 하나뿐인 판정자다(S17).** Thread의 Session에 온 권한 요청은 모두 [`judge`]를 지난다. `claude`는 기본 모드로만(「계획만」
+//! **Atelier가 하나뿐인 판정자다(S17).** Thread의 Session에 온 권한 요청은 모두 [`judge`]를 지난다. `claude`는 기본 모드로만(「계획」
 //! 이면 계획 모드로) 돌아, Claude Code가 엔진에 묻지 않고 넘기는 것은 사용자 설정의 허용 규칙과 claude가 스스로 읽기만으로 치는 일 —
 //! 읽기 전용 명령(`echo` · `ls` · `cat` …)과 계획 모드에서 제 계획 파일(`~/.claude/plans/*.md`)을 쓰는 것 — 뿐이다(진짜 claude
 //! 2.1.309, v1 티켓 27). 작업 자리의 `.claude/settings.json` 허용 규칙은 claude가 믿지 않은 폴더라 버린다. 입출력이 없다 — 받는 것은
@@ -45,14 +45,14 @@ use shell::{pieces, Piece};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AskLevel {
-    /// 매번 묻기 — 고치거나 실행하기 전에 묻는다.
+    /// 매번 묻기 — 편집과 명령마다 묻는다. 저장 값의 기본이다: 없거나 깨진 값이 허용으로 눕지 않게.
     #[default]
     Always,
-    /// 편집은 허용 — 파일은 알아서, 명령은 묻는다.
+    /// 편집 자동 — 파일 편집은 묻지 않고, 명령은 묻는다.
     Edits,
-    /// 계획만 — `claude`가 계획 모드로 돈다. 읽기만 하고 계획을 세운다.
+    /// 계획 — `claude`가 계획 모드로 돈다. 고치지 않고 계획만 세운다.
     Plan,
-    /// 알아서 — 모두 허용한다. 앱 경계와 사람이 정할 일(질문 · 계획 넘어가기)만 남는다.
+    /// 묻지 않음 — 모두 허용한다. 앱 경계와 사람이 정할 일(질문 · 계획 넘어가기)만 남는다.
     Auto,
 }
 
@@ -77,13 +77,13 @@ impl AskLevel {
     pub(crate) fn name(self) -> &'static str {
         match self {
             AskLevel::Always => "매번 묻기",
-            AskLevel::Edits => "편집은 허용",
-            AskLevel::Plan => "계획만",
-            AskLevel::Auto => "알아서",
+            AskLevel::Edits => "편집 자동",
+            AskLevel::Plan => "계획",
+            AskLevel::Auto => "묻지 않음",
         }
     }
 
-    /// `claude`를 띄우는 권한 모드(S17) — 「계획만」이면 `plan`, 그 밖에는 `default`다. 사용자의 `defaultMode`(예 `acceptEdits`)를
+    /// `claude`를 띄우는 권한 모드(S17) — 「계획」이면 `plan`, 그 밖에는 `default`다. 사용자의 `defaultMode`(예 `acceptEdits`)를
     /// 물려받지 않는다 — 그러면 claude가 편집을 스스로 허용해 판정 · 쓰기 자리를 지나지 않는다.
     pub(crate) fn claude_mode(self) -> &'static str {
         match self {
@@ -235,9 +235,9 @@ fn app_boundary(case: &Case) -> Option<Verdict> {
 /// | 물어보는 정도 | 파일 고치기 | 명령 | 웹 · MCP |
 /// |---|---|---|---|
 /// | 매번 묻기 | 물음 | 물음 | 물음 |
-/// | 편집은 허용 | 허용 | 물음 | 물음 |
-/// | 계획만 | 물음(계획 모드라 보통 오지 않는다) | 물음 | 물음 |
-/// | 알아서 | 허용 | 허용 | 허용 |
+/// | 편집 자동 | 허용 | 물음 | 물음 |
+/// | 계획 | 물음(계획 모드라 보통 오지 않는다) | 물음 | 물음 |
+/// | 묻지 않음 | 허용 | 허용 | 허용 |
 ///
 /// 표 밖의 것 — 계획 넘어가기는 늘 묻는다(넘어갈 때는 사람이 정한다, 스토리 20). 앱 기능 도구는 늘 지나간다(스토리 10). 질문은 판정이
 /// 받지 않는다 — 판정의 문이 판정 앞에서 곧바로 묻는다(`host::thread::gate`).
@@ -534,16 +534,16 @@ mod tests {
     const APP_TOOL: &str = "mcp__atelier-thread__get_work";
 
     #[test]
-    fn 물어보는_정도의_표대로_편집_명령_웹_mcp를_묻거나_허용하고_알아서는_모두_허용한다() {
+    fn 물어보는_정도의_표대로_편집_명령_웹_mcp를_묻거나_허용하고_묻지_않음은_모두_허용한다() {
         use AskLevel::*;
         let inside = || edit("/w/cart/trees/fe/src/cart.ts");
         let push = || command("git push origin main");
         // (정도, 이름, 파일 편집을 허용하나, 명령을 허용하나, 웹 · MCP를 허용하나) — 스펙 「01a — 권한」의 표 그대로다.
         let table = [
             (Always, "매번 묻기", false, false, false),
-            (Edits, "편집은 허용", true, false, false),
-            (Plan, "계획만", false, false, false),
-            (Auto, "알아서", true, true, true),
+            (Edits, "편집 자동", true, false, false),
+            (Plan, "계획", false, false, false),
+            (Auto, "묻지 않음", true, true, true),
         ];
         for (level, name, edits, commands, others) in table {
             let judged = |act: Act| {
@@ -629,7 +629,7 @@ mod tests {
         assert_eq!(given.judged(), allow("이 Work에서는 다시 묻지 않기"), "3. 허락");
 
         given.grants.clear();
-        assert_eq!(given.judged(), allow("알아서"), "4. 물어보는 정도");
+        assert_eq!(given.judged(), allow("묻지 않음"), "4. 물어보는 정도");
     }
 
     /// 그 명령을 물을 때 내미는 허락.
@@ -870,8 +870,8 @@ mod tests {
             given.level = AskLevel::Auto;
             given.judged()
         };
-        assert_eq!(judged("/t/20261023-101010/notes.md", true), allow("알아서"), "Thread 폴더도 고칠 수 있는 자리다");
-        assert_eq!(judged("/w/cart/trees/fe/a.ts", true), allow("알아서"));
+        assert_eq!(judged("/t/20261023-101010/notes.md", true), allow("묻지 않음"), "Thread 폴더도 고칠 수 있는 자리다");
+        assert_eq!(judged("/w/cart/trees/fe/a.ts", true), allow("묻지 않음"));
         assert_eq!(
             judged("/w/cart/trees/fe-old/a.ts", true),
             refuse("Work 밖의 파일이라 고칠 수 없어요: /w/cart/trees/fe-old/a.ts — 이 Work의 worktree · spec 폴더 안에서만 고쳐요"),
@@ -892,7 +892,7 @@ mod tests {
 
     #[test]
     fn thread_폴더의_기록_파일은_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
-        // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 알아서 · 편집 허락이 있어도 거절이다.
+        // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 묻지 않음 · 편집 허락이 있어도 거절이다.
         let judged = |path: &str| {
             let mut given = Given::act(edit(path));
             given.level = AskLevel::Auto;
@@ -919,9 +919,9 @@ mod tests {
     }
 
     #[test]
-    fn 명령_글에_그_thread_기록이_나오면_알아서여도_허락이_있어도_묻는다() {
+    fn 명령_글에_그_thread_기록이_나오면_묻지_않음이어도_허락이_있어도_묻는다() {
         // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만(1차 A2) 명령은 그 자리를 보지 않았다. `echo > thread.json` ·
-        // `sed -i … .policy.json`이 「알아서」에서 묻지 않고 지났다. 글자로만 본다.
+        // `sed -i … .policy.json`이 「묻지 않음」에서 묻지 않고 지났다. 글자로만 본다.
         let judged = |text: &str, cwd: &str| {
             let mut given = Given::act(command(text));
             given.level = AskLevel::Auto;
@@ -976,7 +976,7 @@ mod tests {
     }
 
     #[test]
-    fn 물어보는_정도는_저장_글자로_읽고_모르면_매번_묻기이며_계획만일_때만_claude를_계획_모드로_띄운다() {
+    fn 물어보는_정도는_저장_글자로_읽고_모르면_매번_묻기이며_계획일_때만_claude를_계획_모드로_띄운다() {
         for level in LEVELS {
             assert_eq!(AskLevel::read(Some(level.as_str())), level);
             assert_eq!(serde_json::to_value(level).unwrap(), level.as_str(), "저장 글자와 직렬화가 같다");

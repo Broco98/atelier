@@ -2,7 +2,7 @@
 //!
 //! - **질문** — claude가 사람에게 묻는 `AskUserQuestion`은 판정을 지나지 않고 질문 카드가 된다(`question` 줄). 답하면 claude가 물은
 //!   입력에 답(물음 → 답)을 더한 allow가 가고, 「나중에」는 그 질문 하나만 닫는 deny다. 둘 다 답 줄로 남는다. 멈추면 거둬진다.
-//! - **계획 넘어가기** — 「계획만」에서 「계획대로 구현」을 고르면 물어보는 정도가 「매번 묻기」로 나간다 — 구현의 첫 편집부터 그
+//! - **계획 넘어가기** — 「계획」에서 「계획대로 구현」을 고르면 물어보는 정도가 「매번 묻기」로 나간다 — 구현의 첫 편집부터 그
 //!   정도로 묻는다. 「계획 다시 쓰기」에 쓴 말은 고정 문구와 함께 claude에게 가고 정도는 그대로다.
 //!
 //! 질문은 진짜 claude가 사람에게 물은 녹음(`thread-question-host`, v1 티켓 27 끝 점검)을 되감는다 — 첫 턴은 물음 둘을 묻고 답을
@@ -33,9 +33,9 @@ fn refund_questions() -> Value {
 }
 
 #[test]
-fn 알아서에서도_질문은_질문_카드로_선다() {
+fn 묻지_않음에서도_질문은_질문_카드로_선다() {
     let (sandbox, host) = asking_sandbox();
-    let thread = host.start_thread_asking("환불 수수료를 정해 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto)).expect("알아서로 새 Thread");
+    let thread = host.start_thread_asking("환불 수수료를 정해 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto)).expect("묻지 않음으로 새 Thread");
 
     let asked = wait_line(&sandbox, &thread, "question", "asked", 1);
     assert_eq!(asked["payload"]["questions"][0]["question"], FEE, "{asked}");
@@ -164,7 +164,7 @@ fn 질문이_걸린_채_멈추면_질문이_거둬지고_승인_답으로는_닫
 }
 
 #[test]
-fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_나가고_다시_쓰기에_쓴_말은_claude에게_간다() {
+fn 계획에서_계획대로_구현을_고르면_정도가_매번_묻기로_나가고_다시_쓰기에_쓴_말은_claude에게_간다() {
     let sandbox = Sandbox::new();
     // 녹화의 작업 폴더를 claude의 자리(Thread 폴더)로 옮긴다 — 구현의 편집이 Thread 폴더 안이라 정도대로 묻는다.
     let host = sandbox.host(sandbox.claude_login_shell(
@@ -173,9 +173,9 @@ fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_�
     ));
     let thread = host
         .start_thread_asking("hello.txt에 hi를 담는 계획을 짜 줘", &[], ThreadLink::NoWork, Some(AskLevel::Plan))
-        .expect("계획만 Thread");
+        .expect("계획 Thread");
 
-    // 다시 쓰기 — 쓴 말이 고정 문구 뒤에 붙어 간다. 정도는 그대로 계획만이다.
+    // 다시 쓰기 — 쓴 말이 고정 문구 뒤에 붙어 간다. 정도는 그대로 계획이다.
     let first = wait_line(&sandbox, &thread, "permission", "asked", 1);
     assert_eq!(first["payload"]["card"], "plan");
     let revise = Reply { words: Some("파일 이름을 greeting.txt로".into()), ..Reply::pick("revise_plan") };

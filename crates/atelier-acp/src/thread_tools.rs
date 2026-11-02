@@ -112,12 +112,12 @@ const EDIT_SPACE_GUIDE: &str = "Space의 이름 · 설명을 고치고 Project�
 - 고친 글에 새 문제가 생기면(등록되지 않은 Project · 빈 이름) 쓰지 않고 그 문제를 돌려준다.\n\n";
 
 /// 「Space 붙이기」의 쓰는 법 — 언제 부르고, Atelier가 언제 묻지 않고 붙이며 언제 사람에게 묻는지, 답이 무엇인지(S42). 묻지 않고 붙이는
-/// 때(「알아서」 · 지금 Space 없음 · 맞는 Space가 넘긴 것 하나)는 Atelier가 지킨다 — Agent가 고르지 않는다(S12).
+/// 때(「묻지 않음」 · 지금 Space 없음 · 맞는 Space가 넘긴 것 하나)는 Atelier가 지킨다 — Agent가 고르지 않는다(S12).
 const SET_SPACE_GUIDE: &str = "이 Thread의 Space를 붙이고 · 바꾸고 · 뺀다(space를 비우면 Space 없이). Space는 함께 다루는 Project의 묶음이고, \
 붙으면 이 Thread는 그 Space의 Project만 읽는다. 다루는 Project가 정해지면 list_spaces로 그 Project를 담은 Space를 보고 부른다. 이미 \
 붙어 있으면 바꿀 까닭이 있을 때만 부른다. Work에 이은 Thread면 그 Work의 Space가 바뀐다 — 그 Work의 다른 Thread도 함께 바뀐다.\n\n\
 - Atelier가 projects를 모두 담은 Space들(없으면 하나라도 담은 Space들)을 후보로 세우고, 넘긴 space를 추천으로 맨 위에 둔다.\n\
-- 물어보는 정도가 「알아서」이고 지금 Space가 없으며 후보가 넘긴 Space 하나뿐이면 묻지 않고 붙인다(projects를 담은 Space가 없으면 묻는다). 그 밖에는 사람의 입력창 자리에 \
+- 물어보는 정도가 「묻지 않음」이고 지금 Space가 없으며 후보가 넘긴 Space 하나뿐이면 묻지 않고 붙인다(projects를 담은 Space가 없으면 묻는다). 그 밖에는 사람의 입력창 자리에 \
 질문 카드(「어느 Space에서 할까요?」)가 서고 사람이 고를 때까지 기다린다 — 결과로 사람이 고른 Space가 온다. 「나중에」면 아무것도 \
 바꾸지 않는다 — 같은 물음을 곧바로 다시 하지 않는다.\n\
 - 바뀐 범위는 다음 말부터다 — 이번 턴에는 지금 함께 연 폴더를 그대로 읽는다.";

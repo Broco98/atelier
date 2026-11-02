@@ -115,7 +115,7 @@ export interface ThreadView {
 export type WorkGone = "archived" | "removed";
 
 /**
- * 물어보는 정도(`atelier_acp::AskLevel`, 스토리 84 · S18) — 매번 묻기 · 편집은 허용 · 계획만 · 알아서. 저장 글자 그대로다. 이름 · 설명은
+ * 물어보는 정도(`atelier_acp::AskLevel`, 스토리 84 · S18) — 매번 묻기 · 편집 자동 · 계획 · 묻지 않음. 저장 글자 그대로다. 이름 · 설명은
  * `chips.ts`의 `ASK_LEVELS`다.
  */
 export type AskLevel = "always" | "edits" | "plan" | "auto";

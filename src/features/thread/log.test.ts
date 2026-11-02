@@ -271,9 +271,9 @@ describe("묶음 줄 — 이어진 읽기와 찾기만 묶는다", () => {
   });
 
   it("판정이 묻지 않고 허용한 줄은 묶지 않는다 — 제 방패 줄과 함께 서야 한다(v1 티켓 23)", () => {
-    const allowed = { ...read("b.ts"), allowed: "알아서" };
+    const allowed = { ...read("b.ts"), allowed: "묻지 않음" };
     const rows = logRows([read("a.ts"), allowed, read("c.ts")]);
-    expect(rows.map((row) => (row.kind === "tool" ? row.tool.allowed : row.kind))).toEqual([null, "알아서", null]);
+    expect(rows.map((row) => (row.kind === "tool" ? row.tool.allowed : row.kind))).toEqual([null, "묻지 않음", null]);
   });
 });
 

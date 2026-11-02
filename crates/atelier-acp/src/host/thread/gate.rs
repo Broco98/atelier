@@ -43,7 +43,7 @@ impl Gate {
     }
 
     fn rule(&self, asked: &PermissionAsked) -> Judgement {
-        // Runtime의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「알아서」
+        // Runtime의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「묻지 않음」
         // 여도). Runtime이 물음들을 `_meta.atelier.questions`에 실었다(Claude 변환기 — `AskUserQuestion`).
         if asked.request["_meta"]["atelier"]["questions"].is_array() {
             let question = Asking { card: Card::Question, policy: String::new(), grant: Vec::new() };

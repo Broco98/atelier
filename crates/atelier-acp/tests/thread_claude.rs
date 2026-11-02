@@ -50,7 +50,7 @@ fn settled(sandbox: &Sandbox, record: &[Value], thread: &str, session: &str) -> 
 fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-stop-host")]));
-    // 녹음(v1 티켓 44 끝 점검)은 「알아서」 Thread다 — 판정이 묻지 않고 허락한 명령이 도는 동안 사람이 멈췄다.
+    // 녹음(v1 티켓 44 끝 점검)은 「묻지 않음」 Thread다 — 판정이 묻지 않고 허락한 명령이 도는 동안 사람이 멈췄다.
     let picks = StartPicks { mode: Some(AskLevel::Auto), ..StartPicks::default() };
     let first = "멈춤 확인 — Bash로 `python3 -c 'import time; time.sleep(40)'`를 앞에서 돌리고 끝나면 FINISHED라고 해";
     let thread = host.start_thread_picking(first, &[], ThreadLink::NoWork, picks).expect("새 Thread의 첫 말");

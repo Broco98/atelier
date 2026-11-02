@@ -42,7 +42,7 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
 
 /**
  * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/work`는 Work 칩 메뉴를 연다(v1 티켓
- * 31 — 고를 수 있는 첫 말 전에만 선다). `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓
+ * 31 — 고를 수 있는 첫 말 전에만 선다). `/plan`은 물어보는 정도를 「계획」으로 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓
  * 23). `/model`은 모델 칩 메뉴(모델과 생각 깊이)를 연다(구현 스펙 §14, 코드 리뷰 1차 B8).
  */
 export const THREAD_COMMANDS: readonly CommandOption[] = [
@@ -81,15 +81,32 @@ export const CLAUDE_MODELS: readonly ChoiceOption[] = [
  * 물음 까닭 · 자동 허용 까닭과 같은 글이다(`atelier_acp::AskLevel::name`).
  */
 export const ASK_LEVELS: readonly { value: AskLevel; name: string; description: string }[] = [
-  { value: "always", name: "매번 묻기", description: "고치거나 실행하기 전에 묻습니다" },
-  { value: "edits", name: "편집은 허용", description: "파일은 알아서, 명령은 묻습니다" },
-  { value: "plan", name: "계획만", description: "읽기만 하고 계획을 세웁니다" },
-  { value: "auto", name: "알아서", description: "모두 허용합니다" },
+  { value: "always", name: "매번 묻기", description: "편집과 명령마다 묻습니다" },
+  { value: "edits", name: "편집 자동", description: "파일 편집은 묻지 않고, 명령은 묻습니다" },
+  { value: "plan", name: "계획", description: "고치지 않고 계획만 세웁니다" },
+  { value: "auto", name: "묻지 않음", description: "모두 허용합니다" },
 ];
 
 /** 저장 글자 → 물어보는 정도. 모르는 글자면 `null`이다. */
 export const askLevelOf = (value: unknown): (typeof ASK_LEVELS)[number] | null =>
   ASK_LEVELS.find((level) => level.value === value) ?? null;
+
+/**
+ * 새 채팅의 정도 — 칩이 보일 값(`shown`)과 첫 말과 함께 보낼 값(`sent`, 구현 스펙 「01a — 권한」). 작업공간 없는 새 채팅의 기본은 「편집 자동」이고
+ * 보이는 값을 늘 보내 `thread.json`에 적는다 — 칩만 바꾸면 값이 없는 파일을 「매번 묻기」로 읽는 판정과 갈린다. 이은 작업공간의 값은 그 점 파일이
+ * 쥐고 있어(값이 없으면 「매번 묻기」), 사람이 고르지 않았으면 보내지 않는다 — 읽는 동안의 칩 글자로 그 값을 덮지 않게.
+ */
+export function newThreadLevel(
+  picked: AskLevel | null,
+  work: string | null,
+  workLevel: AskLevel | null,
+): { shown: AskLevel; sent: AskLevel | null } {
+  if (work === null) {
+    const level = picked ?? "edits";
+    return { shown: level, sent: level };
+  }
+  return { shown: picked ?? workLevel ?? "always", sent: picked };
+}
 
 export function chipLists(lines: readonly RecordLine[]): ChipLists {
   const lists: ChipLists = { models: null, model: null, commands: [] };

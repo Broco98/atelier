@@ -3,7 +3,7 @@
 //! - **Work에 이은 Thread의 Space는 그 Work의 것이다**(§9) — Thread에서 바꾸면(Space 칩) 그 Work의 Space가 바뀐다(스토리 42). Work의
 //!   Space가 바뀌면 그 Work의 Thread마다 Space 줄이 선다(S9) — 그 Thread들의 범위가 모두 바뀐다.
 //! - **Space 줄**(`space`)은 시스템 줄이다. 갈래 다섯(`change` — 사람이 칩 · 메뉴로 한 바꿈 `changed` · 뺌 `removed`,
-//!   Host 「알아서」의 붙임 `attached`(08), 지워짐 `deleted` · 되돌림 `restored`(07))과 바뀐 뒤의 범위(읽는 Project의 이름 · 등록된
+//!   Host 「묻지 않음」의 붙임 `attached`(08), 지워짐 `deleted` · 되돌림 `restored`(07))과 바뀐 뒤의 범위(읽는 Project의 이름 · 등록된
 //!   Project 수 · worktree에서 일하는 Project의 이름)를 싣는다 — 화면은 그때의 범위를 다시 셀 수 없다(기록은 덧붙이기만 한다).
 //! - 떠 있는 Session은 건드리지 않는다 — 다음 말을 보낼 때 새 자리로 이어 연다([`ConversationHost::move_if_needed`] — 범위가 바뀌면 함께
 //!   여는 폴더가 바뀐다). 돌고 있는 턴은 끊기지 않는다(스토리 41).
@@ -203,7 +203,7 @@ impl ConversationHost {
         thread_tools::said(&serde_json::to_string_pretty(&json!({"current": current, "spaces": spaces})).unwrap_or_default(), false)
     }
 
-    /// Thread 도구 「Space 붙이기」(§11 · S11 · S12) — 묻지 않고 붙이거나(「알아서」 · 지금 Space 없음 · 후보가 넘긴 것 하나), 질문 카드를
+    /// Thread 도구 「Space 붙이기」(§11 · S11 · S12) — 묻지 않고 붙이거나(「묻지 않음」 · 지금 Space 없음 · 후보가 넘긴 것 하나), 질문 카드를
     /// 세우고 사람이 고를 때까지 기다린다. **막히는 호출일 수 있다**(연결마다의 스레드에서 불린다). 넘긴 것이 지금과 같으면 아무것도
     /// 하지 않는다. 없는 Space · 등록되지 않은 Project면 그 까닭을 도구의 실패로 돌려준다.
     pub(super) fn set_space_tool(&self, thread: &str, ask: SpaceAsk) -> Value {
@@ -222,7 +222,7 @@ impl ConversationHost {
                     let scope = self.scope_now(thread);
                     thread_tools::said(
                         &format!(
-                            "{}에 넣었다 — 물어보는 정도가 「알아서」이고 맞는 Space가 이것 하나라 사람에게 묻지 않았다. 다음 말부터 읽는 \
+                            "{}에 넣었다 — 물어보는 정도가 「묻지 않음」이고 맞는 Space가 이것 하나라 사람에게 묻지 않았다. 다음 말부터 읽는 \
                              Project: {}. 이번 턴에는 지금 함께 연 폴더를 그대로 읽는다.",
                             space_name(slug, &asking.candidates[0].name),
                             reads(&scope)
@@ -378,7 +378,7 @@ struct Asking {
     work: Option<String>,
     scope: ReadingScope,
     candidates: Vec<atelier_core::Space>,
-    /// 추천을 끼우기 전의 후보가 넘긴 Space 하나뿐이다 — 「알아서」가 묻지 않고 붙이는 셋째 조건(§11).
+    /// 추천을 끼우기 전의 후보가 넘긴 Space 하나뿐이다 — 「묻지 않음」이 묻지 않고 붙이는 셋째 조건(§11).
     alone: bool,
     names: std::collections::HashMap<String, String>,
 }
@@ -461,7 +461,7 @@ fn now_text(scope: &ReadingScope) -> String {
 enum Change<'a> {
     /// 칩 · 메뉴로 붙이고 · 바꾸고 · 뺐다 — 범위에 Space가 있으면 `changed`, 없으면 `removed`.
     Picked,
-    /// Host가 묻지 않고 붙였다(「알아서」 — 08) — 범위의 Space가 그것이다.
+    /// Host가 묻지 않고 붙였다(「묻지 않음」 — 08) — 범위의 Space가 그것이다.
     Attached,
     /// 이은 Space가 지워졌다 — 그 Space(slug · 보이는 이름. 파일이 사라졌으면 이름도 slug다).
     Deleted { slug: &'a str, name: &'a str },

@@ -41,7 +41,7 @@ const levels = (client: QueryClient) =>
 const modeLine = (payload: unknown): RecordLine => ({ seq: 9, at: "2026-10-23T15:00:09.000+09:00", kind: "mode", payload });
 
 describe("엔진이 바꾼 물어보는 정도(v1 티켓 26)", () => {
-  it("계획만에서 계획대로 구현해 엔진이 적은 mode 줄은 그 Thread와 같은 Work의 연 Thread의 정도를 고친다", () => {
+  it("계획에서 계획대로 구현해 엔진이 적은 mode 줄은 그 Thread와 같은 Work의 연 Thread의 정도를 고친다", () => {
     const client = seeded();
     followRecordLine(client, "가", modeLine({ mode: "always", work: "refund-api" }));
     expect(levels(client)).toEqual({ 가: "always", 나: "always", 다: "plan", 라: "plan" });

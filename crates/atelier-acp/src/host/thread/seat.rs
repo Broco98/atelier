@@ -97,7 +97,7 @@ pub(super) struct Docs {
 struct Noted {
     /// 그 요청의 선택지(`optionId`, `kind`).
     options: Vec<(String, String)>,
-    /// 세운 카드 — 질문의 답과 권한 답이 엇갈리지 않게, 계획 넘어가기의 허락이 「계획만」을 나가게(v1 티켓 26).
+    /// 세운 카드 — 질문의 답과 권한 답이 엇갈리지 않게, 계획 넘어가기의 허락이 「계획」을 나가게(v1 티켓 26).
     card: Card,
     /// 편집인가 — 사람이 허락하면 쓰기 자리를 쥔다.
     edit: bool,

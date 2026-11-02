@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { ASK_LEVELS, chipLabel, chipLists, chipParts, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
+import { ASK_LEVELS, chipLabel, chipLists, chipParts, CLAUDE_MODELS, currentModel, newThreadLevel, slashCommands } from "./chips";
 import type { RecordLine } from "./types";
 
 // 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 채팅의 값에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
@@ -62,7 +62,7 @@ describe("입력창 칩", () => {
 });
 
 describe("「/」 명령(v1 티켓 23)", () => {
-  it("화면 명령이 보드의 차례로 Runtime 명령 앞에 서고, 같은 이름의 Runtime 명령은 가린다 — `/plan`은 늘 계획만이다", () => {
+  it("화면 명령이 보드의 차례로 Runtime 명령 앞에 서고, 같은 이름의 Runtime 명령은 가린다 — `/plan`은 늘 「계획」이다", () => {
     // `/model`은 모델 칩 메뉴를 연다(구현 스펙 §14, 코드 리뷰 1차 B8) — Runtime의 `/model`은 가린다.
     const runtime = [
       { name: "plan", description: "Runtime의 plan", aliases: [] },
@@ -108,11 +108,45 @@ describe("물어보는 정도 — 칩과 판정", () => {
     return Object.fromEntries([...body.matchAll(/AskLevel::(\w+) => "([^"]+)"/g)].map(([, variant, text]) => [variant, text]));
   };
 
+  it("네 모드의 이름과 설명은 시안의 말이다", () => {
+    expect(ASK_LEVELS.map((level) => [level.value, level.name, level.description])).toEqual([
+      ["always", "매번 묻기", "편집과 명령마다 묻습니다"],
+      ["edits", "편집 자동", "파일 편집은 묻지 않고, 명령은 묻습니다"],
+      ["plan", "계획", "고치지 않고 계획만 세웁니다"],
+      ["auto", "묻지 않음", "모두 허용합니다"],
+    ]);
+  });
+
   it("칩의 차례 · 저장 글자 · 이름이 엔진의 `AskLevel`과 같다", () => {
     const stored = table("as_str");
     const names = table("name");
     expect(Object.keys(stored)).toEqual(["Always", "Edits", "Plan", "Auto"]);
     expect(ASK_LEVELS.map((level) => level.value)).toEqual(Object.values(stored));
     expect(ASK_LEVELS.map((level) => level.name)).toEqual(Object.keys(stored).map((variant) => names[variant]));
+  });
+});
+
+// 구현 스펙 「01a — 권한」 — 칩의 기본값만 바꾸면 값이 없는 파일을 「매번 묻기」로 읽는 판정과 갈린다. 그래서 보이는 값을 첫 말과 함께 보낸다.
+describe("새 채팅의 정도", () => {
+  it("작업공간이 없으면 「편집 자동」으로 보이고 그 값을 첫 말과 함께 보낸다", () => {
+    expect(newThreadLevel(null, null, null)).toEqual({ shown: "edits", sent: "edits" });
+  });
+
+  it("작업공간이 없어도 고른 값이 이기고, 고른 값을 보낸다", () => {
+    expect(newThreadLevel("plan", null, null)).toEqual({ shown: "plan", sent: "plan" });
+    expect(newThreadLevel("always", null, null)).toEqual({ shown: "always", sent: "always" });
+  });
+
+  it("이은 작업공간은 그 값을 보이고, 고르지 않았으면 아무것도 보내지 않는다", () => {
+    expect(newThreadLevel(null, "cart", "auto")).toEqual({ shown: "auto", sent: null });
+    expect(newThreadLevel(null, "cart", "always")).toEqual({ shown: "always", sent: null });
+  });
+
+  it("작업공간의 값을 읽는 동안에는 「매번 묻기」로 보이고, 보내서 그 값을 덮지 않는다", () => {
+    expect(newThreadLevel(null, "cart", null)).toEqual({ shown: "always", sent: null });
+  });
+
+  it("이은 작업공간에서 고른 값은 보낸다", () => {
+    expect(newThreadLevel("plan", "cart", "auto")).toEqual({ shown: "plan", sent: "plan" });
   });
 });

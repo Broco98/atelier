@@ -208,7 +208,7 @@ fn work_밖_project는_카드로_묻고_붙이고_고치기면_붙여_worktree�
     let decided: Vec<&Value> =
         of_kind(&record, "permission").into_iter().filter(|line| line["payload"]["state"] == "decided").collect();
     let last = decided.last().expect("판정 줄");
-    assert_eq!((last["payload"]["optionId"].clone(), last["payload"]["reason"].clone()), (json!("allow_once"), json!("편집은 허용")));
+    assert_eq!((last["payload"]["optionId"].clone(), last["payload"]["reason"].clone()), (json!("allow_once"), json!("편집 자동")));
     let path = last["payload"]["request"]["toolCall"]["rawInput"]["file_path"].as_str().unwrap_or_default().to_owned();
     assert!(Path::new(&path).starts_with(real(&tree(&sandbox, "web-app"))), "worktree 안의 편집이다: {path}");
 }
@@ -343,9 +343,9 @@ fn added_dirs(args: &[String]) -> Vec<String> {
 
 /// 끝 점검 39(a) 사용자 결정 — Work 없는 Thread의 Host는 Work를 제안하기 전에 어느 Project의 일인지 보려고 등록된 저장소를 읽는다.
 /// 그 폴더를 모두 「읽기만 하기」와 같은 길(`--add-dir`)로 함께 열어 읽기마다 카드가 서지 않게 한다. 고치기는 그대로 판정이 센다 —
-/// 「알아서」여도 Work 없이 Project를 고치지 못한다.
+/// 「묻지 않음」여도 Work 없이 Project를 고치지 못한다.
 #[test]
-fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로_함께_열고_그_안의_편집은_알아서여도_work부터_만들라며_거절된다() {
+fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로_함께_열고_그_안의_편집은_묻지_않음이어도_work부터_만들라며_거절된다() {
     let sandbox = Sandbox::new();
     let api = register(&sandbox, "api-server");
     let web = register(&sandbox, "web-app");
@@ -359,7 +359,7 @@ fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로
     ));
     let thread = host
         .start_thread_asking("환불 API 버그 고쳐줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto))
-        .expect("알아서로 Work 없는 Thread");
+        .expect("묻지 않음으로 Work 없는 Thread");
     let record = sandbox.wait_thread_record(&thread, |record| {
         of_kind(record, "permission").iter().any(|line| line["payload"]["state"] == "decided")
     });

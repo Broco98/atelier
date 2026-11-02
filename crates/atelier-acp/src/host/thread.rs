@@ -19,7 +19,7 @@
 //! - **Work 하나에서 고치는 Session은 하나다(v1 티켓 18 · §10, [`seat`]).** 편집을 허락받은 Session이 그 Work의 쓰기 자리를 쥐고 턴이
 //!   끝나면 놓는다. 그동안 다른 Session의 편집 요청은 묻지 않고 거절한다.
 //! - **승인은 판정 하나를 거친다(v1 티켓 22 · §9, [`gate`]).** Session에 온 권한 요청은 모두 판정을 지나 허용 · 거절 · 물음 가운데
-//!   하나가 된다. `claude`는 기본 모드로만(「계획만」이면 계획 모드로) 뜬다(S17). 물어보는 정도는 Work에 이은 Thread면 Work의 것,
+//!   하나가 된다. `claude`는 기본 모드로만(「계획」이면 계획 모드로) 뜬다(S17). 물어보는 정도는 Work에 이은 Thread면 Work의 것,
 //!   아니면 Thread의 것이다(S18).
 //! - **Work와 이어진다(v1 티켓 30 · §11, [`work`]).** Host가 Thread 도구로 Work 만들기를 제안하면 카드가 서고, 사람이 만들면 core가
 //!   worktree 없이 Work를 만들고 이 Thread의 `work`를 적는다.
@@ -98,7 +98,8 @@ pub enum ThreadLink {
 /// 새 Thread의 첫 말과 함께 입력창 칩에서 고른 것(v1 티켓 23 · 31) — 고르지 않은 칸은 `None`이다.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StartPicks {
-    /// 물어보는 정도 — Work 없는 Thread면 `thread.json`의 `mode`로 서고, 이은 Work면 다를 때 그 Work의 정도가 된다(S18).
+    /// 물어보는 정도 — Work 없는 Thread면 `thread.json`의 `mode`로 서고, 이은 Work면 다를 때 그 Work의 정도가 된다(S18). 화면은 새 Claude
+    /// 채팅이면 칩에 보이는 값을 늘 보낸다. 엔진은 기본값을 정하지 않는다 — `None`은 적지 않고, 없는 값은 `always`로 읽는다.
     pub mode: Option<AskLevel>,
     /// 첫 Session의 모델 — 채팅의 값으로 선다(스토리 33). claude `--model`이 받는 값(별칭 · 모델 이름)이다.
     pub model: Option<String>,
@@ -343,7 +344,7 @@ impl ConversationHost {
     }
 
     /// 물어보는 정도를 고른 첫 말로 새 Thread — [`Self::start_thread_with`]와 같고, 입력창 칩에서 고른 정도(`mode`)가 `thread.json`의
-    /// `mode`로 선다(v1 티켓 23 · S18). 그래서 첫 Session부터 그 정도로 판정하고, 「계획만」이면 `claude`가 계획 모드로 뜬다. 고른 채로
+    /// `mode`로 선다(v1 티켓 23 · S18). 그래서 첫 Session부터 그 정도로 판정하고, 「계획」이면 `claude`가 계획 모드로 뜬다. 고른 채로
     /// 선 것이라 `mode` 줄은 남기지 않는다. Work에 이은 Thread는 정도가 Work의 것이다 — 다르게 골랐으면 그 Work의 정도를 바꾸고
     /// `mode` 줄을 남긴다(이은 Thread의 칩에서 바꾼 것과 같다, v1 티켓 31).
     pub fn start_thread_asking(
@@ -524,7 +525,7 @@ impl ConversationHost {
     /// 편집을 허락하는 답이면 그 Session이 Work의 쓰기 자리를 쥔다(v1 티켓 18 · S20). 물은 사이에 다른 Session이 쥐었으면 그 허락 대신
     /// 엔진이 주인의 글로 거부한다 — 사람의 답은 받은 것이라 오류가 아니다. 답이 가지 못하면 새로 쥔 자리를 놓는다.
     ///
-    /// **「계획만」에서 계획 넘어가기를 허락하면 물어보는 정도가 「매번 묻기」로 나간다**(v1 티켓 26) — 계획만은 「계획을 세우고 멈추기」
+    /// **「계획」에서 계획 넘어가기를 허락하면 물어보는 정도가 「매번 묻기」로 나간다**(v1 티켓 26) — 계획은 「계획을 세우고 멈추기」
     /// 라 구현으로 넘어가면 끝난다. 답보다 먼저 적는다 — 구현의 첫 요청이 옛 정도로 판정되지 않게. 떠 있는 Session의 계획 모드는 답한
     /// 뒤에 맞춘다(물은 claude는 허락을 받으며 스스로 계획 모드를 나간다).
     ///
@@ -579,7 +580,7 @@ impl ConversationHost {
         if let (Some(file), Ok(())) = (&left_plan, &answered) {
             if let Err(error) = self.retune_sessions(thread, file, AskLevel::Always) {
                 // 정도는 이미 나갔다 — 판정은 요청마다 그것을 읽는다. 계획 모드에 남은 Session은 다음에 열 때 맞는다.
-                eprintln!("계획만을 나간 Session의 모드를 맞추지 못했습니다: {error}");
+                eprintln!("계획을 나간 Session의 모드를 맞추지 못했습니다: {error}");
             }
         }
         answered
@@ -619,7 +620,7 @@ impl ConversationHost {
     /// 물어보는 정도 바꾸기(S18 · 스토리 84) — Work에 이은 Thread면 그 Work 폴더의 점 파일에(같은 Work의 Thread들이 함께 쓴다),
     /// 아니면 `thread.json`의 `mode`에 둔다. 바꾼 것은 `mode` 줄(`{mode, work}`, 사람의 줄)로 남는다(§4).
     ///
-    /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정하고, 「계획만」
+    /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정하고, 「계획」
     /// 으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 모드도 곧바로 바꾼다(v1 티켓 23 — [`Self::retune_sessions`]).
     pub fn set_thread_mode(&self, thread: &str, mode: AskLevel) -> Result<(), HostError> {
         let (file, before) = self.store_thread_mode(thread, mode)?;
@@ -629,8 +630,8 @@ impl ConversationHost {
         self.retune_sessions(thread, &file, mode)
     }
 
-    /// 「계획만」이면 「매번 묻기」로 나간다(v1 티켓 26 — 계획 넘어가기를 허락함) — 적고 `mode` 줄을 남긴다. 떠 있는 Session의 모드는
-    /// 맞추지 않는다 — 부르는 쪽이 답한 뒤에 맞춘다. 나갔으면 그 Thread 파일이다. 계획만이 아니면 아무것도 하지 않는다.
+    /// 「계획」이면 「매번 묻기」로 나간다(v1 티켓 26 — 계획 넘어가기를 허락함) — 적고 `mode` 줄을 남긴다. 떠 있는 Session의 모드는
+    /// 맞추지 않는다 — 부르는 쪽이 답한 뒤에 맞춘다. 나갔으면 그 Thread 파일이다. 계획이 아니면 아무것도 하지 않는다.
     fn leave_plan_only(&self, thread: &str) -> Result<Option<ThreadFile>, HostError> {
         let work = self.read_thread_file(thread)?.work;
         if gate::asking(&self.data_root, thread, work.as_deref()).0 != AskLevel::Plan {
@@ -967,7 +968,7 @@ impl ConversationHost {
         let place = self.thread_place(thread, file)?;
         let recorder = &conv.recorder;
         recorder.spawning().map_err(HostError::Record)?;
-        // 기본 모드로만 띄운다 — 「계획만」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
+        // 기본 모드로만 띄운다 — 「계획」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
         let (level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
         let choice = ClaudeChoice {
             mode: Some(level.claude_mode().to_owned()),

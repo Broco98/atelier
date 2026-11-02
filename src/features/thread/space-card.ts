@@ -5,7 +5,7 @@ import type { ToolQuestionOption, ToolQuestionView } from "./tool-question";
 import type { SpaceAnswer } from "./types";
 
 // Space 질문 카드의 값(03 티켓 08 · 구현 스펙 §11 · S12 · 캔버스 F4-WorkAsk · F4-KitChat 「질문 카드」) — Host가 「Space 붙이기」 Thread
-// 도구를 불렀고 Atelier가 사람에게 묻기로 했으면(「알아서」가 아니다 · 이미 붙어 있다 · 후보가 여럿) 그 도구가 입력창 자리에 이 카드를
+// 도구를 불렀고 Atelier가 사람에게 묻기로 했으면(「묻지 않음」이 아니다 · 이미 붙어 있다 · 후보가 여럿) 그 도구가 입력창 자리에 이 카드를
 // 세우고 사람이 고를 때까지 기다린다. 물음 · 선택지(추천 · 다른 후보 · Space 없이) · 접힌 줄의 글을 짓는 **순수 함수**다 — 겉과 키는 Thread
 // 도구 질문 카드 하나다(`tool-question.ts` · `ToolQuestionCard`). 그리는 것은 Thread 도구 카드의 표(`ToolCards.tsx`)와 흐름의 답한 카드(`AnsweredCards`)다.
 

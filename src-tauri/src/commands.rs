@@ -1092,7 +1092,7 @@ pub async fn thread_set_effort(
 }
 
 /// 물어보는 정도 바꾸기(v1 티켓 23 · S18) — 입력창 아래 칩 · `/plan` · `/policy`. Work에 이은 Thread면 그 Work의 정도다. 판정은 다음
-/// 요청부터 따르고, 「계획만」으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄로 남는다.
+/// 요청부터 따르고, 「계획」으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄로 남는다.
 #[tauri::command]
 pub async fn thread_set_mode(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,

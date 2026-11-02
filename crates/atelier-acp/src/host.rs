@@ -597,7 +597,7 @@ impl fmt::Display for HostError {
                 write!(f, "이미 닫힌 권한 요청입니다. 답했거나 거둬진 요청에는 답할 수 없습니다")
             }
             HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
-            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「늘 허용」으로 허락할 수 없어요 — 매번 물어야 하는 일이에요"),
+            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 다시 묻지 않게 허락할 수 없어요 — 매번 물어야 하는 일이에요"),
             HostError::NotPermission { .. } => write!(f, "질문에는 답이나 「나중에」로 답해 주세요"),
             HostError::NotQuestion { .. } => write!(f, "질문이 아닌 요청이에요 — 승인 카드에서 골라 주세요"),
             HostError::LoginRequired { agent, .. } => {
@@ -837,7 +837,7 @@ fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
 /// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
 #[derive(Debug, Clone, Default)]
 struct ClaudeChoice {
-    /// 권한 모드 — Thread의 Session은 늘 싣는다: `default`, 「계획만」이면 `plan`(v1 구현 스펙 S17 · v1 티켓 22).
+    /// 권한 모드 — Thread의 Session은 늘 싣는다: `default`, 「계획」이면 `plan`(v1 구현 스펙 S17 · v1 티켓 22).
     mode: Option<String>,
     model: Option<String>,
     effort: Option<String>,
@@ -902,7 +902,7 @@ enum Revive {
 }
 
 /// 사람이 바꾸는 Session의 설정 하나 — Runtime에 넣는 요청과 `config` 줄이 짝을 이룬다. Runtime이 떠 있는 Session에 곧바로 넣는
-/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 권한 모드(「계획만」을 들고 날 때, v1 티켓 23)다. 생각 깊이는 띄울 때의 플래그로만
+/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 권한 모드(「계획」을 들고 날 때, v1 티켓 23)다. 생각 깊이는 띄울 때의 플래그로만
 /// 받는다(v1 티켓 05).
 enum Setting {
     Model(String),

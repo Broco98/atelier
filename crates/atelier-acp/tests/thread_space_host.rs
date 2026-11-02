@@ -2,9 +2,9 @@
 //!
 //! - 「Space 목록」은 Space마다 slug · 이름 · Project · 설명 첫 줄과 이 Thread의 지금 Space를 돌려준다.
 //! - 「Space 붙이기」의 후보는 다루는 Project를 모두 담은 Space들(없으면 하나라도 담은 Space들)이고, Host가 넘긴 Space가 추천이다.
-//!   - 물어보는 정도가 「알아서」 · 지금 Space 없음 · 후보가 넘긴 것 하나뿐이면 묻지 않고 붙이고 Space 줄 「붙임」(`attached`)을 남긴다.
+//!   - 물어보는 정도가 「묻지 않음」 · 지금 Space 없음 · 후보가 넘긴 것 하나뿐이면 묻지 않고 붙이고 Space 줄 「붙임」(`attached`)을 남긴다.
 //!   - 그 밖에는 질문 카드(`question` · `card: space`)가 서고 도구는 사람이 고를 때까지 기다린다 — 고른 답은 답 줄 하나로 접히고 Space
-//!     줄을 따로 남기지 않는다. 「나중에」는 아무것도 바꾸지 않는다. 이미 붙어 있으면 「알아서」에서도 묻는다(S11).
+//!     줄을 따로 남기지 않는다. 「나중에」는 아무것도 바꾸지 않는다. 이미 붙어 있으면 「묻지 않음」에서도 묻는다(S11).
 //!   - Work에 이은 Thread면 그 Work의 Space가 바뀐다 — 그 Work의 다른 Thread에는 Space 줄이 선다(S9).
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 폴더(`thread.json` · `events.jsonl`) · `work.json` · 가짜 claude의 MCP 영수증만 본다.
@@ -117,7 +117,7 @@ fn space_lines(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
     of_kind(&sandbox.thread_record(thread), "space").into_iter().map(|line| line["payload"].clone()).collect()
 }
 
-/// 「알아서」로 시작한 Work 없는 Thread — 첫 턴에 Host가 `calls`를 부른다.
+/// 「묻지 않음」으로 시작한 Work 없는 Thread — 첫 턴에 Host가 `calls`를 부른다.
 fn auto_thread(sandbox: &Sandbox, calls: &[Value], picks: StartPicks) -> (ConversationHost, String) {
     let host = sandbox.host(calling(sandbox, calls));
     let picks = StartPicks { mode: Some(AskLevel::Auto), ..picks };
@@ -126,7 +126,7 @@ fn auto_thread(sandbox: &Sandbox, calls: &[Value], picks: StartPicks) -> (Conver
 }
 
 #[test]
-fn 알아서이고_space가_없고_맞는_space가_넘긴_것_하나뿐이면_묻지_않고_붙이고_붙임_줄_하나만_남긴다() {
+fn 묻지_않음이고_space가_없고_맞는_space가_넘긴_것_하나뿐이면_묻지_않고_붙이고_붙임_줄_하나만_남긴다() {
     let sandbox = Sandbox::new();
     let (web, api, _) = payments_world(&sandbox);
     let (host, thread) = auto_thread(&sandbox, &[set_payments(&["web-app", "api-server"])], StartPicks::default());
@@ -177,7 +177,7 @@ fn asking_thread(sandbox: &Sandbox, calls: &[Value]) -> (ConversationHost, Strin
 }
 
 #[test]
-fn 알아서가_아니면_질문_카드가_추천_후보_space_없이로_서고_고른_답은_한_줄로_접히며_다음_말부터_그_space를_읽는다() {
+fn 묻지_않음이_아니면_질문_카드가_추천_후보_space_없이로_서고_고른_답은_한_줄로_접히며_다음_말부터_그_space를_읽는다() {
     let sandbox = Sandbox::new();
     let (_, api, back) = payments_world(&sandbox);
     let (host, thread) = asking_thread(&sandbox, &[set_payments(&["api-server"])]);
@@ -249,7 +249,7 @@ fn card_spaces(card: &Value) -> Vec<&str> {
 }
 
 #[test]
-fn 알아서여도_맞는_space가_넘긴_것_하나가_아니면_묻고_추천은_후보_안에_있어도_맨_위다() {
+fn 묻지_않음이어도_맞는_space가_넘긴_것_하나가_아니면_묻고_추천은_후보_안에_있어도_맨_위다() {
     let sandbox = Sandbox::new();
     payments_world(&sandbox);
     register(&sandbox, "landing-page");
@@ -279,14 +279,14 @@ fn 알아서여도_맞는_space가_넘긴_것_하나가_아니면_묻고_추천�
             (&json!("결제-서비스"), vec!["결제-서비스"]),
             (&json!("사내-도구"), vec!["사내-도구", "결제-서비스"]),
         ],
-        "「알아서」 · Space 없음이어도 묻는다 — 추천이 맨 위, 그 뒤 다른 후보"
+        "「묻지 않음」 · Space 없음이어도 묻는다 — 추천이 맨 위, 그 뒤 다른 후보"
     );
     assert!(of_kind(&record, "space").is_empty(), "붙이지 않았다: {}", common::lines_text(&record));
     assert_eq!(sandbox.thread_json(&thread).get("space"), None, "「나중에」는 아무것도 바꾸지 않는다");
 }
 
 #[test]
-fn 이미_붙어_있으면_알아서에서도_묻고_나중에는_아무것도_바꾸지_않는다() {
+fn 이미_붙어_있으면_묻지_않음에서도_묻고_나중에는_아무것도_바꾸지_않는다() {
     let sandbox = Sandbox::new();
     let (_, api, back) = payments_world(&sandbox);
     let picked = StartPicks { space: Some(SpacePick { slug: Some("사내-도구".into()) }), ..StartPicks::default() };
@@ -373,7 +373,7 @@ fn work에_이은_thread에서_붙이면_그_work의_space가_되고_그_work의
     sandbox.wait_thread_kind(&other, "turn-end", 1);
     host.shut_down();
 
-    // 「알아서」 Work — 묻지 않고 그 Work에 붙인다.
+    // 「묻지 않음」 Work — 묻지 않고 그 Work에 붙인다.
     let host = sandbox.host(calling(&sandbox, &[set_payments(&["web-app", "api-server"])]));
     let thread = host
         .start_thread_asking("환불이 두 번 빠지는 버그 고쳐 줘", &[], in_refund(), Some(AskLevel::Auto))
@@ -470,7 +470,7 @@ fn host가_space를_묻고_사람이_고른_턴의_기록이_검사_자료와_�
     common::assert_record("thread-space-ask", &fixed);
 }
 
-/// 기록 축복 — 「알아서」 Thread에서 Host가 묻지 않고 Space를 붙인 턴(Space 줄 「붙임」). L3가 이 파일을 흘려 「결제 서비스 Space에
+/// 기록 축복 — 「묻지 않음」 Thread에서 Host가 묻지 않고 Space를 붙인 턴(Space 줄 「붙임」). L3가 이 파일을 흘려 「결제 서비스 Space에
 /// 넣었어요 — web-app · api-server를 읽어요」를 그린다.
 #[test]
 fn host가_묻지_않고_space를_붙인_턴의_기록이_검사_자료와_같다() {

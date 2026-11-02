@@ -499,7 +499,7 @@ describe("Thread 도구 들이기(v1 티켓 20)", () => {
 });
 
 describe("물어보는 정도(v1 티켓 23)", () => {
-  /** 「편집은 허용」으로 세운 Thread의 첫 편집을 판정이 묻지 않고 허용한 축복 기록 — 물음 줄 없이 판정 줄(`decided`) 하나다. */
+  /** 「편집 자동」으로 세운 Thread의 첫 편집을 판정이 묻지 않고 허용한 축복 기록 — 물음 줄 없이 판정 줄(`decided`) 하나다. */
   const auto = record("thread-auto-allow");
 
   it("바꾼 정도는 「Policy를 X로 바꿈」 시스템 줄이고, Work에 이은 Thread면 「· 이 Work에만」이 붙는다", () => {
@@ -512,11 +512,11 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     ];
     const { system } = foldThread(lines);
     expect(system.map((line) => [line.kind, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
-      ["mode", "Policy를 편집은 허용으로 바꿈 · 이 Work에만", 2],
+      ["mode", "Policy를 편집 자동으로 바꿈 · 이 Work에만", 2],
       ["mode", "Policy를 매번 묻기로 바꿈", 2],
-      ["mode", "Policy를 계획만으로 바꿈", 2],
+      ["mode", "Policy를 계획으로 바꿈", 2],
     ]);
-    expect(system.map((line) => line.name)).toEqual(["편집은 허용", "매번 묻기", "계획만"]);
+    expect(system.map((line) => line.name)).toEqual(["편집 자동", "매번 묻기", "계획"]);
   });
 
   it("판정이 묻지 않고 허용한 도구 줄은 그 까닭을 들고, 승인 카드는 서지 않는다", () => {
@@ -524,7 +524,7 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     expect(model.pending).toEqual([]);
     const tools = model.turns[0].entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => [phraseText(describeTool(tool).phrase), tool.allowed, tool.denied])).toEqual([
-      ["allowed.txt 작성함", "편집은 허용", false],
+      ["allowed.txt 작성함", "편집 자동", false],
     ]);
   });
 
@@ -553,7 +553,7 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     if (!decided || !first) throw new Error("판정 줄과 도구 줄이 있다");
     const swapped = auto.map((line) => (line === first ? { ...decided, seq: first.seq } : line === decided ? { ...first, seq: decided.seq } : line));
     const tool = foldThread(swapped).turns[0].entries.find((entry) => entry.kind === "tool");
-    expect(tool?.kind === "tool" && tool.allowed).toBe("편집은 허용");
+    expect(tool?.kind === "tool" && tool.allowed).toBe("편집 자동");
   });
 
   it("계획 모드의 claude가 제 계획 파일(~/.claude/plans/…md)에 쓴 줄은 작업 로그 · 바뀐 파일에 서지 않는다(v1 티켓 27)", () => {
@@ -982,7 +982,7 @@ describe("Space 질문 카드(03 티켓 08)", () => {
     expect(withdrawn.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool"]);
   });
 
-  // 바탕은 엔진이 축복한 기록이다(`thread-space-attached.jsonl`) — 「알아서」 Thread에서 Host가 묻지 않고 결제 서비스를 붙였다.
+  // 바탕은 엔진이 축복한 기록이다(`thread-space-attached.jsonl`) — 「묻지 않음」 Thread에서 Host가 묻지 않고 결제 서비스를 붙였다.
   it("Host가 묻지 않고 붙이면 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」 한 줄이 서고, 굵은 것은 Space 이름뿐이다", () => {
     const model = foldThread(record("thread-space-attached"));
     expect(model.asks).toEqual([]);

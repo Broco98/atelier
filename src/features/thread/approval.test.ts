@@ -67,10 +67,10 @@ describe("카드의 값", () => {
   });
 
   it("계획 넘어가기 카드는 계획대로 구현해도 되는지 묻는다(v1 티켓 26) — 계획 본문은 흐름의 계획 카드가 든다", () => {
-    const view = describeApproval(request({ kind: "switch_mode", rawInput: { plan: "1. 고친다" } }, { card: "plan", policy: "계획만" }), "Claude Code", null);
+    const view = describeApproval(request({ kind: "switch_mode", rawInput: { plan: "1. 고친다" } }, { card: "plan", policy: "계획" }), "Claude Code", null);
     expect(view).toMatchObject({
       kind: "plan",
-      head: "Claude Code · 계획 구현 · 「계획만」",
+      head: "Claude Code · 계획 구현 · 「계획」",
       title: "이 계획대로 구현해도 될까요?",
       command: null,
       subject: null,
@@ -128,33 +128,33 @@ describe("카드의 값", () => {
 });
 
 describe("선택지 — 승인은 단추 줄, 계획은 번호 줄", () => {
-  // 승인 카드의 단추 줄(02 §10 · Screen-Live 단계 4) — 왼쪽에서 오른쪽으로 「아니요, 다르게」(esc) · 「… 늘 허용」 · 맨 오른쪽 「이번만 허용」(↵).
+  // 승인 카드의 단추 줄(02 §10 · Screen-Live 단계 4) — 왼쪽에서 오른쪽으로 「아니요, 다르게」(esc) · 허락 문구 · 맨 오른쪽 「이번만 허용」(↵).
   const row = (request: PendingPermission, scope: "work" | "thread") => {
     const { layout, choices } = cardChoices(request, scope);
     return { layout, choices: choices.map((choice) => [choice.label, choice.option, choice.remember, choice.opensField, choice.key]) };
   };
 
-  it("아니요, 다르게 · 이 Work에서 늘 허용 · 이번만 허용 — 왼쪽에서 오른쪽 차례이고, ↵는 이번만 허용, esc는 입력칸을 여는 아니요다", () => {
+  it("아니요, 다르게 · 비슷한 명령 허용 · 이번만 허용 — 왼쪽에서 오른쪽 차례이고, ↵는 이번만 허용, esc는 입력칸을 여는 아니요다", () => {
     expect(row(request(migrate, { grant: ["Bash(pnpm prisma *)"] }), "work")).toEqual({
       layout: "buttons",
       choices: [
         ["아니요, 다르게", "reject", false, true, "escape"],
-        ["이 Work에서 늘 허용", "allow_once", true, false, null],
+        ["비슷한 명령 허용", "allow_once", true, false, null],
         ["이번만 허용", "allow_once", false, false, "enter"],
       ],
     });
   });
 
-  it("늘 허용 글자는 세 갈래다 — Work 없는 Thread면 「이 Thread에서」, 편집 허락이면 「편집은」", () => {
+  it("명령 허락은 「비슷한 명령 허용」이고, 편집 허락은 작업공간과 밖에서 갈린다", () => {
     const always = (extra: Partial<PendingPermission>, scope: "work" | "thread") =>
       cardChoices(request(migrate, extra), scope).choices.find((choice) => choice.remember)?.label;
-    expect(always({ grant: ["Bash(pnpm prisma *)"] }, "work")).toBe("이 Work에서 늘 허용");
-    expect(always({ grant: ["Bash(pnpm prisma *)"] }, "thread")).toBe("이 Thread에서 늘 허용");
-    expect(always({ card: "edit", grant: ["edit"] }, "work")).toBe("이 Work에서 편집은 늘 허용");
-    expect(always({ card: "edit", grant: ["edit"] }, "thread")).toBe("이 Thread에서 편집은 늘 허용");
+    expect(always({ grant: ["Bash(pnpm prisma *)"] }, "work")).toBe("비슷한 명령 허용");
+    expect(always({ grant: ["Bash(pnpm prisma *)"] }, "thread")).toBe("비슷한 명령 허용");
+    expect(always({ card: "edit", grant: ["edit"] }, "work")).toBe("이 작업공간의 모든 편집 허용");
+    expect(always({ card: "edit", grant: ["edit"] }, "thread")).toBe("이 채팅의 모든 편집 허용");
   });
 
-  it("줄 허락이 없으면(앱 경계 · 그 밖의 도구) 늘 허용 단추가 없다", () => {
+  it("줄 허락이 없으면(앱 경계 · 그 밖의 도구) 허락 단추가 없다", () => {
     expect(row(request(migrate), "work").choices.map(([label]) => label)).toEqual(["아니요, 다르게", "이번만 허용"]);
   });
 
@@ -214,7 +214,7 @@ describe("키보드로 고른다", () => {
     });
 
     it("단추에 포커스가 있으면 ↵는 그 단추다 — Tab으로 옮겨 간 손이 고른 것", () => {
-      expect(label(buttonKey(press("Enter"), choices, 1))).toBe("이 Work에서 늘 허용");
+      expect(label(buttonKey(press("Enter"), choices, 1))).toBe("비슷한 명령 허용");
       expect(label(buttonKey(press("Escape"), choices, 1))).toBe("아니요, 다르게");
     });
 
@@ -261,13 +261,13 @@ describe("결정 줄", () => {
     ...extra,
   });
 
-  it("고른 것을 한 줄로 — 늘 허용의 꼬리는 단추 글과 같다(「명령 실행을 승인함 · 이 Work에서 늘 허용」)", () => {
+  it("고른 것을 한 줄로 — 허락의 꼬리는 단추 글과 같다(「명령 실행을 승인함 · 비슷한 명령 허용」)", () => {
     expect(decisionText(decision(migrate))).toBe("명령 실행을 승인함");
     expect(decisionText(decision(migrate, { granted: { rules: ["Bash(pnpm prisma *)"], work: "refund-api" } }))).toBe(
-      "명령 실행을 승인함 · 이 Work에서 늘 허용",
+      "명령 실행을 승인함 · 비슷한 명령 허용",
     );
     expect(decisionText(decision(schemaEdit, { granted: { rules: ["edit"], work: null } }))).toBe(
-      "파일 고치기를 승인함 · 이 Thread에서 편집은 늘 허용",
+      "파일 고치기를 승인함 · 이 채팅의 모든 편집 허용",
     );
     expect(decisionText(decision(migrate, { allowed: false, words: "마이그레이션 없이 할 수는 없어?" }))).toBe("명령 실행을 거부함");
     expect(decisionText(decision({ kind: "search", title: "refund" }))).toBe("검색을 승인함");
@@ -279,18 +279,25 @@ describe("결정 줄", () => {
   });
 });
 
-// 02 코드 리뷰 A1 — **같은 허락을 화면에서 한 말로 부른다.** 승인 카드의 「이 Work에서 늘 허용」으로 준 허락이 다음 요청을 묻지 않고 넘기면
-// 방패 줄의 까닭이 선다. 엔진은 그 까닭을 옛 이름(「이 Work에서는 다시 묻지 않기」)으로 기록에 적는다 — 엔진 · 기록은 이 판이 바꾸지 않는다
-// (02 구현 스펙 §13). 그래서 화면이 그 까닭을 카드의 말로 읽는다. 지난 기록도 같다. 다른 까닭(물어보는 정도 · 앱 기능 도구)은 그대로다.
+// 02 코드 리뷰 A1 — **같은 허락을 화면에서 한 말로 부른다.** 승인 카드의 허락 문구로 준 허락이 다음 요청을 묻지 않고 넘기면 방패 줄의 까닭이
+// 선다. 엔진은 그 까닭을 「이 Work에서는 다시 묻지 않기」로 기록에 적고 허락의 종류를 말하지 않는다. 그래서 화면이 넘어간 도구의 종류로 카드의
+// 말을 고른다. 다른 까닭(물어보는 정도 · 앱 기능 도구)은 그대로다.
 describe("방패 줄의 까닭", () => {
-  it("「늘 허용」으로 준 허락의 까닭은 카드의 말이다 — 지난 기록의 옛 이름도", () => {
-    expect(autoAllowReason("이 Work에서는 다시 묻지 않기")).toBe("이 Work에서 늘 허용");
-    expect(autoAllowReason("이 Thread에서는 다시 묻지 않기")).toBe("이 Thread에서 늘 허용");
+  it("허락으로 넘어간 편집은 자리를 말한다", () => {
+    expect(autoAllowReason("이 Work에서는 다시 묻지 않기", { kind: "edit" })).toBe("이 작업공간의 모든 편집 허용");
+    expect(autoAllowReason("이 Thread에서는 다시 묻지 않기", { kind: "edit" })).toBe("이 채팅의 모든 편집 허용");
+    expect(autoAllowReason("이 Work에서는 다시 묻지 않기", { kind: "delete" })).toBe("이 작업공간의 모든 편집 허용");
+    expect(autoAllowReason("이 Thread에서는 다시 묻지 않기", { kind: "move" })).toBe("이 채팅의 모든 편집 허용");
+  });
+
+  it("허락으로 넘어간 명령은 「비슷한 명령 허용」이다", () => {
+    expect(autoAllowReason("이 Work에서는 다시 묻지 않기", { kind: "execute" })).toBe("비슷한 명령 허용");
+    expect(autoAllowReason("이 Thread에서는 다시 묻지 않기", { kind: "execute" })).toBe("비슷한 명령 허용");
   });
 
   it("물어보는 정도 · 앱 기능 도구의 까닭은 그대로다", () => {
-    expect(autoAllowReason("편집은 허용")).toBe("편집은 허용");
-    expect(autoAllowReason("알아서")).toBe("알아서");
-    expect(autoAllowReason("앱 기능 도구")).toBe("앱 기능 도구");
+    expect(autoAllowReason("편집 자동", { kind: "edit" })).toBe("편집 자동");
+    expect(autoAllowReason("묻지 않음", { kind: "execute" })).toBe("묻지 않음");
+    expect(autoAllowReason("앱 기능 도구", { kind: "other" })).toBe("앱 기능 도구");
   });
 });

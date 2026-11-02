@@ -2,11 +2,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { readFileSync } from "fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { threadQuery } from "./hooks";
 import { mergeLines, setQueue } from "./thread-store";
-import { ThreadScreen } from "./ThreadScreen";
+import { NewThreadScreen, ThreadScreen } from "./ThreadScreen";
 import type { RecordLine, ThreadView } from "./types";
+
+// 새 채팅 화면은 칩만 재므로 라우터를 띄우지 않는다.
+vi.mock("@tanstack/react-router", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => () => Promise.resolve(),
+  useRouter: () => ({ state: { location: { pathname: "/" } } }),
+}));
 
 // 채팅 하나가 Runtime 세션 하나다 — 화면은 `participants` · `handles` · `queues` 없이 채팅의 값만으로 그려진다. Rust만 고치면 L2 자료는 그대로
 // 초록인데 실제 앱이 터지는 자리라, 엔진이 내는 꼴 그대로의 값을 쿼리 캐시에 앉히고 화면 전체를 그려 본다.
@@ -70,5 +77,18 @@ describe("채팅 화면", () => {
   it("모델을 고르지 않은 채팅은 Session이 연 값을 보인다", () => {
     const html = draw({ ...chat, id: "20261010-100002", model: null, effort: null });
     expect(html).toContain("Sonnet");
+  });
+});
+
+describe("새 채팅 화면", () => {
+  const drawNew = () =>
+    renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <NewThreadScreen seed={{ link: { kind: "no-work" }, say: null, space: null }} />
+      </QueryClientProvider>,
+    );
+
+  it("작업공간 없는 새 채팅의 칩은 「편집 자동」이다", () => {
+    expect(drawNew()).toContain('aria-label="물어보는 정도 편집 자동"');
   });
 });

@@ -309,7 +309,7 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
     let thread = host
         .start_thread_asking("환불 API 버그 고쳐줘", &[], ThreadLink::NoWork, Some(atelier_acp::AskLevel::Edits))
-        .expect("편집은 허용으로 시작한 Thread");
+        .expect("편집 자동으로 시작한 Thread");
 
     let asked = wait_card(&sandbox, &thread, "asked");
     host.answer_work(&thread, &request_of(&asked), WorkChoice::Create { projects: Vec::new(), branch: None }).expect("기획만인 Work");

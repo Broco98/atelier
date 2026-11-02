@@ -23,7 +23,7 @@ import { placeOf } from "./approval";
 import { askTurn, nextOf } from "./asks";
 import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
-import { chipLists, CLAUDE_MODELS, currentModel } from "./chips";
+import { chipLists, CLAUDE_MODELS, currentModel, newThreadLevel } from "./chips";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
 import { foldOf, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
@@ -167,11 +167,11 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
     scope,
   };
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
-  // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「매번 묻기」, 최근 Work면
-  // 그 Work의 지금 정도이고, 모델 · 생각 깊이는 Runtime의 기본값이다.
+  // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「편집 자동」, 최근 Work면
+  // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다.
   const [picks, setPicks] = useState<Omit<StartPicks, "space">>({ mode: null, model: null, effort: null });
   const workLevel = useWorkMode(work);
-  const level: AskLevel = picks.mode ?? workLevel ?? "always";
+  const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel);
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
   const guide = guideKind(engine, false);
@@ -180,7 +180,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
     setStarting({ text, attachments });
     let id: string;
     try {
-      id = await threadApi.start(text, attachments, place.link, { ...picks, space: startSpace(place.link, hold, shown) });
+      id = await threadApi.start(text, attachments, place.link, { ...picks, mode, space: startSpace(place.link, hold, shown) });
     } catch (error) {
       setStarting(null);
       throw error;

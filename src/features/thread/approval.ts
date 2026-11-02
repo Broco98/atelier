@@ -13,10 +13,11 @@ import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFiel
 //   될까요?」) — 카드의 이름(`label`)은 누가 묻는지까지 든 물음이다.
 // - **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16) — 갈래는 요청 `toolCall`의 kind다. 명령 · 경로는 흐름의 그 도구
 //   줄(물음보다 먼저 온 `tool_call`)의 원문이 이긴다. 도구 줄이 없으면 요청의 것을 쓴다.
-// - **승인 카드는 단추 줄이다**(02 §10) — 왼쪽에서 「아니요, 다르게」(esc) · 「이 Work에서 늘 허용」 · 맨 오른쪽 「이번만 허용」(↵).
+// - **승인 카드는 단추 줄이다**(02 §10) — 왼쪽에서 「아니요, 다르게」(esc) · 허락 문구(「비슷한 명령 허용」 · 「이 작업공간의 모든 편집 허용」) ·
+//   맨 오른쪽 「이번만 허용」(↵).
 //   Runtime의 선택지 이름이 아니라 `kind`로 고른다: 허용 둘은 이번만 허락(`allow_once`), 「아니요」는 이번만 거부(`reject_once`)다 — 「이
 //   대화에서 허락」(Claude `allow_always`)은 Runtime이 기억해 판정에 오지 않게 하므로 고르지 않는다(v1 티켓 22와 같은 까닭). 기억은
-//   Atelier가 한다: 「늘 허용」은 판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(앱 경계가 물었다 ·
+//   Atelier가 한다: 허락 문구는 판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(앱 경계가 물었다 ·
 //   그 밖의 도구)에는 그 단추가 서지 않는다(허락은 앱 경계를 넘기지 못한다). 「아니요, 다르게」는 카드 안에 입력칸을 열고, 보내면
 //   거부와 그 말이 Agent에게 간다. **숫자 키는 없다**(S25 — 단추 줄의 눈 차례와 숫자 차례가 엇갈린다).
 // - **계획 넘어가기**(kind `switch_mode`, v1 티켓 26 · 스토리 88)는 번호 줄 그대로다 — 엔진의 두 선택지를 「계획대로 구현」 · 「계획 다시
@@ -153,7 +154,7 @@ export interface CardChoice {
   /** 고를 선택지(`optionId`). */
   option: string;
   label: string;
-  /** 「늘 허용」 — 판정이 낸 허락을 점 파일에 적고 답한다. */
+  /** 허락 문구 — 판정이 낸 허락을 점 파일에 적고 답한다. */
   remember: boolean;
   /** 고르면 카드 안에 입력칸이 열린다(「아니요, 다르게」 · 「계획 다시 쓰기」) — 보내야 답이 간다. */
   opensField: boolean;
@@ -171,7 +172,7 @@ export interface CardChoices {
   choices: CardChoice[];
 }
 
-/** 선택지들. `scope`는 「늘 허용」을 둘 자리(이은 Work, 없으면 이 Thread)다. */
+/** 선택지들. `scope`는 허락을 둘 자리(이은 Work, 없으면 이 Thread)다. */
 export function cardChoices(request: PendingPermission, scope: "work" | "thread"): CardChoices {
   const pick = (option: PermissionOption, label: string, more: Partial<CardChoice> = {}): CardChoice => ({
     option: option.optionId,
@@ -198,7 +199,7 @@ export function cardChoices(request: PendingPermission, scope: "work" | "thread"
   const allow = of("allow_once", "allow_always");
   const reject = of("reject_once", "reject_always");
   if (!allow || !reject) return { layout: "rows", choices: request.options.map((option) => pick(option, option.name)) };
-  const always = alwaysAllow(scope === "work", request.grant.includes("edit"));
+  const always = grantLabel(scope === "work", request.grant.includes("edit"));
   return {
     layout: "buttons",
     choices: [
@@ -285,8 +286,8 @@ export function buttonKey(press: CardPress, choices: readonly CardChoice[], focu
 }
 
 /**
- * 결정 줄의 글(캔버스 Screen-Thread · Approval 보드 「결정한 뒤」) — 「명령 실행을 승인함」 · 「명령 실행을 승인함 · 이 Work에서 늘 허용」 ·
- * 「명령 실행을 거부함」. 늘 허용의 꼬리는 승인 카드의 단추 글(`cardChoices`)과 같은 말이다. 남긴 말은 그리는 쪽이 글 뒤에 따로 든다.
+ * 결정 줄의 글(캔버스 Screen-Thread · Approval 보드 「결정한 뒤」) — 「명령 실행을 승인함」 · 「명령 실행을 승인함 · 비슷한 명령 허용」 ·
+ * 「명령 실행을 거부함」. 허락의 꼬리는 승인 카드의 단추 글(`cardChoices`)과 같은 말이다. 남긴 말은 그리는 쪽이 글 뒤에 따로 든다.
  */
 export function decisionText(entry: DecisionEntry): string {
   // 계획 넘어가기는 고른 것 그대로다(v1 티켓 26) — 「계획을 승인함」은 무엇이 이어지는지 말하지 않는다.
@@ -294,32 +295,36 @@ export function decisionText(entry: DecisionEntry): string {
   const act = actOf(entry.toolCall);
   const decided = `${act}${particle(act, "을", "를")} ${entry.allowed ? "승인함" : "거부함"}`;
   if (!entry.granted) return decided;
-  return `${decided} · ${alwaysAllow(Boolean(entry.granted.work), entry.granted.rules.includes("edit"))}`;
+  return `${decided} · ${grantLabel(Boolean(entry.granted.work), entry.granted.rules.includes("edit"))}`;
 }
 
 /**
- * **「늘 허용」의 말은 여기 하나다** — 승인 카드의 단추(`cardChoices`), 결정 줄의 꼬리(`decisionText`), 방패 줄의 까닭(`autoAllowReason`)이 같은
- * 허락을 같은 말로 부른다(02 §10 · 02 코드 리뷰 A1 — 한때 둘이 따로 지었고, 방패 줄은 엔진의 옛 이름 「다시 묻지 않기」였다). 허락을 둔 자리
- * (이은 Work, 없으면 그 Thread — S18)와 편집 허락인가로 네 갈래다: 「이 Work에서 늘 허용」 · 「이 Thread에서 편집은 늘 허용」 ….
+ * **허락의 말은 여기 하나다** — 승인 카드의 단추(`cardChoices`), 결정 줄의 꼬리(`decisionText`), 방패 줄의 까닭(`autoAllowReason`)이 같은 허락을
+ * 같은 말로 부른다(02 §10 · 02 코드 리뷰 A1 — 한때 둘이 따로 지었고, 방패 줄은 엔진의 이름 「다시 묻지 않기」였다). 명령은 「비슷한 명령 허용」이고,
+ * 편집은 허락을 둔 자리(이은 Work, 없으면 그 Thread — S18)를 말한다: 「이 작업공간의 모든 편집 허용」 · 「이 채팅의 모든 편집 허용」.
  */
-function alwaysAllow(inWork: boolean, edits: boolean): string {
-  return `${inWork ? "이 Work에서" : "이 Thread에서"} ${edits ? "편집은 " : ""}늘 허용`;
+function grantLabel(inWork: boolean, edits: boolean): string {
+  if (!edits) return "비슷한 명령 허용";
+  return inWork ? "이 작업공간의 모든 편집 허용" : "이 채팅의 모든 편집 허용";
 }
 
 /**
- * 엔진이 「늘 허용」 허락으로 넘긴 요청에 적는 까닭(판정 줄의 `reason` — `crates/atelier-acp/src/policy.rs`) → 화면의 말. 엔진 · 기록은 그 허락을
- * 옛 이름으로 적고 이 판은 엔진을 바꾸지 않는다(02 구현 스펙 §13) — 지난 기록도 같은 이름이다. 엔진의 까닭은 허락이 편집인지 말하지 않아
- * 「편집은」이 없다.
+ * 엔진이 허락으로 넘긴 요청에 적는 까닭(판정 줄의 `reason` — `crates/atelier-acp/src/policy.rs`)과 그 허락을 둔 자리가 이은 Work인가. 엔진의 까닭은
+ * 허락이 편집인지 말하지 않아 넘어간 도구의 종류로 가른다.
  */
-const ENGINE_GRANT_REASONS: Readonly<Record<string, string>> = {
-  "이 Work에서는 다시 묻지 않기": alwaysAllow(true, false),
-  "이 Thread에서는 다시 묻지 않기": alwaysAllow(false, false),
+const ENGINE_GRANT_REASONS: Readonly<Record<string, { inWork: boolean }>> = {
+  "이 Work에서는 다시 묻지 않기": { inWork: true },
+  "이 Thread에서는 다시 묻지 않기": { inWork: false },
 };
 
+/** 편집 허락(`edit`)이 넘기는 도구의 종류 — 판정의 `Act::Edit`과 같다. */
+const EDIT_KINDS: ReadonlySet<string> = new Set(["edit", "delete", "move"]);
+
 /**
- * 방패 줄의 까닭(v1 티켓 23 · `WorkLog`의 `AutoLine`) — 판정이 묻지 않고 허용한 까닭을 화면의 말로. 「늘 허용」으로 준 허락이면 카드의 말이고
- * (`ENGINE_GRANT_REASONS`), 물어보는 정도(「편집은 허용」) · 앱 기능 도구(「앱 기능 도구」)의 까닭은 엔진이 적은 그대로다.
+ * 방패 줄의 까닭(v1 티켓 23 · `WorkLog`의 `AutoLine`) — 판정이 묻지 않고 허용한 까닭을 화면의 말로. 허락으로 넘어갔으면 카드의 말이고
+ * (`ENGINE_GRANT_REASONS`), 물어보는 정도(「편집 자동」) · 앱 기능 도구(「앱 기능 도구」)의 까닭은 엔진이 적은 그대로다. `call`은 넘어간 도구 줄이다.
  */
-export function autoAllowReason(reason: string): string {
-  return ENGINE_GRANT_REASONS[reason] ?? reason;
+export function autoAllowReason(reason: string, call: Json): string {
+  const grant = ENGINE_GRANT_REASONS[reason];
+  return grant ? grantLabel(grant.inWork, EDIT_KINDS.has(toolFields(call).kind)) : reason;
 }
