@@ -7,25 +7,28 @@ import { worksApi } from "@/features/works/api";
 import { threadQuery, useThreads } from "@/features/thread/hooks";
 import { lastSaid } from "@/features/thread/preview";
 import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
-import { landingOf } from "@/features/thread/work-threads";
+import { landingOf, type WorkLanding } from "@/features/thread/work-threads";
+import { cardTabOf, workSeat } from "@/features/thread/right-place";
 import {
   bundleSearch,
+  cardDocSearch,
   chatHome,
   chatSearch,
   codeRefOf,
   codeSearch,
   columnSearch,
-  fileSearch,
   newChatSearch,
   openingSearch,
   recallSearch,
   rememberView,
+  specTabSearch,
   tabSearch,
 } from "./-work-search";
 import type { BundleShown, ColumnTab, SplitSide, ViewTab } from "./-work-search";
 import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/lib/pointer-drag";
-import { slugOfOwner } from "@/features/terminal/shell-registry";
+import { bundleOf, ownerOf, slugOfOwner } from "@/features/terminal/shell-registry";
+import { terminalStore } from "@/features/terminal/terminal-store";
 import { useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
 
@@ -75,12 +78,12 @@ function WorksView({
         })
       : navigate({ to: "/works", replace }));
 
-  // 문서 전환. **트리 훑기는 히스토리를 만들지 않고(replace), 링크를 따라간 것은 만든다.**
-  // 이슈 #25가 못박은 "파일 전환은 히스토리 항목을 만들지 않는다"는 트리를 두고 한 말이다 —
+  // 문서 탭 · 분할의 문서 열의 문서 전환(**임시** — 02a-13이 `spec` 탭 · 분할과 함께 걷는다. 옛 입구다). **트리 훑기는 히스토리를 만들지 않고
+  // (replace), 링크를 따라간 것은 만든다.** 이슈 #25가 못박은 "파일 전환은 히스토리 항목을 만들지 않는다"는 트리를 두고 한 말이다 —
   // 그때는 문서를 옮기는 길이 트리뿐이었다. 링크는 따라 들어갔다는 감각이 있으므로
   // 돌아올 자리가 있어야 하고, 그 자리를 만드는 것이 push다.
   //
-  // 주소를 고치는 몸통은 `fileSearch`다 — **함수형이어야 한다**(결정 15). 그 머리말에
+  // 주소를 고치는 몸통은 `specTabSearch`다 — **함수형이어야 한다**(결정 15). `fileSearch` 머리말에
   // 이 자리가 왜 오래 틀려 있었는지가 적혀 있다.
   const selectFile = useCallback(
     (path: string, push: boolean) => {
@@ -88,8 +91,26 @@ function WorksView({
       void navigate({
         to: "/works/$slug",
         params: { slug },
-        search: (prev: object) => fileSearch(prev, path),
+        search: (prev: object) => specTabSearch(prev, path),
         replace: !push,
+      });
+    },
+    [navigate, slug],
+  );
+
+  /**
+   * **넓힌 카드의 문서를 주소에 적는다**(restart 02a-12) — spec 패널의 문서 줄이 켤 카드 탭(`landing`)으로 옮기며 문서를 얹고, 넓힌 카드가 다른
+   * 문서를 열면 그 문서로, 닫히거나 문서가 아닌 것을 열면(`path`가 `null`) 걷는다. 모양은 `cardDocSearch` 하나다. 트리 훑기 · 카드 안의 손짓이라
+   * replace다(스토리 59 — 히스토리를 쌓지 않는다).
+   */
+  const openDoc = useCallback(
+    (path: string | null, landing: WorkLanding | null) => {
+      if (slug === null) return;
+      void navigate({
+        to: "/works/$slug",
+        params: { slug },
+        search: (prev: object) => cardDocSearch(prev, path, landing),
+        replace: true,
       });
     },
     [navigate, slug],
@@ -240,12 +261,17 @@ function WorksView({
   //
   // 채팅 목록을 아직 못 읽었으면 기다린다 — 「채팅이 없다」로 읽으면 채팅이 있는 작업공간이 새 채팅 탭으로 열린다. 읽기가 실패하면 빈
   // 목록으로 친다.
+  //
+  // **`?file=`에 닿았으면 02a-10의 켤 탭 규칙이다**(restart 02a-12 · 구현 스펙 「`?file=`에 닿으면 위 규칙으로 넓힌 카드를 연다」) — 가장 최근에 켠
+  // 채팅 탭, 열린 채팅 탭이 없으면 가장 최근 채팅, 채팅이 없으면 새 채팅 탭이다(`cardTabOf`). 검색 결과 · 셸 · 파일 탭에서 적은 문서가 이리로
+  // 온다(`fileSearch`). 문서는 고른 탭으로 따라가고(`openingSearch`) 작업공간 화면이 그 탭에 넓힌 카드로 연다.
   const { data: threads, isPending: threadsPending } = useThreads();
   const lands = opening && slug !== null && exists && !threadsPending;
   useEffect(() => {
     if (!lands || slug === null) return;
     const records = threadRecordStore.state;
-    const landing = landingOf(threads ?? [], slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    const latest = landingOf(threads ?? [], slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    const landing = file === null ? latest : cardTabOf(workSeat(slug), bundleOf(terminalStore.state, ownerOf(slug)), latest);
     void navigate({
       to: "/works/$slug",
       params: { slug },
@@ -321,6 +347,7 @@ function WorksView({
       selectedSlug={exists ? slug : null}
       currentFile={file}
       onSelectFile={selectFile}
+      onOpenDoc={openDoc}
       tab={tab}
       onSelectTab={selectTab}
       code={code}

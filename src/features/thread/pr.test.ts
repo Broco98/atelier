@@ -101,12 +101,11 @@ describe("「변경 사항 보기」가 넓힌 카드에서 여는 것(v1 티켓
   });
 
   it("그 Project에 바뀐 파일이 없거나 변경을 읽지 못했으면 그 Project의 트리를 연다", () => {
-    expect(changesOf("api-server", [listed("api-server", [])])).toEqual({ kind: "project", project: "api-server", file: null });
+    expect(changesOf("api-server", [listed("api-server", [])])).toEqual({ kind: "project", project: "api-server" });
     expect(changesOf("api-server", [{ project: "api-server", kind: "worktreeMissing" }])).toEqual({
       kind: "project",
       project: "api-server",
-      file: null,
     });
-    expect(changesOf("api-server", undefined)).toEqual({ kind: "project", project: "api-server", file: null });
+    expect(changesOf("api-server", undefined)).toEqual({ kind: "project", project: "api-server" });
   });
 });

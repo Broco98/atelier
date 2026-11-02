@@ -10,14 +10,14 @@ import { useSpecFile } from "@/features/works/hooks";
 import { specRef, worktreeDirRef } from "@/features/works/refs";
 import SpecViewer from "@/features/works/SpecViewer";
 import type { WorkView } from "@/features/works/types";
-import { freshLines, viewerPath, type Opened } from "./expanded";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
+import { freshLines, treePick, viewerPath, type Opened } from "./expanded";
 import { setQuote } from "./thread-store";
 import type { DocWriting } from "./types";
 import type { ChangeSummary } from "./summary-card";
 
 // 강조 라이브러리(`@pierre/diffs`)는 코드 보기 모듈 아래에서만 들어온다(git-integration 결정 35 · `code-view-chunk.test.ts`) — 넓힌 카드도 그
-// 모듈을 `lazy`로 부른다. diff 보기는 그 모듈의 이름 붙은 내보내기다.
-const CodeView = lazy(() => import("@/features/code/CodeView"));
+// 모듈을 `lazy`로 부른다. diff 보기는 그 모듈의 이름 붙은 내보내기다. 넓힌 카드 안의 코드 보기는 걷었다(restart 02a-12 — 트리의 파일은 파일 탭으로 연다).
 const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => ({ default: module.DiffView })));
 
 /**
@@ -32,8 +32,9 @@ const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => 
  *   들어간다). 글을 고르면 「❝ 이 자리를 두고 말하기」가 떠 그 자리를 지금 입력창(`draftKey` — 채팅이면 그 채팅, 작업공간의 새 채팅 탭이면
  *   그 탭의 글 열쇠, restart 02a-11)에 인용으로 붙인다(S41 · `setQuote`).
  * - **변경**은 그 파일의 diff다(`DiffView` — `read_work_diff`, 숨긴 줄 펼치기).
- * - **Project**는 그 worktree의 파일 트리다(`FilesTree`). 트리에서 바뀐 파일을 누르면 그 diff가, 다른 파일을 누르면 강조된 코드가 열린다
- *   (보드 — 트리의 `schema.prisma`가 그 diff를 연다). Project 줄을 다시 누르면 트리로 돌아온다.
+ * - **Project**는 그 worktree의 파일 트리다(`FilesTree`). 트리에서 바뀐 파일을 누르면 그 diff가 이 카드에 열리고(보드 — 트리의 `schema.prisma`가 그
+ *   diff를 연다), 그 밖의 파일은 **파일 탭**으로 간다(restart 02a-12 · 스토리 102 · SummarySheet 「넓힌 카드」 표 — 파일 탭이 켜지면 이 카드는 닫힌다).
+ *   한때 카드 안에 강조된 코드가 섰다.
  */
 export function ExpandedViewer({
   draftKey,
@@ -42,6 +43,7 @@ export function ExpandedViewer({
   changes,
   writing,
   onOpen,
+  onOpenFile,
   onClose,
 }: {
   /** 문서 인용이 가는 입력창의 글 열쇠. */
@@ -51,6 +53,8 @@ export function ExpandedViewer({
   changes: ChangeSummary | null;
   writing: readonly DocWriting[];
   onOpen: (next: Opened) => void;
+  /** Project 트리에서 바뀌지 않은 파일을 눌렀다 — 파일 탭으로 연다. */
+  onOpenFile: (target: CodeTarget) => void;
   onClose: () => void;
 }) {
   // 렌더 · 원문 보기 — 사람이 정한 값이라 문서를 옮겨도 남는다(작업 화면의 `showSource`와 같다).
@@ -94,17 +98,8 @@ export function ExpandedViewer({
         <Suspense fallback={null}>
           <DiffView slug={work.slug} project={opened.project} path={opened.path} wide={false} />
         </Suspense>
-      ) : opened.file === null ? (
-        <ProjectTree work={work} project={opened.project} changes={changes} onOpen={onOpen} />
       ) : (
-        <Suspense fallback={null}>
-          <CodeView
-            slug={work.slug}
-            target={{ project: opened.project, path: opened.file }}
-            worktreeDir={worktreeDirOf(work, opened.project)}
-            wide={false}
-          />
-        </Suspense>
+        <ProjectTree work={work} project={opened.project} changes={changes} onOpen={onOpen} onOpenFile={onOpenFile} />
       )}
       <Toaster />
     </div>
@@ -118,14 +113,14 @@ function worktreeDirOf(work: WorkView, project: string): string | null {
 }
 
 /**
- * 경로 줄의 경로 복사 — 작업 화면의 두 경로 줄과 같은 값이다. 문서는 그 spec 파일의 참조(`specRef`), 변경 · Project의 파일은 worktree의 그
- * 파일 경로다. 트리만 열었을 때는 가리킬 파일이 없어 서지 않는다.
+ * 경로 줄의 경로 복사 — 작업 화면의 두 경로 줄과 같은 값이다. 문서는 그 spec 파일의 참조(`specRef`), 변경은 worktree의 그 파일 경로다. 트리는
+ * 가리킬 파일이 없어 서지 않는다.
  */
 function copyPathOf(work: WorkView, opened: Opened): (() => void) | undefined {
   if (opened.kind === "doc") return () => copyText(specRef(work.slug, opened.path));
-  const file = opened.kind === "change" ? opened.path : opened.file;
+  if (opened.kind === "project") return undefined;
   const dir = worktreeDirOf(work, opened.project);
-  return file !== null && dir !== null ? () => copyText(`${dir}${file}`) : undefined;
+  return dir !== null ? () => copyText(`${dir}${opened.path}`) : undefined;
 }
 
 /**
@@ -231,20 +226,23 @@ function flashLines(root: HTMLElement, lines: readonly number[]): void {
 
 /**
  * Project 보기 — 그 Project worktree의 파일 트리(보드 `.tree-v` — 머리 「api-server · worktree fix/refund-api」 12/18 옅은 글자). 트리는 작업
- * 화면 files 칸의 것 그대로다(`FilesTree` — 이 Project 하나만 건네 구획 머리 없이 선다). 바뀐 파일은 그 diff를, 다른 파일은 코드를 연다.
+ * 화면 files 칸의 것 그대로다(`FilesTree` — 이 Project 하나만 건네 구획 머리 없이 선다). 바뀐 파일은 그 diff를 이 카드에, 다른 파일은 파일 탭을
+ * 연다(`treePick` — restart 02a-12).
  */
 function ProjectTree({
   work,
   project,
   changes,
   onOpen,
+  onOpenFile,
 }: {
   work: WorkView;
   project: string;
   changes: ChangeSummary | null;
   onOpen: (next: Opened) => void;
+  onOpenFile: (target: CodeTarget) => void;
 }) {
-  const changed = new Set(changes?.groups.find((group) => group.project === project)?.files.map((file) => file.path));
+  const changed = changes?.groups.find((group) => group.project === project)?.files.map((file) => file.path) ?? [];
   const one = { ...work, worktrees: work.worktrees.filter((worktree) => worktree.project === project) };
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-1">
@@ -261,13 +259,11 @@ function ProjectTree({
         work={one}
         visible
         current={null}
-        onPress={(target) =>
-          onOpen(
-            changed.has(target.path)
-              ? { kind: "change", project, path: target.path }
-              : { kind: "project", project, file: target.path },
-          )
-        }
+        onPress={(target) => {
+          const pick = treePick(project, target.path, changed);
+          if (pick.kind === "change") onOpen(pick);
+          else onOpenFile(pick);
+        }}
       />
     </div>
   );

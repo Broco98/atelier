@@ -270,7 +270,7 @@ describe("「변경 사항」이 여는 것", () => {
   });
 
   it("바뀐 것이 없으면 첫 Project의 트리이고, Project도 없으면 열 것이 없다", () => {
-    expect(changesTarget(null, ["api", "web"])).toEqual({ kind: "project", project: "api", file: null });
+    expect(changesTarget(null, ["api", "web"])).toEqual({ kind: "project", project: "api" });
     expect(changesTarget(null, [])).toBeNull();
   });
 });

@@ -62,9 +62,9 @@ import {
 import { useRenameThread, useThreads } from "@/features/thread/hooks";
 import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
 import { lastSaid } from "@/features/thread/preview";
-import { cardTabOf, workSeat, type BodyTab } from "@/features/thread/right-place";
+import { cardDocFile, cardTabOf, docArrival, workSeat, type BodyTab } from "@/features/thread/right-place";
 import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
-import { landingOf } from "@/features/thread/work-threads";
+import { landingOf, type WorkLanding } from "@/features/thread/work-threads";
 import { SummaryToggle, ThreadMenuItems } from "@/features/thread/ThreadHead";
 import { useWorkRightPlace, WorkChat, WorkNewChat } from "@/features/thread/ThreadScreen";
 import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
@@ -92,10 +92,16 @@ const CodeView = lazy(() => import("@/features/code/CodeView"));
 interface WorksPageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
-  // 보고 있는 문서와 그것을 옮기는 길. 둘 다 주소가 정본이라 여기서 소유하지 않는다.
-  // `push`는 히스토리 항목을 만들지 여부다 — 트리는 만들지 않고 문서 링크는 만든다.
+  // 보고 있는 문서 — 주소가 정본이라 여기서 소유하지 않는다. **넓힌 카드의 문서다**(restart 02a-12) — 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이
+  // 본문일 때 이 값이 넓힌 카드를 열고, 카드가 다른 것을 열거나 닫히면 따라간다(`onOpenDoc`). 문서 탭 · 분할의 문서 열(임시 — 02a-13)에서는 그
+  // 자리의 문서다.
   currentFile: string | null;
+  // 문서 탭 · 분할의 문서 열의 문서를 옮기는 길(**임시** — 02a-13이 `spec` 탭 · 분할과 함께 걷는다). `push`는 히스토리 항목을 만들지 여부다 —
+  // 트리는 만들지 않고 문서 링크는 만든다.
   onSelectFile: (path: string, push: boolean) => void;
+  // **넓힌 카드의 문서를 주소에 적는다**(restart 02a-12) — 켤 카드 탭(`landing`)이 있으면 그리로 옮기며 얹고, `null`이면 지금 카드 탭에 얹는다.
+  // `path`가 `null`이면 걷는다. 주소를 쥔 쪽이 한 번에 옮긴다(`cardDocSearch`).
+  onOpenDoc: (path: string | null, landing: WorkLanding | null) => void;
   // 보고 있는 화면 탭도 주소가 정본이다 — `currentFile`과 같은 결이다.
   tab: ViewTab;
   onSelectTab: (tab: ViewTab) => void;
@@ -256,6 +262,7 @@ function WorksPage({
   selectedSlug,
   currentFile,
   onSelectFile,
+  onOpenDoc,
   tab,
   onSelectTab,
   code,
@@ -426,6 +433,9 @@ function WorksPage({
     // 카드가 서는 탭(채팅 탭 · 새 채팅 탭 — restart 02a-11)이 본문일 때만 넓힌 카드가 선다.
     chat: selected !== null && (chatThread !== null || newChatShown),
     tab: bodyTab,
+    // 넓힌 카드의 Project 트리에서 바뀌지 않은 파일은 파일 탭으로 연다(restart 02a-12 · 스토리 102) — 트리 훑기라 replace다. 파일 탭이 켜지면 탭 줄
+    // 규칙이 카드를 닫는다(02a-10).
+    openFile: (target) => onOpenCode(target.project, target.path, false),
   });
   const { move: moveRight, panelOpen } = right;
 
@@ -661,6 +671,34 @@ function WorksPage({
     if (shownKey === shownKeyOf(addressShown)) return;
     onFollowBundle(bundleShownOf(terminalStore.state, tabOwner));
   }, [tabOwner, shownKey]);
+
+  /**
+   * **주소의 문서와 넓힌 카드**(restart 02a-12 · 구현 스펙 「02a — `spec` 탭과 분할을 지운다」) — 주소의 `file`은 넓힌 카드의 문서다. 카드가 서는 탭이
+   * 본문인 단일 뷰(`cardBody`)에서만 뜻이 있다 — 분할의 `file`은 문서 열의 것이다(02a-13이 분할을 걷을 때까지), 문서 탭(임시)은 그 문서를 보인다.
+   *
+   * - **주소 → 카드.** 문서가 닿으면(검색 결과 · 화면 기억 · 처음 여는 규칙이 고른 탭으로 따라온 `?file=`) 넓힌 카드가 그 문서를 연다. 없는 문서면
+   *   열지 않고 주소에서 걷는다(`docArrival`). 작업공간 · 문서가 바뀌거나 카드가 서는 탭이 본문이 될 때만 잰다 — 처음 여는 규칙이 탭을 고른 뒤에
+ *   연다.
+   * - **카드 → 주소.** 넓힌 카드가 다른 문서를 열면 그 문서로, 닫히거나(× · 요약 단추 · 레일의 spec · 다른 채팅 탭) 문서가 아닌 것을 열면 걷는다
+   *   (`cardDocFile`). 카드 쪽에서 바뀐 것만 센다 — 작업공간이나 주소의 문서가 함께 바뀐 틱은 위 「주소 → 카드」의 몫이라 건너뛴다. 셸 · 파일 탭으로
+   *   간 것은 그 주소가 이미 걷었다(`tabSearch`).
+   */
+  const cardBody = selected !== null && split === null && (chatThread !== null || newChatShown);
+  const cardDoc = right.card.opened?.kind === "doc" ? right.card.opened.path : null;
+  useEffect(() => {
+    if (!cardBody || selected === null || currentFile === null) return;
+    const move = docArrival(currentFile, selected.specFiles, right.card.opened);
+    if (move === "clear") onOpenDoc(null, null);
+    else if (move !== null) moveRight(move);
+  }, [selected?.slug, currentFile, cardBody]);
+  const seenCard = useRef({ slug: selected?.slug, file: currentFile, doc: cardDoc });
+  useEffect(() => {
+    const before = seenCard.current;
+    seenCard.current = { slug: selected?.slug, file: currentFile, doc: cardDoc };
+    if (!cardBody || before.slug !== selected?.slug || before.file !== currentFile || before.doc === cardDoc) return;
+    const next = cardDocFile(right.card.opened, currentFile);
+    if (next !== undefined) onOpenDoc(next, null);
+  }, [selected?.slug, currentFile, cardDoc, cardBody]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다** — 트리의 "지금
   // 이 문서" 표시와 본문이 따로 정하면 뷰 탭을 오갈 때마다 트리 표시가 켜졌다 꺼진다(결정 49 —
@@ -1099,6 +1137,17 @@ function WorksPage({
   ) : undefined;
 
   /**
+   * **요약 카드가 설 탭을 지금 고른다**(restart 02a-10 · `cardTabOf`) — 셸 · 파일 탭 · 문서에서 카드를 여는 손짓(「요약 카드」 · spec 패널의 문서 줄)이
+   * 함께 쓴다. 가장 최근에 켠 채팅 탭, 열린 채팅 탭이 없으면 가장 최근 채팅(사이드바 작업공간 줄과 같은 `landingOf`), 채팅이 없으면 새 채팅 탭이다.
+   * 「가장 최근」의 말은 이미 읽어 둔 기록에서 누른 순간에 센다(`-works-view`의 처음 여는 규칙과 같다).
+   */
+  const cardTabNow = (slug: string): WorkLanding => {
+    const records = threadRecordStore.state;
+    const latest = landingOf(threads ?? [], slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    return cardTabOf(workSeat(slug), bundleOf(terminalStore.state, ownerOf(slug)), latest);
+  };
+
+  /**
    * 「요약 카드」를 눌렀다(restart 02a-10 · 구현 스펙 「02a — 오른쪽 자리」 · SummarySheet 표 「셸 · 파일 탭에서 요약 단추를 누른다」). 본문이 카드가
    * 서는 탭(채팅 탭 · 새 채팅 탭)이면 그 자리에서 여닫는다. 아니면(셸 · 파일 탭 · 문서) **채팅 탭을 먼저 켜고** 작은 카드를 세운다 — spec 패널은
    * 접힌다. 켤 탭은 가장 최근에 켠 채팅 탭이고, 열린 채팅 탭이 없으면 가장 최근 채팅(사이드바 작업공간 줄과 같은 `landingOf`)을 탭으로 세우며,
@@ -1113,12 +1162,28 @@ function WorksPage({
       return;
     }
     if (selected === null) return;
-    const records = threadRecordStore.state;
-    const latest = landingOf(threads ?? [], selected.slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
-    const landing = cardTabOf(workSeat(selected.slug), bundleOf(terminalStore.state, ownerOf(selected.slug)), latest);
+    const landing = cardTabNow(selected.slug);
     if (landing.kind === "thread") onOpenChat(landing.id);
     else onOpenNewChat();
     moveRight({ kind: "show", place: "summary" });
+  };
+
+  /**
+   * **spec 패널의 문서 줄을 눌렀다**(restart 02a-12 · 스토리 95 · SummarySheet 표의 문서 줄 셋) — 넓힌 카드로 연다. spec 패널과 사이드바가 접힌다.
+   * 카드가 서는 탭이 본문이면 그 자리에서 넓히고 주소는 카드를 따라간다(위 「카드 → 주소」). 아니면(셸 · 파일 탭 · 문서 탭) 「요약 카드」처럼 켤 탭을
+   * 먼저 고르고(`cardTabNow`) 그 탭으로 옮기며 문서를 주소에 얹는다 — 한 번에 옮긴다. 값을 먼저 넓혀도 탭 줄 규칙이 걷지 않는다 — 바뀐 본문이 카드가
+   * 서는 탭이다(02a-10).
+   *
+   * **분할이면 문서 열에 연다**(임시 — 02a-13이 분할을 걷을 때까지). 분할의 `file`은 문서 열의 것이다.
+   */
+  const openDoc = (path: string) => {
+    if (selected === null) return;
+    if (split !== null) {
+      selectFromTree(path);
+      return;
+    }
+    moveRight({ kind: "expand", target: { kind: "doc", path } });
+    if (!cardBody) onOpenDoc(path, cardTabNow(selected.slug));
   };
 
   // 머리 줄의 화면 것(codex-ds 스펙 §6 · 스토리 23 · 24 · 02 구현 스펙 §3 S2) — 왼쪽은 ⚡(work 아이콘 — 상태 글리프가 아니다)와 work 이름이다. 사이드바를 보지
@@ -1378,10 +1443,8 @@ function WorksPage({
         //     전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
         //     기본값(최신 판만 펼침)으로 뜬다.
         //
-        // 트리에서 파일을 누르면 **spec으로 돌아가며** 그 문서가 열린다. `selectFile`이
-        // search를 객체로 갈아 끼워 `tab`이 함께 떨어지기 때문이다(결정 15의 뒷면).
-        // 래퍼를 두지 않는 것은 이동이 **한 번**이어야 해서다 — 탭과 파일을 따로 옮기면
-        // 두 navigate가 한 틱에 겹친다.
+        // spec 트리에서 문서를 누르면 **넓힌 카드로 연다**(restart 02a-12 — `openDoc`). 한때 spec 탭으로 돌아가며 그 문서가 열렸다. 셸 · 파일
+        // 탭에서 누르면 켤 채팅 탭으로 옮기는 이동과 문서를 한 번에 적는다 — 탭과 파일을 따로 옮기면 두 navigate가 한 틱에 겹친다.
         panelWork
           ? {
               open: panelOpen,
@@ -1393,7 +1456,7 @@ function WorksPage({
                   work={panelWork}
                   view={panelView}
                   currentFile={currentSpec}
-                  onSelectFile={selectFromTree}
+                  onSelectFile={openDoc}
                   currentCode={codeTarget}
                   onPressCode={pressCode}
                   onCopy={copyText}
