@@ -34,6 +34,7 @@ use super::mcp_flags;
 use super::stream::{self, Stream};
 use crate::login::AUTH_REQUIRED;
 use crate::redact;
+use crate::thread_tools::APP_TOOLS_FAILED;
 
 /// 모드 다섯 — claude의 모드 이름 그대로다(three-axes 결정 16 · 27). `bypassPermissions`는 띄울 때 허락하지 않았으면 도중에
 /// 고를 수 없으므로(`bypass_not_launched`, 실측 함정 38) 넣지 않는다.
@@ -136,6 +137,8 @@ pub(super) struct Machine {
     stream: Stream,
     /// 첫 `system/init`을 알렸다. claude는 턴마다 `init`을 다시 내지만 새 세션이 아니다 — 같은 원문을 거듭 싣지 않는다.
     init_announced: bool,
+    /// 앱이 넘긴 MCP 서버의 이름 — [`Machine::warn_failed_app_servers`]가 이 서버의 실패만 읽는다. 경고하면 비운다 — 경고는 claude 하나에 한 번이다.
+    app_servers: Vec<String>,
     /// 변환기가 claude에 보낸 제어 요청의 다음 번호(`request_id`의 꼬리).
     next_control: u64,
     /// 변환기가 호스트에 보낸 요청(`session/request_permission`)의 다음 id — 0부터 센다(codex-acp와 같다).
@@ -373,6 +376,7 @@ impl Machine {
 
         // 새 claude의 세션 — 상태를 처음으로 돌린다. 되살리지 못한 세션은 기억한다.
         *self = Machine { forgotten: self.forgotten.take(), out: std::mem::take(&mut self.out), ..Machine::default() };
+        self.app_servers = mcp_flags::names(&params["mcpServers"]);
         self.open = Open::Opening(Opening { id: id.clone(), session_id, model: model.map(str::to_owned), revive: reviving, claude });
         self.out.push(Output::Launch(launch));
         // 쓰지 못했으면 claude가 이미 끝난 것이다 — 그 끝([`Input::ClaudeEnded`])에서 이 요청에 답한다.
@@ -548,6 +552,7 @@ impl Machine {
             self.asked.retain(|_, asked| asked.request_id != line["request_id"]);
         } else if line["type"] == "system" && line["subtype"] == "init" {
             self.self_turn_started();
+            self.warn_failed_app_servers(&line);
             self.announce_init(line);
         } else if line["type"] == "result" && matches!(self.open, Open::Opening(_)) {
             // 세션이 열리기 전의 `result` — 되살릴 세션이 없어 claude가 initialize에 답하지 않고 끝난다(판 02 관문 G4).
@@ -650,6 +655,18 @@ impl Machine {
         let Some(session_id) = self.session_id().filter(|_| !self.init_announced) else { return };
         self.init_announced = true;
         self.send(session_update(&session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"claudeCode": {"init": init}}})));
+    }
+
+    /// `system/init`의 `mcp_servers`에서 앱이 넘긴 서버가 `failed`면 경고 줄을 남긴다(구현 스펙 「01b — 그 밖의 Runtime 신호」).
+    ///
+    /// 사용자가 둔 서버의 실패와 `needs-auth` · `pending`은 읽지 않는다 — 녹음 19세션 중 18세션에서 사용자 플러그인 서버 둘이 늘
+    /// `failed`여서 채팅마다 경고가 선다. 첫 `init`에서 `pending`이던 서버가 뒤에서 실패할 수 있어 `init`마다 본다.
+    fn warn_failed_app_servers(&mut self, init: &Value) {
+        let mut servers = init["mcp_servers"].as_array().into_iter().flatten();
+        if servers.any(|server| server["status"] == "failed" && self.app_servers.iter().any(|name| server["name"] == *name)) {
+            self.app_servers.clear();
+            self.out.push(Output::Stderr(APP_TOOLS_FAILED.to_owned()));
+        }
     }
 
     /// `system/init` — claude가 턴 하나를 시작한다. 걸린 `session/prompt`가 없으면 claude가 백그라운드 작업 알림으로 스스로 시작한
@@ -881,7 +898,7 @@ impl Machine {
             return;
         }
         if matches!(self.open, Open::Open { .. }) {
-            self.out.push(Output::Stderr(format!("변환기: claude가 끝났습니다 ({status})")));
+            self.out.push(Output::Stderr(format!("Claude Code가 끝났어요 ({status})")));
             self.out.push(Output::Exit(code.filter(|code| *code != 0).unwrap_or(1)));
         }
     }

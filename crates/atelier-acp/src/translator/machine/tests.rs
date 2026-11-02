@@ -100,9 +100,14 @@ impl Bench {
 
     /// `initialize`(요청 id 1)와 `session/new`(요청 id 2)로 세션을 연다.
     fn open(claude: Claude) -> Self {
+        Self::open_with(claude, json!([]))
+    }
+
+    /// [`Bench::open`]처럼 열되 앱이 이 MCP 서버들을 넘긴다.
+    fn open_with(claude: Claude, servers: Value) -> Self {
         let mut bench = Self::new(claude);
         bench.request("initialize", json!({"protocolVersion": 1}));
-        let id = bench.request("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}}));
+        let id = bench.request("session/new", json!({"cwd": CWD, "mcpServers": servers, "_meta": {"atelier": {}}}));
         bench.session_id = bench.result(id)["sessionId"].as_str().expect("연 세션 id").to_owned();
         bench
     }
@@ -827,6 +832,78 @@ fn 부모가_붙은_stream_event는_줄을_만들지_않는다() {
     bench.claude_says(relayed);
     bench.claude_says(finished_text("msg_from_subagent", "대화의 글"));
     assert_eq!(answers_of(&bench.updates()).last().map(String::as_str), Some("대화의 글"));
+}
+
+// ── 앱 서버의 연결 실패(restart 01b-8) ──────────────────────────────────────────────────
+
+/// 앱이 넘긴 서버가 든 녹음 — 사용자 플러그인 서버 둘이 `failed`이고 앱의 `atelier-thread`는 `connected`다.
+const WITH_APP_SERVER: &str = "2.1.309/thread-rename-host";
+const APP_SERVER: &str = "atelier-thread";
+
+/// 앱이 `atelier-thread`를 넘겨 연 세션 — 앱의 Thread 도구 서버와 같은 이름이다.
+fn app_server_session() -> Bench {
+    let server = json!([{"name": APP_SERVER, "command": "atelier", "args": [], "env": []}]);
+    Bench::open_with(Claude::replaying(WITH_APP_SERVER), server)
+}
+
+/// 녹음의 `system/init`에서 앱 서버의 상태만 바꾼 줄.
+fn init_with_app_server(status: &str) -> Value {
+    let mut init = recorded(WITH_APP_SERVER).into_iter().find(|line| line["subtype"] == "init").expect("init 줄");
+    let servers = init["mcp_servers"].as_array_mut().expect("mcp_servers");
+    let app = servers.iter_mut().find(|server| server["name"] == APP_SERVER).expect("앱 서버");
+    app["status"] = json!(status);
+    init
+}
+
+#[test]
+fn 앱이_넘긴_서버가_failed면_앱_기능_도구_경고를_적는다() {
+    let mut bench = app_server_session();
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr(), ["앱 기능 도구에 연결하지 못했어요"]);
+}
+
+#[test]
+fn 사용자가_둔_서버의_실패로는_경고하지_않는다() {
+    let init = init_with_app_server("connected");
+    let failed = init["mcp_servers"].as_array().unwrap().iter().filter(|server| server["status"] == "failed").count();
+    assert_eq!(failed, 2, "녹음에 사용자 플러그인 서버의 실패가 있어야 이 시험이 뜻이 있다");
+
+    let mut bench = app_server_session();
+    bench.prompt("이름을 바꿔 줘");
+    assert!(bench.updates().iter().any(|update| update["sessionUpdate"] == "session_info_update"), "녹음의 init이 지나갔다");
+    assert_eq!(bench.stderr(), Vec::<String>::new());
+}
+
+#[test]
+fn 앱_서버의_needs_auth와_pending은_읽지_않는다() {
+    for status in ["needs-auth", "pending"] {
+        let mut bench = app_server_session();
+        bench.claude_says(init_with_app_server(status));
+        assert_eq!(bench.stderr(), Vec::<String>::new(), "{status}");
+    }
+}
+
+#[test]
+fn 앱이_넘기지_않은_서버는_이름이_앱_서버와_같아_보여도_읽지_않는다() {
+    let mut bench = Bench::open(Claude::replaying(WITH_APP_SERVER));
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr(), Vec::<String>::new(), "이 세션에는 앱이 서버를 넘기지 않았다");
+}
+
+#[test]
+fn 턴마다_다시_오는_init에도_경고는_한_번이다() {
+    let mut bench = app_server_session();
+    bench.claude_says(init_with_app_server("failed"));
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr().len(), 1);
+}
+
+#[test]
+fn 첫_init에서_기다리던_앱_서버가_뒤_init에서_실패해도_경고한다() {
+    let mut bench = app_server_session();
+    bench.claude_says(init_with_app_server("pending"));
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr(), ["앱 기능 도구에 연결하지 못했어요"]);
 }
 
 #[test]
@@ -2051,7 +2128,7 @@ fn claude가_initialize에_답하지_않고_끝나면_열기를_오류로_답하
 fn 세션이_열린_뒤_claude가_끝나면_변환기도_끝나고_claude가_0으로_끝나도_죽음이다() {
     let mut bench = Bench::open(Claude::replaying("2.1.309/twoturn-tools"));
     bench.claude_exits(3);
-    assert_eq!(bench.stderr(), ["변환기: claude가 끝났습니다 (exit status: 3)"]);
+    assert_eq!(bench.stderr(), ["Claude Code가 끝났어요 (exit status: 3)"]);
     assert_eq!(bench.exits(), [3], "호스트가 수신 EOF로 프로세스 죽음을 안다");
 
     let mut bench = Bench::open(Claude::replaying("2.1.309/twoturn-tools"));
