@@ -789,11 +789,11 @@ test("Works: 작업 패널 머리 제목이 DS 패널 머리 제목(14/20 · 500
 // codex-ds 티켓 13 · 02 티켓 03 — **머리 줄에 작업 화면의 이름과 할 일이 선다**(codex-ds 스펙 §4 · §6 · 02 구현 스펙 §3 S2). 창 맨 위는
 // 44 머리 줄이고, 화면 자리(`ScreenHead`)는 사이드바 오른쪽 끝(판 안 본문 칸 왼쪽 끝)에서 창 오른쪽 끝까지다. 한때 그 자리에 흰 카드(머리
 // 카드 — `size-head` 32 · `radius-xl` · 링)가 떴다 — 카드의 겉만 버리고 안은 그대로다. 왼쪽에 ⚡ · work 이름이 서서 사이드바를 보지 않아도
-// 지금 어느 work인지 안다(스토리 23). 그 앞에는 이 Work가 이은 Space가 흐린 「Space 이름 /」로 선다 — 누르면 Space 메뉴다(03 구현 스펙 §10 ·
-// 스토리 78 · 79 · 80 — 메뉴 안은 대화 속 Space 흐름 spec이 잰다). 픽스처 Work는 Space가 없어 「Space 없음」이다. 오른쪽 끝 묶음은 할 일(상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리
+// 지금 어느 work인지 안다(스토리 23). 그 앞에는 이 Work가 이은 Service가 흐린 「Service 이름 /」로 선다 — 누르면 Service 메뉴다(03 구현 스펙 §10 ·
+// 스토리 78 · 79 · 80 — 메뉴 안은 대화 속 Service 흐름 spec이 잰다). 픽스처 Work는 Service가 없어 「Service 없음」이다. 오른쪽 끝 묶음은 할 일(상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리
 // 24 · DS `.at-winctl-r`). 묶음의 크기 · 사이는 아래 「창 컨트롤 넷이 …」가 잰다. 이름은 버튼이 아니다 — 우클릭 · ⇧F10으로 work 메뉴를 여는
 // 대상이고(티켓 27 — `work-context-menu.spec.ts`), 두 번 클릭 · F2로 그 자리에서 이름을 바꾼다(티켓 28 — `inline-rename.spec.ts`).
-test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Space / ⚡ · work 이름, 오른쪽 끝에 상태 배지 · ⋯ | 분할 · 패널 토글이 선다", async ({ page }) => {
+test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Service / ⚡ · work 이름, 오른쪽 끝에 상태 배지 · ⋯ | 분할 · 패널 토글이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   const head = 화면머리(page);
@@ -816,18 +816,18 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Space / ⚡ · work
     "0px",
   ]);
 
-  // 왼쪽 — 이은 Space 「Space 없음 /」, 그 뒤 ⚡(work 아이콘이지 상태 글리프가 아니다)와 work 이름. Space는 본문 칸 왼쪽 끝 + 8에서 시작하고
+  // 왼쪽 — 이은 Service 「Service 없음 /」, 그 뒤 ⚡(work 아이콘이지 상태 글리프가 아니다)와 work 이름. Service는 본문 칸 왼쪽 끝 + 8에서 시작하고
   // (세로선 뒤 14 − 당김 6), 아이콘은 이름 상자 안쪽 8이다(아래 「머리 줄 이름의 hover 면」).
-  const crumb = head.getByRole("button", { name: "Space: 없음", exact: true });
+  const crumb = head.getByRole("button", { name: "Service: 없음", exact: true });
   const zap = head.locator("svg.lucide-zap");
   const name = head.getByText(pinnedWork.title, { exact: true });
-  await expect(crumb).toHaveText("Space 없음");
+  await expect(crumb).toHaveText("Service 없음");
   await expect(zap).toHaveCount(1);
   await expect(name).toBeVisible();
   // 이름을 글자로 집으면 이름 상자(DS `.at-wtitle` — ⚡ · 이름을 품는다)가 잡혀, 이름 글자의 자리는 그 안 글자 마디로 잰다(`첫글자`).
-  const [space, icon, title] = [await boxOf(crumb), await boxOf(zap), await boxOf(name)];
-  expect(space.x - doc.x, "Space — 본문 칸 + 8").toBe(8);
-  expect(icon.x, "⚡는 Space 뒤").toBeGreaterThan(space.right);
+  const [service, icon, title] = [await boxOf(crumb), await boxOf(zap), await boxOf(name)];
+  expect(service.x - doc.x, "Service — 본문 칸 + 8").toBe(8);
+  expect(icon.x, "⚡는 Service 뒤").toBeGreaterThan(service.right);
   expect((await 첫글자(name)).x, "이름은 ⚡ 뒤").toBeGreaterThan(icon.right);
   // 이름은 버튼이 아니다(메뉴의 대상이자 이름 바꾸기의 자리라 포커스만 받는다). 역할이 없으니 듣는 키를 말한다 — F2(이름 바꾸기 —
   // `inline-rename.spec.ts`)와 ⇧F10 · 메뉴 키(`work-context-menu.spec.ts`가 그 키로 메뉴가 서는 것을 잰다).
@@ -835,7 +835,7 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Space / ⚡ · work
   await expect(name).toHaveAttribute("tabindex", "0");
   await expect(name).toHaveAttribute("aria-keyshortcuts", "F2 Shift+F10 ContextMenu");
 
-  // 오른쪽 끝 — 상태 배지 · ⋯ | 분할 · 패널 토글. 버튼은 이것과 왼쪽의 Space뿐이고 차례가 이렇다. ⋯와 분할 사이를 세로선이 가르고, 모두 머리 줄 가운데
+  // 오른쪽 끝 — 상태 배지 · ⋯ | 분할 · 패널 토글. 버튼은 이것과 왼쪽의 Service뿐이고 차례가 이렇다. ⋯와 분할 사이를 세로선이 가르고, 모두 머리 줄 가운데
   // 줄에 선다. 이름은 그 앞에서 끝난다. 패널 토글은 레일이 서도 레일 위가 아니라 이 묶음의 맨 끝이다(한때 DS `.at-railtop`).
   const parts = [
     head.getByRole("button", { name: pinnedWork.status, exact: true }),
@@ -895,7 +895,7 @@ test("Works: 머리 줄의 이름 칸은 520까지이고 긴 이름은 그 안�
 });
 
 // **바꿀 수 있는 이름의 hover 면은 아이콘 · 이름 · 연필을 함께 덮는다**(DS `.at-wtitle` — 24 · 안쪽 0 8 · 사이 7 · `radius-md`, hover
-// `fill-hover`, 연필 12 `fg-tertiary`의 왼쪽 -2). 면의 안쪽은 양쪽 8로 같다 — 아이콘 앞 8, 연필 뒤 8. 면은 이은 Space(「Space 없음 /」) 뒤에
+// `fill-hover`, 연필 12 `fg-tertiary`의 왼쪽 -2). 면의 안쪽은 양쪽 8로 같다 — 아이콘 앞 8, 연필 뒤 8. 면은 이은 Service(「Service 없음 /」) 뒤에
 // 서고(03 구현 스펙 §10 — 한때 아이콘이 화면 자리 + 16이었다), 글리프(아이콘 · 이름 글자)는 쉴 때 · hover · 고칠 때 한 자리다 — 고치기의 입력칸도 이름 글자가 선 자리에서
 // 시작한다(`InlineRename`의 `fit="text"`). 면은 포커스 받는 그 이름 요소 자신이라, 포커스 링 · 대상 테두리도 이 면을 두른다.
 test("Works: 머리 줄 이름의 hover 면이 ⚡ · 이름 · 연필을 함께 덮고 안쪽이 양쪽 8이며 — 글리프는 쉴 때 · hover · 고칠 때 한 자리다", async ({
@@ -912,8 +912,8 @@ test("Works: 머리 줄 이름의 hover 면이 ⚡ · 이름 · 연필을 함께
   const card = await boxOf(head);
   const 자리 = async () => ({ 아이콘: (await boxOf(zap)).x, 글자: (await 첫글자(name)).x });
   const 쉴때 = await 자리();
-  // 이름 상자는 이은 Space(「Space 없음 /」) 뒤에 선다(03 구현 스펙 §10) — 한때 ⚡가 화면 자리 + 16이었다.
-  expect(쉴때.아이콘, "⚡ — 이은 Space 뒤").toBeGreaterThan((await boxOf(head.getByRole("button", { name: "Space: 없음", exact: true }))).right);
+  // 이름 상자는 이은 Service(「Service 없음 /」) 뒤에 선다(03 구현 스펙 §10) — 한때 ⚡가 화면 자리 + 16이었다.
+  expect(쉴때.아이콘, "⚡ — 이은 Service 뒤").toBeGreaterThan((await boxOf(head.getByRole("button", { name: "Service: 없음", exact: true }))).right);
 
   await name.hover();
   await expect.poll(async () => (await 칠한값(name, "background-color"))[0], "hover 면").toBe(await 토큰색(page, "--fill-hover"));

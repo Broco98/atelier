@@ -1,14 +1,14 @@
-//! L1 — Host가 대화로 Project · Space를 추가하고 고친다(03 티켓 12 · 구현 스펙 §12 · S13): Thread 도구 「Project 추가」 · 「Project 고치기」 ·
-//! 「Space 만들기」 · 「Space 고치기」.
+//! L1 — Host가 대화로 Project · Service를 추가하고 고친다(03 티켓 12 · 구현 스펙 §12 · S13): Thread 도구 「Project 추가」 · 「Project 고치기」 ·
+//! 「Service 만들기」 · 「Service 고치기」.
 //!
 //! - 네 도구는 화면과 같은 core 함수를 부르고 같은 파일을 같은 꼴로 쓴다. 승인 카드를 세우지 않는다(S13).
 //! - 「Project 추가」는 폴더를 살핀다 — 이미 등록된 폴더는 바꾸지 않고, git이 아닌 폴더 · 저장소의 하위 폴더는 질문 카드(`question` · `card:
 //!   project-add`)로 묻고 사람이 고른 대로 한다.
-//! - 없는 기준 브랜치 · 문제 있는 Space는 실패하고 그 까닭(고를 수 있는 브랜치 · 문제)을 Host에게 준다.
+//! - 없는 기준 브랜치 · 문제 있는 Service는 실패하고 그 까닭(고를 수 있는 브랜치 · 문제)을 Host에게 준다.
 //! - 해낸 설정마다 흐름에 결과 카드 줄(`setting`)이 하나 선다 — 무엇을 했나 · 대상 slug · 이름 · 첫 줄 · 둘째 줄.
 //! - 지우는 도구는 없다 — 머리말이 그 화면을 안내하라고 지시한다.
 //!
-//! 시험은 호스트의 Thread 명령과 Thread 폴더(`events.jsonl`) · Project · Space 파일 · 가짜 claude의 MCP 영수증만 본다.
+//! 시험은 호스트의 Thread 명령과 Thread 폴더(`events.jsonl`) · Project · Service 파일 · 가짜 claude의 MCP 영수증만 본다.
 
 mod common;
 
@@ -20,10 +20,10 @@ use atelier_acp::{ConversationHost, HostError, ProjectAddChoice, ThreadLink};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 결제 서비스 Space — web-app · api-server(캔버스 ④ 「결제 서비스」).
+/// 결제 서비스 Service — web-app · api-server(캔버스 ④ 「결제 서비스」).
 const PAYMENTS: &str = "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불을 한 흐름으로 다뤄요.\n";
 
-/// 사내 도구 Space — api-server · backoffice(캔버스 ④ 「사내 도구」).
+/// 사내 도구 Service — api-server · backoffice(캔버스 ④ 「사내 도구」).
 const TOOLS: &str = "---\nname: 사내 도구\nprojects:\n  - api-server\n  - backoffice\n---\n";
 
 /// 가짜 claude가 첫 턴 앞머리에서 차례로 부를 Thread 도구들 — `FAKE_CLAUDE_MCP_CALL`.
@@ -68,15 +68,15 @@ fn projects(sandbox: &Sandbox) -> PathBuf {
     atelier_core::projects_in(&sandbox.data_root())
 }
 
-/// Space 파일 하나를 둔다.
-fn space(sandbox: &Sandbox, slug: &str, text: &str) {
-    let spaces = atelier_core::spaces_in(&sandbox.data_root());
-    std::fs::create_dir_all(&spaces).unwrap();
-    std::fs::write(spaces.join(format!("{slug}.md")), text).unwrap();
+/// Service 파일 하나를 둔다.
+fn service(sandbox: &Sandbox, slug: &str, text: &str) {
+    let services = atelier_core::services_in(&sandbox.data_root());
+    std::fs::create_dir_all(&services).unwrap();
+    std::fs::write(services.join(format!("{slug}.md")), text).unwrap();
 }
 
-fn space_text(sandbox: &Sandbox, slug: &str) -> Option<String> {
-    std::fs::read_to_string(atelier_core::spaces_in(&sandbox.data_root()).join(format!("{slug}.md"))).ok()
+fn service_text(sandbox: &Sandbox, slug: &str) -> Option<String> {
+    std::fs::read_to_string(atelier_core::services_in(&sandbox.data_root()).join(format!("{slug}.md"))).ok()
 }
 
 fn project_text(sandbox: &Sandbox, slug: &str) -> Option<String> {
@@ -367,13 +367,13 @@ fn 없는_기준_브랜치는_쓰지_않고_고를_수_있는_브랜치를_돌�
 }
 
 #[test]
-fn space를_만들면_만든_이가_host인_파일이_서고_문제가_있으면_만들지_않고_그_문제를_돌려준다() {
+fn service를_만들면_만든_이가_host인_파일이_서고_문제가_있으면_만들지_않고_그_문제를_돌려준다() {
     let sandbox = Sandbox::new();
     register(&sandbox, "api-server");
     let calls = [
-        tool("create_space", json!({"name": "정산", "projects": ["api-server", "billing"]})),
-        tool("create_space", json!({"name": "정산", "projects": ["api-server"], "description": "월말 정산을 다뤄요."})),
-        tool("create_space", json!({"name": "정산", "projects": []})),
+        tool("create_service", json!({"name": "정산", "projects": ["api-server", "billing"]})),
+        tool("create_service", json!({"name": "정산", "projects": ["api-server"], "description": "월말 정산을 다뤄요."})),
+        tool("create_service", json!({"name": "정산", "projects": []})),
     ];
     let (host, thread) = thread_calling(&sandbox, &calls);
     let record = first_turn(&sandbox, host, &thread);
@@ -382,88 +382,88 @@ fn space를_만들면_만든_이가_host인_파일이_서고_문제가_있으면
     assert!(said[0].0, "{}", said[0].1);
     assert_eq!(
         said[0].1,
-        "Space 파일에 문제가 있어요 — 5행 등록되지 않은 Project예요(billing) — 만들지 않았다. 등록된 Project(list_projects): api-server",
+        "Service 파일에 문제가 있어요 — 5행 등록되지 않은 Project예요(billing) — 만들지 않았다. 등록된 Project(list_projects): api-server",
         "화면 · 저장과 같은 문제의 말"
     );
-    let text = space_text(&sandbox, "정산").expect("만든 Space 파일");
+    let text = service_text(&sandbox, "정산").expect("만든 Service 파일");
     assert!(text.starts_with("---\nname: 정산\nprojects:\n  - api-server\ncreatedAt: "), "{text}");
     assert!(text.ends_with("\ncreatedBy: host\n---\n\n월말 정산을 다뤄요.\n"), "만든 이는 host다(S6): {text}");
-    assert!(space_text(&sandbox, "정산-2").is_some(), "같은 이름이면 화면과 같이 -2(스토리 69)");
-    assert!(!said[1].0 && said[1].1.starts_with("Space `정산`(정산)을 만들었다"), "{}", said[1].1);
-    assert!(said[1].1.contains("사람이 「열기」로 그 화면에서 다시 고칠 수 있다"), "Space 만듦 카드의 단추는 「열기」다: {}", said[1].1);
+    assert!(service_text(&sandbox, "정산-2").is_some(), "같은 이름이면 화면과 같이 -2(스토리 69)");
+    assert!(!said[1].0 && said[1].1.starts_with("Service `정산`(정산)을 만들었다"), "{}", said[1].1);
+    assert!(said[1].1.contains("사람이 「열기」로 그 화면에서 다시 고칠 수 있다"), "Service 만듦 카드의 단추는 「열기」다: {}", said[1].1);
 
-    let spaces = atelier_core::spaces_in(&sandbox.data_root());
+    let services = atelier_core::services_in(&sandbox.data_root());
     let cards: Vec<Value> = settings(&record).iter().map(|line| line["payload"].clone()).collect();
     assert_eq!(
         cards,
         [
-            json!({"action": "space-created", "slug": "정산", "name": "정산", "title": "Space를 만들었어요 — 정산",
-                   "detail": format!("api-server · {}", atelier_core::collapse_home(&spaces.join("정산.md")))}),
-            json!({"action": "space-created", "slug": "정산-2", "name": "정산", "title": "Space를 만들었어요 — 정산",
-                   "detail": format!("Project 없음 · {}", atelier_core::collapse_home(&spaces.join("정산-2.md")))}),
+            json!({"action": "service-created", "slug": "정산", "name": "정산", "title": "Service를 만들었어요 — 정산",
+                   "detail": format!("api-server · {}", atelier_core::collapse_home(&services.join("정산.md")))}),
+            json!({"action": "service-created", "slug": "정산-2", "name": "정산", "title": "Service를 만들었어요 — 정산",
+                   "detail": format!("Project 없음 · {}", atelier_core::collapse_home(&services.join("정산-2.md")))}),
         ]
     );
 }
 
 #[test]
-fn space를_고치면_고친_칸만_바뀌고_결과_카드가_project_수와_함께_쓰는_space를_말한다() {
+fn service를_고치면_고친_칸만_바뀌고_결과_카드가_project_수와_함께_쓰는_service를_말한다() {
     let sandbox = Sandbox::new();
     for name in ["web-app", "api-server", "backoffice"] {
         register(&sandbox, name);
     }
     let payments = format!("{PAYMENTS}\n<!-- 손으로 적은 주석 -->\n");
-    space(&sandbox, "결제-서비스", &payments);
-    space(&sandbox, "사내-도구", TOOLS);
+    service(&sandbox, "결제-서비스", &payments);
+    service(&sandbox, "사내-도구", TOOLS);
     let calls = [
-        tool("edit_space", json!({"space": "결제-서비스", "add": ["backoffice"]})),
-        tool("edit_space", json!({"space": "결제-서비스", "add": ["billing"]})),
-        tool("edit_space", json!({"space": "정산", "remove": ["web-app"]})),
-        tool("edit_space", json!({"space": "결제-서비스", "add": ["backoffice"]})),
+        tool("edit_service", json!({"service": "결제-서비스", "add": ["backoffice"]})),
+        tool("edit_service", json!({"service": "결제-서비스", "add": ["billing"]})),
+        tool("edit_service", json!({"service": "정산", "remove": ["web-app"]})),
+        tool("edit_service", json!({"service": "결제-서비스", "add": ["backoffice"]})),
     ];
     let (host, thread) = thread_calling(&sandbox, &calls);
     let record = first_turn(&sandbox, host, &thread);
     let said = answers(&sandbox, &thread);
 
     assert_eq!(
-        space_text(&sandbox, "결제-서비스").unwrap(),
+        service_text(&sandbox, "결제-서비스").unwrap(),
         payments.replace("  - api-server\n", "  - api-server\n  - backoffice\n"),
         "그 항목 줄만 끼운다 — 주석 · 나머지 글은 그대로(화면 상세의 넣기와 같은 core 고치기)"
     );
-    assert!(!said[0].0 && said[0].1.starts_with("Space `결제-서비스`(결제 서비스)를 고쳤다 — Project: web-app, api-server, backoffice"), "{}", said[0].1);
-    assert!(said[0].1.contains("사람이 「관계 보기」로 그 화면에서 다시 고칠 수 있다"), "Space 고침 카드의 단추는 「관계 보기」다: {}", said[0].1);
+    assert!(!said[0].0 && said[0].1.starts_with("Service `결제-서비스`(결제 서비스)를 고쳤다 — Project: web-app, api-server, backoffice"), "{}", said[0].1);
+    assert!(said[0].1.contains("사람이 「관계 보기」로 그 화면에서 다시 고칠 수 있다"), "Service 고침 카드의 단추는 「관계 보기」다: {}", said[0].1);
     assert!(said[1].0 && said[1].1.contains("등록되지 않은 Project예요(billing)") && said[1].1.contains("고치지 않았다"), "{}", said[1].1);
-    assert!(said[2].0 && said[2].1.starts_with("없는 Space다: 정산 — Space(list_spaces): 결제-서비스, 사내-도구"), "{}", said[2].1);
-    assert_eq!(said[3], (false, "바뀐 것이 없다 — Space `결제-서비스`는 그대로다.".to_owned()));
+    assert!(said[2].0 && said[2].1.starts_with("없는 Service다: 정산 — Service(list_services): 결제-서비스, 사내-도구"), "{}", said[2].1);
+    assert_eq!(said[3], (false, "바뀐 것이 없다 — Service `결제-서비스`는 그대로다.".to_owned()));
     let cards: Vec<Value> = settings(&record).iter().map(|line| line["payload"].clone()).collect();
     assert_eq!(
         cards,
-        [json!({"action": "space-edited", "slug": "결제-서비스", "name": "결제 서비스", "title": "결제 서비스에 backoffice를 넣었어요",
-                "detail": "Project 3 · 함께 쓰는 Space 1"})],
-        "캔버스 F4-KitChat 「Space 고침」 칸 — 「관계 보기」"
+        [json!({"action": "service-edited", "slug": "결제-서비스", "name": "결제 서비스", "title": "결제 서비스에 backoffice를 넣었어요",
+                "detail": "Project 3 · 함께 쓰는 Service 1"})],
+        "캔버스 F4-KitChat 「Service 고침」 칸 — 「관계 보기」"
     );
 }
 
 #[test]
-fn 설정_도구_넷의_설명은_승인_없이_하고_지우기_부탁에는_화면을_안내하라고_하며_space는_초안부터_보이라고_한다() {
+fn 설정_도구_넷의_설명은_승인_없이_하고_지우기_부탁에는_화면을_안내하라고_하며_service는_초안부터_보이라고_한다() {
     let sandbox = Sandbox::new();
     let (host, thread) = thread_calling(&sandbox, &[tool("list_projects", json!({}))]);
     first_turn(&sandbox, host, &thread);
 
     let session = sandbox.thread_session_id(&thread);
-    for name in ["add_project", "edit_project", "create_space", "edit_space"] {
+    for name in ["add_project", "edit_project", "create_service", "edit_service"] {
         let guide = sandbox.claude_tool_guide(&session, name);
         assert!(guide.contains("승인 카드 없이 곧바로 하고"), "{name}:\n{guide}");
         assert!(
             guide.contains("부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › Projects에서 api-server의 ⋯ › 제거를 눌러 주세요.」"),
             "지우는 도구는 없다 — 화면을 안내한다(스토리 67) — {name}:\n{guide}"
         );
-        assert!(guide.contains("Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다"), "{name}:\n{guide}");
+        assert!(guide.contains("Service 삭제는 메뉴 › Service에서 그 Service의 ⋯ › 삭제다"), "{name}:\n{guide}");
     }
-    let guide = sandbox.claude_tool_guide(&session, "create_space");
+    let guide = sandbox.claude_tool_guide(&session, "create_service");
     assert!(guide.contains("만들기 전에 이름 · Project · 설명의 초안을 사람에게 보이고, 사람이 좋다고 하면 부른다"), "{guide}");
 }
 
-/// 캔버스 ④ F4-KitChat 「대화로 한 설정 — 결과 카드」의 자리 — Project 셋(web-app의 기준 브랜치는 develop) · Space 둘 · 아직 등록하지 않은
+/// 캔버스 ④ F4-KitChat 「대화로 한 설정 — 결과 카드」의 자리 — Project 셋(web-app의 기준 브랜치는 develop) · Service 둘 · 아직 등록하지 않은
 /// 저장소 landing-page.
 fn kit_world(sandbox: &Sandbox) -> PathBuf {
     let web = register(sandbox, "web-app");
@@ -472,8 +472,8 @@ fn kit_world(sandbox: &Sandbox) -> PathBuf {
     atelier_core::update_project(&projects(sandbox), "web-app", patch).expect("기준 브랜치 develop");
     register(sandbox, "api-server");
     register(sandbox, "backoffice");
-    space(sandbox, "결제-서비스", PAYMENTS);
-    space(sandbox, "사내-도구", TOOLS);
+    service(sandbox, "결제-서비스", PAYMENTS);
+    service(sandbox, "사내-도구", TOOLS);
     repo(sandbox, "landing-page")
 }
 
@@ -494,7 +494,7 @@ fn fixed_record(sandbox: &Sandbox, thread: &str, record: &[Value], request: Opti
     common::fix_thread_record(&homed, &sandbox.data_root(), thread, &[&session])
 }
 
-/// 기록 축복(S26 꼴) — 한 턴에 Host가 Project를 추가하고 · 기준 브랜치를 고치고 · Space를 만들고 · Space에 Project를 넣는다. 화면 L2
+/// 기록 축복(S26 꼴) — 한 턴에 Host가 Project를 추가하고 · 기준 브랜치를 고치고 · Service를 만들고 · Service에 Project를 넣는다. 화면 L2
 /// (`fold.test.ts`)와 끝 e2e(13)의 L3가 이 파일을 흘려 결과 카드 넷(캔버스 F4-KitChat)을 그린다.
 #[test]
 fn host가_대화로_한_설정_넷의_턴의_기록이_검사_자료와_같다() {
@@ -503,8 +503,8 @@ fn host가_대화로_한_설정_넷의_턴의_기록이_검사_자료와_같다(
     let calls = [
         tool("add_project", json!({"path": landing})),
         tool("edit_project", json!({"project": "web-app", "baseBranch": "main"})),
-        tool("edit_space", json!({"space": "결제-서비스", "add": ["backoffice"]})),
-        tool("create_space", json!({"name": "정산", "projects": ["api-server"], "description": "월말 정산을 다뤄요."})),
+        tool("edit_service", json!({"service": "결제-서비스", "add": ["backoffice"]})),
+        tool("create_service", json!({"name": "정산", "projects": ["api-server"], "description": "월말 정산을 다뤄요."})),
     ];
     let (host, thread) = thread_calling(&sandbox, &calls);
     let record = first_turn(&sandbox, host, &thread);
@@ -515,8 +515,8 @@ fn host가_대화로_한_설정_넷의_턴의_기록이_검사_자료와_같다(
         [
             (&json!("Project를 추가했어요 — landing-page"), &json!(format!("{}/landing-page · git 레포 · 기준 브랜치 main", repos(&sandbox).display()))),
             (&json!("web-app의 기준 브랜치를 main으로 바꿨어요"), &json!("새 Work부터 main에서 갈라져요")),
-            (&json!("결제 서비스에 backoffice를 넣었어요"), &json!("Project 3 · 함께 쓰는 Space 1")),
-            (&json!("Space를 만들었어요 — 정산"), &json!(format!("api-server · {}", atelier_core::spaces_in(&sandbox.data_root()).join("정산.md").display()))),
+            (&json!("결제 서비스에 backoffice를 넣었어요"), &json!("Project 3 · 함께 쓰는 Service 1")),
+            (&json!("Service를 만들었어요 — 정산"), &json!(format!("api-server · {}", atelier_core::services_in(&sandbox.data_root()).join("정산.md").display()))),
         ],
         "캔버스 F4-KitChat 결과 카드 넷의 첫 줄"
     );

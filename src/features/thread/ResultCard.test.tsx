@@ -24,17 +24,17 @@ const drawn = (actions?: ResultActions) =>
   });
 
 describe("결과 카드", () => {
-  it("기록의 설정 줄 넷이 시안의 글 그대로 선다 — Space 고침만 「관계 보기」다", () => {
+  it("기록의 설정 줄 넷이 시안의 글 그대로 선다 — Service 고침만 「관계 보기」다", () => {
     expect(drawn().map(text)).toEqual([
       "Project를 추가했어요 — landing-page ~/MyProjects/landing-page · git 레포 · 기준 브랜치 main 열기",
       "web-app의 기준 브랜치를 main으로 바꿨어요 새 Work부터 main에서 갈라져요 열기",
-      "결제 서비스에 backoffice를 넣었어요 Project 3 · 함께 쓰는 Space 1 관계 보기",
-      "Space를 만들었어요 — 정산 api-server · ~/.atelier/spaces/정산.md 열기",
+      "결제 서비스에 backoffice를 넣었어요 Project 3 · 함께 쓰는 Service 1 관계 보기",
+      "Service를 만들었어요 — 정산 api-server · ~/.atelier/services/정산.md 열기",
     ]);
     expect(drawn().map(off)).toEqual([false, false, false, false]);
   });
 
-  it("대상이 지금 목록에 없으면 단추가 꺼진다 — Project · Space를 제 목록에서 찾는다", () => {
+  it("대상이 지금 목록에 없으면 단추가 꺼진다 — Project · Service를 제 목록에서 찾는다", () => {
     const markups = drawn({
       listed: (target) => (target === "project" ? ["web-app"] : ["정산"]),
       open: () => {},

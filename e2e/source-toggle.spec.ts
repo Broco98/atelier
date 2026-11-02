@@ -38,7 +38,7 @@ test("어느 칸을 눌러도 문서와 원문이 오간다", async ({ page }) =
 
 // 판 4 — 두 칸은 ToggleGroup이다(결정 1). Tab 자리가 하나이고 그 안에서는 ←/→로 옮긴다(스토리 94).
 // 끝에서 돈다. 옮기기만 하고 뒤집지 않는다 — 방향키 한 번에 본문이 바뀌면 칸을 고르러 가는 길에
-// 보기가 오간다. 뒤집는 것은 Space다. Tab으로는 재지 않는다(스펙 「좋은 검사」).
+// 보기가 오간다. 뒤집는 것은 Service다. Tab으로는 재지 않는다(스펙 「좋은 검사」).
 test("칸에 포커스를 두면 ←/→로 옆 칸에 가고, 옮기기만 해서는 보기가 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${work.slug}?file=${encodeURIComponent(work.specFiles[0])}`);

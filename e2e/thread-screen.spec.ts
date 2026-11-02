@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_THREAD, PROJECTS, SPACES, WORKS } from "./fixtures";
+import { answerByArg, FIXTURE_THREAD, PROJECTS, SERVICES, WORKS } from "./fixtures";
 import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
 import {
   atHome,
@@ -18,8 +18,8 @@ import {
 } from "./thread-records";
 import { THREAD_QUEUE_EVENT } from "@/features/thread/events";
 import type { PrLine } from "@/features/thread/pr";
-import type { ReadingScope } from "@/features/spaces/scope";
-import type { Space } from "@/features/spaces/types";
+import type { ReadingScope } from "@/features/services/scope";
+import type { Service } from "@/features/services/types";
 import type { RecordLine, ThreadQueueEvent, ThreadView } from "@/features/thread/types";
 import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 
@@ -35,8 +35,8 @@ import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 //   다른 spec이 잰다 Host 답 머리 없음 · 도구 없는 턴의 구분선 사라짐(`thread`) · 승인 단추 글자 ·
 //                   ↵ · esc · 숫자 키 없음 · 답한 질문 한 줄(`thread-approval`) · Thread 안에 고르는 Work 칩 없음(`thread-work`) · 넓힌
 //                   카드의 줄 · 480 · 작은 카드 앞 16(`thread-work-card`) · 첫 화면 Work 칩의 스위치 · 기억(`thread-work-chip`) · 트레이의
-//                   두 자리 · 잠긴 칩 · Space 칩 · 범위 줄(03 흐름 「트레이」 — `thread-tray`) · Work 없는 Thread 머리 줄의 Space(03 흐름
-//                   「대화 속 Space와 설정」 — `thread-space-setting`)
+//                   두 자리 · 잠긴 칩 · Service 칩 · 범위 줄(03 흐름 「트레이」 — `thread-tray`) · Work 없는 Thread 머리 줄의 Service(03 흐름
+//                   「대화 속 Service와 설정」 — `thread-service-setting`)
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Work 만들기 턴(`thread-work`), PR을 남긴 Work의 턴(`thread-pr`), 답만 한 턴과 도구를
 // 쓴 턴(`thread-two-turns`). 기하는 시안 창(1440 × 900)에서 잰다 — 시안 비교 06 · 07 · 10 · 11의 「잰 값」이 그 창의 값이다.
@@ -207,11 +207,11 @@ const PR_CHANGES: ProjectChanges[] = [
 ];
 const prView: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(prLines)[0].text, work: PR_WORK.slug, lastSeq: PR_END };
 /**
- * 그 Thread가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — Work에 Space가 없어 등록된 Project 둘을 모두 읽되, worktree에서 일하는
+ * 그 Thread가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — Work에 Service가 없어 등록된 Project 둘을 모두 읽되, worktree에서 일하는
  * Project는 범위에서 빠진다(규칙 4). 요약 카드의 「읽기만」이 이것이다.
  */
 const PR_SCOPE: ReadingScope = {
-  space: null,
+  service: null,
   projects: [{ slug: "web-app", name: "web-app", why: "all" }],
   worked: [{ slug: "api-server", name: "api-server" }],
   kind: "all",
@@ -298,17 +298,17 @@ test("요약 카드 — 머리 · 변경 사항 · PR · 결과물 · 소스 차
 /** 답만 한 턴과 도구를 쓴 턴(`thread-two-turns`) — 다시 켠 뒤라 둘 다 접혀 있다. */
 const twoTurns = record("thread-two-turns");
 /**
- * Work 없는 Thread 둘 — 첫째는 Space가 없어 등록된 Project 둘을 모두 읽고(fixture 기본 범위 `SCOPE_ALL`), 둘째는 Project가 없는 Space
- * 「정산」에 이어져 읽는 Project가 없다(03 §7 — 빈 Space).
+ * Work 없는 Thread 둘 — 첫째는 Service가 없어 등록된 Project 둘을 모두 읽고(fixture 기본 범위 `SCOPE_ALL`), 둘째는 Project가 없는 Service
+ * 「정산」에 이어져 읽는 Project가 없다(03 §7 — 빈 Service).
  */
 const looseA: ThreadView = { ...FIXTURE_THREAD, id: "20261010-100000", title: "첫째 Thread", lastSeq: twoTurns[twoTurns.length - 1].seq };
-const EMPTY_SPACE: Space = { slug: "정산", name: "정산", projects: [], createdAt: "2026-10-25", createdBy: null, description: "", problems: [] };
-const looseB: ThreadView = { ...looseA, id: "20261011-090000", title: "둘째 Thread", space: EMPTY_SPACE.slug };
+const EMPTY_SERVICE: Service = { slug: "정산", name: "정산", projects: [], createdAt: "2026-10-25", createdBy: null, description: "", problems: [] };
+const looseB: ThreadView = { ...looseA, id: "20261011-090000", title: "둘째 Thread", service: EMPTY_SERVICE.slug };
 const EMPTY_SCOPE: ReadingScope = {
-  space: { slug: EMPTY_SPACE.slug, name: EMPTY_SPACE.name, troubled: false },
+  service: { slug: EMPTY_SERVICE.slug, name: EMPTY_SERVICE.name, troubled: false },
   projects: [],
   worked: [],
-  kind: "emptySpace",
+  kind: "emptyService",
   registered: PROJECTS.length,
 };
 
@@ -323,7 +323,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
       [looseA.id]: { ...summaryOf(looseA), lastRead: looseA.lastSeq },
       [looseB.id]: { ...summaryOf(looseB), lastRead: looseB.lastSeq },
     }),
-    list_spaces: [...SPACES, EMPTY_SPACE],
+    list_services: [...SERVICES, EMPTY_SERVICE],
     reading_scope: answerByArg("thread", { [looseB.id]: EMPTY_SCOPE }),
   });
   await page.goto("/");
@@ -334,7 +334,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await expect(요약토글(page)).toHaveCount(0);
   await expect(Thread메뉴(page)).toHaveCount(0);
 
-  // Work 없는 Thread — 머리 · 변경 사항 없이 결과물 · 소스만이다. 소스는 읽는 범위의 Project(Space가 없으면 등록된 전부 — 03 §7)이고 보이기만
+  // Work 없는 Thread — 머리 · 변경 사항 없이 결과물 · 소스만이다. 소스는 읽는 범위의 Project(Service가 없으면 등록된 전부 — 03 §7)이고 보이기만
   // 한다(S20).
   await 사이드바Thread(page, looseA.title).click();
   await expect(page).toHaveURL(`/threads/${looseA.id}`);
@@ -355,7 +355,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 결과
   await 사이드바Thread(page, looseB.title).click();
   await expect(page).toHaveURL(`/threads/${looseB.id}`);
   await expect(card).toBeVisible();
-  // 둘째는 빈 Space로 읽어 읽는 Project가 없다 — 소스 칸 없이 결과물만 선다.
+  // 둘째는 빈 Service로 읽어 읽는 Project가 없다 — 소스 칸 없이 결과물만 선다.
   await expect(card.getByRole("region", { name: "소스", exact: true })).toHaveCount(0);
   await 사이드바Thread(page, looseA.title).click();
   await expect(page).toHaveURL(`/threads/${looseA.id}`);

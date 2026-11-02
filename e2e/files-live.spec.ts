@@ -64,7 +64,7 @@ async function settle(page: Page): Promise<void> {
 }
 
 /**
- * 창으로 돌아온다. 최소화 · 다른 Space에서 돌아오면 웹뷰는 `visibilitychange`와 window `focus`를 둘 다 쏜다 — react-query는
+ * 창으로 돌아온다. 최소화 · 다른 Service에서 돌아오면 웹뷰는 `visibilitychange`와 window `focus`를 둘 다 쏜다 — react-query는
  * `visibilitychange`만 듣고(`focusManager`) 앱 루트는 `focus`만 듣는다. 워크트리 쿼리가 react-query의 길을 끄지 않으면(S33) 한 번
  * 돌아올 때 두 번 읽는데, `focus`만 쏘면 그것이 안 보인다.
  */

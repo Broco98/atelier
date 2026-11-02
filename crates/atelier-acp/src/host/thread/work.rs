@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 
 use super::project::Outside;
 use super::setting::ProjectAddCard;
-use super::space::SpaceCard;
+use super::service::ServiceCard;
 use super::ConversationHost;
 use crate::host::WorkAt;
 use crate::thread_tools::{self, Proposal};
@@ -40,7 +40,7 @@ pub enum WorkChoice {
     Continue,
 }
 
-/// 서 있는 카드들 — 요청 id → 카드. 호스트에 하나다. 잠금은 짧게만 쥔다. Work 만들기 카드와 Work 밖 Project 카드(v1 티켓 32) · Space 질문
+/// 서 있는 카드들 — 요청 id → 카드. 호스트에 하나다. 잠금은 짧게만 쥔다. Work 만들기 카드와 Work 밖 Project 카드(v1 티켓 32) · Service 질문
 /// 카드(03 티켓 08) · Project 추가 카드(03 티켓 12)가 함께 선다.
 #[derive(Default)]
 pub(super) struct Proposals(Mutex<HashMap<String, Asked>>);
@@ -58,8 +58,8 @@ pub(super) enum Card {
     Work(Proposal),
     /// Work 밖 Project(v1 티켓 32) — 고치려는 Project와 이은 Work.
     Project(Outside),
-    /// 어느 Space에서 할까(03 티켓 08) — 고를 수 있는 Space.
-    Space(SpaceCard),
+    /// 어느 Service에서 할까(03 티켓 08) — 고를 수 있는 Service.
+    Service(ServiceCard),
     /// git이 아닌 폴더 · 저장소의 하위 폴더를 어떻게 추가할까(03 티켓 12) — 물은 폴더와 그 뿌리.
     ProjectAdd(ProjectAddCard),
 }
@@ -70,7 +70,7 @@ impl Card {
         match self {
             Card::Work(_) => "work",
             Card::Project(_) => "project",
-            Card::Space(_) => "space",
+            Card::Service(_) => "service",
             Card::ProjectAdd(_) => "project-add",
         }
     }
@@ -80,7 +80,7 @@ impl Card {
         match self {
             Card::Work(_) => "Work 만들기 카드",
             Card::Project(_) => "Work 밖 Project 카드",
-            Card::Space(_) => "Space 질문 카드",
+            Card::Service(_) => "Service 질문 카드",
             Card::ProjectAdd(_) => "Project 추가 카드",
         }
     }
@@ -203,19 +203,19 @@ impl ConversationHost {
                 eprintln!("물어보는 정도를 Work로 옮기지 못했습니다: {error}");
             }
         }
-        // Thread의 Space를 Work로 옮기고 Thread의 칸은 비운다(03 §9) — 이은 뒤로는 Work의 Space를 따르므로(§7 규칙 1) 범위가 그대로다.
+        // Thread의 Service를 Work로 옮기고 Thread의 칸은 비운다(03 §9) — 이은 뒤로는 Work의 Service를 따르므로(§7 규칙 1) 범위가 그대로다.
         // 옮기지 못했으면 칸은 남긴다 — 읽히지는 않지만(규칙 1) 사람이 고른 것을 잃지 않게.
-        let moved = file.space.as_deref().is_none_or(|space| match atelier_core::update_work_space(&works, &slug, Some(space)) {
+        let moved = file.service.as_deref().is_none_or(|service| match atelier_core::update_work_service(&works, &slug, Some(service)) {
             Ok(_) => true,
             Err(error) => {
-                eprintln!("Space를 Work로 옮기지 못했습니다: {error}");
+                eprintln!("Service를 Work로 옮기지 못했습니다: {error}");
                 false
             }
         });
         self.change_thread(thread, |file| {
             file.work = Some(slug.clone());
             if moved {
-                file.space = None;
+                file.service = None;
             }
         })?;
         self.threads.link_session(thread, &slug);
@@ -278,7 +278,7 @@ impl ConversationHost {
     }
 
     /// 카드를 세우고 사람이 고를 때까지 기다린다 — 카드의 값(`fields`)을 `question` 줄(`asked`)로 적고, 답 · 멈춤 · 닫힘 가운데 먼저
-    /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Space 질문(03 티켓 08) ·
+    /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Service 질문(03 티켓 08) ·
     /// Project 추가(03 티켓 12)가 이 길 하나를 쓴다.
     pub(super) fn ask_card(&self, thread: &str, card: Card, fields: Value) -> Value {
         let request = uuid::Uuid::new_v4().to_string();
@@ -381,10 +381,10 @@ impl ConversationHost {
             "branch": proposal.branch,
             "projects": projects,
         });
-        // 붙을 Space(03 §9) — 받아들이면 이 Thread의 Space가 새 Work로 옮겨 간다. 카드에서 바꾸지 않는다(S8). 파일이 없는 Space는 Space가
+        // 붙을 Service(03 §9) — 받아들이면 이 Thread의 Service가 새 Work로 옮겨 간다. 카드에서 바꾸지 않는다(S8). 파일이 없는 Service는 Service가
         // 없는 것이다(§7 규칙 1) — 줄이 서지 않는다.
-        if let Some(space) = self.scope_of(&file, None).space {
-            card["space"] = json!({"slug": space.slug, "name": space.name});
+        if let Some(service) = self.scope_of(&file, None).service {
+            card["service"] = json!({"slug": service.slug, "name": service.name});
         }
         Ok(card)
     }

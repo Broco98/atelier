@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { archiveQuery, useArchivedDocs } from "@/features/archive/hooks";
 import type { ArchiveEntry } from "@/features/archive/types";
 import { workChangesKey } from "@/features/files/hooks";
-import { useReadingScope } from "@/features/spaces/hooks";
+import { useReadingScope } from "@/features/services/hooks";
 import { worksApi } from "@/features/works/api";
 import { useWorks } from "@/features/works/hooks";
 import { CopySubmenu, FinderSubmenu } from "@/features/works/WorkMenuItems";
@@ -79,7 +79,7 @@ import { Unfold } from "./WorkLog";
 //   잰다(`SummaryCard.test.tsx`).
 // - **자료는 v1의 명령에 범위 명령 하나를 더해 읽는다**(`reading_scope` — 03) — 변경은 카드가 열릴 때와 `worktree:changed`마다(앱 루트의 감시 배선), PR은 열릴 때와
 //   열린 동안 60초마다(엔진이 턴 끝에 남긴 `pr` 줄이 그 칸을 고친다 — v1 티켓 36), 쓰는 중은 엔진의 `work:writing`(`workWritingStore`),
-//   소스의 Project는 범위 명령(`reading_scope` — Space · 등록부 · Work의 변화와 범위를 바꾼 기록 줄마다 다시 읽는다)이다.
+//   소스의 Project는 범위 명령(`reading_scope` — Service · 등록부 · Work의 변화와 범위를 바꾼 기록 줄마다 다시 읽는다)이다.
 // - **줄을 누르면 넓힌 카드다**(v1 티켓 35 — 넓힌 카드는 그대로다) — 「변경 사항」은 바뀐 첫 파일의 diff를, 소스의 문서는 문서 보기를,
 //   Project는 그 파일 트리를 연다. 넓힌 카드는 왼쪽에 이 몸(목록 — 「변경 사항」 아래에 바뀐 파일마다 줄이 서고 소스가 모두 선다), 오른쪽에
 //   그 파일의 보기(`ExpandedViewer`)이고 보기의 ×가 요약 카드로 돌린다. 넓어지고 접히는 자리(대화 폭 · 사이드바 접기)는 `ThreadScreen`이

@@ -7,7 +7,7 @@ import {
   type PendingProject,
   type PendingProjectAdd,
   type PendingQuestion,
-  type PendingSpace,
+  type PendingService,
 } from "./fold";
 import type { RecordLine } from "./types";
 
@@ -213,15 +213,15 @@ describe("카드 아래 다음 줄", () => {
     expect(nextOf(outside)).toEqual({ subject: "web-app 고치기", mono: false, what: "답을 기다려요" });
   });
 
-  it("Space 질문 카드는 「Space 답을 기다려요」다(03 티켓 08)", () => {
-    const space: PendingSpace = {
-      card: "space",
+  it("Service 질문 카드는 「Service 답을 기다려요」다(03 티켓 08)", () => {
+    const service: PendingService = {
+      card: "service",
       requestId: "s-1",
       recommended: null,
-      spaces: [],
+      services: [],
       registered: 0,
     };
-    expect(nextOf(space)).toEqual({ subject: "Space", mono: false, what: "답을 기다려요" });
+    expect(nextOf(service)).toEqual({ subject: "Service", mono: false, what: "답을 기다려요" });
   });
 
   it("Project 추가 카드는 「notes 추가 답을 기다려요」다(03 티켓 12)", () => {

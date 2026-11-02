@@ -112,17 +112,17 @@ describe("최근 Work", () => {
 
   it("검색이 준 Work 차례 그대로이고 보관된 것은 뺀다 — 진행 중인 Work만 이을 수 있다", () => {
     expect(recentWorks(hits)).toEqual([
-      { slug: "refund-api", title: "환불 API 버그 수정", spaceName: null },
-      { slug: "checkout", title: "결제 페이지 리디자인", spaceName: null },
-      { slug: "notes", title: "릴리스 노트 0.9", spaceName: null },
+      { slug: "refund-api", title: "환불 API 버그 수정", serviceName: null },
+      { slug: "checkout", title: "결제 페이지 리디자인", serviceName: null },
+      { slug: "notes", title: "릴리스 노트 0.9", serviceName: null },
     ]);
   });
 
-  // 03 티켓 06 · F4-HomeWorkMenu — 줄 끝에 그 Work의 Space 이름이 흐리게 선다. Space가 없거나 그 파일이 없으면 비운다.
-  it("줄마다 그 Work가 이은 Space의 이름을 단다", () => {
-    const works = [{ slug: "refund-api", space: "결제-서비스" }, { slug: "checkout", space: "지운-것" }, { slug: "notes" }];
-    const spaces = [{ slug: "결제-서비스", name: "결제 서비스" }];
-    expect(recentWorks(hits, works, spaces).map((work) => work.spaceName)).toEqual(["결제 서비스", null, null]);
+  // 03 티켓 06 · F4-HomeWorkMenu — 줄 끝에 그 Work의 Service 이름이 흐리게 선다. Service가 없거나 그 파일이 없으면 비운다.
+  it("줄마다 그 Work가 이은 Service의 이름을 단다", () => {
+    const works = [{ slug: "refund-api", service: "결제-서비스" }, { slug: "checkout", service: "지운-것" }, { slug: "notes" }];
+    const services = [{ slug: "결제-서비스", name: "결제 서비스" }];
+    expect(recentWorks(hits, works, services).map((work) => work.serviceName)).toEqual(["결제 서비스", null, null]);
   });
 
   it("다섯까지만 선다 — 메뉴가 길어지지 않게", () => {

@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 // **상세 화면의 머리 crumb · 뒤로 알약 · 묶음 · 설명 칸**(03 구현 스펙 §14 · §16 · 시안 F1-ProjectDetail · F1-SpaceDetail) — Project 상세와
-// Space 상세는 같은 짜임이라(03 결정 10 「머리 줄은 Projects / web-app」) 함께 쓴다(03 코드 리뷰 D1). 두 화면이 옮겨 적던 동안 설명 칸의
+// Service 상세는 같은 짜임이라(03 결정 10 「머리 줄은 Projects / web-app」) 함께 쓴다(03 코드 리뷰 D1). 두 화면이 옮겨 적던 동안 설명 칸의
 // Esc가 이미 갈렸다 — Project 쪽만 그만두기였다.
 
 /** 머리 줄 이름 앞 흐린 자리와 「/」(시안 `.tb-c .muted`) — `onOpen`이 있으면 누르는 글(목록으로), 없으면 누르지 않는 글이다. */
@@ -29,7 +29,7 @@ export function HeadCrumb({ label, onOpen }: { label: string; onOpen?: () => voi
   );
 }
 
-/** crumb 뒤의 「/」 — 이름 앞 자리를 메뉴로 여는 곳(Work 화면의 Space)도 이것을 쓴다. */
+/** crumb 뒤의 「/」 — 이름 앞 자리를 메뉴로 여는 곳(Work 화면의 Service)도 이것을 쓴다. */
 export function CrumbSlash() {
   return (
     <span aria-hidden className="shrink-0 text-sm text-fg-titlebar">
@@ -39,7 +39,7 @@ export function CrumbSlash() {
 }
 
 /**
- * 상세 판 하나 — 맨 위 「← 목록」 알약 줄(오른쪽 끝에 `end` — Space의 ⋯ · 시작 단추), 그 아래 본문, 판 밖 왼쪽 아래의 토스트 자리(시안
+ * 상세 판 하나 — 맨 위 「← 목록」 알약 줄(오른쪽 끝에 `end` — Service의 ⋯ · 시작 단추), 그 아래 본문, 판 밖 왼쪽 아래의 토스트 자리(시안
  * `.toast` — 왼 40 · 아래 24)와 창. 판 안은 위 22 · 옆 40이고 스스로 구른다.
  */
 export function DetailPanel({
@@ -48,7 +48,7 @@ export function DetailPanel({
   children,
   after,
 }: {
-  back: { to: "/projects" | "/spaces"; label: string };
+  back: { to: "/projects" | "/services"; label: string };
   end?: ReactNode;
   children: ReactNode;
   after?: ReactNode;
@@ -107,8 +107,8 @@ export function Section({
 }
 
 /**
- * 「설명」 묶음 — 연필 → 칸(열자마자 쓴다) → 저장 · 취소, 저장하면 「저장했어요」(Project 스토리 118 · Space 스토리 150). **Esc는 그만두기다** —
- * 친 글을 버리고 아무것도 고치지 않는다. `locked`면 연필이 꺼진다(고칠 자리를 모르는 Space 파일). `onSave`가 `false`면 칸이 그대로 남는다.
+ * 「설명」 묶음 — 연필 → 칸(열자마자 쓴다) → 저장 · 취소, 저장하면 「저장했어요」(Project 스토리 118 · Service 스토리 150). **Esc는 그만두기다** —
+ * 친 글을 버리고 아무것도 고치지 않는다. `locked`면 연필이 꺼진다(고칠 자리를 모르는 Service 파일). `onSave`가 `false`면 칸이 그대로 남는다.
  */
 export function DescriptionSection({
   text,

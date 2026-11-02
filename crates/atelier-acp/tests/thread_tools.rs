@@ -89,8 +89,8 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     assert_eq!(mcp[0]["server"], "atelier-thread");
     let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
     assert!(listed.contains(&"rename_thread"), "도구 목록에 이름 바꾸기가 있다: {listed:?}");
-    assert!(listed.contains(&"list_spaces") && listed.contains(&"set_space"), "도구 목록에 Space 목록 · 붙이기가 있다(03 §11): {listed:?}");
-    for setting in ["add_project", "edit_project", "create_space", "edit_space"] {
+    assert!(listed.contains(&"list_services") && listed.contains(&"set_service"), "도구 목록에 Service 목록 · 붙이기가 있다(03 §11): {listed:?}");
+    for setting in ["add_project", "edit_project", "create_service", "edit_service"] {
         assert!(listed.contains(&setting), "도구 목록에 대화로 하는 설정 넷이 있다(03 §12): {listed:?}");
     }
     assert!(!listed.iter().any(|name| name.starts_with("remove_") || name.starts_with("delete_")), "지우는 도구는 없다(03 §17): {listed:?}");
@@ -115,7 +115,7 @@ fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명
 
     let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
     assert!(preamble.contains("\n- Work: 없음 — 이 Thread 폴더에서 일한다: `"), "Work 줄의 꼴은 그대로다(L3 `workTitleOf`):\n{preamble}");
-    assert!(preamble.lines().any(|line| line.starts_with("- Space:")), "{preamble}");
+    assert!(preamble.lines().any(|line| line.starts_with("- Service:")), "{preamble}");
     assert!(!preamble.contains("Spec layout"), "Work 없는 채팅에는 spec 배치가 없다:\n{preamble}");
     for name in [
         "atelier-thread",
@@ -124,12 +124,12 @@ fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명
         "get_work",
         "propose_work",
         "start_editing",
-        "list_spaces",
-        "set_space",
+        "list_services",
+        "set_service",
         "add_project",
         "edit_project",
-        "create_space",
-        "edit_space",
+        "create_service",
+        "edit_service",
     ] {
         assert!(!preamble.contains(name), "머리말이 도구 쓰는 법을 나열하지 않는다 — {name}:\n{preamble}");
     }
@@ -142,7 +142,7 @@ fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명
         ("propose_work", "일이 커지면 부른다"),
         ("propose_work", "atelier_start_work가 아니라 이 도구로 만든다"),
         ("start_editing", "처음 고치기 전에 부른다"),
-        ("list_spaces", "set_space 전에 부른다"),
+        ("list_services", "set_service 전에 부른다"),
         ("add_project", "Project로 등록한다"),
         ("edit_project", "기준 브랜치는 그 저장소에 이미 있는 브랜치만 받는다"),
     ] {

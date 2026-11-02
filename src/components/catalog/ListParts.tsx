@@ -3,8 +3,8 @@ import { Search } from "lucide-react";
 import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
-// **목록 화면의 뼈대 · 찾기 칸 · 표**(03 구현 스펙 §14 · §16 · 시안 F1-Projects · F1-Space) — Projects 목록과 Space 목록이 같은 시안의 짝이라 함께
-// 쓴다(03 코드 리뷰 D1). 두 화면이 옮겨 적던 동안 지날 때 줄 선이 숨는 꼴이 이미 갈렸다 — Space 목록만 다음 줄의 선을 남겼다. 여기는 그리기만
+// **목록 화면의 뼈대 · 찾기 칸 · 표**(03 구현 스펙 §14 · §16 · 시안 F1-Projects · F1-Space) — Projects 목록과 Service 목록이 같은 시안의 짝이라 함께
+// 쓴다(03 코드 리뷰 D1). 두 화면이 옮겨 적던 동안 지날 때 줄 선이 숨는 꼴이 이미 갈렸다 — Service 목록만 다음 줄의 선을 남겼다. 여기는 그리기만
 // 하고, 표의 칸(격자)과 줄 안의 것은 화면이 준다.
 
 /**

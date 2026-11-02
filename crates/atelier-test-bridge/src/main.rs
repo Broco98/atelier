@@ -54,19 +54,19 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("relocate_project", |a| {
         ok(atelier_core::relocate_project(&projects_dir(), &text(a, "slug")?, &PathBuf::from(text(a, "folder")?)))
     }),
-    // 제거 · 되돌리기(03 구현 스펙 §15) — 등록부 · Space · Work 파일을 함께 보니 데이터 루트를 넘긴다.
+    // 제거 · 되돌리기(03 구현 스펙 §15) — 등록부 · Service · Work 파일을 함께 보니 데이터 루트를 넘긴다.
     ("project_usage", |a| ok(atelier_core::project_usage(&data_root(), &text(a, "slug")?))),
     ("remove_project", |a| ok(atelier_core::remove_project(&data_root(), &text(a, "slug")?))),
     ("restore_project", |a| ok(atelier_core::restore_project(&data_root(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
-    // Space(03 구현 스펙 §8)는 파일이라 코어를 진짜로 탄다 — `commands.rs`와 같은 입구다.
-    ("list_spaces", |_| ok(atelier_core::list_spaces(&data_root()))),
-    ("get_space", |a| ok(atelier_core::space_detail(&data_root(), &text(a, "slug")?))),
-    ("update_space", |a| {
-        ok(atelier_core::update_space(
+    // Service(03 구현 스펙 §8)는 파일이라 코어를 진짜로 탄다 — `commands.rs`와 같은 입구다.
+    ("list_services", |_| ok(atelier_core::list_services(&data_root()))),
+    ("get_service", |a| ok(atelier_core::service_detail(&data_root(), &text(a, "slug")?))),
+    ("update_service", |a| {
+        ok(atelier_core::update_service(
             &data_root(),
             &text(a, "slug")?,
-            atelier_core::SpacePatch {
+            atelier_core::ServicePatch {
                 name: maybe_text(a, "name"),
                 description: maybe_text(a, "description"),
                 add: maybe_texts(a, "add")?,
@@ -75,22 +75,22 @@ const HANDLERS: &[(&str, Handler)] = &[
             },
         ))
     }),
-    ("read_space_text", |a| ok(atelier_core::read_space_text(&data_root(), &text(a, "slug")?))),
-    ("check_space", |a| {
-        ok(atelier_core::draft_space(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
+    ("read_service_text", |a| ok(atelier_core::read_service_text(&data_root(), &text(a, "slug")?))),
+    ("check_service", |a| {
+        ok(atelier_core::draft_service(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
     }),
-    ("save_space_text", |a| {
-        ok(atelier_core::save_space_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
+    ("save_service_text", |a| {
+        ok(atelier_core::save_service_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
     }),
-    // Space 지우기 확인 창의 쓰임(03 티켓 07) — 읽기만 하는 core 입구다.
-    ("space_usage", |a| ok(atelier_core::space_usage(&data_root(), &text(a, "slug")?))),
+    // Service 지우기 확인 창의 쓰임(03 티켓 07) — 읽기만 하는 core 입구다.
+    ("service_usage", |a| ok(atelier_core::service_usage(&data_root(), &text(a, "slug")?))),
     // 읽는 범위(03 구현 스펙 §7) — 읽기만 하는 core 입구다(`commands.rs`와 같다).
     ("reading_scope", |a| {
         ok(atelier_core::reading_scope_of(
             &data_root(),
             maybe_text(a, "thread").as_deref(),
             maybe_text(a, "work").as_deref(),
-            maybe_text(a, "space").as_deref(),
+            maybe_text(a, "service").as_deref(),
         ))
     }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
@@ -292,17 +292,17 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_answer_work", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_question", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_project", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_answer_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_project_add", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_set_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_set_work_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    // Space 지우기 · 되돌리기(03 티켓 07)는 비운 곳마다 엔진이 「지워짐」 · 「되돌림」 줄을 남긴다 — 파일은 core L1(`space_delete`), 줄은
-    // 기록 테스트(`thread_space_delete`)가 잰다.
-    ("thread_delete_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_restore_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_work_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    // Service 지우기 · 되돌리기(03 티켓 07)는 비운 곳마다 엔진이 「지워짐」 · 「되돌림」 줄을 남긴다 — 파일은 core L1(`service_delete`), 줄은
+    // 기록 테스트(`thread_service_delete`)가 잰다.
+    ("thread_delete_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_restore_service", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_work_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     // Work의 PR(v1 티켓 36)은 엔진이 읽고 `pr` 줄을 남긴다 — 읽기 · 셈은 L1(`atelier-core` `pr` · `atelier-acp` `thread_pr`)이 잰다.
     ("thread_work_prs", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
@@ -577,7 +577,7 @@ mod tests {
         ("records.rs", include_str!("../../atelier-core/src/records.rs")),
         ("search.rs", include_str!("../../atelier-core/src/search.rs")),
         ("slug.rs", include_str!("../../atelier-core/src/slug.rs")),
-        ("space.rs", include_str!("../../atelier-core/src/space.rs")),
+        ("service.rs", include_str!("../../atelier-core/src/service.rs")),
         ("store.rs", include_str!("../../atelier-core/src/store.rs")),
         ("threads.rs", include_str!("../../atelier-core/src/threads.rs")),
         ("work.rs", include_str!("../../atelier-core/src/work.rs")),

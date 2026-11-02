@@ -1,7 +1,7 @@
 import { readStored, writeStored } from "@/lib/stored";
 import type { SearchHit } from "@/features/search/types";
-import { spaceName } from "@/features/spaces/space-view";
-import type { Space } from "@/features/spaces/types";
+import { serviceName } from "@/features/services/service-view";
+import type { Service } from "@/features/services/types";
 import type { ThreadLink } from "./types";
 
 // 입력창 Work 칩(v1 티켓 31 · 03 구현 스펙 §5 · 캔버스 v52 F4-KitComposer · F4-HomeWorkMenu)의 **순수 함수**다. Work 칩은 트레이의 첫 칩이고
@@ -14,13 +14,13 @@ import type { ThreadLink } from "./types";
 // 기본값 「새 Work」로 돌아갈 뿐이다.
 
 /**
- * 최근 Work 한 줄 — 메뉴의 이름과, 줄 끝에 흐리게 서는 그 Work의 Space 이름(03 §5 · F4-HomeWorkMenu — 없으면 `null`). Work 목록의 `space`는
+ * 최근 Work 한 줄 — 메뉴의 이름과, 줄 끝에 흐리게 서는 그 Work의 Service 이름(03 §5 · F4-HomeWorkMenu — 없으면 `null`). Work 목록의 `service`는
  * slug라 이름이 다르다.
  */
 export interface RecentWork {
   slug: string;
   title: string;
-  spaceName: string | null;
+  serviceName: string | null;
 }
 
 /** 메뉴가 세우는 최근 Work의 수 — 다섯이 넘으면 ⌘K로 찾는다. */
@@ -28,23 +28,23 @@ const RECENT_LIMIT = 5;
 
 /**
  * 최근 Work — 검색이 준 빈 질의의 Work 줄 차례 그대로다(고정 먼저 → 마지막으로 연 차례, `search.rs`의 `work_hits`). 그 차례를 여기서 다시
- * 세우지 않는다 — 최근의 정의는 코어 한 곳에 있다(`recent.rs`). 보관된 Work는 이을 수 없어 뺀다 — 남는 것이 진행 중인 Work다. 줄의 Space
- * 이름은 Work 목록(`space` — slug)과 Space 목록에서 읽는다 — 그 Space 파일이 없으면 Space가 없는 것이다(§7 규칙 1).
+ * 세우지 않는다 — 최근의 정의는 코어 한 곳에 있다(`recent.rs`). 보관된 Work는 이을 수 없어 뺀다 — 남는 것이 진행 중인 Work다. 줄의 Service
+ * 이름은 Work 목록(`service` — slug)과 Service 목록에서 읽는다 — 그 Service 파일이 없으면 Service가 없는 것이다(§7 규칙 1).
  */
 export function recentWorks(
   hits: readonly SearchHit[],
-  works: readonly { slug: string; space?: string }[] = [],
-  spaces: readonly Pick<Space, "slug" | "name">[] = [],
+  works: readonly { slug: string; service?: string }[] = [],
+  services: readonly Pick<Service, "slug" | "name">[] = [],
 ): RecentWork[] {
-  const spaceOf = (slug: string) => {
-    const linked = works.find((work) => work.slug === slug)?.space;
-    const found = spaces.find((space) => space.slug === linked);
-    return found ? spaceName(found) : null;
+  const serviceOf = (slug: string) => {
+    const linked = works.find((work) => work.slug === slug)?.service;
+    const found = services.find((service) => service.slug === linked);
+    return found ? serviceName(found) : null;
   };
   return hits
     .flatMap((hit) => (hit.kind === "work" && !hit.archived ? [hit] : []))
     .slice(0, RECENT_LIMIT)
-    .map((hit) => ({ slug: hit.slug, title: hit.title, spaceName: spaceOf(hit.slug) }));
+    .map((hit) => ({ slug: hit.slug, title: hit.title, serviceName: serviceOf(hit.slug) }));
 }
 
 /** 스위치 쪽을 적는 열쇠 — 값은 `new-work` · `no-work` 둘이다. */

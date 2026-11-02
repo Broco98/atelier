@@ -84,7 +84,7 @@ describe("새 채팅 화면", () => {
   const drawNew = () =>
     renderToStaticMarkup(
       <QueryClientProvider client={new QueryClient()}>
-        <NewThreadScreen seed={{ link: { kind: "no-work" }, say: null, space: null }} />
+        <NewThreadScreen seed={{ link: { kind: "no-work" }, say: null, service: null }} />
       </QueryClientProvider>,
     );
 

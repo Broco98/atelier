@@ -707,7 +707,7 @@ test("다이어그램의 「코드」는 켬/끔을 말하고, 누르면 그림�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 띄우고 그 말을 설명으로 말하며, Space로 켜고 끈다", async ({
+test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 띄우고 그 말을 설명으로 말하며, Service로 켜고 끈다", async ({
   page,
 }) => {
   await installFixtureBackend(page);

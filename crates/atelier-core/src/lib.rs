@@ -26,11 +26,11 @@ pub enum Error {
     // 지운 것을 되돌리려는데 그사이 같은 slug가 다시 쓰였다(03 구현 스펙 §15 「되돌리기」) — 새로 선 것을 덮지 않는다.
     #[error("slug is in use again: {0}")]
     SlugReused(String),
-    #[error("Space를 찾지 못했어요: {0}")]
-    SpaceNotFound(String),
-    /// Space 파일에 문제가 있어 쓰지 않았다 — 검사가 낸 문제들(03 구현 스펙 §8).
-    #[error("{}", space::describe_problems(.0))]
-    SpaceProblems(Vec<space::SpaceProblem>),
+    #[error("Service를 찾지 못했어요: {0}")]
+    ServiceNotFound(String),
+    /// Service 파일에 문제가 있어 쓰지 않았다 — 검사가 낸 문제들(03 구현 스펙 §8).
+    #[error("{}", service::describe_problems(.0))]
+    ServiceProblems(Vec<service::ServiceProblem>),
     #[error("work not found: {0}")]
     WorkNotFound(String),
     #[error("{0}")]
@@ -70,7 +70,7 @@ mod policy_file;
 mod attachments;
 mod changes;
 mod pr;
-mod space;
+mod service;
 mod reading_scope;
 
 // 원자 쓰기 둘을 낸다 — 폴더를 만드는 쪽 · 만들지 않는 쪽. 읽기(`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록
@@ -82,7 +82,7 @@ pub use atomic::write_json_atomically;
 pub use atomic::write_json_into_existing_dir;
 pub use paths::{
     archive_dir, archive_in, collapse_home, data_root, default_data_root, expand_home, layouts_dir, projects_dir, projects_in,
-    spaces_dir, spaces_in, threads_dir, works_dir, works_in,
+    services_dir, services_in, threads_dir, works_dir, works_in,
 };
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
 // (`search.rs`가 `crate::recent::read_recent`로 직접 부른다) 나머지를 내면 아무도 안 읽는
@@ -104,27 +104,27 @@ pub use store::{
     add_project, create_project, get_project, inspect_folder, list_projects, new_project, new_project_place, project_folders,
     relocate_project, update_project, AddProject, FolderLook, NewProjectPlace, ProjectPatch,
 };
-// Project 제거(03 구현 스펙 §15) — 진행 중인 Work가 막고, 등록부의 지운 자리로 옮기며 그 slug를 적은 Space 파일에서도 뺀다. 되돌리기는
+// Project 제거(03 구현 스펙 §15) — 진행 중인 Work가 막고, 등록부의 지운 자리로 옮기며 그 slug를 적은 Service 파일에서도 뺀다. 되돌리기는
 // 화면의 토스트에서만 부른다(S10). 바깥 MCP에는 없다.
-pub use store::{project_usage, remove_project, restore_project, ListingSpace, ProjectRemoval, ProjectUsage, UsingWork};
-// Space(03 구현 스펙 §8) — 파일 하나가 Space 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
+pub use store::{project_usage, remove_project, restore_project, ListingService, ProjectRemoval, ProjectUsage, UsingWork};
+// Service(03 구현 스펙 §8) — 파일 하나가 Service 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
 // 읽는 범위가 모두 이것을 부른다(S7).
-pub use space::{
-    create_space, delete_space, draft_space, edit_space_text, get_space, list_spaces, new_space_slug, read_space_text, restore_space,
-    save_space_text, shared_spaces, space_detail, space_usage, update_space,
-    DeletedSpace, Lines, NewSpace, RestoredSpace, SharedSpace, Space, SpaceDetail, SpaceDraft, SpaceLinks, SpacePatch,
-    SpacePieces, SpaceProblem, SpaceProblemKind, SpaceUsage,
+pub use service::{
+    create_service, delete_service, draft_service, edit_service_text, get_service, list_services, new_service_slug, read_service_text, restore_service,
+    save_service_text, shared_services, service_detail, service_usage, update_service,
+    DeletedService, Lines, NewService, RestoredService, SharedService, Service, ServiceDetail, ServiceDraft, ServiceLinks, ServicePatch,
+    ServicePieces, ServiceProblem, ServiceProblemKind, ServiceUsage,
 };
 // 읽는 범위(03 구현 스펙 §7) — Thread가 읽는 Project를 정하는 함수 하나. 엔진의 Session 자리 · 머리말과 앱 명령(범위 줄 · 요약 카드)이
 // 함께 부른다.
 pub use reading_scope::{
-    reading_scope, reading_scope_of, ReadingScope, ScopeKind, ScopeOf, ScopeProject, ScopeSpace, ScopeWhy, WorkedProject,
+    reading_scope, reading_scope_of, ReadingScope, ScopeKind, ScopeOf, ScopeProject, ScopeService, ScopeWhy, WorkedProject,
 };
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
     archive_work, archived_spec_folder, attach_project, get_work, list_archive, list_archived_docs, list_works,
     move_work, read_spec_file, read_work_file, remove_work, render_record, start_work, start_work_deferred,
-    update_work_pinned, update_work_space, update_work_status, update_work_title, work_folder, ArchiveEntry, WorkReport, WorktreeError,
+    update_work_pinned, update_work_service, update_work_status, update_work_title, work_folder, ArchiveEntry, WorkReport, WorktreeError,
 };
 // 대화 호스트(`atelier-acp`)가 데이터 루트를 받아 work의 제목 · 프로젝트와 자리를 읽는다. `get_work`는 워크트리마다
 // `git status`를 돌고 `~` 축약 문자열을 주므로 그 자리에 맞지 않는다.

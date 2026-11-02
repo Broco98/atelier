@@ -12,7 +12,7 @@ import {
   workLine,
   type PendingProject,
   type PendingProjectAdd,
-  type PendingSpace,
+  type PendingService,
   type PendingWork,
   type ResultEntry,
   type ThreadModel,
@@ -147,67 +147,67 @@ describe("시스템 줄", () => {
     ]);
   });
 
-  // 바탕은 엔진이 축복한 기록이다(`thread-space.jsonl`) — Work 없는 Thread에 「결제 서비스」(web-app · api-server)를 붙이고 한 턴 뒤 뺐다.
-  it("Space를 바꾸거나 빼면 다음 차례부터 읽는 Project를 말하는 한 줄이 서고, 굵은 것은 Space 이름뿐이다(03 티켓 05)", () => {
-    const model = foldThread(record("thread-space"));
+  // 바탕은 엔진이 축복한 기록이다(`thread-service.jsonl`) — Work 없는 Thread에 「결제 서비스」(web-app · api-server)를 붙이고 한 턴 뒤 뺐다.
+  it("Service를 바꾸거나 빼면 다음 차례부터 읽는 Project를 말하는 한 줄이 서고, 굵은 것은 Service 이름뿐이다(03 티켓 05)", () => {
+    const model = foldThread(record("thread-service"));
     expect(model.system.map((line) => [line.kind, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
-      ["space", "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
-      ["space", "", "Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요"],
+      ["service", "결제 서비스", "Service를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
+      ["service", "", "Service를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요"],
     ]);
   });
 
-  // 바탕은 엔진이 축복한 기록이다(`thread-space-deleted.jsonl`) — Work 없는 Thread에 붙인 「결제 서비스」를 지우고, 한 턴 뒤 되돌렸다.
-  it("이은 Space를 지우면 Space 없이 이어간다는 한 줄이, 되돌리면 다시 읽는 Project를 말하는 한 줄이 선다(03 티켓 07)", () => {
-    const model = foldThread(record("thread-space-deleted"));
+  // 바탕은 엔진이 축복한 기록이다(`thread-service-deleted.jsonl`) — Work 없는 Thread에 붙인 「결제 서비스」를 지우고, 한 턴 뒤 되돌렸다.
+  it("이은 Service를 지우면 Service 없이 이어간다는 한 줄이, 되돌리면 다시 읽는 Project를 말하는 한 줄이 선다(03 티켓 07)", () => {
+    const model = foldThread(record("thread-service-deleted"));
     expect(model.system.map((line) => [line.kind, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
-      ["space", "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
-      ["space", "", "결제 서비스 Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요"],
-      ["space", "결제 서비스", "결제 서비스 Space를 되돌렸어요 — 다시 web-app · api-server를 읽어요"],
+      ["service", "결제 서비스", "Service를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
+      ["service", "", "결제 서비스 Service가 지워져 Service 없이 이어가요 — 대화는 그대로예요"],
+      ["service", "결제 서비스", "결제 서비스 Service를 되돌렸어요 — 다시 web-app · api-server를 읽어요"],
     ]);
   });
 
-  it("되돌린 Space에 읽을 Project가 없으면 그렇다고 말하고, 이름을 모르는 줄은 서지 않는다", () => {
-    const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
+  it("되돌린 Service에 읽을 Project가 없으면 그렇다고 말하고, 이름을 모르는 줄은 서지 않는다", () => {
+    const service = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "service", payload });
     const model = foldThread([
       ...blessed,
-      space(25, { change: "restored", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
-      space(26, { change: "deleted", space: "사라진", name: null, projects: [], registered: 4 }),
+      service(25, { change: "restored", service: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
+      service(26, { change: "deleted", service: "사라진", name: null, projects: [], registered: 4 }),
     ]);
     expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
-      "빈 곳 Space를 되돌렸어요 — 읽는 Project가 없어요",
+      "빈 곳 Service를 되돌렸어요 — 읽는 Project가 없어요",
     ]);
   });
 
   // 03 코드 리뷰 P3 — 엔진은 worktree에서 일하는 Project를 `worked`에 따로 싣는다(있을 때만). 그 Project도 읽는다 — 고치는 것이 먼저다.
-  it("Space 줄은 worktree에서 일하는 Project도 읽는 Project로 말한다 — worktree가 Space를 다 덮어도 「없어요」가 아니다", () => {
-    const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
+  it("Service 줄은 worktree에서 일하는 Project도 읽는 Project로 말한다 — worktree가 Service를 다 덮어도 「없어요」가 아니다", () => {
+    const service = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "service", payload });
     const model = foldThread([
       ...blessed,
-      space(25, { change: "changed", space: "결제-서비스", name: "결제 서비스", projects: [], worked: ["web-app", "api-server"], registered: 3 }),
-      space(26, { change: "attached", space: "결제-서비스", name: "결제 서비스", projects: ["web-app"], worked: ["api-server"], registered: 3 }),
-      space(27, { change: "restored", space: "결제-서비스", name: "결제 서비스", projects: [], worked: ["api-server"], registered: 3 }),
+      service(25, { change: "changed", service: "결제-서비스", name: "결제 서비스", projects: [], worked: ["web-app", "api-server"], registered: 3 }),
+      service(26, { change: "attached", service: "결제-서비스", name: "결제 서비스", projects: ["web-app"], worked: ["api-server"], registered: 3 }),
+      service(27, { change: "restored", service: "결제-서비스", name: "결제 서비스", projects: [], worked: ["api-server"], registered: 3 }),
     ]);
     expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
-      "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요",
-      "결제 서비스 Space에 넣었어요 — api-server · web-app을 읽어요",
-      "결제 서비스 Space를 되돌렸어요 — 다시 api-server를 읽어요",
+      "Service를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요",
+      "결제 서비스 Service에 넣었어요 — api-server · web-app을 읽어요",
+      "결제 서비스 Service를 되돌렸어요 — 다시 api-server를 읽어요",
     ]);
   });
 
-  it("Space 줄은 읽는 Project가 셋을 넘으면 둘과 「외 N개」, 빈 Space면 없다고, 등록된 Project가 없으면 그렇다고 말한다", () => {
-    const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
+  it("Service 줄은 읽는 Project가 셋을 넘으면 둘과 「외 N개」, 빈 Service면 없다고, 등록된 Project가 없으면 그렇다고 말한다", () => {
+    const service = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "service", payload });
     const model = foldThread([
       ...blessed,
-      space(25, { change: "changed", space: "사내-도구", name: "사내 도구", projects: ["a", "b", "c", "d"], registered: 4 }),
-      space(26, { change: "changed", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
-      space(27, { change: "removed", space: null, name: null, projects: [], registered: 0 }),
-      space(28, { change: "attached", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
+      service(25, { change: "changed", service: "사내-도구", name: "사내 도구", projects: ["a", "b", "c", "d"], registered: 4 }),
+      service(26, { change: "changed", service: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
+      service(27, { change: "removed", service: null, name: null, projects: [], registered: 0 }),
+      service(28, { change: "attached", service: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
     ]);
     expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
-      "Space를 사내 도구로 바꿨어요 — 다음 차례부터 a · b 외 2개를 읽어요",
-      "Space를 빈 곳으로 바꿨어요 — 다음 차례부터 읽는 Project가 없어요",
-      "Space를 뺐어요 — 다음 차례부터 등록된 Project가 없어요",
-      "빈 곳 Space에 넣었어요 — 읽는 Project가 없어요",
+      "Service를 사내 도구로 바꿨어요 — 다음 차례부터 a · b 외 2개를 읽어요",
+      "Service를 빈 곳으로 바꿨어요 — 다음 차례부터 읽는 Project가 없어요",
+      "Service를 뺐어요 — 다음 차례부터 등록된 Project가 없어요",
+      "빈 곳 Service에 넣었어요 — 읽는 Project가 없어요",
     ]);
   });
 });
@@ -632,12 +632,12 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Work 만들기를 묻는 중");
   });
 
-  it("Space에 이은 Thread의 카드는 새 Work로 옮겨 갈 Space를 싣고, Space가 없으면 그 칸이 비었다(03 S8)", () => {
-    expect(cards(foldThread(through(working, 55)))[0].space).toBeNull();
-    const spaced = through(working, 55).map((line) =>
-      line.seq === 55 ? { ...line, payload: { ...(line.payload as object), space: { slug: "결제-서비스", name: "결제 서비스" } } } : line,
+  it("Service에 이은 Thread의 카드는 새 Work로 옮겨 갈 Service를 싣고, Service가 없으면 그 칸이 비었다(03 S8)", () => {
+    expect(cards(foldThread(through(working, 55)))[0].service).toBeNull();
+    const serviced = through(working, 55).map((line) =>
+      line.seq === 55 ? { ...line, payload: { ...(line.payload as object), service: { slug: "결제-서비스", name: "결제 서비스" } } } : line,
     );
-    expect(cards(foldThread(spaced))[0].space).toEqual({ slug: "결제-서비스", name: "결제 서비스" });
+    expect(cards(foldThread(serviced))[0].service).toEqual({ slug: "결제-서비스", name: "결제 서비스" });
   });
 
   it("만들면 카드가 걷히고, 그 도구 줄 자리에 「Work 만들기」 결정 줄이, 턴 뒤에 「Work … 을 만들고 이 Thread에 연결함」 시스템 줄이 선다", () => {
@@ -934,25 +934,25 @@ describe("PR 카드(v1 티켓 36)", () => {
   });
 });
 
-describe("Space 질문 카드(03 티켓 08)", () => {
-  /** 매번 묻기 Thread에서 Host가 「Space 붙이기」로 묻고 사람이 결제 서비스를 고른 축복 기록 — 6 도구 줄 · 7 카드 · 8 답 · 9 도구 끝. */
-  const asking = record("thread-space-ask");
-  const cards = (model: ThreadModel) => model.asks.filter((one): one is PendingSpace => one.card === "space");
+describe("Service 질문 카드(03 티켓 08)", () => {
+  /** 매번 묻기 Thread에서 Host가 「Service 붙이기」로 묻고 사람이 결제 서비스를 고른 축복 기록 — 6 도구 줄 · 7 카드 · 8 답 · 9 도구 끝. */
+  const asking = record("thread-service-ask");
+  const cards = (model: ThreadModel) => model.asks.filter((one): one is PendingService => one.card === "service");
   const answered = (payload: Record<string, unknown>): RecordLine => ({
     seq: 8,
     at: at(8),
     kind: "question",
-    payload: { state: "answered", requestId: "fake-request", card: "space", ...payload },
+    payload: { state: "answered", requestId: "fake-request", card: "service", ...payload },
   });
 
-  it("카드 줄이 오면 물음 차례에 카드가 서고 — 추천 · 후보 · 등록된 Project 수 — 그 도구 줄은 「Space 고르는 중」이다", () => {
+  it("카드 줄이 오면 물음 차례에 카드가 서고 — 추천 · 후보 · 등록된 Project 수 — 그 도구 줄은 「Service 고르는 중」이다", () => {
     const model = foldThread(through(asking, 7));
     expect(cards(model)).toEqual([
       {
-        card: "space",
+        card: "service",
         requestId: "fake-request",
         recommended: "결제-서비스",
-        spaces: [
+        services: [
           { slug: "결제-서비스", name: "결제 서비스", projects: ["web-app", "api-server"] },
           { slug: "사내-도구", name: "사내 도구", projects: ["api-server", "backoffice"] },
         ],
@@ -961,41 +961,41 @@ describe("Space 질문 카드(03 티켓 08)", () => {
     ]);
     expect(model.pending).toEqual([]);
     const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
-    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Space 고르는 중");
+    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Service 고르는 중");
   });
 
-  it("고르면 카드가 걷히고 그 도구 줄 자리에 「어느 Space에서 할까요? · 결제 서비스」 한 줄이 서며, Space 줄은 따로 서지 않는다", () => {
+  it("고르면 카드가 걷히고 그 도구 줄 자리에 「어느 Service에서 할까요? · 결제 서비스」 한 줄이 서며, Service 줄은 따로 서지 않는다", () => {
     const model = foldThread(asking);
     expect(cards(model)).toEqual([]);
     const entries = model.turns[0].entries;
-    expect(entries.map((entry) => entry.kind)).toEqual(["space-choice", "message"]);
-    expect(entries[0]).toMatchObject({ choice: "space", name: "결제 서비스" });
+    expect(entries.map((entry) => entry.kind)).toEqual(["service-choice", "message"]);
+    expect(entries[0]).toMatchObject({ choice: "service", name: "결제 서비스" });
     expect(model.system).toEqual([]);
   });
 
-  it("Space 없이 · 나중에도 한 줄로 접히고, 거둔 카드는 줄 없이 걷힌다", () => {
+  it("Service 없이 · 나중에도 한 줄로 접히고, 거둔 카드는 줄 없이 걷힌다", () => {
     const fold = (payload: Record<string, unknown>) => foldThread([...through(asking, 7), answered(payload)]);
-    expect(fold({ choice: "none", space: null, name: null }).turns[0].entries[0]).toMatchObject({ kind: "space-choice", choice: "none" });
-    expect(fold({ choice: "later", space: null, name: null }).turns[0].entries[0]).toMatchObject({ kind: "space-choice", choice: "later" });
+    expect(fold({ choice: "none", service: null, name: null }).turns[0].entries[0]).toMatchObject({ kind: "service-choice", choice: "none" });
+    expect(fold({ choice: "later", service: null, name: null }).turns[0].entries[0]).toMatchObject({ kind: "service-choice", choice: "later" });
     const withdrawn = fold({ state: "withdrawn", reason: "stopped" });
     expect(cards(withdrawn)).toEqual([]);
     expect(withdrawn.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool"]);
   });
 
-  // 바탕은 엔진이 축복한 기록이다(`thread-space-attached.jsonl`) — 「묻지 않음」 Thread에서 Host가 묻지 않고 결제 서비스를 붙였다.
-  it("Host가 묻지 않고 붙이면 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」 한 줄이 서고, 굵은 것은 Space 이름뿐이다", () => {
-    const model = foldThread(record("thread-space-attached"));
+  // 바탕은 엔진이 축복한 기록이다(`thread-service-attached.jsonl`) — 「묻지 않음」 Thread에서 Host가 묻지 않고 결제 서비스를 붙였다.
+  it("Host가 묻지 않고 붙이면 「결제 서비스 Service에 넣었어요 — web-app · api-server를 읽어요」 한 줄이 서고, 굵은 것은 Service 이름뿐이다", () => {
+    const model = foldThread(record("thread-service-attached"));
     expect(model.asks).toEqual([]);
     expect(model.system.map((line) => [line.kind, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
-      ["space", "결제 서비스", "결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요"],
+      ["service", "결제 서비스", "결제 서비스 Service에 넣었어요 — web-app · api-server를 읽어요"],
     ]);
     const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
-    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Space 고름");
+    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Service 고름");
   });
 });
 
 // 대화로 하는 설정(03 티켓 12 · 구현 스펙 §12) — 바탕은 엔진이 축복한 기록이다. `thread-setting`은 한 턴에 Host가 Project를 추가하고 · 기준 브랜치를
-// 고치고 · Space에 Project를 넣고 · Space를 만든 것, `thread-project-add`는 git이 아닌 폴더를 묻고 사람이 「git init 하고 추가」를 고른 것이다.
+// 고치고 · Service에 Project를 넣고 · Service를 만든 것, `thread-project-add`는 git이 아닌 폴더를 묻고 사람이 「git init 하고 추가」를 고른 것이다.
 describe("대화로 하는 설정 — 결과 카드와 Project 추가 카드", () => {
   const results = (model: ThreadModel) =>
     model.turns.flatMap((turn) => turn.entries.filter((entry): entry is ResultEntry => entry.kind === "result"));
@@ -1014,13 +1014,13 @@ describe("대화로 하는 설정 — 결과 카드와 Project 추가 카드", (
         detail: "~/MyProjects/landing-page · git 레포 · 기준 브랜치 main",
       },
       expect.objectContaining({ action: "project-edited", slug: "web-app", title: "web-app의 기준 브랜치를 main으로 바꿨어요" }),
-      expect.objectContaining({ action: "space-edited", slug: "결제-서비스", detail: "Project 3 · 함께 쓰는 Space 1" }),
-      expect.objectContaining({ action: "space-created", slug: "정산", detail: "api-server · ~/.atelier/spaces/정산.md" }),
+      expect.objectContaining({ action: "service-edited", slug: "결제-서비스", detail: "Project 3 · 함께 쓰는 Service 1" }),
+      expect.objectContaining({ action: "service-created", slug: "정산", detail: "api-server · ~/.atelier/services/정산.md" }),
     ]);
     expect(entries.filter(keptFolded).map((entry) => entry.kind)).toEqual(["result", "result", "result", "result"]);
     expect(model.system).toEqual([]);
     const phrases = entries.flatMap((entry) => (entry.kind === "tool" ? [phraseText(describeTool(entry).phrase)] : []));
-    expect(phrases).toEqual(["landing-page 추가함", "web-app 고침", "결제-서비스 Space 고침", "정산 Space 만듦"]);
+    expect(phrases).toEqual(["landing-page 추가함", "web-app 고침", "결제-서비스 Service 고침", "정산 Service 만듦"]);
   });
 
   it("모르는 갈래 · 글이 빈 결과 카드 줄은 서지 않는다", () => {
@@ -1028,7 +1028,7 @@ describe("대화로 하는 설정 — 결과 카드와 Project 추가 카드", (
     const model = foldThread([
       ...blessed,
       line({ action: "project-removed", slug: "web-app", name: "web-app", title: "t", detail: "d" }),
-      line({ action: "space-edited", slug: "결제-서비스", name: "결제 서비스", title: "", detail: "d" }),
+      line({ action: "service-edited", slug: "결제-서비스", name: "결제 서비스", title: "", detail: "d" }),
     ]);
     expect(results(model)).toEqual([]);
   });

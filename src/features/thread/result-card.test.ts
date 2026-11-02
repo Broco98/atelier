@@ -17,12 +17,12 @@ const card = (over: Partial<ResultEntry>): ResultEntry => ({
 });
 
 describe("결과 카드", () => {
-  it("넷의 아이콘 · 두 줄 · 단추 · 갈 곳 — Project는 Project 상세로, Space는 Space 상세로, Space 고침은 「관계 보기」다", () => {
+  it("넷의 아이콘 · 두 줄 · 단추 · 갈 곳 — Project는 Project 상세로, Service는 Service 상세로, Service 고침은 「관계 보기」다", () => {
     const cards = [
       card({}),
       card({ action: "project-edited", slug: "web-app", name: "web-app", title: "web-app의 기준 브랜치를 main으로 바꿨어요", detail: "새 Work부터 main에서 갈라져요" }),
-      card({ action: "space-created", slug: "정산", name: "정산", title: "Space를 만들었어요 — 정산", detail: "api-server · ~/.atelier/spaces/정산.md" }),
-      card({ action: "space-edited", slug: "결제-서비스", name: "결제 서비스", title: "결제 서비스에 backoffice를 넣었어요", detail: "Project 3 · 함께 쓰는 Space 1" }),
+      card({ action: "service-created", slug: "정산", name: "정산", title: "Service를 만들었어요 — 정산", detail: "api-server · ~/.atelier/services/정산.md" }),
+      card({ action: "service-edited", slug: "결제-서비스", name: "결제 서비스", title: "결제 서비스에 backoffice를 넣었어요", detail: "Project 3 · 함께 쓰는 Service 1" }),
     ];
     expect(cards.map((one) => resultCardView(one, null))).toEqual([
       {
@@ -42,23 +42,23 @@ describe("결과 카드", () => {
         gone: false,
       },
       {
-        icon: "space",
-        title: "Space를 만들었어요 — 정산",
-        detail: "api-server · ~/.atelier/spaces/정산.md",
+        icon: "service",
+        title: "Service를 만들었어요 — 정산",
+        detail: "api-server · ~/.atelier/services/정산.md",
         action: "열기",
-        to: { to: "/spaces/$slug", params: { slug: "정산" } },
+        to: { to: "/services/$slug", params: { slug: "정산" } },
         gone: false,
       },
       {
-        icon: "space",
+        icon: "service",
         title: "결제 서비스에 backoffice를 넣었어요",
-        detail: "Project 3 · 함께 쓰는 Space 1",
+        detail: "Project 3 · 함께 쓰는 Service 1",
         action: "관계 보기",
-        to: { to: "/spaces/$slug", params: { slug: "결제-서비스" } },
+        to: { to: "/services/$slug", params: { slug: "결제-서비스" } },
         gone: false,
       },
     ]);
-    expect(cards.map((one) => resultTarget(one))).toEqual(["project", "project", "space", "space"]);
+    expect(cards.map((one) => resultTarget(one))).toEqual(["project", "project", "service", "service"]);
   });
 
   it("대상이 그사이 사라졌으면 단추가 꺼지고, 목록을 아직 못 읽었으면 켜 둔다", () => {

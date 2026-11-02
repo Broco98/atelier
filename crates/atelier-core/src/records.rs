@@ -59,10 +59,10 @@ pub enum RecordKind {
     Mode,
     /// 이 Work의 PR이 처음 보였을 때와 상태가 바뀔 때.
     Pr,
-    /// Space가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Space, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Space를 사내 도구로
-    /// 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」가 이것이다. Work의 Space가 바뀌면 그 Work의 Thread마다 선다(S9).
-    Space,
-    /// Agent가 대화로 한 설정(03 구현 스펙 §12) — 무엇을 했나(Project 추가 · Project 고침 · Space 만듦 · Space 고침) · 대상 slug · 이름과
+    /// Service가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Service, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Service를 사내 도구로
+    /// 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」가 이것이다. Work의 Service가 바뀌면 그 Work의 Thread마다 선다(S9).
+    Service,
+    /// Agent가 대화로 한 설정(03 구현 스펙 §12) — 무엇을 했나(Project 추가 · Project 고침 · Service 만듦 · Service 고침) · 대상 slug · 이름과
     /// 카드의 첫 줄 · 둘째 줄 글. 흐름의 결과 카드 「Project를 추가했어요 — landing-page · 열기」가 이것이다.
     Setting,
 }

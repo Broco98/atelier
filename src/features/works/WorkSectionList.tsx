@@ -513,7 +513,7 @@ function WorkRow({
   onRenameCommit: (slug: string, title: string) => void;
   onRenameEnd: () => void;
   /**
-   * 행을 눌렀다 — 그 work로 간다. **`pointer`는 포인터로 눌렀는가다** — 키(Enter · Space)로 켠 클릭은 `detail`이 0이다. 누른 행에
+   * 행을 눌렀다 — 그 work로 간다. **`pointer`는 포인터로 눌렀는가다** — 키(Enter · Service)로 켠 클릭은 `detail`이 0이다. 누른 행에
    * 카드를 잠재우는 것은 포인터로 누른 것뿐이다(`SidebarWorkList`의 `quiet` — 포인터가 떠나야 깨는데, 키로 누른 행에는 떠날 포인터가 없다).
    */
   onOpen: (slug: string, pointer: boolean) => void;

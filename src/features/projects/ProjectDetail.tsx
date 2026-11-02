@@ -15,7 +15,7 @@ import { baseNote, branchGroups, missingNotice, renameHint } from "./project-vie
 import { useRelocate } from "./relocate";
 import type { ProjectView } from "./types";
 
-// Project 상세(03 구현 스펙 §16 · 시안 F1-ProjectDetail · F4-ProjBranch · F4-ProjRename · F4-ProjDetailMissing · F4-KitProject 「상세 조각」). Space
+// Project 상세(03 구현 스펙 §16 · 시안 F1-ProjectDetail · F4-ProjBranch · F4-ProjRename · F4-ProjDetailMissing · F4-KitProject 「상세 조각」). Service
 // 상세와 같은 짜임이다 — 머리 줄 「Projects / web-app」, 판 안에 「← Projects」 단추 · 제목 · 설명, 오른쪽 칸에 기준 브랜치와 경로. 설계 「상세는
 // 기준 브랜치 · 경로 · 설명이다」 — 이 Project를 쓰는 Work 묶음은 두지 않는다(S21, 쓰는 Work는 제거 창이 말한다).
 //
@@ -40,7 +40,7 @@ export default function ProjectDetail({ slug }: { slug: string }) {
 
   return (
     <PlainFrame label={`${label} 상세`} lead={<HeadCrumb label={label} onOpen={() => goList()} />} title={project ? { name: project.name } : undefined}>
-      {/* 토스트는 본문 왼쪽 아래다(`DetailPanel` — Space 상세와 같다). */}
+      {/* 토스트는 본문 왼쪽 아래다(`DetailPanel` — Service 상세와 같다). */}
       <DetailPanel back={{ to: "/projects", label }}>{project && <ProjectBody key={project.slug} project={project} />}</DetailPanel>
     </PlainFrame>
   );

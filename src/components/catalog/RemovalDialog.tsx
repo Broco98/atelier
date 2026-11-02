@@ -4,7 +4,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { dialogLook } from "@/components/ui/dialog-look";
 import { cn } from "@/lib/utils";
 
-// **빼기 · 지우기 창의 껍데기**(03 구현 스펙 §14 「지우기」 · §16 「제거 창」 · 시안 `.dlg.sm` · `.gcard`) — Project 제거 창과 Space 삭제 창이 함께
+// **빼기 · 지우기 창의 껍데기**(03 구현 스펙 §14 「지우기」 · §16 「제거 창」 · 시안 `.dlg.sm` · `.gcard`) — Project 제거 창과 Service 삭제 창이 함께
 // 쓴다(03 코드 리뷰 D1). 확인 창(`AppDialog`)은 글만 받아 카드 줄을 품지 못해 따로 선 창이다(03 결정 11). 창 안의 글(제목 · 설명 · Work 줄)은
 // 창마다 다르고 여기는 창 · 카드 줄 · 바닥 단추를 든다. 열고 닫는 흐름은 `useUndoableRemoval`이다.
 

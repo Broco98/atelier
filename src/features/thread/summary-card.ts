@@ -1,5 +1,5 @@
 import { readStored, writeStored } from "@/lib/stored";
-import type { ReadingScope } from "@/features/spaces/scope";
+import type { ReadingScope } from "@/features/services/scope";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { Opened } from "./expanded";
 import { failNote, mergedWhen } from "./pr";
@@ -135,7 +135,7 @@ export function projectRows(work: Pick<WorkView, "projects" | "worktrees">): Pro
 
 /**
  * 소스의 Project(03 §7 · §2 「요약 카드」 — 소스는 읽는 범위다) — Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저(Work의
- * 차례) 서고, 그 뒤에 읽는 범위의 Project가 「읽기만」으로 선다(범위의 차례 — 바탕 Space · 전부, 그 뒤 Work · 읽기만). 범위는 worktree에서
+ * 차례) 서고, 그 뒤에 읽는 범위의 Project가 「읽기만」으로 선다(범위의 차례 — 바탕 Service · 전부, 그 뒤 Work · 읽기만). 범위는 worktree에서
  * 일하는 Project를 이미 뺐다(§7 규칙 4). Work 없는 Thread(`work`가 `null`)는 범위의 Project뿐이다. 범위를 아직 못 읽었으면(`undefined`)
  * 고치는 중인 것만 선다.
  */

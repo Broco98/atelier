@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toolQuestionKey } from "./tool-question";
 
-// Thread 도구가 세우는 질문 카드의 키(03 티켓 08 · 캔버스 「↑↓ 고르기 · esc 닫기 · 고르기 ↵」) — Space 붙이기 · Project 추가 물음이 함께 쓴다.
+// Thread 도구가 세우는 질문 카드의 키(03 티켓 08 · 캔버스 「↑↓ 고르기 · esc 닫기 · 고르기 ↵」) — Service 붙이기 · Project 추가 물음이 함께 쓴다.
 
 describe("Thread 도구 질문 카드의 키 — ↑↓ 고르기 · esc 닫기 · 고르기 ↵", () => {
   const press = (code: string, mods: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) => ({

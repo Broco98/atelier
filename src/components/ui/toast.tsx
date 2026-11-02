@@ -47,7 +47,7 @@ function showToast(title: string, kind: Exclude<ToastKind, "undo"> = "success") 
 const UNDO_TOAST_MS = 6000
 
 /**
- * 방금 한 일을 말하고 「되돌리기」를 단 토스트를 낸다(03 구현 스펙 §14 — Space에서 빼기 · 지우기, Project 제거). 같은 한 장이라 앞
+ * 방금 한 일을 말하고 「되돌리기」를 단 토스트를 낸다(03 구현 스펙 §14 — Service에서 빼기 · 지우기, Project 제거). 같은 한 장이라 앞
  * 토스트를 갈아 끼운다. 누르면 토스트를 내리고 `undo`를 부른다 — 되돌리기는 이 토스트에서만 한다(S10).
  */
 function showUndoToast(title: string, undo: () => void) {

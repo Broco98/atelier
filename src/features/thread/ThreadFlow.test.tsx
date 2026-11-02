@@ -70,7 +70,7 @@ describe("흐름의 물음 자리", () => {
     expect(waiting(through(record("thread-question"), 7))).toBe("질문의 답을 기다려요");
     expect(waiting(through(record("thread-work"), 55))).toBe("Work 만들기 답을 기다려요");
     expect(waiting(through(record("thread-project"), 7))).toBe("Work 밖 Project 답을 기다려요");
-    expect(waiting(through(record("thread-space-ask"), 7))).toBe("Space 답을 기다려요");
+    expect(waiting(through(record("thread-service-ask"), 7))).toBe("Service 답을 기다려요");
     expect(waiting(through(record("thread-project-add"), 7))).toBe("Project 추가 답을 기다려요");
   });
 
@@ -83,8 +83,8 @@ describe("흐름의 물음 자리", () => {
     expect(rowText(flow(record("thread-question")), 'data-answered="question" data-choice="answer"')).toBe(
       "부분 환불 수수료는 어떻게 할까요?비율대로 돌려준다어느 화면에 보일까요?주문 상세, 환불 내역",
     );
-    expect(rowText(flow(record("thread-space-ask")), 'data-answered="space" data-choice="space"')).toBe(
-      "어느 Space에서 할까요?결제 서비스",
+    expect(rowText(flow(record("thread-service-ask")), 'data-answered="service" data-choice="service"')).toBe(
+      "어느 Service에서 할까요?결제 서비스",
     );
     expect(rowText(flow(record("thread-project-add")), 'data-answered="project-add" data-choice="init"')).toBe(
       "notes는 git 저장소가 아니에요. 어떻게 할까요?git init 하고 추가",

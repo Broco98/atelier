@@ -11,8 +11,8 @@ import { removeDialog, removedToast, restoreProblem } from "./project-remove";
 import type { ProjectRemoval, ProjectUsage, ProjectView } from "./types";
 
 // Project 제거 창(03 구현 스펙 §16 「제거 창」 · 캔버스 F4-ProjRemoveBlocked · F4-KitProject 「제거 창」) — Projects 목록 줄 ⋯의 「제거…」가 연다. 세
-// 갈래(보통 · Space에 들어 있음 · 진행 중인 Work가 고침)와 그 글은 `removeDialog`가 고르고, 여기는 그린다. 창 · 카드 줄 · 바닥 단추와 열고 닫는
-// 흐름은 Space 삭제 창과 같은 것이다(`@/components/catalog` — 03 코드 리뷰 D1).
+// 갈래(보통 · Service에 들어 있음 · 진행 중인 Work가 고침)와 그 글은 `removeDialog`가 고르고, 여기는 그린다. 창 · 카드 줄 · 바닥 단추와 열고 닫는
+// 흐름은 Service 삭제 창과 같은 것이다(`@/components/catalog` — 03 코드 리뷰 D1).
 
 type Removing = Asking<ProjectView, ProjectUsage>;
 
@@ -27,7 +27,7 @@ export function useProjectRemoval() {
   const removal = useUndoableRemoval<ProjectView, ProjectUsage, ProjectRemoval>({
     usage: (project) => projectsApi.usage(project.slug),
     remove: (project) => remove.mutateAsync(project.slug),
-    blocked: (done) => (done.kind === "blocked" ? { spaces: [], works: done.works } : null),
+    blocked: (done) => (done.kind === "blocked" ? { services: [], works: done.works } : null),
     restore: (project) => restore.mutateAsync(project.slug),
     failed: "제거하지 못했어요",
     toast: (project) => removedToast(project.name),

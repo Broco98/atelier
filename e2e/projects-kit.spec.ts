@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { answerByArg, PROJECTS, SPACES, WORKS } from "./fixtures";
+import { answerByArg, PROJECTS, SERVICES, WORKS } from "./fixtures";
 import {
   clipboardWrites,
   fireEvent,
@@ -239,7 +239,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(이름칸(page)).toHaveAttribute("placeholder", "예: web-app");
     await expect(추가창(page).getByRole("button", { name: "이 컴퓨터의 폴더 추가", exact: true })).toBeVisible();
     await expect(
-      추가창(page).getByText("Project는 git 레포 하나예요. Space로 묶으면 Agent가 함께 읽고, Work는 고칠 Project에만 worktree를 만들어요.", {
+      추가창(page).getByText("Project는 git 레포 하나예요. Service로 묶으면 Agent가 함께 읽고, Work는 고칠 Project에만 worktree를 만들어요.", {
         exact: true,
       }),
     ).toBeVisible();
@@ -510,12 +510,12 @@ test.describe("제거 창", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Space에 들어 있으면 「… Space에서도 빠져요」가 더해지고, 「취소」면 빼지 않으며, 그사이 같은 slug가 다시 쓰였으면 되돌리기가 그 까닭을 말한다", async ({
+  test("Service에 들어 있으면 「… Service에서도 빠져요」가 더해지고, 「취소」면 빼지 않으며, 그사이 같은 slug가 다시 쓰였으면 되돌리기가 그 까닭을 말한다", async ({
     page,
   }) => {
-    const [결제, 원장도구] = SPACES;
+    const [결제, 원장도구] = SERVICES;
     await installFixtureBackend(page, {
-      project_usage: { spaces: [결제, 원장도구].map(({ slug, name }) => ({ slug, name })), works: [] },
+      project_usage: { services: [결제, 원장도구].map(({ slug, name }) => ({ slug, name })), works: [] },
       restore_project: ipcFailure(`slug is in use again: ${ledger.slug}`),
     });
     await page.goto("/projects");
@@ -523,7 +523,7 @@ test.describe("제거 창", () => {
 
     const 창 = 제거창(page, "목록에서 제거할까요?");
     await expect(창).toHaveAccessibleDescription(
-      `폴더와 파일, git 기록은 그대로예요. 언제든 다시 추가할 수 있어요. ${결제.name} · ${원장도구.name} Space에서도 빠져요.`,
+      `폴더와 파일, git 기록은 그대로예요. 언제든 다시 추가할 수 있어요. ${결제.name} · ${원장도구.name} Service에서도 빠져요.`,
     );
     await 창.getByRole("button", { name: "취소", exact: true }).click();
     await expect(창).toHaveCount(0);
@@ -540,7 +540,7 @@ test.describe("제거 창", () => {
     page,
   }) => {
     const 고치는 = WORKS.slice(0, 2).map((work, at) => ({ slug: work.slug, title: work.title, branch: at === 0 ? "fix/refund-api" : null }));
-    await installFixtureBackend(page, { project_usage: { spaces: [], works: 고치는 } });
+    await installFixtureBackend(page, { project_usage: { services: [], works: 고치는 } });
     await page.goto("/projects");
     await 제거를묻는다(page, billing);
 

@@ -1,6 +1,6 @@
 import { askLevelOf } from "./chips";
 import { isObject, nonEmpty, text, type Json } from "./json";
-import { readingText, registeredText } from "@/features/spaces/scope";
+import { readingText, registeredText } from "@/features/services/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import { prLineOf, type PrLine } from "./pr";
 import {
@@ -128,15 +128,15 @@ export interface ProjectChoiceEntry {
 }
 
 /**
- * Space 질문 카드에서 사람이 고른 것(03 티켓 08 · §11) — 질문 카드처럼 「✓ 어느 Space에서 할까요? · 결제 서비스」 한 줄로 접힌다(`space-card.ts`의
- * `spaceChoiceCard`). 그 카드를 낸 Thread 도구(「Space 붙이기」) 줄의 자리를 대신한다. 고른 Space는 Space 줄을 따로 남기지 않는다(§9).
+ * Service 질문 카드에서 사람이 고른 것(03 티켓 08 · §11) — 질문 카드처럼 「✓ 어느 Service에서 할까요? · 결제 서비스」 한 줄로 접힌다(`service-card.ts`의
+ * `serviceChoiceCard`). 그 카드를 낸 Thread 도구(「Service 붙이기」) 줄의 자리를 대신한다. 고른 Service는 Service 줄을 따로 남기지 않는다(§9).
  */
-export interface SpaceChoiceEntry {
-  kind: "space-choice";
+export interface ServiceChoiceEntry {
+  kind: "service-choice";
   key: string;
-  /** 그 Space · Space 없이 · 나중에(esc). */
-  choice: "space" | "none" | "later";
-  /** 고른 Space의 이름 — 그 Space를 골랐을 때만. */
+  /** 그 Service · Service 없이 · 나중에(esc). */
+  choice: "service" | "none" | "later";
+  /** 고른 Service의 이름 — 그 Service를 골랐을 때만. */
   name: string | null;
   /** 이 결정의 카드를 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
   toolCallId: string | null;
@@ -264,7 +264,7 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "mode" | "work" | "worktree" | "space";
+  kind: "title" | "mode" | "work" | "worktree" | "service";
   before: string;
   name: string;
   after: string;
@@ -290,7 +290,7 @@ export interface PrCardEntry {
 }
 
 /**
- * 결과 카드 하나(03 티켓 12 · 구현 스펙 §12) — Agent가 대화로 한 설정(Project 추가 · 고침, Space 만듦 · 고침)이 남긴 `setting` 줄이다. 그 설정을 한
+ * 결과 카드 하나(03 티켓 12 · 구현 스펙 §12) — Agent가 대화로 한 설정(Project 추가 · 고침, Service 만듦 · 고침)이 남긴 `setting` 줄이다. 그 설정을 한
  * 턴 안, 그 도구 줄 뒤에 서고 턴이 접혀도 남는다(`keptFolded` — 캔버스 F4-ThreadNoWork는 「6초 동안 작업」 아래, 답 앞이다). 두 줄의 글은 엔진이
  * 그때 지어 줄에 실었다 — 화면은 다시 짓지 않는다. 「열기」가 갈 곳은 `result-card.ts`가 고른다.
  */
@@ -298,7 +298,7 @@ export interface ResultEntry {
   kind: "result";
   key: string;
   action: ResultAction;
-  /** 대상 — Project · Space의 slug와 그때의 이름. */
+  /** 대상 — Project · Service의 slug와 그때의 이름. */
   slug: string;
   name: string;
   title: string;
@@ -306,9 +306,9 @@ export interface ResultEntry {
 }
 
 /** 결과 카드의 갈래 — 무엇을 했나. */
-export type ResultAction = "project-added" | "project-edited" | "space-created" | "space-edited";
+export type ResultAction = "project-added" | "project-edited" | "service-created" | "service-edited";
 
-const RESULT_ACTIONS: readonly ResultAction[] = ["project-added", "project-edited", "space-created", "space-edited"];
+const RESULT_ACTIONS: readonly ResultAction[] = ["project-added", "project-edited", "service-created", "service-edited"];
 
 export interface ThreadModel {
   turns: Turn[];
@@ -363,10 +363,10 @@ export interface PendingWork {
   branch: string | null;
   projects: WorkProjectChoice[];
   /**
-   * 받아들이면 새 Work로 옮겨 갈 이 Thread의 Space(03 §9 · S8) — 카드에 「◇ 결제 서비스 · Space」 한 줄로 선다. 카드에서 바꾸지 않는다. Space가
+   * 받아들이면 새 Work로 옮겨 갈 이 Thread의 Service(03 §9 · S8) — 카드에 「◇ 결제 서비스 · Service」 한 줄로 선다. 카드에서 바꾸지 않는다. Service가
    * 없으면 `null`이다.
    */
-  space: { slug: string; name: string } | null;
+  service: { slug: string; name: string } | null;
 }
 
 /**
@@ -387,26 +387,26 @@ export interface PendingProject {
   workProjects: string[];
 }
 
-/** Space 질문 카드의 후보 하나 — slug · 이름 · 담은 Project의 이름(적힌 차례). */
-export interface SpaceOption {
+/** Service 질문 카드의 후보 하나 — slug · 이름 · 담은 Project의 이름(적힌 차례). */
+export interface ServiceOption {
   slug: string;
   name: string;
   projects: string[];
 }
 
 /**
- * 답하지 않은 Space 질문 카드 하나(기록의 `question` `asked`, `card: space` — 03 티켓 08 · §11 · S12). Host가 다루는 Project로 Space를 붙이려
+ * 답하지 않은 Service 질문 카드 하나(기록의 `question` `asked`, `card: service` — 03 티켓 08 · §11 · S12). Host가 다루는 Project로 Service를 붙이려
  * 하고, Atelier가 사람에게 묻기로 했다(「묻지 않음」이 아니다 · 이미 붙어 있다 · 후보가 여럿).
  */
-export interface PendingSpace {
-  card: "space";
+export interface PendingService {
+  card: "service";
   /** 카드의 답 명령이 싣는 요청 id. */
   requestId: string;
-  /** Host가 넘긴 Space의 slug — 「추천」이 선다. `null`이면 「Space 없이」가 추천이다. */
+  /** Host가 넘긴 Service의 slug — 「추천」이 선다. `null`이면 「Service 없이」가 추천이다. */
   recommended: string | null;
   /** 추천이 맨 앞, 그 뒤 다른 후보. */
-  spaces: SpaceOption[];
-  /** 등록된 Project 수 — 「Space 없이 · 등록된 Project N개를 모두 읽어요」. */
+  services: ServiceOption[];
+  /** 등록된 Project 수 — 「Service 없이 · 등록된 Project N개를 모두 읽어요」. */
   registered: number;
 }
 
@@ -428,11 +428,11 @@ export interface PendingProjectAdd {
 /** `question` 줄로 선 카드 — 권한 요청이 아닌 물음. Agent의 질문과 Thread 도구 카드(`tool-cards.ts`의 표)다. */
 type CardAsk = PendingQuestion | ToolCardAsk;
 
-/** 입력창 자리에 서는 물음 하나 — 권한 요청이거나 Work 만들기 카드 · Agent의 질문 · Work 밖 Project 카드 · Space 질문 카드 · Project 추가
+/** 입력창 자리에 서는 물음 하나 — 권한 요청이거나 Work 만들기 카드 · Agent의 질문 · Work 밖 Project 카드 · Service 질문 카드 · Project 추가
  * 카드다(`card`로 가른다). */
 export type PendingAsk = PendingPermission | CardAsk;
 
-/** `question` 줄로 선 카드(Work 만들기 · Agent의 질문 · Work 밖 Project · Space 질문 · Project 추가)인가 — 아니면 권한 요청이다. */
+/** `question` 줄로 선 카드(Work 만들기 · Agent의 질문 · Work 밖 Project · Service 질문 · Project 추가)인가 — 아니면 권한 요청이다. */
 export function isCardAsk(ask: Pick<PendingAsk, "card">): ask is CardAsk {
   return ask.card === "question" || isToolCard(ask.card);
 }
@@ -801,7 +801,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           }
           break;
         }
-        // Thread 도구가 세운 카드 — 제안 · 답 · 거둠. Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Space 질문(03 티켓 08) · Project
+        // Thread 도구가 세운 카드 — 제안 · 답 · 거둠. Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Service 질문(03 티켓 08) · Project
         // 추가(03 티켓 12)가 같은 길이다.
         const card = isToolCard(payload.card) ? payload.card : null;
         if (!card) break;
@@ -888,32 +888,32 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (pr) prs.push({ key: `p${line.seq}`, pr, latest: false, turnsBefore: turns.length });
         break;
       }
-      // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) · 지움 · 되돌림(07) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
-      // 그때 엔진이 센 것이 줄에 실려 온다(기록은 덧붙이기만 해 지금 다시 세면 그때와 다르다). Work의 Space가 바뀌면 그 Work의 Thread마다 선다.
-      case "space": {
+      // 사람이 Service를 바꿈 · 뺌(03 티켓 05 · §9) · 지움 · 되돌림(07) — 「Service를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
+      // 그때 엔진이 센 것이 줄에 실려 온다(기록은 덧붙이기만 해 지금 다시 세면 그때와 다르다). Work의 Service가 바뀌면 그 Work의 Thread마다 선다.
+      case "service": {
         // worktree에서 일하는 Project(`worked` — 엔진이 있을 때만 싣는다)가 먼저다 — 범위 줄과 같은 이름들(03 코드 리뷰 P3).
         const projects = [payload.worked, payload.projects].flatMap((names) =>
           Array.isArray(names) ? names.filter((one): one is string => typeof one === "string") : [],
         );
         const name = nonEmpty(payload.name);
         if (payload.change === "changed" && name) {
-          say(line.seq, "space", "Space를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${readingText(projects)}`);
+          say(line.seq, "service", "Service를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${readingText(projects)}`);
         }
-        // Host가 묻지 않고 붙임(03 티켓 08 — 「묻지 않음」) — 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」.
+        // Host가 묻지 않고 붙임(03 티켓 08 — 「묻지 않음」) — 「결제 서비스 Service에 넣었어요 — web-app · api-server를 읽어요」.
         if (payload.change === "attached" && name) {
-          say(line.seq, "space", "", name, ` Space에 넣었어요 — ${readingText(projects)}`);
+          say(line.seq, "service", "", name, ` Service에 넣었어요 — ${readingText(projects)}`);
         }
         if (payload.change === "removed") {
           const registered = typeof payload.registered === "number" ? payload.registered : 0;
-          say(line.seq, "space", `Space를 뺐어요 — 다음 차례부터 ${registeredText(registered)}`, "", "");
+          say(line.seq, "service", `Service를 뺐어요 — 다음 차례부터 ${registeredText(registered)}`, "", "");
         }
-        // 지움 · 되돌림(03 티켓 07) — 이은 Space가 지워진 대화는 굵은 것 없이 한 줄이다(시안 F4-KitChat 「Space가 지워짐」). 손으로 지운
+        // 지움 · 되돌림(03 티켓 07) — 이은 Service가 지워진 대화는 굵은 것 없이 한 줄이다(시안 F4-KitChat 「Service가 지워짐」). 손으로 지운
         // 파일은 이름을 읽을 수 없어 엔진이 slug를 싣는다.
         if (payload.change === "deleted" && name) {
-          say(line.seq, "space", `${name} Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요`, "", "");
+          say(line.seq, "service", `${name} Service가 지워져 Service 없이 이어가요 — 대화는 그대로예요`, "", "");
         }
         if (payload.change === "restored" && name) {
-          say(line.seq, "space", "", name, ` Space를 되돌렸어요 — ${readingText(projects, { again: true })}`);
+          say(line.seq, "service", "", name, ` Service를 되돌렸어요 — ${readingText(projects, { again: true })}`);
         }
         break;
       }

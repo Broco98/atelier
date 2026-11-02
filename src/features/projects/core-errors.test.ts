@@ -9,7 +9,7 @@ import { CORE_ERRORS, coreError, type CoreErrorKind } from "./core-errors";
 
 // **core 오류 글 ↔ 화면의 갈래 읽기를 맞댄다**(03 코드 리뷰 D5 · 03 결정 10 · 11). 앱 명령은 core 오류를 표시 글로 납작하게 넘기고
 // (`src-tauri/src/commands.rs`의 `err()`), 화면은 그 글을 정규식으로 다시 쪼개 사람의 말로 옮긴다(`relocateProblem` · `restoreProblem` ·
-// `restoreSpaceProblem`). 두 쪽은 **글자로만** 이어져 있다 — core가 글을 한 글자 고치면 빌드도 타입 검사도 조용하고, 화면은 그날부터 core의
+// `restoreServiceProblem`). 두 쪽은 **글자로만** 이어져 있다 — core가 글을 한 글자 고치면 빌드도 타입 검사도 조용하고, 화면은 그날부터 core의
 // 영어 글을 그대로 보인다. 그래서 정본(core `#[error("…")]` · 엔진 `HostError`의 `write!`)을 파일에서 읽어 그 틀로 지은 글이 화면의 정규식에
 // 그 갈래 · 그 칸으로 걸리는지 잰다. 예로 넣는 값은 일부러 빈칸 · 괄호 · 따옴표 · 한글을 품는다(경로가 그렇다).
 
@@ -23,7 +23,7 @@ function coreTemplate(variant: string): string | null {
   return read(CORE).match(new RegExp(`#\\[error\\("([^"]*)"\\)\\]\\s*${variant}\\b`))?.[1] ?? null;
 }
 
-/** 엔진 `HostError`의 그 갈래가 쓰는 표시 글의 틀 — `HostError::이름(…) => write!(f, "…")`. Space 되돌리기는 엔진을 지나 이 글로 온다. */
+/** 엔진 `HostError`의 그 갈래가 쓰는 표시 글의 틀 — `HostError::이름(…) => write!(f, "…")`. Service 되돌리기는 엔진을 지나 이 글로 온다. */
 function hostTemplate(variant: string): string | null {
   return read(HOST).match(new RegExp(`HostError::${variant}\\b[^=\\n]*=>\\s*write!\\(f,\\s*"([^"]*)"`))?.[1] ?? null;
 }
@@ -36,10 +36,10 @@ const SOURCES: Record<CoreErrorKind, { from: "core" | "host"; variant: string }[
   alreadyRegistered: [{ from: "core", variant: "AlreadyRegistered" }],
   slugReused: [{ from: "core", variant: "SlugReused" }],
   projectNotFound: [{ from: "core", variant: "NotFound" }],
-  // core의 글과 엔진의 글이 같아야 한다 — Space 되돌리기의 「없음」은 엔진이 제 갈래로 다시 지어 보낸다(`space_error`).
-  spaceNotFound: [
-    { from: "core", variant: "SpaceNotFound" },
-    { from: "host", variant: "SpaceNotFound" },
+  // core의 글과 엔진의 글이 같아야 한다 — Service 되돌리기의 「없음」은 엔진이 제 갈래로 다시 지어 보낸다(`service_error`).
+  serviceNotFound: [
+    { from: "core", variant: "ServiceNotFound" },
+    { from: "host", variant: "ServiceNotFound" },
   ],
 };
 

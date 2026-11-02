@@ -2,8 +2,8 @@ import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
-import type { ReadingScope } from "@/features/spaces/scope";
-import type { DeletedSpace, RestoredSpace, Space, SpaceDetail, SpaceDraft, SpaceUsage } from "@/features/spaces/types";
+import type { ReadingScope } from "@/features/services/scope";
+import type { DeletedService, RestoredService, Service, ServiceDetail, ServiceDraft, ServiceUsage } from "@/features/services/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
@@ -116,10 +116,10 @@ const MADE_PROJECT: ProjectView = {
 };
 
 /**
- * Space(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(Host가 만들었다)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
- * 「함께 쓰는 Space」 · 그래프의 점선 노드가 서는 갈래가 이 한 쌍이다.
+ * Service(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(Host가 만들었다)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
+ * 「함께 쓰는 Service」 · 그래프의 점선 노드가 서는 갈래가 이 한 쌍이다.
  */
-export const SPACES: Space[] = [
+export const SERVICES: Service[] = [
   {
     slug: "결제",
     name: "결제",
@@ -141,39 +141,39 @@ export const SPACES: Space[] = [
 ];
 
 /**
- * 읽는 범위의 답(03 §7 — core `reading_scope_of`가 짓는 모양) — Space 없는 Thread가 등록된 Project 둘을 모두 읽는다. 요약 카드 「소스」가 Thread를
- * 열 때마다 읽는다. Space를 붙인 범위를 재는 검사는 이 답을 갈아 끼운다.
+ * 읽는 범위의 답(03 §7 — core `reading_scope_of`가 짓는 모양) — Service 없는 Thread가 등록된 Project 둘을 모두 읽는다. 요약 카드 「소스」가 Thread를
+ * 열 때마다 읽는다. Service를 붙인 범위를 재는 검사는 이 답을 갈아 끼운다.
  */
 export const SCOPE_ALL: ReadingScope = {
-  space: null,
+  service: null,
   projects: PROJECTS.map((project) => ({ slug: project.slug, name: project.name, why: "all" })),
   worked: [],
   kind: "all",
   registered: PROJECTS.length,
 };
 
-/** Space 상세의 답 — 그 Space와 함께 쓰는 Space(core `space_detail`이 짓는 모양). */
-export const SPACE_DETAILS: Record<string, SpaceDetail> = {
-  결제: { ...SPACES[0], shared: [{ slug: "원장-도구", name: "원장 도구", overlap: ["ledger"], projects: ["ledger"] }] },
-  "원장-도구": { ...SPACES[1], shared: [{ slug: "결제", name: "결제", overlap: ["ledger"], projects: ["billing", "ledger"] }] },
+/** Service 상세의 답 — 그 Service와 함께 쓰는 Service(core `service_detail`이 짓는 모양). */
+export const SERVICE_DETAILS: Record<string, ServiceDetail> = {
+  결제: { ...SERVICES[0], shared: [{ slug: "원장-도구", name: "원장 도구", overlap: ["ledger"], projects: ["ledger"] }] },
+  "원장-도구": { ...SERVICES[1], shared: [{ slug: "결제", name: "결제", overlap: ["ledger"], projects: ["billing", "ledger"] }] },
 };
 
-/** Space 파일의 글 — 관계 편집이 그대로 연다(`read_space_text`). 위 `SPACES`를 적은 파일이다. */
-export const SPACE_TEXTS: Record<string, string> = {
+/** Service 파일의 글 — 관계 편집이 그대로 연다(`read_service_text`). 위 `SERVICES`를 적은 파일이다. */
+export const SERVICE_TEXTS: Record<string, string> = {
   결제: "---\nname: 결제\nprojects:\n  - billing\n  - ledger\ncreatedAt: 2026-10-24\ncreatedBy: host\n---\n\n결제와 정산을 한 흐름으로 다뤄요.\n",
   "원장-도구": "---\nname: 원장 도구\nprojects:\n  - ledger\ncreatedAt: 2026-10-20\n---\n",
 };
 
 /**
- * 고치기 화면의 검사 답(core `draft_space`가 짓는 모양) — 「결제」 파일 그대로를 읽은 것이다. 이 층에는 core가 없어 글을 고쳐도 답이
+ * 고치기 화면의 검사 답(core `draft_service`가 짓는 모양) — 「결제」 파일 그대로를 읽은 것이다. 이 층에는 core가 없어 글을 고쳐도 답이
  * 따라오지 않는다 — 고친 글의 검사를 재는 시험은 `answerByArg("text", …)`로 그 글의 답을 둔다.
  */
-export const SPACE_DRAFT: SpaceDraft = {
-  space: SPACES[0],
+export const SERVICE_DRAFT: ServiceDraft = {
+  service: SERVICES[0],
   pieces: { name: 2, projects: { first: 3, last: 5 }, body: { first: 10, last: 10 } },
-  shared: SPACE_DETAILS["결제"].shared,
+  shared: SERVICE_DETAILS["결제"].shared,
   registered: PROJECTS.map((project) => project.slug),
-  folder: "~/.atelier/spaces",
+  folder: "~/.atelier/services",
   suffix: null,
 };
 
@@ -1003,19 +1003,19 @@ export const FIXTURE_THREAD: ThreadView = {
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
-  // Space 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Space이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
-  // (`useUpdateSpace`) — 이 답은 쓰기를 기억하지 않는다.
-  list_spaces: SPACES,
-  get_space: answerByArg("slug", SPACE_DETAILS),
-  update_space: SPACES[0],
-  // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Space다(화면은 그 상세로 간다).
-  read_space_text: answerByArg("slug", SPACE_TEXTS),
-  check_space: SPACE_DRAFT,
-  save_space_text: SPACES[0],
+  // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Service이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
+  // (`useUpdateService`) — 이 답은 쓰기를 기억하지 않는다.
+  list_services: SERVICES,
+  get_service: answerByArg("slug", SERVICE_DETAILS),
+  update_service: SERVICES[0],
+  // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
+  read_service_text: answerByArg("slug", SERVICE_TEXTS),
+  check_service: SERVICE_DRAFT,
+  save_service_text: SERVICES[0],
   // 읽는 범위(03 §7) — 요약 카드 「소스」가 Thread를 열 때마다 읽는다.
   reading_scope: SCOPE_ALL,
-  // Space 지우기 확인 창의 쓰임(03 티켓 07) — 쓰는 곳이 없는 갈래(「Project와 파일은 그대로예요.」)다. 수를 재는 시험은 이 답을 갈아 끼운다.
-  space_usage: { works: 0, threads: 0 } satisfies SpaceUsage,
+  // Service 지우기 확인 창의 쓰임(03 티켓 07) — 쓰는 곳이 없는 갈래(「Project와 파일은 그대로예요.」)다. 수를 재는 시험은 이 답을 갈아 끼운다.
+  service_usage: { works: 0, threads: 0 } satisfies ServiceUsage,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //
@@ -1145,10 +1145,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_project_folder: null,
   // 목록 줄 ⋯의 「제거…」(03 구현 스펙 §16) — 창을 열기 전에 쓰임을 읽고(`project_usage`), 창의 「제거」가 `remove_project`, 지운 뒤
-  // 토스트의 「되돌리기」가 `restore_project`다. 기본은 「쓰는 곳 없음 · 뺐음」이다 — 막힌 갈래 · Space 갈래는 검사가 쓰임 답을 갈아 끼운다.
+  // 토스트의 「되돌리기」가 `restore_project`다. 기본은 「쓰는 곳 없음 · 뺐음」이다 — 막힌 갈래 · Service 갈래는 검사가 쓰임 답을 갈아 끼운다.
   // 목록은 다시 읽어도 그대로 `PROJECTS`다(뺀 것을 기억하지 않는다). 검사가 재는 것은 「무엇이 나갔나」다.
-  project_usage: { spaces: [], works: [] },
-  remove_project: { kind: "removed", spaces: [] },
+  project_usage: { services: [], works: [] },
+  remove_project: { kind: "removed", services: [] },
   restore_project: PROJECTS[0],
   // Project 추가 창(03 구현 스펙 §15 · §16 — 03 티켓 13) — 폴더를 고르는 순간의 살피기(고른 폴더로 갈린다 — `FOLDER_LOOKS`), 「Project 추가」 ·
   // 「git init 하고 추가」의 추가, 「새로 만들기」의 자리(이름을 칠 때마다)와 만들기. 추가 · 만들기의 답은 그 Project이고 목록은 그것을
@@ -1264,7 +1264,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   thread_work_prs: [] as unknown[],
   // Work 밖 Project 카드의 답(v1 티켓 32) — 값은 안 쓰인다. 고른 것과 붙인 Project · 만든 worktree는 기록의 `question` · `work` 줄로 온다.
   thread_answer_project: null,
-  thread_answer_space: null,
+  thread_answer_service: null,
   // Project 추가 카드의 답(03 티켓 12) — 값은 안 쓰인다. 고른 것과 추가한 Project는 기록의 `question` · `setting` 줄로 온다.
   thread_answer_project_add: null,
   // 넓힌 카드의 diff(v1 티켓 35) — 변경 줄을 누르면 읽는다. 기본은 바뀐 것이 없다는 답이다.
@@ -1274,13 +1274,13 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   thread_set_effort: FIXTURE_THREAD,
   // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
   thread_set_mode: null,
-  // Space 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `space` 줄과 Work 목록 다시 읽기로 온다.
-  thread_set_space: null,
-  thread_set_work_space: null,
-  // Space 지우기 · 되돌리기(03 티켓 07) — 답은 지운 · 되돌린 Space와 고친 곳이다. 지운 것을 기억하지 않는다 — 지운 뒤의 목록을 재는 시험은
-  // `list_spaces`를 갈아 끼운다. 비운 곳마다의 「지워짐」 · 「되돌림」 줄은 기록(`thread-space-deleted`)으로 온다.
-  thread_delete_space: { space: SPACES[0], unlinked: { works: [], threads: [] } } satisfies DeletedSpace,
-  thread_restore_space: { space: SPACES[0], relinked: { works: [], threads: [] } } satisfies RestoredSpace,
+  // Service 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `service` 줄과 Work 목록 다시 읽기로 온다.
+  thread_set_service: null,
+  thread_set_work_service: null,
+  // Service 지우기 · 되돌리기(03 티켓 07) — 답은 지운 · 되돌린 Service와 고친 곳이다. 지운 것을 기억하지 않는다 — 지운 뒤의 목록을 재는 시험은
+  // `list_services`를 갈아 끼운다. 비운 곳마다의 「지워짐」 · 「되돌림」 줄은 기록(`thread-service-deleted`)으로 온다.
+  thread_delete_service: { service: SERVICES[0], unlinked: { works: [], threads: [] } } satisfies DeletedService,
+  thread_restore_service: { service: SERVICES[0], relinked: { works: [], threads: [] } } satisfies RestoredService,
   // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
   thread_work_mode: "always",
   // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).

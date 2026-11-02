@@ -35,7 +35,7 @@ export const dialogLook = {
   // 풀어, 갈래가 바뀌어 창의 키가 달라져도 창 위 끝이 움직이지 않는다. 확인 창(`AppDialog`)은 글만 받아 카드 줄 · Work 줄을 품지 못해
   // 이 창들은 따로 선다(03 결정 11). 폭과 칸 사이가 둘이다(03 코드 리뷰 A5 — 세 창이 옮겨 적던 것).
   //   `top`       `.dlg` 520 · 칸 사이 18, 세로로 쌓는다 — Project 추가 창
-  //   `topSmall`  `.dlg.sm` 420 · 칸 사이 14 — Project 제거 창 · Space 삭제 창
+  //   `topSmall`  `.dlg.sm` 420 · 칸 사이 14 — Project 제거 창 · Service 삭제 창
   top: "top-30 flex w-130 max-w-[calc(100%-4rem)] translate-y-0 flex-col gap-4.5 rounded-3xl px-4.5 pt-5 pb-4.5 shadow-modal",
   topSmall: "top-30 w-105 translate-y-0 gap-3.5 rounded-3xl px-4.5 pt-5 pb-4.5",
   header: "grid gap-2",

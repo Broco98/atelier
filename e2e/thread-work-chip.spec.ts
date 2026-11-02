@@ -3,16 +3,16 @@ import { expect, test, type Page } from "./evidence";
 import { answerByArg, FIXTURE_THREAD, SEARCH_RESULTS } from "./fixtures";
 import { installFixtureBackend, ipcArgs, ipcCallArgs, unknownIpcCalls } from "./harness";
 import { summaryOf } from "./thread-records";
-import { REFUND, WORLD, WORLD_SPACES, WORLD_WORKS } from "./thread-space-world";
+import { REFUND, WORLD, WORLD_SERVICES, WORLD_WORKS } from "./thread-service-world";
 import type { ThreadView } from "@/features/thread/types";
 
 // 03 흐름 「트레이」(F4-KitComposer)의 Work 칩 조각 — **Work 칩이 스위치 둘(「새 Work」 · 「Work 없이 대화」)과 최근 Work를 고르고, 고른 것이
 // 칩 이름 · 입력창 안내 · 정도 칩을 바꾸며 첫 말과 함께 가고, 마지막에 고른 스위치 쪽을 기억한다**(03 구현 스펙 §5 · 티켓 02 · S2 ·
 // 스토리 14–21 · v1 티켓 31 · S18). v1 티켓 40이 세운 이 spec을 02의 「새 Work가 기본」 · 「Work 없이 대화」 스위치로 고쳤다. 트레이의 나머지
-// (두 자리 · 씨앗 · 잠긴 칩 · Space 칩 · 범위 줄 · `@` 없음 · `/agent` 없음)는 같은 흐름의 `thread-tray`가 잰다 — 같은 것을 두 번 재지 않는다.
+// (두 자리 · 씨앗 · 잠긴 칩 · Service 칩 · 범위 줄 · `@` 없음 · `/agent` 없음)는 같은 흐름의 `thread-tray`가 잰다 — 같은 것을 두 번 재지 않는다.
 //
 // 첫 말 뒤의 일(새 Work 제안 · 그 Work의 자리에서 뜨는 Session)은 엔진의 몫이다 — L1(`thread_work.rs` 머리말 · `thread_host.rs` ·
-// `thread_policy.rs`)이 잰다. 여기서는 고른 것이 그 인자로 나가는 데까지다. Work · Space는 시안의 세계다(`thread-space-world`).
+// `thread_policy.rs`)이 잰다. 여기서는 고른 것이 그 인자로 나가는 데까지다. Work · Service는 시안의 세계다(`thread-service-world`).
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -45,8 +45,8 @@ async function sendAndReturn(page: Page, text: string) {
   await expect(첫화면(page)).toBeVisible();
 }
 
-/** 그 Work의 Space 이름 — 최근 Work 줄 끝의 흐린 곁말이다(없으면 빈 글). */
-const spaceNameOf = (slug: string | undefined) => WORLD_SPACES.find((one) => one.slug === slug)?.name ?? "";
+/** 그 Work의 Service 이름 — 최근 Work 줄 끝의 흐린 곁말이다(없으면 빈 글). */
+const serviceNameOf = (slug: string | undefined) => WORLD_SERVICES.find((one) => one.slug === slug)?.name ?? "";
 
 test("새 Thread의 Work 칩이 새 Work · Work 없이 대화 · 최근 Work를 고르고, 고른 것이 칩 · 안내 · 정도 칩을 바꾸며 첫 말과 함께 가고, 마지막 스위치 쪽을 기억한다", async ({
   page,
@@ -66,7 +66,7 @@ test("새 Thread의 Work 칩이 새 Work · Work 없이 대화 · 최근 Work를
   await expect(트레이(page).getByRole("button").first()).toHaveAccessibleName("어디서 일할지 새 Work");
 
   // 메뉴(F4-KitComposer 「Work 칩 메뉴」) — 칩 아래로 트레이 밖 6에 연다. 위에 스위치 둘(설명 한 줄 · 지금 것에 ✓), 구분선 아래 「최근 Work —
-  // 그 Work에 새 Thread로」와 진행 중인 Work가 그 차례로 서고, 줄 끝에 그 Work의 Space 이름이 흐리게 선다(Space 없는 Work는 없다). 옛
+  // 그 Work에 새 Thread로」와 진행 중인 Work가 그 차례로 서고, 줄 끝에 그 Work의 Service 이름이 흐리게 선다(Service 없는 Work는 없다). 옛
   // 「Thread N개」는 없다.
   await 워크칩(page, "새 Work").click();
   await expect(메뉴(page)).toBeVisible();
@@ -76,7 +76,7 @@ test("새 Thread의 Work 칩이 새 Work · Work 없이 대화 · 최근 Work를
   await expect(page.getByRole("menuitemradio")).toHaveText([
     "새 Work첫 말로 Work를 만들고 그 안에서 시작해요",
     "Work 없이 대화묻고 답하기 · 나중에 Host 제안으로 Work가 될 수 있어요",
-    ...WORLD_WORKS.map((one) => `${one.title}${spaceNameOf(one.space)}`),
+    ...WORLD_WORKS.map((one) => `${one.title}${serviceNameOf(one.service)}`),
   ]);
   await expect(갈래(page, "새 Work")).toHaveAttribute("aria-checked", "true");
   await expect(갈래(page, "Work 없이 대화")).toHaveAttribute("aria-checked", "false");
@@ -117,12 +117,12 @@ test("새 Thread의 Work 칩이 새 Work · Work 없이 대화 · 최근 Work를
   await 갈래(page, "Work 없이 대화").click();
   await sendAndReturn(page, "오늘 할 일을 정리해 줘");
 
-  // 고른 것이 첫 말과 함께 갔다 — 최근 Work는 그 slug로, 정도는 고르지 않았으니 `null`(엔진이 그 Work의 정도를 쓴다)이다. Space 칩에서 고르지
-  // 않았으니 `space`도 `null`이다(이은 Work의 Space를 건드리지 않는다 — Space 칩은 `thread-tray`가 잰다).
+  // 고른 것이 첫 말과 함께 갔다 — 최근 Work는 그 slug로, 정도는 고르지 않았으니 `null`(엔진이 그 Work의 정도를 쓴다)이다. Service 칩에서 고르지
+  // 않았으니 `service`도 `null`이다(이은 Work의 Service를 건드리지 않는다 — Service 칩은 `thread-tray`가 잰다).
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: "환불 버튼 문구를 고쳐 줘", attachments: [], link: { kind: "work", slug: picked.slug }, mode: null, model: null, effort: null, space: null },
-    { text: "결제 내역 내보내기를 만들어 줘", attachments: [], link: { kind: "new-work" }, mode: null, model: null, effort: null, space: null },
-    { text: "오늘 할 일을 정리해 줘", attachments: [], link: { kind: "no-work" }, mode: null, model: null, effort: null, space: null },
+    { text: "환불 버튼 문구를 고쳐 줘", attachments: [], link: { kind: "work", slug: picked.slug }, mode: null, model: null, effort: null, service: null },
+    { text: "결제 내역 내보내기를 만들어 줘", attachments: [], link: { kind: "new-work" }, mode: null, model: null, effort: null, service: null },
+    { text: "오늘 할 일을 정리해 줘", attachments: [], link: { kind: "no-work" }, mode: null, model: null, effort: null, service: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

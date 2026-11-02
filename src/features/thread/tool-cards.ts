@@ -2,19 +2,19 @@ import type {
   Entry,
   PendingProject,
   PendingProjectAdd,
-  PendingSpace,
+  PendingService,
   PendingWork,
   ProjectAddChoiceEntry,
   ProjectChoiceEntry,
-  SpaceChoiceEntry,
-  SpaceOption,
+  ServiceChoiceEntry,
+  ServiceOption,
   WorkChoiceEntry,
   WorkProjectChoice,
 } from "./fold";
 import { isObject, nonEmpty, text, type Json } from "./json";
 import type { ProjectAddAnswer } from "./types";
 
-// Thread 도구 카드의 표(03 코드 리뷰 D2) — Thread 도구가 「카드를 세우고 기다리는 길」로 사람에게 묻는 카드(Work 만들기 · Work 밖 Project · Space 질문 ·
+// Thread 도구 카드의 표(03 코드 리뷰 D2) — Thread 도구가 「카드를 세우고 기다리는 길」로 사람에게 묻는 카드(Work 만들기 · Work 밖 Project · Service 질문 ·
 // Project 추가)는 갈래마다 **한 줄**이다: 카드를 세우는 도구 이름, 답한 뒤 그 도구 줄 자리에 서는 결정 줄의 갈래, 카드 줄 · 답 줄을 읽는 법, 흐름 ·
 // 사이드바 · 다음 줄이 그 카드를 말하는 글. 접기(`fold.ts`) · 흐름(`ThreadFlow`) · 상태(`status.ts`) · 차례(`asks.ts`)는 갈래를 가르지 않고 이 표를
 // 읽는다. 그리는 쪽의 한 줄(입력창 자리의 카드 · 흐름의 결정 줄)은 `ToolCards.tsx`의 표다.
@@ -26,7 +26,7 @@ import type { ProjectAddAnswer } from "./types";
 export interface ToolCardShapes {
   work: { ask: PendingWork; choice: WorkChoiceEntry };
   project: { ask: PendingProject; choice: ProjectChoiceEntry };
-  space: { ask: PendingSpace; choice: SpaceChoiceEntry };
+  service: { ask: PendingService; choice: ServiceChoiceEntry };
   "project-add": { ask: PendingProjectAdd; choice: ProjectAddChoiceEntry };
 }
 
@@ -53,9 +53,9 @@ interface ToolCardRow<C extends ToolCard> {
   ask: (requestId: string, payload: Json) => ToolCardShapes[C]["ask"];
   /** 답 줄(`question` `answered`) → 결정 줄. 물은 카드(`asked`)의 칸을 다시 싣는 갈래도 있다(Project 추가 — 접힌 줄이 물음을 다시 짓는다). */
   answer: (asked: ToolCardShapes[C]["ask"], payload: Json, at: ChoiceAt) => ToolCardShapes[C]["choice"];
-  /** 도는 턴 머리줄 끝의 기다림(`ThreadFlow`) — 「Space 답을 기다려요」. */
+  /** 도는 턴 머리줄 끝의 기다림(`ThreadFlow`) — 「Service 답을 기다려요」. */
   waiting: string;
-  /** 사이드바 「내 차례」 미리보기(`status.ts`) — 「질문 · 어느 Space에서 할까요?」. */
+  /** 사이드바 「내 차례」 미리보기(`status.ts`) — 「질문 · 어느 Service에서 할까요?」. */
   status: (card: ToolCardShapes[C]["ask"]) => string;
   /** 카드 아래 「다음 · Host가 … 답을 기다려요」의 대상(`asks.ts`). */
   next: (card: ToolCardShapes[C]["ask"]) => string;
@@ -102,21 +102,21 @@ const TOOL_CARDS: { readonly [C in ToolCard]: ToolCardRow<C> } = {
     status: (card) => `Work 밖 Project · ${card.name}`,
     next: (card) => `${card.name} 고치기`,
   },
-  // Space 붙이기(03 티켓 08 — 「묻지 않음」이 아니면 묻는다) — 「✓ 어느 Space에서 할까요? · 결제 서비스」.
-  space: {
-    tool: "mcp__atelier-thread__set_space",
-    choice: "space-choice",
-    ask: spaceAskOf,
+  // Service 붙이기(03 티켓 08 — 「묻지 않음」이 아니면 묻는다) — 「✓ 어느 Service에서 할까요? · 결제 서비스」.
+  service: {
+    tool: "mcp__atelier-thread__set_service",
+    choice: "service-choice",
+    ask: serviceAskOf,
     answer: (_asked, payload, at) => ({
-      kind: "space-choice",
+      kind: "service-choice",
       key: at.key,
-      choice: payload.choice === "space" || payload.choice === "none" ? payload.choice : "later",
-      name: payload.choice === "space" ? (nonEmpty(payload.name) ?? nonEmpty(payload.space)) : null,
+      choice: payload.choice === "service" || payload.choice === "none" ? payload.choice : "later",
+      name: payload.choice === "service" ? (nonEmpty(payload.name) ?? nonEmpty(payload.service)) : null,
       toolCallId: at.toolCallId,
     }),
-    waiting: "Space 답을 기다려요",
-    status: () => "질문 · 어느 Space에서 할까요?",
-    next: () => "Space",
+    waiting: "Service 답을 기다려요",
+    status: () => "질문 · 어느 Service에서 할까요?",
+    next: () => "Service",
   },
   // Project 추가(03 티켓 12 — git이 아닌 폴더 · 하위 폴더면 묻는다) — 「✓ notes는 git 저장소가 아니에요. 어떻게 할까요? · git init 하고 추가」.
   "project-add": {
@@ -186,21 +186,21 @@ function projectAddOf(requestId: string, payload: Json): PendingProjectAdd {
 }
 
 /**
- * Space 질문 카드 줄(`question` `asked`, `card: space`) → 카드. 꼴이 틀린 후보 줄은 버린다. 줄이 함께 싣는 지금 Space(`current`)와 Host가 든
+ * Service 질문 카드 줄(`question` `asked`, `card: service`) → 카드. 꼴이 틀린 후보 줄은 버린다. 줄이 함께 싣는 지금 Service(`current`)와 Host가 든
  * 까닭(`reason`)은 카드가 그리지 않아(§11 — 물음 아래 줄은 정해진 글이다) 읽지 않는다.
  */
-function spaceAskOf(requestId: string, payload: Json): PendingSpace {
-  const spaces = (Array.isArray(payload.spaces) ? payload.spaces : []).filter(isObject).flatMap((row): SpaceOption[] => {
+function serviceAskOf(requestId: string, payload: Json): PendingService {
+  const services = (Array.isArray(payload.services) ? payload.services : []).filter(isObject).flatMap((row): ServiceOption[] => {
     const slug = text(row.slug);
     if (slug === null) return [];
     const projects = Array.isArray(row.projects) ? row.projects.filter((one): one is string => typeof one === "string") : [];
     return [{ slug, name: nonEmpty(row.name) ?? slug, projects }];
   });
   return {
-    card: "space",
+    card: "service",
     requestId,
     recommended: nonEmpty(payload.recommended),
-    spaces,
+    services,
     registered: typeof payload.registered === "number" ? payload.registered : 0,
   };
 }
@@ -244,12 +244,12 @@ function proposalOf(requestId: string, payload: Json): PendingWork {
     reason: text(payload.reason) ?? "",
     branch: nonEmpty(payload.branch),
     projects,
-    space: spaceOf(payload.space),
+    service: serviceOf(payload.service),
   };
 }
 
-/** 카드가 싣는 Space(`{slug, name}`) — 꼴이 틀리면 없는 것이다. */
-function spaceOf(value: unknown): PendingWork["space"] {
+/** 카드가 싣는 Service(`{slug, name}`) — 꼴이 틀리면 없는 것이다. */
+function serviceOf(value: unknown): PendingWork["service"] {
   if (!isObject(value)) return null;
   const slug = nonEmpty(value.slug);
   return slug ? { slug, name: nonEmpty(value.name) ?? slug } : null;

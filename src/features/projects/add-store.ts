@@ -2,7 +2,7 @@ import { Store } from "@tanstack/react-store";
 import type { ProjectView } from "./types";
 
 /**
- * Project 추가 창(03 구현 스펙 §16) — **여는 길이 몇이든 창은 하나다.** Projects 「Project 추가」 · 폴더 끌어 놓기, Space 상세 「새 Project
+ * Project 추가 창(03 구현 스펙 §16) — **여는 길이 몇이든 창은 하나다.** Projects 「Project 추가」 · 폴더 끌어 놓기, Service 상세 「새 Project
  * 추가…」, 범위 줄 「Project 추가」가 모두 `addProject`를 부르고, 앱 루트의 창 하나(`ProjectAddDialog`)가 이 스토어를 그린다. 묻는 쪽과
  * 그리는 쪽을 나눈 까닭은 확인 창(`confirm-store.ts`)과 같다 — 여기는 값만 든다.
  */
@@ -22,7 +22,7 @@ export const projectAddStore = new Store<AddAsk | null>(null);
 let seq = 0;
 
 /**
- * 추가 창을 연다 — 끝나면 추가 · 만든 Project, 닫으면 null이다. Space 상세처럼 추가한 Project로 할 일이 있는 자리는 그 답을 받는다.
+ * 추가 창을 연다 — 끝나면 추가 · 만든 Project, 닫으면 null이다. Service 상세처럼 추가한 Project로 할 일이 있는 자리는 그 답을 받는다.
  *
  * **이미 떠 있으면 그 창에 폴더를 넣는다** — 창을 하나 더 띄우지 않는다. 앞서 기다리던 쪽도 같은 답을 받는다(그 창에서 끝낸 추가다).
  */

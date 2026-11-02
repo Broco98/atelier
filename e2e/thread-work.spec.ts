@@ -17,7 +17,7 @@ import {
   workTitleOf,
   workView,
 } from "./thread-records";
-import type { ReadingScope } from "@/features/spaces/scope";
+import type { ReadingScope } from "@/features/services/scope";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 import type { WorkView } from "@/features/works/types";
 
@@ -40,11 +40,11 @@ const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 const 잠긴칩 = (page: Page) => page.locator('[data-slot="composer-tray"] [data-slot="work-chip"]');
 
 /**
- * 두 기록의 세계가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — L1이 등록한 Project 둘(api-server · web-app)을, Space가 없어 모두
+ * 두 기록의 세계가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — L1이 등록한 Project 둘(api-server · web-app)을, Service가 없어 모두
  * 읽는다. 요약 카드 「소스」의 「읽기만」이 이것이다 — worktree가 선 Project는 범위에서 빠지고 「고치는 중」으로 먼저 선다.
  */
 const scopeOf = (...slugs: string[]): ReadingScope => ({
-  space: null,
+  service: null,
   projects: slugs.map((slug) => ({ slug, name: slug, why: "all" })),
   worked: [],
   kind: "all",
@@ -127,8 +127,8 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   }
   await expect(card.getByRole("checkbox", { name: /^api-server/ })).toContainText("Host 추천");
   await expect(card.getByRole("textbox", { name: "브랜치", exact: true })).toHaveValue(PROPOSED.branch);
-  // Space 없이 한 대화라 카드에 Space 줄이 없다(그 줄은 흐름 「대화 속 Space와 설정」 — `thread-space-setting`이 잰다).
-  await expect(card.locator('[data-slot="proposal-space"]')).toHaveCount(0);
+  // Service 없이 한 대화라 카드에 Service 줄이 없다(그 줄은 흐름 「대화 속 Service와 설정」 — `thread-service-setting`이 잰다).
+  await expect(card.locator('[data-slot="proposal-service"]')).toHaveCount(0);
 
   // 「Work 만들기」 — 고른 Project와 브랜치가 그 제안의 요청 id로 간다. 기록의 답과 같다.
   await card.getByRole("button", { name: "Work 만들기", exact: true }).click();

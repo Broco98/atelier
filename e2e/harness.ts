@@ -1030,17 +1030,17 @@ export const 흰판안 = (page: Page) =>
   });
 
 /**
- * 흰 판 안의 **본문**(`main` 하나)을 그 이름으로 — 화면마다 제 이름이다(「Projects」 · 「Projects 상세」 · 「Space」 · 「Space 상세」 …). 이름으로
+ * 흰 판 안의 **본문**(`main` 하나)을 그 이름으로 — 화면마다 제 이름이다(「Projects」 · 「Projects 상세」 · 「Service」 · 「Service 상세」 …). 이름으로
  * 집으면 그 화면이 섰다는 닻이 된다.
  *
- * **여기 사는 이유는 03의 두 흐름 spec(`projects-kit` · `spaces-kit`)이 같은 위치자를 저마다 적었기 때문이다** — 아래 `몸줄` · `표줄`도 같다.
+ * **여기 사는 이유는 03의 두 흐름 spec(`projects-kit` · `services-kit`)이 같은 위치자를 저마다 적었기 때문이다** — 아래 `몸줄` · `표줄`도 같다.
  */
 export const 본문 = (page: Page, name: string) => page.getByRole("main", { name, exact: true });
 
 /** 표의 **몸 줄** — 머리 줄(칸 이름 `columnheader`)을 뺀 줄들이다. 「없다」(`toHaveCount(0)`)를 몸 줄로 재야 머리 줄이 셈에 안 든다. */
 export const 몸줄 = (table: Locator) => table.getByRole("row").filter({ hasNot: table.page().getByRole("columnheader") });
 
-/** 표의 그 이름 줄 — 몸 줄 가운데 이름 칸의 링크가 그 이름인 줄이다(Projects · Space 목록은 줄마다 이름 칸이 링크다). */
+/** 표의 그 이름 줄 — 몸 줄 가운데 이름 칸의 링크가 그 이름인 줄이다(Projects · Service 목록은 줄마다 이름 칸이 링크다). */
 export const 표줄 = (table: Locator, name: string) => 몸줄(table).filter({ has: table.page().getByRole("link", { name, exact: true }) });
 
 /**
@@ -1528,13 +1528,13 @@ export async function 글자대비(element: Locator): Promise<number> {
 export const 사람줄 = (page: Page) => page.getByRole("button", { name: /— 사람 메뉴$/ });
 
 /**
- * 열린 사람 메뉴의 항목들, 위에서부터. 이름은 라벨로 시작한다 — `Projects` · `Space`에는 그 수가, `Terminal`에는 셸 수가, `Settings`에는
+ * 열린 사람 메뉴의 항목들, 위에서부터. 이름은 라벨로 시작한다 — `Projects` · `Service`에는 그 수가, `Terminal`에는 셸 수가, `Settings`에는
  * 단축키가 뒤에 붙는다.
  */
 export const 사람메뉴항목 = (page: Page) => page.getByRole("menu").getByRole("menuitem");
 
-/** 지금 화면의 이름 — 사람 메뉴의 항목이자 ⌘K의 「가는 곳」이다(`Space`는 03 판 — 03 구현 스펙 §4). */
-export type 지금화면 = "Projects" | "Space" | "Terminal" | "Processes" | "Archive" | "Settings";
+/** 지금 화면의 이름 — 사람 메뉴의 항목이자 ⌘K의 「가는 곳」이다(`Service`는 03 판 — 03 구현 스펙 §4). */
+export type 지금화면 = "Projects" | "Service" | "Terminal" | "Processes" | "Archive" | "Settings";
 
 /**
  * 사람 메뉴를 열고 그 항목을 고른다 — 옛 nav 항목을 누르던 길이다(`navButton(page, "Processes").click()`). 메뉴가 닫힐 때까지 기다리고,
@@ -1574,7 +1574,7 @@ export const toastsNow = (page: Page) => toastRegion(page).getByRole("dialog").c
  * **화면의 토스트** 한 장 — 화면마다 하나 서는 DS 토스트 자리(`components/ui/toast.tsx`의 `Toaster` — 「메시지」)의 그것이고, 제목이 그 문구다
  * (되돌리기 토스트는 제목이 한 일 · 이름이다). 앱 셸의 동작 토스트(`toastRegion` — 「앱 메시지」)와는 자리도 관리자도 다르다.
  *
- * **여기 사는 이유는 `toastRegion`과 같다** — 03의 두 흐름 spec(`projects-kit` · `spaces-kit`)이 이 자리를 저마다 집었다. 자리가 바뀌는 날 한
+ * **여기 사는 이유는 `toastRegion`과 같다** — 03의 두 흐름 spec(`projects-kit` · `services-kit`)이 이 자리를 저마다 집었다. 자리가 바뀌는 날 한
  * 파일만 고쳐지면 고쳐지지 않은 쪽의 「안 섰다」(`toHaveCount(0)`)가 헛돈다.
  */
 export const 화면토스트 = (page: Page, title: string) =>

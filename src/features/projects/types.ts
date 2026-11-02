@@ -24,16 +24,16 @@ export interface ProjectView {
 }
 
 /**
- * 제거 창이 읽는 것 — 이 Project를 적은 Space들과 이 Project를 고치는 진행 중인 Work들(03 구현 스펙 §15 「제거 확인에 쓰는 읽기」). 정본은
+ * 제거 창이 읽는 것 — 이 Project를 적은 Service들과 이 Project를 고치는 진행 중인 Work들(03 구현 스펙 §15 「제거 확인에 쓰는 읽기」). 정본은
  * core `store.rs`의 `ProjectUsage`다.
  */
 export interface ProjectUsage {
-  spaces: ListingSpace[];
+  services: ListingService[];
   works: UsingWork[];
 }
 
-/** 이 Project를 적은 Space — 이름은 보이는 이름(비었으면 slug)이다. */
-export interface ListingSpace {
+/** 이 Project를 적은 Service — 이름은 보이는 이름(비었으면 slug)이다. */
+export interface ListingService {
   slug: string;
   name: string;
 }
@@ -45,8 +45,8 @@ export interface UsingWork {
   branch: string | null;
 }
 
-/** 제거의 끝 — 뺐거나(그 slug를 지운 Space들), 진행 중인 Work가 막았다(그 Work들). 정본은 core `store.rs`의 `ProjectRemoval`이다. */
-export type ProjectRemoval = { kind: "removed"; spaces: ListingSpace[] } | { kind: "blocked"; works: UsingWork[] };
+/** 제거의 끝 — 뺐거나(그 slug를 지운 Service들), 진행 중인 Work가 막았다(그 Work들). 정본은 core `store.rs`의 `ProjectRemoval`이다. */
+export type ProjectRemoval = { kind: "removed"; services: ListingService[] } | { kind: "blocked"; works: UsingWork[] };
 
 export interface ProjectPatch {
   name?: string;

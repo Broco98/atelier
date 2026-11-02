@@ -41,9 +41,9 @@ pub(super) struct TurnOrder<S> {
     queue: VecDeque<Queued>,
     /// 다음 말에 머리말을 붙이나 — 에이전트 쪽 세션의 첫 말이다(S11).
     needs_preamble: bool,
-    /// 이 세션이 마지막으로 들은 머리말의 「- Space:」 줄(03 §11) — 보낼 말의 머리말과 다르면 첫 말이 아니어도 머리말을 다시 붙인다.
+    /// 이 세션이 마지막으로 들은 머리말의 「- Service:」 줄(03 §11) — 보낼 말의 머리말과 다르면 첫 말이 아니어도 머리말을 다시 붙인다.
     /// 모르면 없다(견주지 않는다).
-    heard_space: Option<String>,
+    heard_service: Option<String>,
 }
 
 /// 턴 단계.
@@ -97,12 +97,12 @@ pub(super) struct Draft {
     pub(super) attachments: Vec<Attachment>,
 }
 
-/// 머리말(S11) — 블록과 그 안의 「- Space:」 줄(03 §11). 머리말은 Session의 첫 말에 붙고, 첫 말이 아니어도 Session이 마지막으로 들은
-/// Space 줄과 다르면 다시 붙는다 — 함께 여는 폴더가 같아 Session을 다시 열지 않은 Space 바꿈(같은 Project의 다른 Space · 이름만 고침)도
+/// 머리말(S11) — 블록과 그 안의 「- Service:」 줄(03 §11). 머리말은 Session의 첫 말에 붙고, 첫 말이 아니어도 Session이 마지막으로 들은
+/// Service 줄과 다르면 다시 붙는다 — 함께 여는 폴더가 같아 Session을 다시 열지 않은 Service 바꿈(같은 Project의 다른 Service · 이름만 고침)도
 /// Agent가 듣는다(스토리 89).
 pub(super) struct Preamble {
     pub(super) block: Value,
-    pub(super) space: String,
+    pub(super) service: String,
 }
 
 /// 대기 줄이 왜 가지 않나 — 먼저 걸린 것 하나다. 이 차례로 보고, 앞에서 걸리면 뒤는 읽지 않는다.
@@ -160,17 +160,17 @@ impl Refused {
 impl<S> TurnOrder<S> {
     /// 에이전트 쪽 세션이 막 열린 대화 — 살아 있고, 턴이 쉬고, 대기 줄은 비었고, 첫 말에 머리말을 붙인다.
     pub(super) fn new() -> Self {
-        Self { phase: Phase::Idle { after_last: None }, queue: VecDeque::new(), needs_preamble: true, heard_space: None }
+        Self { phase: Phase::Idle { after_last: None }, queue: VecDeque::new(), needs_preamble: true, heard_service: None }
     }
 
     /// 세션이 열렸다(되살림 · 로그인 뒤 다시 띄움) — 어느 단계든 쉬는 것으로 돌리고, 다음 말에 머리말을 붙일지를 이 값으로 한다.
-    /// `heard_space`는 그 세션이 앞서 들은 머리말의 Space 줄이다(이어 연 세션 — 기록에서 읽는다). 대기 줄은 그대로다 — 죽은 대화의
+    /// `heard_service`는 그 세션이 앞서 들은 머리말의 Service 줄이다(이어 연 세션 — 기록에서 읽는다). 대기 줄은 그대로다 — 죽은 대화의
     /// 대기 줄은 되살린 대화가 이어 쥔다(S13). 대기 줄을 보내지 않는다: 무엇을 먼저 보낼지는 그 뒤의 보내기 · 지금 보내기 · 다시
     /// 띄움이 정한다.
-    pub(super) fn opened(&mut self, needs_preamble: bool, heard_space: Option<String>) {
+    pub(super) fn opened(&mut self, needs_preamble: bool, heard_service: Option<String>) {
         self.phase = Phase::Idle { after_last: None };
         self.needs_preamble = needs_preamble;
-        self.heard_space = heard_space;
+        self.heard_service = heard_service;
     }
 
     /// 에이전트가 죽었다 — 답 없이 사라진 턴에는 턴 끝이 없다(죽음 줄이 그 자리를 맡는다). 대기 줄 · 머리말은 그대로다. 대기
@@ -504,7 +504,7 @@ impl<H: TurnHands> Seat<'_, H> {
     }
 
     /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에 보낸다.
-    /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11 — 들은 Space 줄과 다른 머리말도, 03 §11), 그 뒤에 지난 말(Thread의 Session, v1 구현 스펙 S10)을, 인용이
+    /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11 — 들은 Service 줄과 다른 머리말도, 03 §11), 그 뒤에 지난 말(Thread의 Session, v1 구현 스펙 S10)을, 인용이
     /// 붙은 말이면 인용 블록을(S12), 첨부가 붙은 말이면 첨부 경로 목록을(v1 구현 스펙 S30) 사람의 글 바로 앞에 둔다. 걸림이 없을
     /// 때만 부른다.
     ///
@@ -520,9 +520,9 @@ impl<H: TurnHands> Seat<'_, H> {
         send_now: bool,
         before: H::Shot,
     ) -> Result<(), Refused> {
-        let Preamble { block, space } = preamble;
-        let space_moved = self.order.heard_space.as_ref().is_some_and(|heard| *heard != space);
-        let carried = self.order.needs_preamble || space_moved;
+        let Preamble { block, service } = preamble;
+        let service_moved = self.order.heard_service.as_ref().is_some_and(|heard| *heard != service);
+        let carried = self.order.needs_preamble || service_moved;
         let mut prompt = Vec::new();
         if carried {
             prompt.push(block);
@@ -540,7 +540,7 @@ impl<H: TurnHands> Seat<'_, H> {
         let started = Instant::now();
         self.order.needs_preamble = false;
         if carried {
-            self.order.heard_space = Some(space);
+            self.order.heard_service = Some(service);
         }
         if let Err(reason) = self.hands.prompt(prompt) {
             self.order.phase = Phase::Idle { after_last: None };
@@ -880,7 +880,7 @@ mod tests {
     fn draft(text: &str) -> Draft {
         Draft {
             text: text.to_owned(),
-            preamble: Preamble { block: json!({"type": "text", "text": PREAMBLE}), space: String::new() },
+            preamble: Preamble { block: json!({"type": "text", "text": PREAMBLE}), service: String::new() },
             quote: None,
             attachments: Vec::new(),
         }

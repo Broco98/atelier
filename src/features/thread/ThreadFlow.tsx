@@ -63,7 +63,7 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12).
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
-// - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Space)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
+// - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
 //   사이의 옅은 줄이다.
 // - 마지막으로 끝난 답 아래에만 응답 액션(복사)이 선다(`AnswerActions`). 「…」는 무엇을 둘지 정해지면(02 P1) 단다.
 // - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
@@ -199,12 +199,12 @@ function SystemRow({ line }: { line: SystemLine }) {
     >
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
-      {line.kind === "space" && <Layers className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
+      {line.kind === "service" && <Layers className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 앞말과 이름이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
-      {/* 이름이 없는 줄도 있다 — 「Space를 뺐어요 — …」는 앞말만이다. */}
+      {/* 이름이 없는 줄도 있다 — 「Service를 뺐어요 — …」는 앞말만이다. */}
       {line.name && <b className="font-medium text-fg">{line.name}</b>}
-      {/* 뒷말의 앞 빈칸도 지킨다 — 「결제 서비스 Space를 되돌렸어요」처럼 이름 뒤에 빈칸으로 잇는 줄이 있다. */}
+      {/* 뒷말의 앞 빈칸도 지킨다 — 「결제 서비스 Service를 되돌렸어요」처럼 이름 뒤에 빈칸으로 잇는 줄이 있다. */}
       {line.after && <span className="whitespace-pre-wrap">{line.after}</span>}
       {line.code && <span className="whitespace-pre font-mono text-xs">{` ${line.code}`}</span>}
     </p>
@@ -397,7 +397,7 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <AnsweredRow entry={entry} />;
     case "result":
       return <ResultCard card={entry} />;
-    // Thread 도구 카드의 결정 줄(Work 만들기 · Work 밖 Project · Space 질문 · Project 추가) — 갈래마다의 줄은 그 표다(`ToolCards.tsx`).
+    // Thread 도구 카드의 결정 줄(Work 만들기 · Work 밖 Project · Service 질문 · Project 추가) — 갈래마다의 줄은 그 표다(`ToolCards.tsx`).
     default:
       return <ToolChoiceRow entry={entry} />;
   }

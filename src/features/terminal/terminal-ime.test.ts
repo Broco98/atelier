@@ -52,7 +52,7 @@ const ins = (data: string) => ["insertText", data] as const;
 const rep = (data: string) => ["insertReplacementText", data] as const;
 
 describe("실측 대본 — 두벌식 「안녕」", () => {
-  // d k s s u d + space. 마지막 `insertReplacementText "안"`은 값이 안 바뀌는 헛것인데
+  // d k s s u d + service. 마지막 `insertReplacementText "안"`은 값이 안 바뀌는 헛것인데
   // 웹뷰가 실제로 보내므로 대본에도 그대로 둔다 — 그것까지 무해해야 한다.
   const 안녕 = [
     ins("ㅇ"), rep("아"), rep("안"), rep("안"),

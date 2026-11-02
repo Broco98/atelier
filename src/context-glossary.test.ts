@@ -183,6 +183,17 @@ describe("말의 사전", () => {
     expect(doc).not.toMatch(/\b(Agent|Host|Library)\b|호출 줄/);
   });
 
+  // 구현 스펙 「01a — Service」 · 티켓 01a-11. 옛 이름은 Service 항목의 _피할 말_에만 남는다 — 그래야 접근성 이름 검사가 그 낱말을 문다.
+  it("「Service」가 Project의 묶음을 정의하고, 옛 이름 Space를 거부하며, 문서의 다른 자리에 옛 이름이 없다", () => {
+    expect(names).toContain("Service");
+    for (const piece of ["Project들을 묶은 논리적 단위", "`~/.atelier/services/<slug>.md`", "「읽는 범위」", "여러 Service에 속할 수 있다"]) {
+      expect(bodyOf("Service"), piece).toContain(piece);
+    }
+    expect(bodyOf("Service")).toContain("_피할 말_: Space");
+    expect(refused).toContain("Space");
+    expect(doc.replace(/^_피할 말_: .*$/gm, "")).not.toMatch(/\bSpaces?\b/);
+  });
+
   // v1 티켓 08 · 구현 스펙 S2. three-axes 대화창의 말 「대화창」 · 「대화」 · 「에이전트」(엔진이라는 뜻)를 걷었다 — 대화는 Thread가,
   // 에이전트는 Runtime이 넘겨받았다. 항목이 남으면 다음 사람이 걷힌 화면의 말로 새 화면을 부른다. 「턴」 · 「모드」 · 「고친 곳」은
   // 남는다 — Thread의 말로 옮겨 적었다.
@@ -232,22 +243,22 @@ describe("말의 사전", () => {
     }
   });
 
-  // 03 구현 스펙 §2 · §5 · 티켓 06. 트레이의 Work 칩 뒤에 「Space 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「Space 넣기」 ·
-  // ×로 빼기 · Work의 Space면 ▾)와 「고른 것이 가는 때」(첫 말 전에는 입력창이 쥐고 첫 말과 함께 · 첫 말 뒤엔 곧바로 · Work면 그 Work에)를
-  // 말하지 않으면 다음 사람이 첫 말 전의 고르기마다 Space 줄을 남기거나 Work 파일을 메뉴만 훑어도 바꾼다. 범위 줄이 범위의 넷을 말하지 않으면
+  // 03 구현 스펙 §2 · §5 · 티켓 06. 트레이의 Work 칩 뒤에 「Service 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「Service 넣기」 ·
+  // ×로 빼기 · Work의 Service면 ▾)와 「고른 것이 가는 때」(첫 말 전에는 입력창이 쥐고 첫 말과 함께 · 첫 말 뒤엔 곧바로 · Work면 그 Work에)를
+  // 말하지 않으면 다음 사람이 첫 말 전의 고르기마다 Service 줄을 남기거나 Work 파일을 메뉴만 훑어도 바꾼다. 범위 줄이 범위의 넷을 말하지 않으면
   // 화면이 범위를 따로 센다. 「워크스페이스」 · 「컨텍스트 칩」은 거부어다.
-  it("「Space 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
-    expect(names).toEqual(expect.arrayContaining(["Space 칩", "범위 줄"]));
-    for (const piece of ["Work 칩 바로 뒤", "「Space 넣기」", "×", "▾", "첫 말과 함께", "Space 줄이 남는다", "그 Work의 Space"]) {
-      expect(bodyOf("Space 칩"), piece).toContain(piece);
+  it("「Service 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Service 칩", "범위 줄"]));
+    for (const piece of ["Work 칩 바로 뒤", "「Service 넣기」", "×", "▾", "첫 말과 함께", "Service 줄이 남는다", "그 Work의 Service"]) {
+      expect(bodyOf("Service 칩"), piece).toContain(piece);
     }
-    // 빈 Space는 Project가 적히지 않은 Space다 — worktree가 다 덮은 Space가 아니다(03 코드 리뷰 P3).
+    // 빈 Service는 Project가 적히지 않은 Service다 — worktree가 다 덮은 Service가 아니다(03 코드 리뷰 P3).
     for (const piece of [
       "읽는 범위",
       "등록된 Project 3개를 읽어요",
       "외 2개",
       "worktree에서 일하는 Project도 든다",
-      "Project가 하나도 적히지 않은 Space",
+      "Project가 하나도 적히지 않은 Service",
       "읽는 Project가 없어요",
       "「Project 추가」",
     ]) {
@@ -258,31 +269,31 @@ describe("말의 사전", () => {
   });
 
   // 03 구현 스펙 §2 · §7 · §9 · 티켓 05. Thread가 읽는 Project는 함수 하나에서 나온다 — 사전이 그 하나를 모르면 다음 사람이 화면마다 범위를
-  // 다시 센다(요약 카드가 Session이 연 폴더를 훑던 v1 #540의 길). 「스코프」는 거부어다. Space 줄은 그때 센 범위를 싣고, Space 메뉴는 Work 화면
-  // 머리가 연다. 요약 카드의 소스와 Work 만들기 카드의 Space 줄도 이 판이 고쳤다.
-  it("「읽는 범위」 · 「Space 줄」 · 「Space 메뉴」가 등재돼 있고, 읽는 범위가 「스코프」를 거부하며, 요약 카드의 소스가 그 범위다", () => {
-    expect(names).toEqual(expect.arrayContaining(["읽는 범위", "Space 줄", "Space 메뉴"]));
+  // 다시 센다(요약 카드가 Session이 연 폴더를 훑던 v1 #540의 길). 「스코프」는 거부어다. Service 줄은 그때 센 범위를 싣고, Service 메뉴는 Work 화면
+  // 머리가 연다. 요약 카드의 소스와 Work 만들기 카드의 Service 줄도 이 판이 고쳤다.
+  it("「읽는 범위」 · 「Service 줄」 · 「Service 메뉴」가 등재돼 있고, 읽는 범위가 「스코프」를 거부하며, 요약 카드의 소스가 그 범위다", () => {
+    expect(names).toEqual(expect.arrayContaining(["읽는 범위", "Service 줄", "Service 메뉴"]));
     expect(bodyOf("읽는 범위")).toContain("_피할 말_: 스코프");
     expect(refused).toContain("스코프");
     for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때"]) {
       expect(bodyOf("읽는 범위"), piece).toContain(piece);
     }
-    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Space 없이", "되돌렸어요"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
-    for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「대화로 Space 만들기」", "메뉴 › Space"]) {
-      expect(bodyOf("Space 메뉴"), piece).toContain(piece);
+    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Service 없이", "되돌렸어요"]) expect(bodyOf("Service 줄"), piece).toContain(piece);
+    for (const piece of ["「Service 빼기」", "「Service 없음」", "「문제 있음」", "「대화로 Service 만들기」", "메뉴 › Service"]) {
+      expect(bodyOf("Service 메뉴"), piece).toContain(piece);
     }
     expect(bodyOf("요약 카드")).toContain("소스는 그 Thread의 읽는 범위다");
     expect(bodyOf("요약 카드")).not.toContain("함께 여는 등록된 Project");
-    expect(bodyOf("Work 만들기 카드")).toContain("「◇ 결제 서비스 · Space」");
+    expect(bodyOf("Work 만들기 카드")).toContain("「◇ 결제 서비스 · Service」");
   });
 
-  // 03 구현 스펙 §2 · §11 · 티켓 08. Runtime이 Space를 묻는 카드는 질문 카드의 겉이다 — 사전이 그것을 말하지 않으면 다음 사람이 따로 그린
-  // 카드를 세우거나, 답한 뒤 Space 줄을 한 번 더 남긴다. 묻지 않고 붙이는 때(「묻지 않음」)의 줄을 모르면 그 줄을 「바꿨어요」로 쓴다.
-  it("「질문 카드」가 Runtime의 Space 카드와 그 답한 줄을 말하고, 「Space 줄」이 묻지 않고 넣은 줄을 말한다", () => {
-    for (const piece of ["Thread 도구가 같은 겉의 카드", "「어느 Space에서 할까요?」", "「Space 없이」", "따로 서지 않는다", "「Space는 나중에 정하기로 함」"]) {
+  // 03 구현 스펙 §2 · §11 · 티켓 08. Runtime이 Service를 묻는 카드는 질문 카드의 겉이다 — 사전이 그것을 말하지 않으면 다음 사람이 따로 그린
+  // 카드를 세우거나, 답한 뒤 Service 줄을 한 번 더 남긴다. 묻지 않고 붙이는 때(「묻지 않음」)의 줄을 모르면 그 줄을 「바꿨어요」로 쓴다.
+  it("「질문 카드」가 Runtime의 Service 카드와 그 답한 줄을 말하고, 「Service 줄」이 묻지 않고 넣은 줄을 말한다", () => {
+    for (const piece of ["Thread 도구가 같은 겉의 카드", "「어느 Service에서 할까요?」", "「Service 없이」", "따로 서지 않는다", "「Service는 나중에 정하기로 함」"]) {
       expect(bodyOf("질문 카드"), piece).toContain(piece);
     }
-    expect(bodyOf("Space 줄")).toContain("Space에 넣었어요 — web-app · api-server를 읽어요");
+    expect(bodyOf("Service 줄")).toContain("Service에 넣었어요 — web-app · api-server를 읽어요");
   });
 
   // 03 구현 스펙 §2 · §12 · S13 · 티켓 12. Runtime이 대화로 한 설정은 승인 없이 하고 결과 카드 한 장을 남긴다 — 사전이 그 카드를 「변경 사항」
@@ -311,9 +322,9 @@ describe("말의 사전", () => {
     }
   });
 
-  // 03 구현 스펙 §2 · §13 · 티켓 04. Space 파일을 고치는 한 화면의 두 길이다. 사전이 「글 그대로」 · 「같은 검사」를 말하지 않으면 다음 사람이
+  // 03 구현 스펙 §2 · §13 · 티켓 04. Service 파일을 고치는 한 화면의 두 길이다. 사전이 「글 그대로」 · 「같은 검사」를 말하지 않으면 다음 사람이
   // 저장을 serde 왕복으로 되돌려 사람이 적은 주석 · 차례를 지우거나, 화면에 따로 검사를 세워 화면이 괜찮다고 한 파일을 저장이 거절한다.
-  // 직접 만들기가 같은 화면 · 빈 틀 · 따라오는 파일 이름을 말하지 않으면 새 Space를 다른 창(이름 · Project 칸)으로 짓는다.
+  // 직접 만들기가 같은 화면 · 빈 틀 · 따라오는 파일 이름을 말하지 않으면 새 Service를 다른 창(이름 · Project 칸)으로 짓는다.
   it("「관계 편집」이 파일 칸 | 미리보기 카드 · 같은 검사 · 글 그대로를 말하고, 「직접 만들기」가 같은 화면의 빈 틀을 말한다", () => {
     expect(names).toEqual(expect.arrayContaining(["관계 편집", "직접 만들기"]));
     for (const piece of ["「파일 칸 | 미리보기 카드」", "같은 하나", "한 글자도 바꾸지 않고", "파일 이름은 그대로"]) {
@@ -400,8 +411,8 @@ describe("말의 사전", () => {
     expect(bodyOf("위 줄")).toContain("거르기 머리는 없다");
     expect(bodyOf("사람 메뉴")).toContain("위로 열리는 메뉴");
     expect(bodyOf("사람 메뉴")).toContain("메모리 합계");
-    // 가는 곳에 `Space`가 `Projects` 다음으로 선다(03 구현 스펙 §2 · §4).
-    expect(bodyOf("사람 메뉴")).toContain("`Projects`·`Space`·`Terminal`·`Processes`·`Archive`");
+    // 가는 곳에 `Service`가 `Projects` 다음으로 선다(03 구현 스펙 §2 · §4).
+    expect(bodyOf("사람 메뉴")).toContain("`Projects`·`Service`·`Terminal`·`Processes`·`Archive`");
     expect(bodyOf("알림 띠")).toContain("위 줄 아래");
   });
 
@@ -624,12 +635,12 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Archive`");
   });
 
-  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Space`를 `Projects` 다음에 더해
+  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Service`를 `Projects` 다음에 더해
   // 다섯이다(03 구현 스펙 §4). **한 문장에서 다섯을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다.
   // 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
   it("대문자 층이 사람 메뉴 다섯을 한 문장으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(
-      "사람 메뉴의 가는 곳은 `Projects`·`Space`·`Terminal`·`Processes`·`Archive` 다섯이다",
+      "사람 메뉴의 가는 곳은 `Projects`·`Service`·`Terminal`·`Processes`·`Archive` 다섯이다",
     );
   });
 

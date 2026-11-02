@@ -13,11 +13,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { addProject } from "@/features/projects/add-store";
-import type { ReadingScope, ScopeSpace } from "@/features/spaces/scope";
-import { SpaceMenuItems } from "@/features/spaces/SpaceMenu";
+import type { ReadingScope, ScopeService } from "@/features/services/scope";
+import { ServiceMenuItems } from "@/features/services/ServiceMenu";
 import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, EFFORTS, type ChoiceOption } from "./chips";
 import { useRecentWorks } from "./hooks";
-import { scopeLine, spaceChip } from "./space-chip";
+import { scopeLine, serviceChip } from "./service-chip";
 import type { AskLevel, ThreadLink } from "./types";
 import type { LockedWork } from "./work-chip";
 
@@ -31,10 +31,10 @@ import type { LockedWork } from "./work-chip";
 //   누르면 16 반경 메뉴에 「Claude Code」 모델 목록과 「생각 깊이」 칸 줄이 선다. 생각 깊이는 턴이 도는 동안 바꿀 수 없다(엔진이
 //   거절한다 — 그래서 그동안 잠근다). 목록이 없으면(앉지 않은 Agent를 멘션했다) 보이기만 한다.
 // - **Work 칩**(03 §5 · F4-KitComposer · F4-HomeWorkMenu)은 스위치다 — 첫 말 전의 메뉴에 「새 Work」 · 「Work 없이 대화」(설명 한 줄 · 지금
-//   것에 ✓)와 최근 Work 다섯(줄 끝에 그 Work의 Space 이름)이 선다. 입력창의 `/work`도 이 메뉴를 연다. 첫 말을 보낸 뒤에는 잠겨 보이기만
+//   것에 ✓)와 최근 Work 다섯(줄 끝에 그 Work의 Service 이름)이 선다. 입력창의 `/work`도 이 메뉴를 연다. 첫 말을 보낸 뒤에는 잠겨 보이기만
 //   한다(연결을 끊는 길은 없다 — v1 §11). Work에 이은 칩만 누를 수 있고, 누르면 그 Work 화면으로 간다.
-// - **Space 칩**(03 §5 · 티켓 06 · F4-HomeSpaceMenu · F4-HomeSpacePicked)은 Work 칩 바로 뒤다 — 비어 있으면 흐린 「Space 넣기」, 고르면 흰 칩
-//   「결제 서비스 ×」(×는 빼기)이고, 바꾸는 것이 Work의 Space면 × 대신 ▾다. 메뉴는 Work 화면 머리 줄과 같은 Space 메뉴다(맨 위 「Space 없음
+// - **Service 칩**(03 §5 · 티켓 06 · F4-HomeSpaceMenu · F4-HomeSpacePicked)은 Work 칩 바로 뒤다 — 비어 있으면 흐린 「Service 넣기」, 고르면 흰 칩
+//   「결제 서비스 ×」(×는 빼기)이고, 바꾸는 것이 Work의 Service면 × 대신 ▾다. 메뉴는 Work 화면 머리 줄과 같은 Service 메뉴다(맨 위 「Service 없음
 //   — 등록된 Project N개 읽기」). 첫 말 뒤에도 바꾼다. 그 곁의 **범위 줄**이 지금 읽는 Project를 한 줄로 말한다(읽는 범위 — `scopeLine`).
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84)는 방패 · 지금 정도 이름의 칩이다(시안의 「매번 묻기」 — 셰브런 없이). 누르면 「언제
 //   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 입력창의 `/policy`도 이 메뉴를 연다.
@@ -46,7 +46,7 @@ const CHIP =
 const MENU_CHIP = cn(CHIP, "quiet-hover data-[popup-open]:bg-fill-hover data-[popup-open]:text-fg");
 /** 모델 칩 — 본문색 · 좌우 8(시안 「Claude Code Default」 칩). */
 const MODEL_CHIP = "px-2 text-fg";
-/** 트레이 칩의 얼굴(시안 v52 `.tray .tc`) — 글리프와 글자 사이 5 · 13/18. 고른 Space 칩은 흰 면 안에서 이것으로 이름 단추를 세운다. */
+/** 트레이 칩의 얼굴(시안 v52 `.tray .tc`) — 글리프와 글자 사이 5 · 13/18. 고른 Service 칩은 흰 면 안에서 이것으로 이름 단추를 세운다. */
 const TRAY_FACE = "flex min-w-0 items-center gap-1.25 text-chat-meta whitespace-nowrap outline-none focus-ring";
 /** 트레이 칩 — 26 · 알약 · 좌우 8, 테두리 · 면 없음. 칩 줄이 좁으면 칩이 줄어 이름이 말줄임으로 끊긴다(`shrink`). */
 const TRAY_CHIP = cn(TRAY_FACE, "h-6.5 shrink rounded-full px-2");
@@ -168,14 +168,14 @@ export interface LockedChoice {
 }
 
 /**
- * Space 칩이 받는 것 — 쥔 Space(없으면 `null`), 그 칩이 바꾸는 것이 Work의 Space인가(× 대신 ▾), 고르기, 범위 줄의 읽는 범위(읽기 전이면
+ * Service 칩이 받는 것 — 쥔 Service(없으면 `null`), 그 칩이 바꾸는 것이 Work의 Service인가(× 대신 ▾), 고르기, 범위 줄의 읽는 범위(읽기 전이면
  * `undefined`). 첫 말을 보내 Session을 기다리는 동안은 고르지 못한다(`disabled`).
  */
-export interface SpaceChoice {
-  /** 칩이 보이는 Space — 읽는 범위가 싣는 것이다(없거나 그 파일이 없으면 `null`). */
-  current: ScopeSpace | null;
+export interface ServiceChoice {
+  /** 칩이 보이는 Service — 읽는 범위가 싣는 것이다(없거나 그 파일이 없으면 `null`). */
+  current: ScopeService | null;
   ofWork: boolean;
-  onPick: (space: string | null) => void;
+  onPick: (service: string | null) => void;
   scope: ReadingScope | undefined;
   disabled?: boolean;
 }
@@ -183,12 +183,12 @@ export interface SpaceChoice {
 /**
  * 입력창 트레이(03 §5 · 시안 v52 `.tray`) — 입력창 상자에 붙은 회색 띠다. 자리는 입력창의 자리를 따른다: 입력창이 가운데인 첫 화면은 상자
  * 아래(`below`), 화면 아래에 붙은 Thread 화면은 상자 위(`above` — 창 끝에 눌려 칩이 입력창 뒤로 숨지 않게)다. 첫 칩이 Work 칩이다 — 첫
- * 말 전이면 고르는 스위치(`WorkChoice`), 뒤면 잠긴 칩(`LockedChoice`)이다. 그 뒤에 Space 칩과 범위 줄이 선다(`space` — 03 티켓 06).
+ * 말 전이면 고르는 스위치(`WorkChoice`), 뒤면 잠긴 칩(`LockedChoice`)이다. 그 뒤에 Service 칩과 범위 줄이 선다(`service` — 03 티켓 06).
  */
 export interface ComposerTray {
   at: "below" | "above";
   work: WorkChoice | LockedChoice;
-  space?: SpaceChoice;
+  service?: ServiceChoice;
 }
 
 /** 메뉴 고르기의 값 — 새 Work · Work 없이 대화 · 그 Work. slug와 겹치지 않는 머리를 단다. */
@@ -264,12 +264,12 @@ export function WorkChip({
                       value={valueOf({ kind: "work", slug: work.slug })}
                       label={work.title}
                       aria-label={work.title}
-                      aria-description={work.spaceName ?? undefined}
+                      aria-description={work.serviceName ?? undefined}
                     >
                       <Folder aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{work.title}</span>
-                      {/* 그 Work의 Space — 흐린 곁말(시안 F4-HomeWorkMenu 줄 끝 「결제 서비스」). ✓는 부품이 이 뒤에 붙인다. */}
-                      {work.spaceName && <span className="shrink-0 pl-3 text-xs text-fg-tertiary">{work.spaceName}</span>}
+                      {/* 그 Work의 Service — 흐린 곁말(시안 F4-HomeWorkMenu 줄 끝 「결제 서비스」). ✓는 부품이 이 뒤에 붙인다. */}
+                      {work.serviceName && <span className="shrink-0 pl-3 text-xs text-fg-tertiary">{work.serviceName}</span>}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuGroup>
@@ -321,39 +321,39 @@ export function LockedWorkChip({ locked, onOpen }: LockedChoice) {
 }
 
 /**
- * Space 칩과 메뉴(03 §5 · 티켓 06 · F4-KitComposer · F4-HomeSpaceMenu · F4-HomeSpacePicked) — 칩 아래로(Thread 화면의 상자 위 트레이면 위로)
- * Space 메뉴가 열린다. 비어 있으면 흐린 「Space 넣기」(셰브런 없음, 시안 `.tc.ghost`), 고르면 흰 면 + 0.5 고리의 칩(`.tc.on`)에 이름과
- * ×(빼기 — 이름 단추 옆의 따로 선 단추)다. 바꾸는 것이 Work의 Space면 × 대신 ▾다 — 빼기도 메뉴에서만 한다.
+ * Service 칩과 메뉴(03 §5 · 티켓 06 · F4-KitComposer · F4-HomeSpaceMenu · F4-HomeSpacePicked) — 칩 아래로(Thread 화면의 상자 위 트레이면 위로)
+ * Service 메뉴가 열린다. 비어 있으면 흐린 「Service 넣기」(셰브런 없음, 시안 `.tc.ghost`), 고르면 흰 면 + 0.5 고리의 칩(`.tc.on`)에 이름과
+ * ×(빼기 — 이름 단추 옆의 따로 선 단추)다. 바꾸는 것이 Work의 Service면 × 대신 ▾다 — 빼기도 메뉴에서만 한다.
  */
-export function SpaceChip({ at, current, ofWork, onPick, disabled }: SpaceChoice & { at: ComposerTray["at"] }) {
-  const look = spaceChip(current, ofWork);
+export function ServiceChip({ at, current, ofWork, onPick, disabled }: ServiceChoice & { at: ComposerTray["at"] }) {
+  const look = serviceChip(current, ofWork);
   // 메뉴 카드는 트레이 바깥 6에 선다(Work 칩 메뉴와 같은 띄움 — 시안 `.pmenu{top:calc(100% + 6px)}`).
   const menu = (
     <DropdownMenuContent side={at === "below" ? "bottom" : "top"} align="start" sideOffset={12} width="note">
-      <SpaceMenuItems current={look.kind === "on" ? look.slug : null} onPick={onPick} place="chip" />
+      <ServiceMenuItems current={look.kind === "on" ? look.slug : null} onPick={onPick} place="chip" />
     </DropdownMenuContent>
   );
   if (look.kind === "ghost") {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="Space 넣기"
+          aria-label="Service 넣기"
           disabled={disabled}
           className={cn(TRAY_CHIP, "text-fg-tray-ghost transition-colors quiet-hover data-[popup-open]:bg-fill-hover")}
         >
           <Layers className="size-3.5 shrink-0 text-fg-tray-ghost-icon" aria-hidden />
-          <span className={TRAY_NAME}>Space 넣기</span>
+          <span className={TRAY_NAME}>Service 넣기</span>
         </DropdownMenuTrigger>
         {menu}
       </DropdownMenu>
     );
   }
   return (
-    <span data-slot="space-chip" className="flex h-6.5 min-w-0 shrink items-center rounded-full bg-surface ring-[0.5px] ring-border-tray-on">
+    <span data-slot="service-chip" className="flex h-6.5 min-w-0 shrink items-center rounded-full bg-surface ring-[0.5px] ring-border-tray-on">
       <DropdownMenu>
         {/* 이름 → × 사이 6(시안 `.x{margin-left:1px}` + 칩 틈 5) — 이름 단추의 오른쪽 2와 × 단추의 왼쪽 4다. */}
         <DropdownMenuTrigger
-          aria-label={`Space: ${look.name}`}
+          aria-label={`Service: ${look.name}`}
           disabled={disabled}
           className={cn(TRAY_FACE, "h-full rounded-full pl-2 text-fg", look.end === "menu" ? "pr-2" : "pr-0.5")}
         >
@@ -366,7 +366,7 @@ export function SpaceChip({ at, current, ofWork, onPick, disabled }: SpaceChoice
       {look.end === "remove" && (
         <button
           type="button"
-          aria-label="Space 빼기"
+          aria-label="Service 빼기"
           disabled={disabled}
           onClick={() => onPick(null)}
           className="flex h-full shrink-0 items-center rounded-full pr-2 pl-1 text-fg-subtle transition-colors outline-none hover:text-fg focus-ring"
@@ -379,8 +379,8 @@ export function SpaceChip({ at, current, ofWork, onPick, disabled }: SpaceChoice
 }
 
 /**
- * 범위 줄(03 §5 · 시안 `.tray .scope`) — Space 칩 옆 한 줄, 지금 읽는 Project다(읽는 범위 — `scopeLine`). 칩 틈 4에 4를 더 띄우고 좁으면
- * 말줄임으로 끊긴다. 빈 Space · 등록된 Project 없음은 경고 색이고, 등록된 Project가 없으면 끝의 「Project 추가」가 Project 추가 창을 연다 —
+ * 범위 줄(03 §5 · 시안 `.tray .scope`) — Service 칩 옆 한 줄, 지금 읽는 Project다(읽는 범위 — `scopeLine`). 칩 틈 4에 4를 더 띄우고 좁으면
+ * 말줄임으로 끊긴다. 빈 Service · 등록된 Project 없음은 경고 색이고, 등록된 Project가 없으면 끝의 「Project 추가」가 Project 추가 창을 연다 —
  * 대화는 막지 않는다. 범위를 아직 못 읽었으면 서지 않는다.
  */
 export function ScopeLineText({ scope }: { scope: ReadingScope | undefined }) {

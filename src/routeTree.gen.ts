@@ -17,21 +17,21 @@ import { Route as ArchiveIndexRouteImport } from './routes/archive.index'
 import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
+import { Route as ServicesIndexRouteImport } from './routes/services.index'
+import { Route as ServicesSlugRouteImport } from './routes/services.$slug'
+import { Route as ServicesNewRouteImport } from './routes/services.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
 import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-layout'
 import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
-import { Route as SpacesIndexRouteImport } from './routes/spaces.index'
-import { Route as SpacesSlugRouteImport } from './routes/spaces.$slug'
-import { Route as SpacesNewRouteImport } from './routes/spaces.new'
 import { Route as ThreadsIdRouteImport } from './routes/threads.$id'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
+import { Route as ServicesSlugEditRouteImport } from './routes/services.$slug_.edit'
 import { Route as SettingsSpecLayoutIndexRouteImport } from './routes/settings.spec-layout.index'
 import { Route as SettingsSpecLayoutSplatRouteImport } from './routes/settings.spec-layout.$'
 import { Route as SettingsSpecLayoutEditRouteImport } from './routes/settings.spec-layout.edit'
-import { Route as SpacesSlugEditRouteImport } from './routes/spaces.$slug_.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -73,6 +73,21 @@ const ProjectsSlugRoute = ProjectsSlugRouteImport.update({
   path: '/projects/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ServicesIndexRoute = ServicesIndexRouteImport.update({
+  id: '/services/',
+  path: '/services/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesSlugRoute = ServicesSlugRouteImport.update({
+  id: '/services/$slug',
+  path: '/services/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesNewRoute = ServicesNewRouteImport.update({
+  id: '/services/new',
+  path: '/services/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -98,21 +113,6 @@ const SettingsTerminalRoute = SettingsTerminalRouteImport.update({
   path: '/terminal',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SpacesIndexRoute = SpacesIndexRouteImport.update({
-  id: '/spaces/',
-  path: '/spaces/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SpacesSlugRoute = SpacesSlugRouteImport.update({
-  id: '/spaces/$slug',
-  path: '/spaces/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SpacesNewRoute = SpacesNewRouteImport.update({
-  id: '/spaces/new',
-  path: '/spaces/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ThreadsIdRoute = ThreadsIdRouteImport.update({
   id: '/threads/$id',
   path: '/threads/$id',
@@ -126,6 +126,11 @@ const WorksIndexRoute = WorksIndexRouteImport.update({
 const WorksSlugRoute = WorksSlugRouteImport.update({
   id: '/works/$slug',
   path: '/works/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicesSlugEditRoute = ServicesSlugEditRouteImport.update({
+  id: '/services/$slug_/edit',
+  path: '/services/$slug/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsSpecLayoutIndexRoute = SettingsSpecLayoutIndexRouteImport.update({
@@ -143,11 +148,6 @@ const SettingsSpecLayoutEditRoute = SettingsSpecLayoutEditRouteImport.update({
   path: '/edit',
   getParentRoute: () => SettingsSpecLayoutRoute,
 } as any)
-const SpacesSlugEditRoute = SpacesSlugEditRouteImport.update({
-  id: '/spaces/$slug_/edit',
-  path: '/spaces/$slug/edit',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -156,22 +156,22 @@ export interface FileRoutesByFullPath {
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/services/$slug': typeof ServicesSlugRoute
+  '/services/new': typeof ServicesNewRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
-  '/spaces/$slug': typeof SpacesSlugRoute
-  '/spaces/new': typeof SpacesNewRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/services/': typeof ServicesIndexRoute
   '/settings/': typeof SettingsIndexRoute
-  '/spaces/': typeof SpacesIndexRoute
   '/works/': typeof WorksIndexRoute
+  '/services/$slug/edit': typeof ServicesSlugEditRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
-  '/spaces/$slug/edit': typeof SpacesSlugEditRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -180,21 +180,21 @@ export interface FileRoutesByTo {
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/services/$slug': typeof ServicesSlugRoute
+  '/services/new': typeof ServicesNewRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/terminal': typeof SettingsTerminalRoute
-  '/spaces/$slug': typeof SpacesSlugRoute
-  '/spaces/new': typeof SpacesNewRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive': typeof ArchiveIndexRoute
   '/projects': typeof ProjectsIndexRoute
+  '/services': typeof ServicesIndexRoute
   '/settings': typeof SettingsIndexRoute
-  '/spaces': typeof SpacesIndexRoute
   '/works': typeof WorksIndexRoute
+  '/services/$slug/edit': typeof ServicesSlugEditRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
-  '/spaces/$slug/edit': typeof SpacesSlugEditRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -205,22 +205,22 @@ export interface FileRoutesById {
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/services/$slug': typeof ServicesSlugRoute
+  '/services/new': typeof ServicesNewRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
-  '/spaces/$slug': typeof SpacesSlugRoute
-  '/spaces/new': typeof SpacesNewRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/services/': typeof ServicesIndexRoute
   '/settings/': typeof SettingsIndexRoute
-  '/spaces/': typeof SpacesIndexRoute
   '/works/': typeof WorksIndexRoute
+  '/services/$slug_/edit': typeof ServicesSlugEditRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
-  '/spaces/$slug_/edit': typeof SpacesSlugEditRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -232,22 +232,22 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
+    | '/services/$slug'
+    | '/services/new'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
     | '/settings/terminal'
-    | '/spaces/$slug'
-    | '/spaces/new'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
+    | '/services/'
     | '/settings/'
-    | '/spaces/'
     | '/works/'
+    | '/services/$slug/edit'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
-    | '/spaces/$slug/edit'
     | '/settings/spec-layout/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -256,21 +256,21 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
+    | '/services/$slug'
+    | '/services/new'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/terminal'
-    | '/spaces/$slug'
-    | '/spaces/new'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive'
     | '/projects'
+    | '/services'
     | '/settings'
-    | '/spaces'
     | '/works'
+    | '/services/$slug/edit'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
-    | '/spaces/$slug/edit'
     | '/settings/spec-layout'
   id:
     | '__root__'
@@ -280,22 +280,22 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
+    | '/services/$slug'
+    | '/services/new'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
     | '/settings/terminal'
-    | '/spaces/$slug'
-    | '/spaces/new'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
+    | '/services/'
     | '/settings/'
-    | '/spaces/'
     | '/works/'
+    | '/services/$slug_/edit'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
-    | '/spaces/$slug_/edit'
     | '/settings/spec-layout/'
   fileRoutesById: FileRoutesById
 }
@@ -306,15 +306,15 @@ export interface RootRouteChildren {
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
-  SpacesSlugRoute: typeof SpacesSlugRoute
-  SpacesNewRoute: typeof SpacesNewRoute
+  ServicesSlugRoute: typeof ServicesSlugRoute
+  ServicesNewRoute: typeof ServicesNewRoute
   ThreadsIdRoute: typeof ThreadsIdRoute
   WorksSlugRoute: typeof WorksSlugRoute
   ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
-  SpacesIndexRoute: typeof SpacesIndexRoute
+  ServicesIndexRoute: typeof ServicesIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
-  SpacesSlugEditRoute: typeof SpacesSlugEditRoute
+  ServicesSlugEditRoute: typeof ServicesSlugEditRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -375,6 +375,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/services/': {
+      id: '/services/'
+      path: '/services'
+      fullPath: '/services/'
+      preLoaderRoute: typeof ServicesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services/$slug': {
+      id: '/services/$slug'
+      path: '/services/$slug'
+      fullPath: '/services/$slug'
+      preLoaderRoute: typeof ServicesSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services/new': {
+      id: '/services/new'
+      path: '/services/new'
+      fullPath: '/services/new'
+      preLoaderRoute: typeof ServicesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/': {
       id: '/settings/'
       path: '/'
@@ -410,27 +431,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsTerminalRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/spaces/': {
-      id: '/spaces/'
-      path: '/spaces'
-      fullPath: '/spaces/'
-      preLoaderRoute: typeof SpacesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/spaces/$slug': {
-      id: '/spaces/$slug'
-      path: '/spaces/$slug'
-      fullPath: '/spaces/$slug'
-      preLoaderRoute: typeof SpacesSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/spaces/new': {
-      id: '/spaces/new'
-      path: '/spaces/new'
-      fullPath: '/spaces/new'
-      preLoaderRoute: typeof SpacesNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/threads/$id': {
       id: '/threads/$id'
       path: '/threads/$id'
@@ -450,6 +450,13 @@ declare module '@tanstack/react-router' {
       path: '/works/$slug'
       fullPath: '/works/$slug'
       preLoaderRoute: typeof WorksSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/services/$slug_/edit': {
+      id: '/services/$slug_/edit'
+      path: '/services/$slug/edit'
+      fullPath: '/services/$slug/edit'
+      preLoaderRoute: typeof ServicesSlugEditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/spec-layout/': {
@@ -472,13 +479,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/spec-layout/edit'
       preLoaderRoute: typeof SettingsSpecLayoutEditRouteImport
       parentRoute: typeof SettingsSpecLayoutRoute
-    }
-    '/spaces/$slug_/edit': {
-      id: '/spaces/$slug_/edit'
-      path: '/spaces/$slug/edit'
-      fullPath: '/spaces/$slug/edit'
-      preLoaderRoute: typeof SpacesSlugEditRouteImport
-      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -525,15 +525,15 @@ const rootRouteChildren: RootRouteChildren = {
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
-  SpacesSlugRoute: SpacesSlugRoute,
-  SpacesNewRoute: SpacesNewRoute,
+  ServicesSlugRoute: ServicesSlugRoute,
+  ServicesNewRoute: ServicesNewRoute,
   ThreadsIdRoute: ThreadsIdRoute,
   WorksSlugRoute: WorksSlugRoute,
   ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
-  SpacesIndexRoute: SpacesIndexRoute,
+  ServicesIndexRoute: ServicesIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
-  SpacesSlugEditRoute: SpacesSlugEditRoute,
+  ServicesSlugEditRoute: ServicesSlugEditRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

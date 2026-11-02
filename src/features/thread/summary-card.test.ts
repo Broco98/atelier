@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ReadingScope, ScopeWhy } from "@/features/spaces/scope";
+import type { ReadingScope, ScopeWhy } from "@/features/services/scope";
 import type { ProjectChanges, ProjectPr, SpecTree } from "@/features/works/types";
 import type { DocWriting } from "./types";
 import {
@@ -297,7 +297,7 @@ describe("소스의 Project — 읽는 범위(03 §7)", () => {
   });
 
   it("Work 없는 Thread는 읽는 범위의 Project가 범위의 차례로 서고 모두 「읽기만」이다", () => {
-    expect(sourceProjects(scope(["web-app", "space"], ["api-server", "space"], ["cli", "readOnly"]), null)).toEqual([
+    expect(sourceProjects(scope(["web-app", "service"], ["api-server", "service"], ["cli", "readOnly"]), null)).toEqual([
       { project: "web-app", editing: false },
       { project: "api-server", editing: false },
       { project: "cli", editing: false },

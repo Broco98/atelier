@@ -10,7 +10,7 @@ import { workChangesKey } from "@/features/files/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
-import { useReadingScope, useSetSpace, useSpaces } from "@/features/spaces/hooks";
+import { useReadingScope, useSetService, useServices } from "@/features/services/hooks";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
 import type { NewThreadSeed } from "@/routes/-new-thread-search";
@@ -55,10 +55,10 @@ import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
-import type { ComposerTray, SpaceChoice } from "./ComposerChips";
+import type { ComposerTray, ServiceChoice } from "./ComposerChips";
 import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
-import { HeadWork, SpaceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
-import { headSpace, heldSpace, holdOf, holdPick, shownSpace, startSpace } from "./space-chip";
+import { HeadWork, ServiceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
+import { headService, heldService, holdOf, holdPick, shownService, startService } from "./service-chip";
 import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
@@ -68,14 +68,14 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 //   (`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
 // - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
 //   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · Work 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
-//   Thread에 Space가 있으면 「흐린 Space /」가 서고 누르면 그 Space 상세다(03 §10 — Space가 없으면 이름만). 오른쪽
+//   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 오른쪽
 //   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
 //   다 없다, S23). 옛 Work 알약(브랜치)은 걷었다(S14). 시안의 머리 줄 Work
 //   탭은 짓지 않는다 — Work 화면 몫이다.
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
-//   아래 28에 입력창과 트레이뿐이다. 시안의 Space 제안 줄은 짓지 않는다(03
+//   아래 28에 입력창과 트레이뿐이다. 시안의 Service 제안 줄은 짓지 않는다(03
 //   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 Work와
-//   Space를 고른다(03 §5). 고른 Space는 입력창이 쥐었다가 첫 말과 함께 간다(`space-chip.ts` — 씨앗 `?space=`가 처음 쥔다). 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을
+//   Service를 고른다(03 §5). 고른 Service는 입력창이 쥐었다가 첫 말과 함께 간다(`service-chip.ts` — 씨앗 `?service=`가 처음 쥔다). 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을
 //   이미 말한다). 처음 고를 곳은 주소 씨앗 › 기억한 스위치 쪽 › 「새 Work」다(S2 · `startLink`) — 메뉴에서 고른 스위치 쪽은 다음 새
 //   Thread를 위해 기억한다. 입력 글 씨앗(`?say=`)은 입력창에 넣기만 한다. Work 칩이 고른 것(새 Work · Work 없이 대화 · 최근 Work)을 입력창
 //   안내가 따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로
@@ -83,7 +83,7 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **트레이**(03 §5) — Thread 화면에도 선다. 입력창이 화면 아래에 붙으므로 상자 위다. Work 칩은 첫 말 뒤라 잠겨 보이기만 한다(`lockedWork`
 //   — 이은 Work 이름은 누르면 그 Work 화면, 「Work 없이 대화」, 아직 Work가 서지 않은 흐린 「새 Work」). 첫 말을 보내 Session이 열리기를
-//   기다리는 동안도 같은 잠긴 트레이가 바닥 입력창 위에 선다. Space 칩은 첫 말 뒤에도 바꾼다 — 곧바로 적혀 흐름에 Space 줄이 남는다.
+//   기다리는 동안도 같은 잠긴 트레이가 바닥 입력창 위에 선다. Service 칩은 첫 말 뒤에도 바꾼다 — 곧바로 적혀 흐름에 Service 줄이 남는다.
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
 //   §10). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
@@ -92,7 +92,7 @@ import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 선다.
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
-//   Project · Space 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
+//   Project · Service 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **말은 Runtime 이름으로 선다**(`runtimeNameOf`) — 채팅은 Runtime 세션 하나라 흐름과 카드에 얼굴도 이름 줄도 없다. 모델 칩은 채팅의
 //   값이다(§14).
@@ -132,7 +132,7 @@ function useOpenWork(): (slug: string) => void {
  * Work 묶음 머리의 + `/?new=work`는 「새 Work」, `/?new=thread`는 「Work 없이 대화」, 없으면 기억한 쪽)과 입력 글(`?say=`). 첫 말 전의 이
  * 화면에는 요약 카드도 토글도 없다(02 S23) — 첫 말을 보내 Thread가 서면(`/threads/<id>`) 나타난다.
  */
-export function NewThreadScreen({ seed = { link: null, say: null, space: null } }: { seed?: NewThreadSeed }) {
+export function NewThreadScreen({ seed = { link: null, say: null, service: null } }: { seed?: NewThreadSeed }) {
   const navigate = useNavigate();
   const router = useRouter();
   const openWork = useOpenWork();
@@ -153,14 +153,14 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
   const linked = works?.find((one) => one.slug === work);
   const title = place.title ?? linked?.title ?? null;
   const home = workHome(place.link, title);
-  // 읽을 Space(03 §5 · 티켓 06) — Space 칩이 고르고 입력창이 쥐었다가 첫 말과 함께 간다. 최근 Work를 골랐으면 칩은 그 Work의 Space를 보이고,
+  // 읽을 Service(03 §5 · 티켓 06) — Service 칩이 고르고 입력창이 쥐었다가 첫 말과 함께 간다. 최근 Work를 골랐으면 칩은 그 Work의 Service를 보이고,
   // 바꾸면 첫 말을 보낼 때 그 Work에 적는다(S4). 범위 줄은 쥔 것으로 센 범위다.
   const [hold, setHold] = useState(() => holdOf(seed));
-  const held = heldSpace(place.link, hold, linked?.space ?? null);
-  const { data: scope, isPlaceholderData } = useReadingScope({ work, space: held });
-  // 칩이 보이는 것은 쥔 것으로 센 범위의 Space다(03 코드 리뷰 P14) — 그 파일이 없으면 「Space 넣기」이고, 첫 말도 보이는 대로 간다(P6).
-  const shown = shownSpace(held, scope, !isPlaceholderData);
-  const space: SpaceChoice = {
+  const held = heldService(place.link, hold, linked?.service ?? null);
+  const { data: scope, isPlaceholderData } = useReadingScope({ work, service: held });
+  // 칩이 보이는 것은 쥔 것으로 센 범위의 Service다(03 코드 리뷰 P14) — 그 파일이 없으면 「Service 넣기」이고, 첫 말도 보이는 대로 간다(P6).
+  const shown = shownService(held, scope, !isPlaceholderData);
+  const service: ServiceChoice = {
     current: shown,
     ofWork: work !== null,
     onPick: (next) => setHold((now) => holdPick(place.link, now, next)),
@@ -169,7 +169,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「편집 자동」, 최근 Work면
   // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다.
-  const [picks, setPicks] = useState<Omit<StartPicks, "space">>({ mode: null, model: null, effort: null });
+  const [picks, setPicks] = useState<Omit<StartPicks, "service">>({ mode: null, model: null, effort: null });
   const workLevel = useWorkMode(work);
   const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel);
   const engine = useStore(threadEngineStore, (state) => state);
@@ -180,7 +180,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
     setStarting({ text, attachments });
     let id: string;
     try {
-      id = await threadApi.start(text, attachments, place.link, { ...picks, mode, space: startSpace(place.link, hold, shown) });
+      id = await threadApi.start(text, attachments, place.link, { ...picks, mode, service: startService(place.link, hold, shown) });
     } catch (error) {
       setStarting(null);
       throw error;
@@ -211,15 +211,15 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
       onNewThread={() => {}}
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
-      // 트레이는 첫 말 전에 상자 아래에서 Work · Space를 고르고, 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 상자 위에서
-      // 잠긴다(Space는 Session이 열릴 때까지 고르지 못한다).
+      // 트레이는 첫 말 전에 상자 아래에서 Work · Service를 고르고, 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 상자 위에서
+      // 잠긴다(Service는 Session이 열릴 때까지 고르지 못한다).
       tray={
         starting === null
-          ? { at: "below", work: { kind: "pick", label: home.chip, link: place.link, onPick: pick }, space }
+          ? { at: "below", work: { kind: "pick", label: home.chip, link: place.link, onPick: pick }, service }
           : {
               at: "above",
               work: { kind: "locked", locked: lockedWork(work, title, place.link.kind === "new-work"), onOpen: openWork },
-              space: { ...space, disabled: true },
+              service: { ...service, disabled: true },
             }
       }
       placeholder={home.placeholder}
@@ -236,7 +236,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
           // 첫 화면과 첫 말을 보낸 뒤가 한 틀이다 — 입력창은 같은 자리(둘째 칸)에 남아 갈아 서지 않는다. 그래야 보내기 원이 ↑에서 스피너로
           // 모핑하고(02 §9 · Screen-Live 단계 1) 입력칸이 포커스를 지킨다. 첫 칸만 물음 ↔ 보낸 말로 바뀐다.
           // - 첫 화면: 가운데 묶음 — 물음 아래 28에 입력창 · 트레이다. 아래 210을 비우고 가운데에 선다: F1-Home의 아래 88(`main{padding:0
-          //   16px 88px}`)에 짓지 않은 Space 제안 줄의 자리 122(위 22 + 줄 32 × 3 + 사이 2 × 2)를 더한 것이다 — 물음과 입력창이 시안의 그
+          //   16px 88px}`)에 짓지 않은 Service 제안 줄의 자리 122(위 22 + 줄 32 × 3 + 사이 2 × 2)를 더한 것이다 — 물음과 입력창이 시안의 그
           //   자리에 선다.
           // - 첫 말을 보낸 뒤: Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 서고, 입력창은 바닥으로 내려간다.
           <div
@@ -318,9 +318,9 @@ export function ThreadScreen({ thread }: { thread: string }) {
     },
     [cardWork, queryClient, setCardOpen],
   );
-  // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Space가 있으면 「흐린 Space /」(03 §10 — 누르면 그 Space 상세).
+  // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Service가 있으면 「흐린 Service /」(03 §10 — 누르면 그 Service 상세).
   const { data: scope } = useReadingScope({ thread });
-  const crumb = view ? headSpace(view.work, scope) : null;
+  const crumb = view ? headService(view.work, scope) : null;
   // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
   const renameName =
     view && !gone
@@ -342,7 +342,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
         cardWork ? (
           <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} />
         ) : crumb ? (
-          <SpaceCrumb name={crumb.name} onOpen={() => void navigate({ to: "/spaces/$slug", params: { slug: crumb.slug } })} />
+          <ServiceCrumb name={crumb.name} onOpen={() => void navigate({ to: "/services/$slug", params: { slug: crumb.slug } })} />
         ) : undefined
       }
       title={{ name, rename: renameName }}
@@ -520,18 +520,18 @@ function ThreadBody({
   const guide = guideKind(engine, awaitingLogin(lines));
   const { data: works } = useWorks();
   const linked = view.work ? (works?.find((one) => one.slug === view.work) ?? null) : null;
-  // 트레이(03 §5) — 상자 위에 서고 Work 칩은 잠겨 있다. 이은 Work의 제목은 목록에서 읽는다(아직 없으면 slug). Space 칩은 첫 말 뒤에도 바꾼다
-  // — 곧바로 적히고 흐름에 Space 줄이 남아 다음 말부터 새 범위다. Work에 이은 Thread면 바꾸는 것은 그 Work의 Space다(▾ — 스토리 42).
+  // 트레이(03 §5) — 상자 위에 서고 Work 칩은 잠겨 있다. 이은 Work의 제목은 목록에서 읽는다(아직 없으면 slug). Service 칩은 첫 말 뒤에도 바꾼다
+  // — 곧바로 적히고 흐름에 Service 줄이 남아 다음 말부터 새 범위다. Work에 이은 Thread면 바꾸는 것은 그 Work의 Service다(▾ — 스토리 42).
   const openWork = useOpenWork();
-  const setSpace = useSetSpace();
+  const setService = useSetService();
   const { data: scope } = useReadingScope({ thread });
   const tray: ComposerTray = {
     at: "above",
     work: { kind: "locked", locked: lockedWork(view.work, linked?.title ?? null, view.newWork === true), onOpen: openWork },
-    space: {
-      current: scope?.space ?? null,
+    service: {
+      current: scope?.service ?? null,
       ofWork: view.work !== null,
-      onPick: (space) => setSpace.mutate({ target: { thread }, space }),
+      onPick: (service) => setService.mutate({ target: { thread }, service }),
       scope,
     },
   };
@@ -585,15 +585,15 @@ function ThreadBody({
     () => ({ showChanges: onShowChanges, askFix: view.readOnly ? undefined : (pr) => fillDraft(thread, fixAsk(pr)) }),
     [onShowChanges, thread, view.readOnly],
   );
-  // 결과 카드(03 티켓 12)의 「열기」 — 대상이 그사이 사라졌는지는 지금 목록으로 본다(바깥에서 지운 것도 `projects:changed` · `spaces:changed`가 따라온다).
+  // 결과 카드(03 티켓 12)의 「열기」 — 대상이 그사이 사라졌는지는 지금 목록으로 본다(바깥에서 지운 것도 `projects:changed` · `services:changed`가 따라온다).
   const { data: projects } = useProjects();
-  const { data: spaces } = useSpaces();
+  const { data: services } = useServices();
   const resultActions = useMemo<ResultActions>(
     () => ({
-      listed: (target) => (target === "project" ? projects : spaces)?.map((one) => one.slug) ?? null,
+      listed: (target) => (target === "project" ? projects : services)?.map((one) => one.slug) ?? null,
       open: (to) => void navigate(to),
     }),
-    [projects, spaces, navigate],
+    [projects, services, navigate],
   );
 
   // 카드 맨 아래 「다음 · …」 줄 — 다음 차례가 없으면 비운다(승인 카드 · Work 만들기 카드가 같은 줄을 쓴다).

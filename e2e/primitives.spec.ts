@@ -215,13 +215,13 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
 // 상자만 잰다. 넘침을 자르는 상자(구르는 목록 · 접히는 구획 · 가로로 구르는 탭 줄)의 끝에 붙어 선 것은 그 변의 링이 통째로
 // 사라진다 — 한 자리를 고쳐도 옆 화면의 같은 모양이 남았다(셸 탭 줄 · 사이드바 구획 · 프로젝트 · 아카이브 목록의 첫 행 ·
 // 아카이브 문서 트리 · 편집기 트리). 굴러서 상자 밖으로 나간 것과 접힌 구획 안의 것은 세지 않는다(`잘린링`). 03이 세운 Projects ·
-// Space의 목록 · 상세도 같은 상자 안에 선다(표의 이름 · ⋯, 레일의 칸).
+// Service의 목록 · 상세도 같은 상자 안에 선다(표의 이름 · ⋯, 레일의 칸).
 test("링을 다는 것은 어느 화면에서도 넘침을 자르는 상자에 링이 잘리지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   const 화면들: [string, Locator][] = [
     ["/projects", page.getByRole("table", { name: "Project 목록", exact: true })],
     [`/projects/${project.slug}`, page.getByRole("complementary", { name: "Project 정보", exact: true })],
-    ["/spaces", page.getByRole("table", { name: "Space 목록", exact: true })],
+    ["/services", page.getByRole("table", { name: "Service 목록", exact: true })],
     [`/archive/${ARCHIVE[0].slug}`, page.getByRole("heading", { name: "기록 — 치운 일" })],
     ["/processes", processesTitle(page)],
     ["/settings/terminal", page.getByRole("textbox", { name: "터미널 글꼴", exact: true })],

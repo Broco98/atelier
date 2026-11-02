@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { blankedSources, type Source } from "@/blank-comments";
 
 // **메뉴 카드의 폭은 쓰는 자리가 `className`으로 덮지 않고 `dropdown-menu.tsx`의 폭 표(`CARD_WIDTH`)에서 고른다**(그 파일 「카드 폭」
-// 머리말 · 03 코드 리뷰 A4). 03 화면 일곱 곳이 `w-44` · `w-70` · `w-77` …로 덮었고, 그 가운데 하나(새 Space 메뉴)는 `width="note"` 뒤에
+// 머리말 · 03 코드 리뷰 A4). 03 화면 일곱 곳이 `w-44` · `w-70` · `w-77` …로 덮었고, 그 가운데 하나(새 Service 메뉴)는 `width="note"` 뒤에
 // `w-77`을 두어 `note`의 뜻(내용 폭 · 300에서)을 지웠다. 빌드도 타입 검사도 조용하고 화면은 「조금 다른 폭」으로만 남아, 같은 뜻의
 // 메뉴가 자리마다 다른 폭으로 갈린다. 그래서 메뉴 카드를 여는 태그의 `className`에 폭 유틸리티가 서면 빨갛다 — 맞는 폭이 없으면 표에
 // 갈래를 더한다.

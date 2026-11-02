@@ -113,10 +113,10 @@ fn scope_note(host: &Host) -> String {
 /// 안내대로 쳤는데 다른 것이 등록된다.
 fn print_manual_line(host: &Host, exe: &Path) {
     let scope = scope_args(host).join(" ");
-    let space = if scope.is_empty() { "" } else { " " };
+    let service = if scope.is_empty() { "" } else { " " };
     println!();
     println!(
-        "  {} mcp add{space}{scope} {SERVER_NAME} -- {} mcp",
+        "  {} mcp add{service}{scope} {SERVER_NAME} -- {} mcp",
         host.cli,
         exe.display()
     );

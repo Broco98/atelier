@@ -9,7 +9,7 @@
 //! - Runtime에게 가는 말은 머리말(Session의 첫 말) + 지난 말(새로 선 Session의 첫 말) + 본문이다(S10). 지난 말은 보내는 그때 기록에서
 //!   짓는다(`past`).
 //! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다). 함께 여는 폴더는
-//!   읽는 범위다(03 구현 스펙 §7 — Space가 있으면 그 Project, 없으면 등록된 Project 전부, [`space`]).
+//!   읽는 범위다(03 구현 스펙 §7 — Service가 있으면 그 Project, 없으면 등록된 Project 전부, [`service`]).
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
 //! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 three-axes
 //!   대화 호스트의 길 그대로다.
@@ -37,14 +37,14 @@ mod project;
 mod read_only;
 mod seat;
 mod setting;
-mod space;
+mod service;
 mod tool_lines;
 mod work;
 mod writing;
 
 pub use project::ProjectChoice;
 pub use setting::ProjectAddChoice;
-pub use space::SpaceChoice;
+pub use service::ServiceChoice;
 pub(super) use read_only::VanishWatch;
 pub use work::WorkChoice;
 pub use writing::DocWriting;
@@ -76,7 +76,7 @@ use tool_lines::ToolLines;
 const TITLE_LIMIT: usize = 40;
 /// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
-/// 머리말의 첫 줄 — 기록에서 머리말 블록을 알아본다([`space::heard_space`]).
+/// 머리말의 첫 줄 — 기록에서 머리말 블록을 알아본다([`service::heard_service`]).
 const PREAMBLE_HEAD: &str = "Atelier Thread 안에서 열린 Session이다.";
 /// 입력창 Work 칩에서 「새 Work로 시작」을 고른 Thread의 첫 머리말 끝 줄(v1 티켓 31 · §11) — 받은 Agent가 Work부터 만든다.
 const NEW_WORK_NOTE: &str = "- 사람이 「새 Work로 시작」을 골랐다 — 먼저 `propose_work`로 Work 만들기를 제안하라. 고칠 Project가 \
@@ -105,16 +105,16 @@ pub struct StartPicks {
     pub model: Option<String>,
     /// 첫 Session의 생각 깊이 — 채팅의 값으로 선다. claude `--effort`가 받는 값만 받는다.
     pub effort: Option<String>,
-    /// 트레이 Space 칩에서 고른 Space(03 §5 · 티켓 06) — 첫 말이 그 범위로 시작하고 Space 줄은 남기지 않는다. Work 없는 Thread면
-    /// `thread.json`의 `space`로 서고, 이은 Work면 다를 때 그 Work의 Space가 된다(S4 — 그 Work의 다른 Thread에는 Space 줄이 선다). 고르지
-    /// 않았으면 `None`이다 — 이은 Work의 Space를 건드리지 않는다.
-    pub space: Option<SpacePick>,
+    /// 트레이 Service 칩에서 고른 Service(03 §5 · 티켓 06) — 첫 말이 그 범위로 시작하고 Service 줄은 남기지 않는다. Work 없는 Thread면
+    /// `thread.json`의 `service`로 서고, 이은 Work면 다를 때 그 Work의 Service가 된다(S4 — 그 Work의 다른 Thread에는 Service 줄이 선다). 고르지
+    /// 않았으면 `None`이다 — 이은 Work의 Service를 건드리지 않는다.
+    pub service: Option<ServicePick>,
 }
 
-/// Space 칩에서 고른 것 — `slug`가 `None`이면 「Space 없음」을 고른 것이다. 「고르지 않음」(`StartPicks::space`의 `None`)과 갈라야 해서
+/// Service 칩에서 고른 것 — `slug`가 `None`이면 「Service 없음」을 고른 것이다. 「고르지 않음」(`StartPicks::service`의 `None`)과 갈라야 해서
 /// 칸 하나를 싼다 — IPC의 `null`과 빠진 칸은 둘 다 `None`으로 읽힌다.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-pub struct SpacePick {
+pub struct ServicePick {
     pub slug: Option<String>,
 }
 
@@ -359,7 +359,7 @@ impl ConversationHost {
 
     /// 입력창 칩에서 고른 것과 함께 새 Thread — [`Self::start_thread_asking`]과 같고, 첫 말 전에 고른 모델 · 생각 깊이(v1 티켓 31 ·
     /// 스토리 33)가 채팅의 값으로 서서 첫 Session이 그 값(`--model` · `--effort`)으로 뜬다. claude가 받지 않는 생각 깊이면 아무것도
-    /// 세우지 않고 거절한다. 트레이 Space 칩에서 고른 Space(03 §5)는 첫 말의 범위다 — 없는 Space면 아무것도 세우지 않고 거절한다.
+    /// 세우지 않고 거절한다. 트레이 Service 칩에서 고른 Service(03 §5)는 첫 말의 범위다 — 없는 Service면 아무것도 세우지 않고 거절한다.
     pub fn start_thread_picking(
         &self,
         text: &str,
@@ -370,8 +370,8 @@ impl ConversationHost {
         if let Some(effort) = picks.effort.as_deref().filter(|effort| !EFFORTS.contains(effort)) {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
-        let space = picks.space.as_ref().map(|pick| pick.slug.as_deref());
-        self.require_space(space.flatten())?;
+        let service = picks.service.as_ref().map(|pick| pick.slug.as_deref());
+        self.require_service(service.flatten())?;
         let attachments = attachments_of(attachments)?;
         let new_work = link == ThreadLink::NewWork;
         let note = new_work.then_some(NEW_WORK_NOTE);
@@ -386,18 +386,18 @@ impl ConversationHost {
         find_programs(Agent::Claude, &env)?;
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
-        // 고른 Space — Work 없는 Thread는 제 파일에, 이은 Work는 그 Work에 적는다(S4). Work의 것은 Thread를 세우기 전에 바꾼다 — 새 Thread는
-        // 그 범위로 시작하므로 Space 줄이 없고, 그 Work의 다른 Thread에만 선다(S9).
-        if let (Some(slug), Some(space)) = (&work, space) {
-            self.set_work_space(slug, space)?;
+        // 고른 Service — Work 없는 Thread는 제 파일에, 이은 Work는 그 Work에 적는다(S4). Work의 것은 Thread를 세우기 전에 바꾼다 — 새 Thread는
+        // 그 범위로 시작하므로 Service 줄이 없고, 그 Work의 다른 Thread에만 선다(S9).
+        if let (Some(slug), Some(service)) = (&work, service) {
+            self.set_work_service(slug, service)?;
         }
-        let space = space.flatten().filter(|_| work.is_none()).map(str::to_owned);
+        let service = service.flatten().filter(|_| work.is_none()).map(str::to_owned);
         let new = NewThread {
             title: title_of(text),
             work: work.clone(),
             mode,
             new_work,
-            space,
+            service,
             model: picks.model,
             effort: picks.effort,
         };
@@ -819,12 +819,12 @@ impl ConversationHost {
             Ok(Call::GetWork) => self.get_work_tool(thread),
             Ok(Call::ProposeWork(proposal)) => self.propose_work(thread, proposal),
             Ok(Call::StartEditing { project, reason }) => self.start_editing(thread, &project, reason.as_deref()),
-            Ok(Call::ListSpaces) => self.list_spaces_tool(thread),
-            Ok(Call::SetSpace(ask)) => self.set_space_tool(thread, ask),
+            Ok(Call::ListServices) => self.list_services_tool(thread),
+            Ok(Call::SetService(ask)) => self.set_service_tool(thread, ask),
             Ok(Call::AddProject(ask)) => self.add_project_tool(thread, ask),
             Ok(Call::EditProject(edit)) => self.edit_project_tool(thread, edit),
-            Ok(Call::CreateSpace(new)) => self.create_space_tool(thread, new),
-            Ok(Call::EditSpace(edit)) => self.edit_space_tool(thread, edit),
+            Ok(Call::CreateService(new)) => self.create_service_tool(thread, new),
+            Ok(Call::EditService(edit)) => self.edit_service_tool(thread, edit),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -872,7 +872,7 @@ impl ConversationHost {
     /// Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
     /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다). 인용(`quote`, v1 티켓 35)과 머리말 끝의 한 줄(`note`)을
     /// 함께 받는다 — 새 Thread의 첫 말이 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그
-    /// 줄도 그때만 간다. 이은 Space의 파일이 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_space`]).
+    /// 줄도 그때만 간다. 이은 Service의 파일이 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_service`]).
     fn say_noting(
         &self,
         thread: &str,
@@ -881,7 +881,7 @@ impl ConversationHost {
         attachments: Vec<Attachment>,
         note: Option<&str>,
     ) -> Result<(), HostError> {
-        self.close_lost_space(thread)?;
+        self.close_lost_service(thread)?;
         if !self.session_running(thread) && self.logins.waiting_for(thread).is_none() {
             self.revive_session(thread, Revive::IfNotRunning)?;
         } else {
@@ -1018,8 +1018,8 @@ impl ConversationHost {
         let needs_preamble = opened.how.starts_session() || !heard_since_session_start(&heard) || moved(file, &place);
         {
             let mut state = conv.lock_state();
-            // 이어 연 Session이 앞서 들은 Space — 그사이 Space가 바뀌었으면(앱을 끈 동안 고친 파일도) 다음 말에 머리말이 다시 간다.
-            state.order.opened(needs_preamble, space::heard_space(&heard));
+            // 이어 연 Session이 앞서 들은 Service — 그사이 Service가 바뀌었으면(앱을 끈 동안 고친 파일도) 다음 말에 머리말이 다시 간다.
+            state.order.opened(needs_preamble, service::heard_service(&heard));
             state.turns = agent.turns();
         }
         // 기록의 자리를 알려고 cwd를 쓰지 않는다 — Runtime은 Session id만으로 이어 연다(S11). 그래서 지금 작업 폴더를 적는다.
@@ -1077,12 +1077,12 @@ impl ConversationHost {
     /// | worktree 하나 | 그 worktree | spec 폴더 + 읽는 범위 |
     /// | worktree 여럿 | `trees/` | spec 폴더 + 읽는 범위 |
     ///
-    /// - **읽는 범위는 함수 하나다**([`atelier_core::reading_scope`] — §7 규칙 1–4). Space가 있으면 그 Space의 Project, 없으면 등록된 Project
+    /// - **읽는 범위는 함수 하나다**([`atelier_core::reading_scope`] — §7 규칙 1–4). Service가 있으면 그 Service의 Project, 없으면 등록된 Project
     ///   전부, 그리고 worktree가 아직 없는 Work의 Project와 Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project(S22)다. worktree가 선
     ///   Project와 폴더가 사라진 Project는 빠진다. Work 없는 Thread가 Work를 제안하기 전에 어느 Project의 일인지 보려고 저장소를 읽던 것(끝
     ///   점검 39(a))이 Work 안에서도 같다 — 옆 저장소를 카드 없이 읽는다(`F4-WorkNoSpace`).
     /// - **읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 · Thread 폴더). 범위가
-    ///   바뀌면(Space · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]).
+    ///   바뀌면(Service · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]).
     fn thread_place(&self, thread: &str, file: &ThreadFile) -> Result<SessionPlace, HostError> {
         let (mut place, work) = match &file.work {
             None => {
@@ -1109,8 +1109,8 @@ impl ConversationHost {
     }
 
     /// 머리말(v1 구현 스펙 S10) — Runtime이 어디서 일하는지를 말한다. Thread id · 제목, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
-    /// worktree 또는 「읽기만」 · 브랜치), 읽는 범위의 「- Space:」 줄(03 §11), Work면 spec 배치다. 앱 기능 도구의 쓰임은 말하지 않는다 —
-    /// 도구 설명이 말한다. Session의 첫 말과 새로 연 뒤의 첫 말, 그리고 Session이 들은 것과 Space 줄이 다른 말에 따로 된 텍스트 블록으로
+    /// worktree 또는 「읽기만」 · 브랜치), 읽는 범위의 「- Service:」 줄(03 §11), Work면 spec 배치다. 앱 기능 도구의 쓰임은 말하지 않는다 —
+    /// 도구 설명이 말한다. Session의 첫 말과 새로 연 뒤의 첫 말, 그리고 Session이 들은 것과 Service 줄이 다른 말에 따로 된 텍스트 블록으로
     /// 붙는다. 화면은 그리지 않고 `sent` 줄의 `prompt`에만 남는다. `note`는 자리 줄 끝에 붙는 한 줄이다(「새 Work로 시작」).
     fn thread_preamble(&self, thread: &str, note: Option<&str>) -> Result<Preamble, HostError> {
         let file = self.read_thread_file(thread)?;
@@ -1136,16 +1136,16 @@ impl ConversationHost {
             },
         };
         // 읽는 범위(03 §7 · §11) — Work 줄 뒤의 따로 선 한 줄이다. Work 줄의 꼴은 바꾸지 않는다(화면 L3가 그 줄을 읽는다).
-        let space = space::space_preamble(&self.scope_of(&file, work.as_ref()));
-        text.push_str(&space);
+        let service = service::service_preamble(&self.scope_of(&file, work.as_ref()));
+        text.push_str(&service);
         if let Some(note) = note {
             text.push_str(note);
         }
-        // 배치 글은 사람이 고칠 수 있으니 「- Space:」 줄 뒤에 둔다 — 기록에서 그 줄을 읽는 쪽이 먼저 만나는 것이 진짜 Space 줄이다.
+        // 배치 글은 사람이 고칠 수 있으니 「- Service:」 줄 뒤에 둔다 — 기록에서 그 줄을 읽는 쪽이 먼저 만나는 것이 진짜 Service 줄이다.
         if work.is_some() {
             text.push_str(&format!("\n{}\n", self.spec_layout()));
         }
-        Ok(Preamble { block: json!({"type": "text", "text": text}), space })
+        Ok(Preamble { block: json!({"type": "text", "text": text}), service })
     }
 
     fn read_thread_file(&self, thread: &str) -> Result<ThreadFile, HostError> {

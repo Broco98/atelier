@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, ARCHIVE, FIXTURE_THREAD, PROJECTS, SPACES, summaryWith as 요약, WORKS } from "./fixtures";
+import { answerByArg, ARCHIVE, FIXTURE_THREAD, PROJECTS, SERVICES, summaryWith as 요약, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
@@ -93,7 +93,7 @@ const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown
     ready: (page) => page.getByRole("complementary", { name: "Project 정보", exact: true }),
     head: true,
   },
-  { name: "Space", url: "/spaces", ready: (page) => page.getByRole("table", { name: "Space 목록", exact: true }), head: true },
+  { name: "Service", url: "/services", ready: (page) => page.getByRole("table", { name: "Service 목록", exact: true }), head: true },
   { name: "Terminal", url: "/terminal", ready: (page) => page.locator(".xterm-screen"), head: true },
   { name: "Processes", url: "/processes", ready: (page) => page.getByRole("heading", { name: "Processes", exact: true }), head: true },
   {
@@ -519,9 +519,9 @@ test("Work가 없으면 Work 묶음 머리 아래에 안내 한 줄이 12 · 3�
 // 사람 줄 오른쪽에 늘 섰다(프로세스 결정 11). 사람 줄의 이름은 그대로다(메타가 이름에 안 섞인다). 합계 글자는 화면이 쓰는 표기 함수로
 // 짓는다 — 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다. `●`(손볼 것)는 `processes-nav-meta.spec.ts`가 잰다.
 //
-// **03 판이 `Space` 줄을 `Projects` 다음에 더했다**(03 구현 스펙 §4 · 스토리 7 · 8 · 9) — `Projects` · `Space` 끝에는 그 수(등록된 Project 수 ·
-// Space 수)가 옅게 서고, 지금 선 화면의 줄은 골라져 보인다(고른 면 `fill-nav-selected` · 글자 `fg` — 포인터가 가리킨 줄과 같은 면이다).
-test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드바 줄의 결이며 — Processes 줄 끝에 앱 전체 메모리 합계, Projects · Space 끝에 수가 서고 지금 화면의 줄이 골라져 있다", async ({
+// **03 판이 `Service` 줄을 `Projects` 다음에 더했다**(03 구현 스펙 §4 · 스토리 7 · 8 · 9) — `Projects` · `Service` 끝에는 그 수(등록된 Project 수 ·
+// Service 수)가 옅게 서고, 지금 선 화면의 줄은 골라져 보인다(고른 면 `fill-nav-selected` · 글자 `fg` — 포인터가 가리킨 줄과 같은 면이다).
+test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드바 줄의 결이며 — Processes 줄 끝에 앱 전체 메모리 합계, Projects · Service 끝에 수가 서고 지금 화면의 줄이 골라져 있다", async ({
   page,
 }) => {
   const summary = 요약({ total: 1_234_567_890 });
@@ -536,13 +536,13 @@ test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드
 
   await 사람줄(page).click();
   const menu = page.getByRole("menu");
-  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Space/, /^Terminal/, /^Processes/, /^Archive$/, /^Settings/]);
+  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Service/, /^Terminal/, /^Processes/, /^Archive$/, /^Settings/]);
   await expect(사람메뉴항목(page).filter({ hasText: /^Processes/ })).toContainText(total);
-  // 수 — 등록된 Project 수 · Space 수(픽스처의 둘 · 둘), 옅은 12 `fg-tertiary`.
+  // 수 — 등록된 Project 수 · Service 수(픽스처의 둘 · 둘), 옅은 12 `fg-tertiary`.
   const 끝수 = (label: string) => 사람메뉴항목(page).filter({ hasText: new RegExp(`^${label}`) }).locator("span.tabular-nums");
   await expect(끝수("Projects")).toHaveText(String(PROJECTS.length));
-  await expect(끝수("Space")).toHaveText(String(SPACES.length));
-  expect(await 칠한값(끝수("Space"), "font-size", "color"), "끝 수 글자").toEqual(["12px", await 토큰색(page, "--fg-tertiary")]);
+  await expect(끝수("Service")).toHaveText(String(SERVICES.length));
+  expect(await 칠한값(끝수("Service"), "font-size", "color"), "끝 수 글자").toEqual(["12px", await 토큰색(page, "--fg-tertiary")]);
 
   // 자리 — 사람 줄과 같은 폭, 그 위 6.
   const [foot, card] = [await boxOf(사람줄(page)), await boxOf(menu)];
@@ -569,17 +569,17 @@ test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드
   await expect(사람메뉴항목(page).first()).toHaveAttribute("aria-current", "page");
   expect(await 칠한값(사람메뉴항목(page).first(), "background-color", "color"), "지금 줄 — Projects").toEqual(고른줄);
   // 켜진 줄 — 포인터가 가리킨 줄도 같은 고른 면 · `fg` 글자다.
-  const space줄 = 사람메뉴항목(page).nth(1);
-  await space줄.hover();
-  await expect.poll(() => 칠한값(space줄, "background-color", "color")).toEqual(고른줄);
+  const service줄 = 사람메뉴항목(page).nth(1);
+  await service줄.hover();
+  await expect.poll(() => 칠한값(service줄, "background-color", "color")).toEqual(고른줄);
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
 
-  // Space 화면에서 열면 「Space」 줄이 지금 줄이다(스토리 9).
-  await page.goto("/spaces");
-  await expect(page.getByRole("table", { name: "Space 목록", exact: true })).toBeVisible();
+  // Service 화면에서 열면 「Service」 줄이 지금 줄이다(스토리 9).
+  await page.goto("/services");
+  await expect(page.getByRole("table", { name: "Service 목록", exact: true })).toBeVisible();
   await 사람줄(page).click();
-  await expect(menu.locator('[aria-current="page"]')).toHaveText(/^Space/);
+  await expect(menu.locator('[aria-current="page"]')).toHaveText(/^Service/);
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -592,7 +592,7 @@ test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드
 // 것의 아이콘과 이름(과 그 안의 위치)이고, 오른쪽 끝은 그 화면의 머리 조작이다. 캔버스에만 있던 조작(Projects 「LLM이 받는 텍스트」 ·
 // Processes 「새로 고침」 · 「고아 정리」 · Archive 「되살리기」)은 짓지 않았다(codex-ds 스펙 S13 · 결정 31). 조작은 역할 · 이름으로 집고, 모두
 // 28로(아이콘 단추 · 글자 단추 — Thread 머리 줄과 한 벌, 02 티켓 03b) 머리 줄 가운데에 선다. 본문 칸에 고를 것이 남지 않은 화면은 본문 칸에
-// 머리가 없다. 작업 화면의 머리 줄은 `frame.spec.ts`가 잰다. Projects는 03 판에서 이 표를 떠났다 — 아래 「Projects · Space」 시험.
+// 머리가 없다. 작업 화면의 머리 줄은 `frame.spec.ts`가 잰다. Projects는 03 판에서 이 표를 떠났다 — 아래 「Projects · Service」 시험.
 const HEAD_SCREENS: {
   name: string;
   url: string;
@@ -742,18 +742,18 @@ for (const screen of HEAD_SCREENS) {
   });
 }
 
-// **Projects · Space 화면의 머리 줄은 Thread 화면들과 한 결이다**(03 구현 스펙 §14 · §16 · 캔버스 F1-Projects · F1-ProjectDetail · F1-Spaces ·
-// F1-SpaceDetail) — 아이콘 없이 14/500 이름 하나이고, 상세는 이름 앞에 목록으로 가는 「Projects /」 · 「Space /」가 선다. 머리 줄에 할 일이 없다
-// — 목록의 「Project 추가」 · 「새 Space」와 상세의 할 일은 본문 맨 위 줄에 선다. 한때 Projects는 위 표의 한 칸이었다(폴더 아이콘 · 「폴더 열기」 ·
-// 「제거」). 그 안의 칸 · 단추는 Projects · Space 흐름 spec이 잰다.
+// **Projects · Service 화면의 머리 줄은 Thread 화면들과 한 결이다**(03 구현 스펙 §14 · §16 · 캔버스 F1-Projects · F1-ProjectDetail · F1-Spaces ·
+// F1-SpaceDetail) — 아이콘 없이 14/500 이름 하나이고, 상세는 이름 앞에 목록으로 가는 「Projects /」 · 「Service /」가 선다. 머리 줄에 할 일이 없다
+// — 목록의 「Project 추가」 · 「새 Service」와 상세의 할 일은 본문 맨 위 줄에 선다. 한때 Projects는 위 표의 한 칸이었다(폴더 아이콘 · 「폴더 열기」 ·
+// 「제거」). 그 안의 칸 · 단추는 Projects · Service 흐름 spec이 잰다.
 const PLACE_HEADS: { url: string; main: string; words: string[]; crumb?: string }[] = [
   { url: "/projects", main: "Projects", words: ["Projects"] },
   { url: `/projects/${PROJECTS[0].slug}`, main: "Projects 상세", words: ["Projects", "/", PROJECTS[0].name], crumb: "Projects" },
-  { url: "/spaces", main: "Space", words: ["Space"] },
-  { url: `/spaces/${encodeURIComponent(SPACES[0].slug)}`, main: "Space 상세", words: ["Space", "/", SPACES[0].name], crumb: "Space" },
+  { url: "/services", main: "Service", words: ["Service"] },
+  { url: `/services/${encodeURIComponent(SERVICES[0].slug)}`, main: "Service 상세", words: ["Service", "/", SERVICES[0].name], crumb: "Service" },
 ];
 
-test("Projects · Space 목록과 상세: 머리 줄에 아이콘 없는 이름이 서고, 상세는 목록으로 가는 이름 앞이 서며 할 일이 없다", async ({ page }) => {
+test("Projects · Service 목록과 상세: 머리 줄에 아이콘 없는 이름이 서고, 상세는 목록으로 가는 이름 앞이 서며 할 일이 없다", async ({ page }) => {
   await installFixtureBackend(page);
   for (const screen of PLACE_HEADS) {
     await page.goto(screen.url);

@@ -48,11 +48,11 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   await expect(정도칩(page, "편집은 허용")).toBeVisible();
   expect(await ipcCallArgs(page, "thread_set_mode", "thread")).toEqual([]);
 
-  // 첫 말 — 고른 정도가 함께 간다. 고르지 않은 모델 · 생각 깊이 · Space는 `null`이다.
+  // 첫 말 — 고른 정도가 함께 간다. 고르지 않은 모델 · 생각 깊이 · Service는 `null`이다.
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: first.text, attachments: [], link: { kind: "new-work" }, mode: "edits", model: null, effort: null, space: null },
+    { text: first.text, attachments: [], link: { kind: "new-work" }, mode: "edits", model: null, effort: null, service: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   await expect(정도칩(page, "편집은 허용")).toBeVisible();
