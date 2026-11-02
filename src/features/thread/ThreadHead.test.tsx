@@ -6,7 +6,7 @@ import { SummaryToggle, ThreadMenu, ThreadMenuItems, WorkCrumb } from "./ThreadH
 
 // Thread 화면의 머리 줄(02 구현 스펙 §6 · S13 · S15 · 캔버스 v35 Screen-Live 머리 줄) — 왼쪽에 (이은 Work면 「폴더 · 작업공간 이름 ›」) ·
 // Thread 이름과 그 바로 뒤 「…」, 오른쪽 끝에 요약 단추(「요약 카드」)가 선다(restart 02a-7 — 자리는 `ThreadScreen.test.tsx`). 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
-// 눌림(`aria-pressed`)과 메뉴의 항목이다. 자리 · 색(14/500 · #898a8b · 켜진 면 #ebebec)은 시안 비교와 L3가 본다.
+// 눌림(`aria-pressed`)과 메뉴의 항목이다. 자리 · 색(14/500 · #898a8b)은 시안 비교와 L3가 본다.
 
 const none = () => {};
 
@@ -60,6 +60,16 @@ describe("요약 단추", () => {
     const off = renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />);
     expect(on).toMatch(/^<button[^>]*aria-label="요약 카드"[^>]*aria-pressed="true"/);
     expect(off).toMatch(/^<button[^>]*aria-label="요약 카드"[^>]*aria-pressed="false"/);
+  });
+
+  // 켜진 면은 시안 머리 줄 단추의 눌림(`.ra-tbtn[aria-pressed="true"]` — `fill-selected`, 라이트 #eff0f0 · 다크 흰 .08)이다. 한때 02 실측
+  // `fill-toggle-on`(#ebebec)이었는데 다크 값이 없어 다크에서 흰 네모로 떴다(restart 02b-8b).
+  it("켜지면 면이 시안의 고른 면(`fill-selected`)이고 글리프가 `fg`다 — 꺼지면 면이 없다", () => {
+    const on = renderToStaticMarkup(<SummaryToggle open onToggle={none} />);
+    const off = renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />);
+    expect(on).toMatch(/^<button[^>]*class="[^"]*(?<![\w-])bg-fill-selected(?![\w-])[^"]*(?<![\w-])text-fg(?![\w-])/);
+    expect(on).not.toContain("fill-toggle-on");
+    expect(off).not.toMatch(/^<button[^>]*class="[^"]*(?<![\w-])bg-fill-/);
   });
 
   // 02 코드 리뷰 C1 — 맨 버튼이라 Tab 정류장임을 `tabindex`로 명시한다. macOS WebKit(앱의 WKWebView)의 Tab은 `tabindex` 없는 맨 `<button>`에
