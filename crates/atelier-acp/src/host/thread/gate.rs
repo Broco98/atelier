@@ -2,8 +2,8 @@
 //! · 구현 스펙 §9).
 //!
 //! - **요청을 받은 그때 읽는다** — 물어보는 정도와 「다시 묻지 않기」 허락(S18: Work에 이은 Thread면 Work 폴더의 점 파일, 아니면
-//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 선 worktree · spec 폴더 · Thread 폴더 — Atelier만 쓰는
-//!   Thread 파일은 빼고, 코드 리뷰 1차 A2), 등록된 Project,
+//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 선 worktree · spec 폴더 · Thread 폴더의 `work/` —
+//!   Atelier만 쓰는 Thread 파일은 그 밖이다, 코드 리뷰 1차 A2 · restart 스펙 「01c — Codex」 작업 폴더), 등록된 Project,
 //!   쓰기 자리 주인(§10). 칩이 바꾼 정도 · 카드가 준 허락 · 「Project 고치기 시작」이 세운 worktree(v1 티켓 32)가 다음 요청부터 든다.
 //!   자리 · Project는 편집일 때만 읽는다. Atelier만 쓰는 Thread 파일은 명령일 때도 읽는다 — 명령 글에 나오면 묻는다(코드 리뷰 2차 A3).
 //! - **아직 서지 않은 worktree의 자리는 고칠 수 있는 자리가 아니다**(S21 · v1 티켓 32) — 그 자리에 먼저 쓰면 git worktree가 아닌 폴더가
@@ -112,9 +112,10 @@ impl Gate {
         Judgement::Ask(asking)
     }
 
-    /// 고칠 수 있는 자리 — Thread 폴더, 그리고 이은 Work의 spec 폴더와 선 worktree들. Work를 읽지 못하면(사라졌다) Thread 폴더뿐이다.
+    /// 고칠 수 있는 자리 — Thread 폴더의 `work/`, 그리고 이은 Work의 spec 폴더와 선 worktree들. Work를 읽지 못하면(사라졌다) `work/`
+    /// 뿐이다. Thread 폴더의 나머지는 고칠 수 없다(restart 스펙 「01c — Codex」 작업 폴더).
     fn roots(&self, work: Option<&str>) -> Vec<PathBuf> {
-        let mut roots: Vec<PathBuf> = atelier_core::thread_dir(&self.data_root, &self.thread).into_iter().collect();
+        let mut roots: Vec<PathBuf> = atelier_core::thread_work_dir(&self.data_root, &self.thread).into_iter().collect();
         if let Some(slug) = work {
             let works = atelier_core::works_in(&self.data_root);
             if let Ok(meta) = atelier_core::read_work(&works, slug) {
@@ -126,7 +127,7 @@ impl Gate {
         roots.iter().map(|root| resolve(root, &self.cwd)).collect()
     }
 
-    /// 고칠 수 있는 자리 안이어도 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더(코드 리뷰 1차 A2).
+    /// 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더(코드 리뷰 1차 A2). 편집은 기록이라고 거절하고 명령 글에 나오면 묻는다.
     fn kept(&self) -> Vec<PathBuf> {
         let dir = atelier_core::thread_dir(&self.data_root, &self.thread).into_iter();
         dir.flat_map(|dir| atelier_core::thread_kept(&dir)).map(|path| resolve(&path, &self.cwd)).collect()

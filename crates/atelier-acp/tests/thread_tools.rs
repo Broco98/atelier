@@ -114,7 +114,10 @@ fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명
     host.shut_down();
 
     let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
-    assert!(preamble.contains("\n- Work: 없음 — 이 Thread 폴더에서 일한다: `"), "Work 줄의 꼴은 그대로다(L3 `workTitleOf`):\n{preamble}");
+    assert!(
+        preamble.contains("\n- Work: 없음 — 이 Thread 폴더의 `work/`에서 일한다: `"),
+        "Work 줄은 「- Work:」로 서고 작업 폴더 `work/`를 말한다(L3 `workTitleOf`):\n{preamble}"
+    );
     assert!(preamble.lines().any(|line| line.starts_with("- Service:")), "{preamble}");
     assert!(!preamble.contains("Spec layout"), "Work 없는 채팅에는 spec 배치가 없다:\n{preamble}");
     for name in [

@@ -259,7 +259,7 @@ impl ConversationHost {
         };
         let Some(slug) = file.work else {
             return thread_tools::said(
-                "이 Thread는 아직 Work에 이어지지 않았다 — Thread 폴더에서 일한다. 일이 커지면 propose_work로 Work를 제안한다.",
+                "이 Thread는 아직 Work에 이어지지 않았다 — Thread 폴더의 `work/`에서 일한다. 일이 커지면 propose_work로 Work를 제안한다.",
                 false,
             );
         };

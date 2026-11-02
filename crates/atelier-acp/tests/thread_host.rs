@@ -93,7 +93,10 @@ fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thre
         (json!("claude-code"), json!("sonnet"), json!("high")),
         "Runtime · 모델 · 생각 깊이가 채팅의 값이다 — 모델 · 생각 깊이는 칩에서 고른 값이다"
     );
-    assert!(same_dir(Path::new(file["cwd"].as_str().expect("cwd")), &dir), "Work 없는 Thread의 cwd는 Thread 폴더다(S11)");
+    // Codex는 작업 폴더 안을 묻지 않고 쓴다 — 작업 폴더를 Thread 폴더 안 `work/`로 옮겨 기록 파일과 뗀다(스펙 「01c — Codex」 작업 폴더).
+    let work = dir.join("work");
+    assert!(work.is_dir(), "Session을 열 때 `work/`가 선다");
+    assert!(same_dir(Path::new(file["cwd"].as_str().expect("cwd")), &work), "Work 없는 Thread의 cwd는 Thread 폴더의 `work/`다");
 
     assert!(!dir.join("agents").exists(), "앱이 지시문 파일을 두지 않는다");
 
@@ -105,7 +108,7 @@ fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thre
     assert!(!args.iter().any(|arg| arg.contains("system-prompt")), "앱이 시스템 프롬프트를 덧붙이지 않는다: {args:?}");
     assert!(has_pair(&args, "--model", "sonnet") && has_pair(&args, "--effort", "high"), "영수증에 모델 · 생각 깊이: {args:?}");
     assert!(!args.iter().any(|arg| arg == "--add-dir"), "등록된 Project가 없으면 Work 없는 Thread는 함께 여는 폴더가 없다: {args:?}");
-    assert!(same_dir(Path::new(receipt["cwd"].as_str().expect("cwd")), &dir), "claude는 Thread 폴더에서 일한다");
+    assert!(same_dir(Path::new(receipt["cwd"].as_str().expect("cwd")), &work), "claude는 Thread 폴더의 `work/`에서 일한다");
 
     assert_eq!(
         (record[0]["seq"].clone(), record[0]["kind"].clone(), record[0]["payload"].clone()),
@@ -129,6 +132,8 @@ fn 새_thread의_첫_말에_runtime이_답하고_채팅의_값과_기록이_thre
     );
     let preamble = sent[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말");
     assert!(preamble.contains(&thread), "머리말은 Thread id를 싣는다:\n{preamble}");
+    let place = format!("\n- Work: 없음 — 이 Thread 폴더의 `work/`에서 일한다: `{}`\n", work.display());
+    assert!(preamble.contains(&place), "머리말은 작업 폴더 `work/`를 말한다:\n{preamble}");
     assert!(!preamble.contains("handle") && !preamble.contains("참여자"), "머리말에 handle도 참여자도 없다:\n{preamble}");
     let stdin = sandbox.claude_stdin(&session);
     let user = stdin.iter().find(|line| line["type"] == "user").expect("claude가 받은 말");
@@ -371,7 +376,8 @@ fn worktree가_없는_work의_thread는_spec_폴더에서_일하고_새_work로_
     sandbox.wait_thread_kind(&new_work, "turn-end", 1);
     assert_eq!(sandbox.thread_json(&new_work)["work"], Value::Null, "아직 Work가 없다");
     let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(&new_work));
-    assert!(same_dir(Path::new(receipt["cwd"].as_str().unwrap()), &sandbox.thread_dir(&new_work)), "Work 없음처럼 Thread 폴더다");
+    let place = sandbox.thread_dir(&new_work).join("work");
+    assert!(same_dir(Path::new(receipt["cwd"].as_str().unwrap()), &place), "Work 없음처럼 Thread 폴더의 `work/`다");
 
     assert_eq!(
         host.start_thread("없는 곳", ThreadLink::Work { slug: "nope".into() }),

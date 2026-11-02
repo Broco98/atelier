@@ -119,10 +119,10 @@ fn 다른_mcp는_묻지_않음이_아니면_승인_카드가_선다() {
 
 #[test]
 fn 묻지_않음에서도_thread_폴더의_기록_파일이_나오는_명령은_묻는다() {
-    // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만 명령으로는 쓸 수 있었다. Work 없는 Thread의 작업 폴더가 그 Thread
-    // 폴더라 맨 이름(`thread.json`)이 그 기록이다.
+    // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만 명령으로는 쓸 수 있었다. Work 없는 Thread의 작업 폴더는 Thread 폴더
+    // 안 `work/`라 `../events.jsonl`이 그 기록이다(스펙 「01c — Codex」 작업 폴더).
     let sandbox = Sandbox::new();
-    let touched = "echo x > thread.json; python3 -c";
+    let touched = "cat ../events.jsonl; python3 -c";
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", &format!("python3 -c={touched}"))],
@@ -142,16 +142,16 @@ fn 묻지_않음에서도_thread_폴더의_기록_파일이_나오는_명령은_
 
 #[test]
 fn thread_폴더의_점_파일을_고치려는_편집은_편집_자동이어도_묻지_않고_거절된다() {
-    // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl`은
-    // Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을 넓힌다.
+    // 코드 리뷰 1차 A2 — `.policy.json` · `thread.json` · `events.jsonl`은 Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을
+    // 넓힌다. 작업 폴더 `work/` 밖이지만 밖이라는 글이 아니라 기록이라는 글로 거절한다.
     let sandbox = Sandbox::new();
-    // 녹음의 `Write`(`outside/allowed.txt`)를 작업 폴더(Thread 폴더)의 `.policy.json`으로 옮긴다.
+    // 녹음의 `Write`(`outside/allowed.txt`)를 작업 폴더(`work/`)의 부모인 Thread 폴더의 `.policy.json`으로 옮긴다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[
             ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
             ("FAKE_CLAUDE_REBASE", RECORDED_PLACE),
-            ("FAKE_CLAUDE_REROOT", "allowed.txt=.policy.json"),
+            ("FAKE_CLAUDE_REROOT", "allowed.txt=../.policy.json"),
         ],
     ));
     let thread = host
@@ -167,6 +167,34 @@ fn thread_폴더의_점_파일을_고치려는_편집은_편집_자동이어도_
     assert!(reason.contains(&format!("{thread}/.policy.json")), "{reason}");
     let session = sandbox.thread_session_id(&thread);
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
+
+    host.shut_down();
+}
+
+#[test]
+fn work_없는_thread는_작업_폴더_work_밖의_채팅_폴더를_묻지_않음이어도_고치지_못한다() {
+    // 스펙 「01c — Codex」 작업 폴더 — 고칠 수 있는 자리는 채팅 폴더가 아니라 `work/`다. 거절 글이 `work/`를 말한다.
+    let sandbox = Sandbox::new();
+    // 녹음의 `Write`(`outside/allowed.txt`)를 작업 폴더(`work/`) 옆, Thread 폴더의 `notes.md`로 옮긴다.
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
+            ("FAKE_CLAUDE_REBASE", RECORDED_PLACE),
+            ("FAKE_CLAUDE_REROOT", "allowed.txt=../notes.md"),
+        ],
+    ));
+    let thread = host
+        .start_thread_asking("메모를 남겨 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto))
+        .expect("묻지 않음으로 새 Thread");
+
+    let decided = wait_permission(&sandbox, &thread, "decided");
+    let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
+    assert_eq!(decided["payload"]["optionId"], "reject", "{decided}");
+    assert!(reason.starts_with("`work/` 밖의 파일이라 고칠 수 없어요: "), "{reason}");
+    assert!(reason.contains(&format!("{thread}/notes.md")), "{reason}");
+    assert!(reason.ends_with("— 작업공간이 없는 채팅은 채팅 폴더의 `work/` 안에서만 고쳐요"), "{reason}");
+    assert!(!sandbox.thread_dir(&thread).join("notes.md").exists(), "쓰이지 않았다");
 
     host.shut_down();
 }

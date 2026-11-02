@@ -1003,6 +1003,10 @@ impl ConversationHost {
         programs: &[FoundProgram],
     ) -> Result<(), HostError> {
         let place = self.thread_place(thread, file)?;
+        // Work 없는 Thread의 작업 폴더 `work/`는 처음 열 때 선다 — Thread 폴더는 만들지 않는다(사라진 Thread를 되살리지 않는다).
+        if file.work.is_none() {
+            atelier_core::open_thread_work_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
+        }
         let recorder = &conv.recorder;
         recorder.spawning().map_err(HostError::Record)?;
         // 기본 모드로만 띄운다 — 「계획」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
@@ -1109,7 +1113,7 @@ impl ConversationHost {
     ///
     /// | 이어진 곳 | cwd | 함께 여는 폴더 |
     /// |---|---|---|
-    /// | Work 없음 | Thread 폴더 | 읽는 범위 |
+    /// | Work 없음 | Thread 폴더의 `work/` | 읽는 범위 |
     /// | worktree가 선 Project가 없는 Work | spec 폴더 | 읽는 범위 |
     /// | worktree 하나 | 그 worktree | spec 폴더 + 읽는 범위 |
     /// | worktree 여럿 | `trees/` | spec 폴더 + 읽는 범위 |
@@ -1118,12 +1122,15 @@ impl ConversationHost {
     ///   하나, 없으면 등록된 Project 전부, 그리고 worktree가 아직 없는 Work의 Project와 Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project(S22)다. worktree가 선
     ///   Project와 폴더가 사라진 Project는 빠진다. Work 없는 Thread가 Work를 제안하기 전에 어느 Project의 일인지 보려고 저장소를 읽던 것(끝
     ///   점검 39(a))이 Work 안에서도 같다 — 옆 저장소를 카드 없이 읽는다(`F4-WorkNoSpace`).
-    /// - **읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 · Thread 폴더). 범위가
-    ///   바뀌면(Service · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]).
+    /// - **읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 · Thread 폴더의
+    ///   `work/`). 범위가 바뀌면(Service · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]).
+    /// - **Work 없는 Thread는 Thread 폴더 안 `work/`에서 일한다**(restart 스펙 「01c — Codex」 작업 폴더) — Codex는 작업 폴더 안을 묻지
+    ///   않고 쓰므로 기록 파일과 뗀다. 두 Runtime이 같다. 그 폴더는 Session을 열 때 선다([`Self::open_session`]). 옛 자리(Thread 폴더)에서
+    ///   연 Session은 다음 말에서 `work/`로 옮겨 연다.
     fn thread_place(&self, thread: &str, file: &ThreadFile) -> Result<SessionPlace, HostError> {
         let (mut place, work) = match &file.work {
             None => {
-                let cwd = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
+                let cwd = atelier_core::thread_work_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
                 (SessionPlace { cwd, additional_directories: Vec::new() }, None)
             }
             Some(slug) => {
@@ -1154,8 +1161,8 @@ impl ConversationHost {
         let mut text = format!("{PREAMBLE_HEAD}\n\n- Thread id: `{thread}`\n- 제목: {}\n", file.title);
         let work = match &file.work {
             None => {
-                let dir = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
-                text.push_str(&format!("- Work: 없음 — 이 Thread 폴더에서 일한다: `{}`\n", dir.display()));
+                let dir = atelier_core::thread_work_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
+                text.push_str(&format!("- Work: 없음 — 이 Thread 폴더의 `work/`에서 일한다: `{}`\n", dir.display()));
                 None
             }
             Some(slug) => match self.open_work(slug) {
