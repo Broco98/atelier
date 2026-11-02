@@ -205,7 +205,6 @@ describe("Codex 실측 색", () => {
   // 스펙 그대로다 — 이름 → 라이트 값. 다크는 대개 적지 않는다(라이트만, v1 S34 — `.dark`에서는 라이트 값을 물려받는다). restart 시안이
   // 다크 값을 준 다섯은 아래 「restart 시안 토큰」이 잰다.
   const COLORS: Record<string, string> = {
-    "fg-bubble": "#0c274a",
     "fg-placeholder": "#c7c7c8",
     "fg-subtle": "#8e8f90",
     "fg-faint": "#a4a4a5",
@@ -215,7 +214,6 @@ describe("Codex 실측 색", () => {
     "fg-titlebar-disabled": "#cbcbcb",
     "fg-thinking": "#aeaeae",
     mine: "#2c67c5",
-    "surface-codespan": "#e8e9e9",
     "surface-tray": "#f4f4f4",
     "border-panel": "#e8e8e8",
     "border-summary": "#dadadb",
@@ -318,17 +316,6 @@ describe("Codex 실측 글자", () => {
     expect(themed("text-codespan--line-height")).toBeUndefined();
     expect(ruleOf(await utilities(["text-codespan"]), "text-codespan")).toContain("font-size: var(--text-codespan)");
   });
-
-  // 첫 화면의 「무엇을 만들까요?」(스펙 §11 · 시안 F1-Home) — 28 / 34 · 400 · 자간 −0.2.
-  it("첫 화면 물음 단계는 28 / 34에 자간 −0.2다", async () => {
-    expect(themed("text-home")).toBe("28px");
-    expect(themed("text-home--line-height")).toBe("34px");
-    expect(themed("text-home--letter-spacing")).toBe("-0.2px");
-    expect(themed("text-home--font-weight")).toBeUndefined();
-    const rule = ruleOf(await utilities(["text-home"]), "text-home");
-    expect(rule).toContain("font-size: var(--text-home)");
-    expect(rule).toContain("letter-spacing: var(--tw-tracking, var(--text-home--letter-spacing))");
-  });
 });
 
 describe("Codex 실측 크기", () => {
@@ -351,7 +338,6 @@ describe("Codex 둥글기", () => {
     row: ["10px", "12.5px"],
     summary: ["12px", "15px"],
     tray: ["15px", null],
-    speech: ["16px", "22px"],
     slot: ["20px", "25px"],
     prompt: ["22px", null],
   };

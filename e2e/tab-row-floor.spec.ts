@@ -1,8 +1,8 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
-import { rowOf, settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
+import { installFixtureBackend, openShell, unknownIpcCalls, 카드자리끝 } from "./harness";
+import { settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
 
 // 탭 줄의 **바닥** — 어느 창 폭·어느 패널 폭에서도 셸 칸 하나는 온전히 보인다(`panel-layout`의
 // `TAB_ROW_CARD` · `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
@@ -192,8 +192,8 @@ test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라
   // 창 폭을 지금 줄의 바닥에서 냈으므로 사이드바는 정해 둔 폭에 선다 — 저장값(400)보다 좁고, 20px을 끌 자리가 최소 폭(240) 위에 있다.
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeGreaterThanOrEqual(SQUEEZED_SIDEBAR);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThanOrEqual(SQUEEZED_SIDEBAR + 1);
-  // 손잡이는 사이드바 오른쪽 가장자리의 띠다 — 그 가운데를 누른다. 사이드바는 흰 판 안이라 창 왼쪽 끝이 아니라 판의 띄움(5.5) 뒤에서
-  // 시작한다(02 티켓 02). 한때 사이드바가 창 끝에 붙어 「폭 − 2」가 곧 손잡이였다.
+  // 손잡이는 사이드바 오른쪽 가장자리의 띠다 — 그 가운데를 누른다. 띠의 자리는 상자에서 읽는다(한때 사이드바가 흰 판 안이라 판의
+  // 띄움 뒤에서 시작했다 — restart 02a-1이 판을 걷어 사이드바는 다시 창 왼쪽 끝 0에서 선다).
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
   const [sx, sy] = [sideHandle.x + sideHandle.width / 2, sideHandle.y + sideHandle.height / 2];
   await page.mouse.move(sx, sy);
@@ -247,7 +247,7 @@ test("좁게 선 패널·사이드바를 바깥으로 끌어도 고른 폭이 �
   await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400 - 40);
-  // 손잡이 띠의 가운데를 누른다(위 검사와 같은 까닭 — 사이드바는 판 안에서 시작한다). 그 끌기가 실제로 손잡이를 잡았다는 앵커로 끄는
+  // 손잡이 띠의 가운데를 누른다(위 검사와 같은 까닭 — 띠의 자리는 상자에서 읽는다). 그 끌기가 실제로 손잡이를 잡았다는 앵커로 끄는
   // 동안의 표식(문서의 `resizing` — `setResizing`)을 본다 — 못 잡았으면 아래 「저장값 그대로」가 헛돈다(한때 「폭 − 2」를 눌러 판 안
   // 사이드바에서 손잡이를 비껴가 그렇게 초록이었다).
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
@@ -299,7 +299,8 @@ test("작업 패널·사이드바를 접고 펴도 안쪽 열이 되흐르지 �
   // 재기 전에 보면 400ms 표본이 접히는 동안을 놓친다.
   await page.keyboard.press("Meta+b");
   expect(await innerWidths(0)).toEqual([320]);
-  await expect.poll(async () => (await layoutOf(page)).sidebar).toBe(0);
+  // 접힌 사이드바는 폭 8의 틈으로 남는다(restart 02a-1 — 한때 0).
+  await expect.poll(async () => (await layoutOf(page)).sidebar).toBe(8);
   await page.keyboard.press("Meta+b");
   expect(await innerWidths(0)).toEqual([320]);
   await expect.poll(async () => (await layoutOf(page)).sidebar).toBe(320);
@@ -313,52 +314,38 @@ test("작업 패널·사이드바를 접고 펴도 안쪽 열이 되흐르지 �
   expect(opened.panel!.width).toBeLessThan(330);
 });
 
-test("분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 창 안이다", async ({ page }) => {
-  // 분할은 본문이 열 카드 둘로 갈리는 다른 갈래다(`Frame`의 `split`) — 바닥이 그 배치에도 걸려야 한다.
-  // 분할을 켜면 패널이 접히므로(결정 106) 다시 펴서 가장 붐비는 배치를 만든다.
-  await openWith(page, `/works/${pinnedWork.slug}?tab=terminal`, 900, { sidebar: 280, panel: 330 });
-  const tabs = page.locator('[data-tab="shell"]');
-  await tabs.first().waitFor();
-  await openShell(page);
-  await page.getByRole("button", { name: "분할", exact: true }).click();
-  await expect(page.locator("[data-column]")).toHaveCount(2);
-  await page.getByRole("button", { name: /패널 펼치기$/ }).click();
+// 한때 여기 「분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 창 안이다」가 있었다 — restart 02a-13이 분할을 걷었다.
 
-  const layout = await settled(page);
-  expectFits(layout, "분할 900px");
-  const row = await rowOf(page);
-  expect(row.spill).toBeLessThanOrEqual(0);
-  // 터미널 열의 줄 끝에는 그 열을 닫는 `×`가 선다(codex-ds 스펙 S14) — 줄 밖으로 안 밀린다.
-  expect(row.actions).not.toBeNull();
-  expect(row.actions!.over).toBeLessThanOrEqual(0);
-  const columnsRight = await page.evaluate(() =>
-    Math.max(...[...document.querySelectorAll("[data-column]")].map((column) => column.getBoundingClientRect().right)),
-  );
-  expect(columnsRight).toBeLessThanOrEqual(layout.panel!.left + 0.5);
-});
-
-test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는다 — 패널이 제자리다", async ({ page }) => {
-  // 본문 열에는 끊을 자리 없는 코드 줄·넓은 표도 산다. 그 폭이 열의 바닥에 섞이면 소스 보기를
-  // 켤 때마다 패널이 창 밖으로 밀리고 폭이 저 혼자 바뀐 것처럼 보인다(`TAB_ROW_CARD` 머리말).
+// 문서는 넓힌 카드로 연다(restart 02a-13 — 한때 본문의 문서 탭이었다). 넓힌 카드 보기에는 끊을 자리 없는 코드 줄 · 넓은 표도 산다. 그 폭이
+// 카드 줄의 바닥에 섞이면 소스 보기를 켤 때마다 카드가 창 밖으로 밀린다(`TAB_ROW_CARD` 머리말). 넓힌 카드는 사이드바와 작업 패널을 접고
+// 서므로 견줄 것은 카드 자리의 끝이다.
+test("넓힌 카드의 문서가 창보다 넓어도 카드가 창을 밀지 않는다 — 원문 보기도", async ({ page }) => {
   await openWith(page, `/works/${pinnedWork.slug}?file=${encodeURIComponent("overview.md")}`, 900, {
     sidebar: 280,
     panel: 330,
   });
-  await expect(page.getByRole("heading", { name: "개요" })).toBeVisible();
-  const plain = await settled(page);
-  expectFits(plain, "좁은 문서");
+  const card = page.locator("section[data-expanded]");
+  await expect(card.getByRole("heading", { name: "개요" })).toBeVisible();
+
+  const fits = async (at: string) => {
+    const now = await settle(page, async () => ({
+      spill: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+      card: await card.evaluate((el) => el.getBoundingClientRect().right),
+      seat: (await 카드자리끝(page)).right,
+    }));
+    const says = `${at} ${JSON.stringify(now)}`;
+    expect(now.spill, says).toBeLessThanOrEqual(0);
+    expect(now.card, says).toBeLessThanOrEqual(now.seat + 0.5);
+  };
+  await fits("좁은 문서");
 
   await page.goto(`/works/${multiWork.slug}?file=${encodeURIComponent("넓은.md")}`);
-  await expect(page.getByRole("heading", { name: "넓은 문서" })).toBeVisible();
-  const wide = await settled(page);
-  expectFits(wide, "넓은 문서");
-  expect(wide.panel).toEqual(plain.panel);
+  await expect(card.getByRole("heading", { name: "넓은 문서" })).toBeVisible();
+  await fits("넓은 문서");
 
   // 원문 보기 — 줄바꿈 없는 코드뷰다.
-  await page.getByRole("button", { name: "원문 보기" }).first().click();
-  const source = await settled(page);
-  expectFits(source, "넓은 문서 원문");
-  expect(source.panel).toEqual(plain.panel);
+  await card.getByRole("button", { name: "원문 보기" }).first().click();
+  await fits("넓은 문서 원문");
 });
 
 // 목록 칸이 있는 화면(codex-ds 결정 28 — 내용 | 목록 한 카드)은 탭 줄이 없는 카드 줄이라 통째로 격리되어(`TAB_ROW_COLUMN`) 바닥을

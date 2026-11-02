@@ -35,6 +35,12 @@ const loose = threadOf("20261024-100200", permission, { live: true, lastSeq: ASK
 /** 다 읽은 Thread — 기다리지 않는다. 「전체」에만 선다. */
 const done = threadOf("20261024-100300", twoTurns, { lastSeq: twoTurns[twoTurns.length - 1].seq, lastRead: twoTurns[twoTurns.length - 1].seq });
 const linked = workView({ slug: ASK.work, title: workTitleOf(project, ASK.work), branch: null, projects: ASK.workProjects });
+/**
+ * 그 채팅이 서는 주소 — 살아 있는 작업공간에 이은 채팅은 그 작업공간 화면의 채팅 탭이고(`/works/<slug>?tab=chat&thread=<id>` — restart 02a-4),
+ * 작업공간 밖 채팅은 `/threads/<id>`다.
+ */
+const 채팅주소 = (view: ThreadView) =>
+  view.work ? `/works/${encodeURIComponent(view.work)}?tab=chat&thread=${view.id}` : `/threads/${view.id}`;
 
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 /** 사이드바 위 줄의 그 이름의 행 — 「내 차례 N」은 수가 이름에 붙는다. */
@@ -82,7 +88,7 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
   // ⌘J — 가장 오래 기다린 Thread, 그다음, 그리고 부른 셸이 없으니 처음으로 돈다.
   for (const view of [inWork, loose, inWork]) {
     await page.keyboard.press("Meta+J");
-    await expect(page).toHaveURL(`/threads/${view.id}`);
+    await expect(page).toHaveURL(채팅주소(view));
   }
 
   // 답하면 그 Thread가 차례에서 빠지고 수가 준다 — 다음 ⌘J는 남은 Thread다.
@@ -97,7 +103,7 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
   await expect(위줄(page, "내 차례 1")).toBeVisible();
   await expect(줄제목들(page)).toHaveText([제목(loose)]);
   await page.keyboard.press("Meta+J");
-  await expect(page).toHaveURL(`/threads/${loose.id}`);
+  await expect(page).toHaveURL(채팅주소(loose));
 
   // 마지막 물음에 답하면 수가 걷히고 목록은 비었다는 한 줄이다.
   await page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();

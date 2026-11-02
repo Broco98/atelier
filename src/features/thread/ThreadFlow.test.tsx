@@ -126,13 +126,39 @@ describe("Runtime 이름으로 말하는 흐름", () => {
   });
   const flow = (lines: readonly RecordLine[]) =>
     renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />);
-  const answeringRow = (markup: string) => /<p data-answering.*?<\/p>/.exec(markup)?.[0] ?? "";
   const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
 
-  it("답을 기다리는 동안 얼굴 없이 Runtime 이름으로 「답하는 중」이 선다", () => {
-    const row = answeringRow(flow([sent(1, "고쳐 줘")]));
-    expect(words(row)).toBe("Claude Code가 답하는 중");
-    expect(row).not.toContain("<svg");
+  // States 보드 04 「생각 중 — 보낸 뒤 첫 출력까지」(restart 02b-1). 한때 Runtime 이름의 「답하는 중」과 점 셋이 섰다.
+  it("보낸 뒤 아무 줄도 오지 않은 턴은 말풍선 아래 「생각 중」만 선다 — 이름 줄도 작업 머리줄도 없다", () => {
+    const markup = flow([sent(1, "고쳐 줘")]);
+    expect(words(markup)).toBe("고쳐 줘생각 중");
+    expect(markup).not.toContain("<svg");
+  });
+
+  // States 보드 02 「세션 여는 중」 · 03 「보냄」(restart 02b-1) — Session이 내려가 있던 채팅은 Session이 열린 뒤에야 보낸 말이 기록에 선다. 그동안
+  // 보낸 말이 흐름 끝에 말풍선으로 서고, Session을 띄우는 동안은 그 아래 「채팅을 시작하는 중」이다.
+  describe("기록에 서기 전의 보낸 말", () => {
+    const spawning = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "session", payload: { state: "spawning" } });
+    const opened = (seq: number): RecordLine => ({ seq, at: at(seq), kind: "session", payload: { state: "opened", how: "resume" } });
+    const pending = { text: "이어서 고쳐 줘", attachments: [], quote: null };
+    const past = [sent(1, "봐 줘"), said(2, "봤어요"), ended(3)];
+    const draw = (lines: readonly RecordLine[]) =>
+      renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" pending={pending} />);
+
+    it("Session을 띄우는 동안은 지난 턴 뒤에 말풍선과 「채팅을 시작하는 중」이 선다", () => {
+      const text = words(draw([...past, spawning(4)]));
+      expect(text.endsWith("봤어요이어서 고쳐 줘채팅을 시작하는 중")).toBe(true);
+      expect(text).not.toContain("생각 중");
+    });
+
+    it("앞선 답 아래 줄(복사)은 걷힌다 — 이제 마지막 답이 아니다", () => {
+      expect(draw([...past, spawning(4)])).not.toContain('aria-label="답 복사"');
+      expect(flow(past)).toContain('aria-label="답 복사"');
+    });
+
+    it("Session이 열리면 말풍선만 남는다", () => {
+      expect(words(draw([...past, spawning(4), opened(5)])).endsWith("봤어요이어서 고쳐 줘")).toBe(true);
+    });
   });
 
   it("답한 턴에 이름 줄이 없다", () => {
@@ -255,16 +281,16 @@ describe("대화 정리 안내", () => {
   const compacting = (seq: number) =>
     update(seq, { sessionUpdate: "tool_call", toolCallId: "compact", title: "Compact conversation", kind: "think", status: "in_progress" });
 
-  it("정리하는 동안 서고, 「답하는 중」은 서지 않는다", () => {
+  it("정리하는 동안 서고, 「생각 중」은 서지 않는다", () => {
     const markup = flow(through(14));
-    expect(markup).toContain(`<p class="think-shimmer text-sm">${WORDS}</p>`);
-    expect(markup).not.toContain("data-answering");
+    expect(markup).toContain(`>${WORDS}</p>`);
+    expect(markup).not.toContain("생각 중");
   });
 
-  it("정리가 끝나면 걷히고, 답을 기다리면 「답하는 중」이 다시 선다", () => {
+  it("정리가 끝나면 걷히고, 답을 기다리면 「생각 중」이 다시 선다", () => {
     const markup = flow(through(15));
     expect(markup).not.toContain(WORDS);
-    expect(markup).toContain("data-answering");
+    expect(markup).toContain("생각 중");
     expect(flow(lines)).not.toContain(WORDS);
   });
 
@@ -334,9 +360,9 @@ describe("Runtime 경고의 자리", () => {
     expect(opened("n6", rows)).toContain("둘째 줄");
   });
 
-  it("경고만 온 도는 턴은 안내와 「답하는 중」이 서고 작업 머리줄은 서지 않는다", () => {
+  it("경고만 온 도는 턴은 안내와 「생각 중」이 서고 작업 머리줄은 서지 않는다", () => {
     const markup = flow(inTurn);
-    expect(markup).toContain("data-answering");
+    expect(markup).toContain("생각 중");
     expect(markup).not.toContain("동안 작업 중입니다");
   });
 
@@ -434,7 +460,8 @@ describe("끊긴 턴의 안내", () => {
     expect(markup).not.toContain("다시 시도");
   });
 
-  it("도구까지 한 턴은 구분선을 펼쳐 끊기기 전의 일을 볼 수 있다", () => {
+  // States 보드 15 「연결 끊김」(restart 02b-1) — 머리 없이 한 일이 펼친 채 남는다. 한때 「N초 동안 작업」으로 접혔다.
+  it("도구까지 한 턴은 머리 없이 끊기기 전의 일이 펼쳐 선다", () => {
     const tool: RecordLine = {
       seq: 2,
       at: "2026-10-10T10:01:05.000+09:00",
@@ -442,7 +469,11 @@ describe("끊긴 턴의 안내", () => {
       payload: { update: { sessionUpdate: "tool_call", toolCallId: "t1", title: "pnpm test", kind: "execute", status: "completed" } },
     };
     const lines = [cut[0], tool, { ...session(3, { state: "died", reason: "signal 9" }), at: "2026-10-10T10:01:09.000+09:00" }];
-    expect(shown(drawn(lines))).toContain("9초 동안 작업");
+    const markup = drawn(lines);
+    expect(shown(markup)).not.toContain("동안 작업");
+    expect(markup).not.toContain("data-work-divider");
+    expect(markup.indexOf("pnpm test")).toBeGreaterThan(-1);
+    expect(markup.indexOf("pnpm test")).toBeLessThan(markup.indexOf('data-end-notice="cut"'));
   });
 
   it("다시 잇는 동안은 단추 대신 「다시 잇는 중」이다", () => {
@@ -480,6 +511,53 @@ describe("끊긴 턴의 안내", () => {
   });
 });
 
+// 사람이 멈춘 턴(States 보드 14 · Tools 보드 「사람이 멈춤」 · restart 02b-1) — 머리가 「N초 후에 중단했습니다」로 턴 위에 서고 한 일은 펼친 채 남는다.
+// 머리를 누르면 접힌다. 한때 ■ 줄이 턴 아래에 서고 로그는 접혀 있었으며, 흐른 답은 옅었다. 바탕은 엔진이 쓴 멈춤 기록이다.
+describe("멈춘 턴", () => {
+  const lines = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-stopped.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  const flow = (rows: readonly RecordLine[]) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" />);
+  const head = (markup: string) => /<button[^>]*data-work-divider[^>]*>/.exec(markup)?.[0] ?? "";
+  const words = (markup: string) => markup.replace(/<[^>]*>/g, " ");
+  const said: RecordLine = {
+    seq: 12,
+    at: "2026-10-24T11:06:02.000+09:00",
+    kind: "update",
+    payload: { sessionId: "s", update: { sessionUpdate: "agent_message_chunk", messageId: "m9", content: { type: "text", text: "멈추기 전 글" } } },
+  };
+
+  it("머리가 턴 위에 서고 로그는 펼친 채 남는다 — ■ 줄은 따로 서지 않는다", () => {
+    const markup = flow(lines);
+    expect(head(markup)).toContain('aria-expanded="true"');
+    expect(words(markup)).toContain("후에 중단했습니다");
+    expect(words(markup).match(/후에 중단했습니다/g)).toHaveLength(1);
+    expect(markup.indexOf("data-log-run")).toBeGreaterThan(markup.indexOf("후에 중단했습니다"));
+  });
+
+  it("머리를 눌러 접으면 한 일이 숨는다", () => {
+    const [turn] = foldThread(lines).turns;
+    threadUiStore.setState((state) => ({ ...state, expanded: { [turnKey("t", turn.key)]: false } }));
+    try {
+      const markup = flow(lines);
+      expect(head(markup)).toContain('aria-expanded="false"');
+      expect(markup).not.toContain("data-log-run");
+    } finally {
+      threadUiStore.setState((state) => ({ ...state, expanded: {} }));
+    }
+  });
+
+  it("멈추기 전까지 흐른 답은 옅어지지 않고 그 자리에 남는다", () => {
+    const end = lines.find((line) => line.kind === "turn-end")!;
+    const markup = flow([...lines.filter((line) => line.seq < end.seq && line.seq !== 12), said, end]);
+    const answer = /<div class="([^"]*)"><p>멈추기 전 글/.exec(markup);
+    expect(answer?.[1]).toBeDefined();
+    expect(answer?.[1]).not.toContain("text-fg-secondary");
+  });
+});
+
 // 흐르는 글(스펙 「01b — 스트리밍」) — 기록 줄이 아니라 접은 모델에 없다. 화면은 마지막 턴 꼬리에만 붙인다.
 describe("흐르는 글", () => {
   const at = (second: number) => `2026-10-10T10:02:${String(second).padStart(2, "0")}.000+09:00`;
@@ -507,11 +585,12 @@ describe("흐르는 글", () => {
     return renderToStaticMarkup(<ThreadFlow thread={thread} model={foldThread(lines)} runtime="Claude Code" />);
   };
 
-  it("턴의 첫 조각부터 글이 서고 작업 머리줄이 서며 「답하는 중」은 걷힌다", () => {
+  // States 보드 12의 말만 한 턴(restart 02b-1) — 끝나도 구분선이 없는 턴이라 도는 동안에도 머리가 없다. 한때 머리가 섰다가 턴 끝에 걷혔다.
+  it("턴의 첫 조각부터 글이 서고 「생각 중」은 걷힌다 — 말만 하는 턴에는 작업 머리줄이 없다", () => {
     const markup = flow([sent(1, "물음")], "message", "흐르는답");
     expect(markup).toContain("흐르는답");
-    expect(markup).toContain("동안 작업 중입니다");
-    expect(markup).not.toContain("data-answering");
+    expect(markup).not.toContain("동안 작업 중입니다");
+    expect(markup).not.toContain("생각 중");
   });
 
   it("글이 흐르는 낱말로 선다 — 끝난 줄은 다시 움직이지 않는다", () => {
@@ -541,8 +620,8 @@ describe("흐르는 글", () => {
 
   it("글이 빈 생각은 「생각 중」으로만 선다", () => {
     const markup = flow([sent(1, "물음")], "thought", "");
-    expect(markup).toContain("생각 중");
-    expect(markup).not.toContain("data-answering");
+    expect(markup.match(/생각 중/g)).toHaveLength(1);
+    expect(markup).not.toContain("동안 작업 중입니다");
   });
 
   it("생각에 글이 있으면 옅은 글로 함께 선다", () => {

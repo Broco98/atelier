@@ -15,6 +15,7 @@ import {
   토큰색,
   표를꽂는다,
 } from "./harness";
+import { settle } from "./tab-row";
 
 // codex-ds 티켓 30 — **Archive · 문서 글을 우클릭한다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 10 · 11, 스토리 70 · 73
 // · 75 · 76). work 대상(`work-context-menu.spec.ts`)과 같은 규칙이다 — 그 대상의 메뉴가 커서 자리에 서고, 고름 · 주소는 그대로이며, 열린
@@ -79,7 +80,8 @@ async function 카드자리(menu: Locator): Promise<[number, number]> {
 
 interface 대상 {
   name: string;
-  setUp: (page: Page) => Promise<{ target: Locator; order: string[]; mark: string; selected: string }>;
+  /** `selected`는 그때 고른 행의 표식 값이다 — 고른 행이 없으면 `null`(작업공간 패널 — 문서는 넓힌 카드로 열려 처음엔 고른 문서가 없다). */
+  setUp: (page: Page) => Promise<{ target: Locator; order: string[]; mark: string; selected: string | null }>;
 }
 
 const 대상들: 대상[] = [
@@ -97,12 +99,18 @@ const 대상들: 대상[] = [
       return { target: page.locator(`[data-archive-row="${bare.slug}"]`), order, mark: "data-archive-row", selected: shipped.slug };
     },
   },
-  // spec 트리 파일 행 — 대상은 고른 파일이 아닌 행이고, 테두리 · 돌아올 포커스는 그 행의 이름 버튼(목록의 roving 줄)이다.
+  // spec 트리 파일 행 — 대상은 고른 파일이 아닌 행이고, 테두리 · 돌아올 포커스는 그 행의 이름 버튼(목록의 roving 줄)이다. 작업공간을 주소
+  // 없이 열면 새 채팅 탭이 서고 문서를 안 열어(restart 02a-8 · 02a-13) 고른 파일이 없다 — 한때 기본 문서(`overview.md`)가 골라져 있었다.
+  // 주소가 `tab=chat`으로 고쳐지고 패널 상자가 다 자란 뒤에 잰다(패널은 폭 0에서 자란다 — 02a-14).
   {
     name: "작업공간 패널의 spec 트리 파일 행",
     setUp: async (page) => {
       await page.goto(`/works/${pinnedWork.slug}`);
-      return { target: 트리파일(page, "메타.json"), order: ["경로 복사"], mark: "data-spec-file", selected: "overview.md" };
+      await expect(page).toHaveURL(`/works/${pinnedWork.slug}?tab=chat`);
+      const target = 트리파일(page, "메타.json");
+      await expect(target).toBeVisible();
+      await settle(page, () => target.evaluate((el) => el.getBoundingClientRect().x));
+      return { target, order: ["경로 복사"], mark: "data-spec-file", selected: null };
     },
   },
   {
@@ -132,7 +140,7 @@ for (const { name, setUp } of 대상들) {
     expect(await 카드자리(menu)).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
     // 고름 · 주소는 그대로다(결정 7) — 우클릭은 그 대상으로 가지 않는다.
     expect(page.url()).toBe(url);
-    expect(await 고른행(page, mark)).toEqual([selected]);
+    expect(await 고른행(page, mark)).toEqual(selected === null ? [] : [selected]);
     await expect.poll(() => 테두리(target)).toBe(링);
 
     // 바깥을 누르면 닫히고 테두리가 걷힌다.
@@ -197,7 +205,7 @@ for (const { name, setUp } of 대상들) {
     const { target, mark, selected } = await setUp(page);
     // 앵커: 화면이 섰고 고른 행이 섰다 — 적기 전에 주소가 멎었다(뒤늦은 정규화가 표 앞에 적히지 않게).
     await expect(target).toBeVisible();
-    await expect.poll(() => 고른행(page, mark)).toEqual([selected]);
+    await expect.poll(() => 고른행(page, mark)).toEqual(selected === null ? [] : [selected]);
     const own = await target.evaluate((el, mark) => el.closest(`[${mark}]`)?.getAttribute(mark) ?? null, mark);
     await 주소적기(page);
 
@@ -257,6 +265,12 @@ test("Archive 패널의 spec 트리 파일 행 메뉴에서 「경로 복사」�
 // 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사. 원문으로 보기는 경로 줄의 보기 묶음과 같은 상태를 바꾸고(이미 원문이면
 // 「문서로 보기」다), 보기를 못 바꾸는 파일(그림)에서는 서지 않는다. 경로 복사는 경로 줄의 동그란 복사와 같은 참조다.
 
+/**
+ * 화면의 토스트 자리(「메시지」) 가운데 무언가 선 것 — 작업공간 화면에는 이 자리가 둘 선다(본문 카드 · 넓힌 카드). 빈 자리는 뺀다. 토스트
+ * 하나는 한 자리에만 선다 — 둘 다 서면 사람에게 같은 토스트가 두 장 보인다.
+ */
+const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true }).filter({ hasText: /\S/ });
+
 /** 문서 글의 상자 — 경로 줄 아래 구르는 문서 몸이다. */
 const 문서글 = (page: Page) => page.locator("[data-doc-text]");
 
@@ -288,9 +302,22 @@ async function 글자가운데(page: Page, text: string) {
 }
 
 const 문서자리들 = [
+  // 작업공간의 문서는 넓힌 카드로 연다(restart 02a-12 · 02a-13 — 한때 주소 없이 열면 기본 문서가 문서 탭에 섰다). 주소에 `tab=chat`이 붙은
+  // 뒤에 잰다.
   {
     name: "Works 문서",
-    open: (page: Page) => page.goto(`/works/${pinnedWork.slug}`),
+    open: async (page: Page) => {
+      await page.goto(`/works/${pinnedWork.slug}?file=overview.md`);
+      await expect(page).toHaveURL(/tab=chat/);
+      await expect(page).toHaveURL(/file=overview\.md/);
+      // 넓힌 카드가 서며 사이드바 · spec 패널이 접힌다 — 문서 글의 자리가 멈춘 뒤에 잰다.
+      await settle(page, () =>
+        page.locator("[data-doc-text]").evaluate((el) => {
+          const box = el.getBoundingClientRect();
+          return [box.x, box.y, box.width];
+        }),
+      );
+    },
     line: "한 줄.",
     heading: "개요",
     path: `~/.atelier/works/${pinnedWork.slug}/spec/overview.md`,
@@ -330,7 +357,8 @@ for (const { name, open, line, heading, path } of 문서자리들) {
     await expect(menu).toHaveCount(0);
     await expect.poll(() => clipboardWrites(page)).toEqual([line]);
     // 토스트는 고른 글을 되풀이하지 않는다 — 긴 고름이면 글 전체가 토스트에 선다.
-    await expect(page.getByRole("region", { name: "메시지", exact: true })).toHaveText("고른 글자 복사됨");
+    await expect(메시지(page)).toHaveCount(1);
+    await expect(메시지(page)).toHaveText("고른 글자 복사됨");
     expect(await 고른글자(page)).toBe(line);
     await expect.poll(() => 테두리(문서글(page))).toBeNull();
     expect(page.url()).toBe(url);
@@ -369,7 +397,8 @@ for (const { name, open, line, heading, path } of 문서자리들) {
     await 우클릭한다(page, 문서글(page));
     await 항목(page, "경로 복사").click();
     await expect.poll(() => clipboardWrites(page)).toEqual([path]);
-    await expect(page.getByRole("region", { name: "메시지", exact: true })).toHaveText(`${path} 복사됨`);
+    await expect(메시지(page)).toHaveCount(1);
+    await expect(메시지(page)).toHaveText(`${path} 복사됨`);
     expect(page.url()).toBe(url);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -439,20 +468,5 @@ test("보기를 못 바꾸는 문서(그림)의 문서 글 메뉴에는 경로 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("spec이 없는 work의 빈 자리를 우클릭하면 아무 메뉴도 서지 않는다", async ({ page }) => {
-  await installFixtureBackend(page);
-  const empty = WORKS.find((work) => work.specFiles.length === 0)!;
-  await page.goto(`/works/${empty.slug}`);
-  const notice = page.getByText("아직 spec이 없어요", { exact: true });
-  await expect(notice).toBeVisible();
-  await expect(문서글(page)).toHaveCount(0);
-  await page.evaluate(() => {
-    const seen: boolean[] = [];
-    (window as unknown as { 막힘: boolean[] }).막힘 = seen;
-    window.addEventListener("contextmenu", (event) => setTimeout(() => seen.push(event.defaultPrevented)), true);
-  });
-  await notice.click({ button: "right" });
-  await expect.poll(() => page.evaluate(() => (window as unknown as { 막힘: boolean[] }).막힘)).toEqual([true]);
-  await expect(메뉴(page)).toHaveCount(0);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
+// 한때 여기 「spec이 없는 work의 빈 자리를 우클릭하면 아무 메뉴도 서지 않는다」가 있었다 — 그 빈 자리(「아직 spec이 없어요」)는 문서 탭의
+// 몸이었고, restart 02a-13이 문서 탭을 걷어 작업공간 화면 본문에 더는 서지 않는다(문서는 넓힌 카드로만 열리고, 없는 문서면 카드가 안 선다).

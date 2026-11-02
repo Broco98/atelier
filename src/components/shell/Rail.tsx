@@ -1,6 +1,7 @@
 import { createLucideIcon } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { STILL } from "./panel-layout";
 
 /**
  * spec 칸의 아이콘 — 둥근 문서 한 장(restart 02a-14 · 스토리 81 · 시안 Shell 「spec 아이콘」의 적용안 `ic-docs` — 위 짧은 줄, 둥근 모서리
@@ -19,10 +20,13 @@ export const SpecGlyph = createLucideIcon("spec-docs", [
  * 폭이 한 박자로 옮겨 가 튀지 않는다. 옅음은 `duration-panel`(220) 기본 곡선이다. **접힐 때만** 보임이 폭이 다 걷힌 뒤(500ms) 꺼진다 —
  * 서는 쪽은 보임이 곧바로 켜져야 자라는 동안 보인다. 클래스는 글자 그대로 적는다 — Tailwind가 소스의 글자를 읽는다(`panel-layout`의
  * `FOLD_BEATS`와 같은 까닭). 동작 줄이기면 곧바로다(시안 `.ra-rail { transition: none }`).
+ *
+ * **서는 쪽은 가로 넘침을 폭이 다 온 뒤에 놓는다**(아래 `Rail` 머리말 「칸의 링」) — 넘침은 이산 값이라 `transition-discrete`로 늦추고, 늦음은
+ * 폭의 길이(`duration-panel-open`)다. 접히는 쪽은 넘침이 목록에 없어 곧장 자른다.
  */
 const RAIL_BEAT = {
   shown:
-    "transition-[width,margin-left,opacity] duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel)] ease-[var(--ease-spring),var(--ease-spring),var(--ease-default)]",
+    "transition-[width,margin-left,opacity,overflow-x] duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel),0s] ease-[var(--ease-spring),var(--ease-spring),var(--ease-default),linear] delay-[0s,0s,0s,var(--duration-panel-open)] transition-discrete",
   hidden:
     "transition-[width,margin-left,opacity,visibility] duration-[var(--duration-panel-open),var(--duration-panel-open),var(--duration-panel),0s] ease-[var(--ease-spring),var(--ease-spring),var(--ease-default),linear] delay-[0s,0s,0s,var(--duration-panel-open)]",
 } as const;
@@ -39,6 +43,8 @@ export interface RailProps {
   onPick: () => void;
   /** 칸이 여닫는 패널의 id(`aria-controls`). */
   controls: string;
+  /** 이번 그림은 움직이지 않고 선다 — 카드와 켜짐 면의 트랜지션을 끈다(`STILL` — 작업공간 도구 기둥이 처음 그려질 때, restart 02a-15c). */
+  still?: boolean;
 }
 
 /**
@@ -55,6 +61,12 @@ export interface RailProps {
  * `shadow-hairline`). 폭은 DS 줄 폭 `size-prail`(32)이고 안쪽 2 안에 28 칸이 선다. 본문 카드 · spec 패널 카드와는 왼쪽 틈 8(`ml-2`)로 갈린다.
  * 이름은 「레일」이다 — 패널(`작업공간 패널`)과 다르다(같으면 「작업공간 패널」로 집는 자리가 둘이 된다).
  *
+ * **칸의 링 — 카드는 가로만, 들고 나는 동안만 자른다**(codex-ds 결정 11 · 02a-15). 칸의 포커스 링(바깥 4)은 안쪽 2를 넘어 카드 밖으로 2
+ * 나간다 — 카드가 넘침을 자르면 그 링이 왼쪽 · 오른쪽 · 위에서 잘린다. 세로는 늘 놓는다(폭만 움직인다). 가로는 접힌 동안과 들고 나는 동안만
+ * 자른다 — 그동안 28 칸이 좁아지는 카드에 잘리고(시안 `.ra-rail { overflow: hidden }`), 폭 0인 카드 가운데의 칸이 문서의 가로 넘침이 되지
+ * 않는다. 다 선 뒤에는 놓는다(`RAIL_BEAT`). 카드에 링 자리를 두는 길(`focus-ring-room`)은 못 쓴다 — 카드 자신의 면 · 둥글기 · 링이 그만큼
+ * 커진다.
+ *
  * **칸은 탭도 라디오도 아니다** — `aria-pressed` 버튼이다. 켜짐은 「패널이 열렸다」이고 다시 누르면 꺼진다. Tab 정류장임을 `tabIndex`로
  * 명시한다(WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다, `@/lib/roving` 머리말). 켜짐 면은 칸 뒤에 따로 깔린 면(`data-rail-on` —
  * 시안 `.ra-rail-ind`, `tool-rail-on`)이 옅음으로 들고 나고, 켜진 칸은 제 면 없이 글리프만 `fg`로 진해진다 — hover해도 그대로다. 꺼진 칸은
@@ -63,23 +75,25 @@ export interface RailProps {
  * **`aside`도 `nav`도 아니다**(시안 Shell 「규칙」). `aside`는 사이드바와 오른쪽 패널뿐이고 `nav`는 사이드바 버튼을 집는 고리다. 패널
  * 토글은 레일이 아니라 머리 줄 오른쪽 끝에 선다(`PanelToggle`).
  */
-function Rail({ shown, open, onPick, controls }: RailProps) {
+function Rail({ shown, open, onPick, controls, still = false }: RailProps) {
   return (
     <div
       role="group"
       aria-label="레일"
       data-show={shown}
       inert={!shown}
+      style={still ? STILL : undefined}
       className={cn(
-        "relative flex shrink-0 flex-col items-center overflow-hidden rounded-rail bg-surface py-0.5 motion-reduce:transition-none",
+        "relative flex shrink-0 flex-col items-center rounded-rail bg-surface py-0.5 motion-reduce:transition-none",
         shown
-          ? cn("ml-2 w-(--size-prail) p-0.5 opacity-100 shadow-hairline", RAIL_BEAT.shown)
-          : cn("pointer-events-none invisible ml-0 w-0 px-0 opacity-0 shadow-none", RAIL_BEAT.hidden),
+          ? cn("ml-2 w-(--size-prail) overflow-x-visible p-0.5 opacity-100 shadow-hairline", RAIL_BEAT.shown)
+          : cn("pointer-events-none invisible ml-0 w-0 overflow-x-clip px-0 opacity-0 shadow-none", RAIL_BEAT.hidden),
       )}
     >
       <span
         aria-hidden
         data-rail-on={open}
+        style={still ? STILL : undefined}
         className={cn(
           "pointer-events-none absolute top-0.5 left-0.5 size-7 rounded-ctl bg-tool-rail-on transition-opacity motion-reduce:transition-none",
           open ? "opacity-100" : "opacity-0",

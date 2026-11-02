@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
-  answeringLine,
+  thinkingLine,
   continueAsk,
   cutNotice,
   endNotice,
@@ -15,6 +15,7 @@ import {
   keptFolded,
   usageText,
   workLine,
+  workShown,
   type Entry,
   type PendingProject,
   type PendingProjectAdd,
@@ -59,7 +60,7 @@ describe("Thread 기록을 턴으로 접는다", () => {
       "세 낱말로 답해 줘: hello from turn",
       "notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘",
     ]);
-    expect(model.turns.map((turn) => turn.end && headline(turn.end))).toEqual(["4초 동안 작업", "10초 동안 작업"]);
+    expect(model.turns.map((turn) => turn.end && headline(turn.end))).toEqual(["4초 동안 작업함", "10초 동안 작업함"]);
     // 턴 끝 메시지(마지막 도구 뒤의 답)만 접힌 턴에 남는다.
     expect(model.turns.map((turn) => finalMessages(turn).map((entry) => entry.kind === "message" && entry.text))).toEqual([
       ["hello from turn"],
@@ -99,12 +100,25 @@ describe("작업 구분선", () => {
   it("도구 없이 끝난 턴에는 구분선이 없고, 도구를 쓴 턴은 「N초 동안 작업」이다", () => {
     const [first, second] = foldThread(blessed).turns;
     expect(workLine(first)).toBeNull();
-    expect(workLine(second)).toEqual({ text: "10초 동안 작업", unfolds: true });
+    expect(workLine(second)).toEqual({ text: "10초 동안 작업함", unfolds: true });
   });
 
   it("도는 턴은 구분선이 아니다 — 「N초 동안 작업 중입니다」가 따로 선다", () => {
     const running = foldThread(blessed.filter((line) => line.kind !== "turn-end"));
     expect(running.turns.map(workLine)).toEqual([null, null]);
+  });
+
+  // States 보드 04 · 12(restart 02b-1) — 머리는 일이 와야 선다. 말만 하는 턴은 끝나도 구분선이 없으니 도는 동안에도 없다.
+  it("도는 턴의 머리줄은 접으면 숨는 일이 와야 선다 — 생각의 빈 글 · 답 글 · 계획만으로는 서지 않는다", () => {
+    const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "고쳐 줘" } };
+    const thinking = update(2, 2, { sessionUpdate: "agent_thought_chunk", messageId: "m0", content: { type: "text", text: "" } });
+    const saying = update(3, 3, { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "볼게요" } });
+    const planning = update(4, 4, { sessionUpdate: "plan", entries: [{ content: "시험 돌리기", status: "pending" }] });
+    const reading = update(5, 5, { sessionUpdate: "tool_call", toolCallId: "r", title: "Read a.rs", kind: "read", status: "completed" });
+    const shown = (lines: RecordLine[]) => workShown(foldThread(lines).turns[0]);
+    expect(shown([sent])).toBe(false);
+    expect(shown([sent, thinking, saying, planning])).toBe(false);
+    expect(shown([sent, thinking, saying, planning, reading])).toBe(true);
   });
 
   it("안내 줄이 없는 끝 까닭은 도구가 없어도 그 까닭이 선다 — 펼칠 것은 없다", () => {
@@ -141,7 +155,7 @@ describe("시스템 줄", () => {
     ]);
     expect(model.turns).toHaveLength(1);
     const [turn] = model.turns;
-    expect(turn.end && headline(turn.end)).toBe("9초 동안 작업");
+    expect(turn.end && headline(turn.end)).toBe("9초 동안 작업함");
     // 그 앞의 `ToolSearch`(도구 들이기)는 서지 않는다.
     const tools = turn.entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["atelier-thread.rename_thread 불러옴"]);
@@ -456,10 +470,11 @@ describe("끊긴 턴", () => {
     expect(cutNotice(foldThread([sent]).turns[0], "Claude Code", null)).toBeNull();
   });
 
-  it("까닭은 안내가 말하므로 구분선은 펼칠 일이 있을 때만 「N초 동안 작업」이다", () => {
+  // States 보드 15 「연결 끊김」(restart 02b-1) — 끊긴 턴은 머리 없이 한 일을 펼친 채 두고 안내가 까닭을 말한다. 한때 펼칠 일이 있으면 「N초 동안 작업」이 섰다.
+  it("끊긴 턴에는 구분선이 없다 — 펼칠 일이 있어도 그렇다", () => {
     const tool = update(2, 2, { sessionUpdate: "tool_call", toolCallId: "t1", title: "pnpm test", kind: "execute", status: "completed" });
     expect(workLine(foldThread(CUT).turns[0])).toBeNull();
-    expect(workLine(foldThread([sent, tool, { ...said, seq: 3 }, died(9)]).turns[0])).toEqual({ text: "8초 동안 작업", unfolds: true });
+    expect(workLine(foldThread([sent, tool, { ...said, seq: 3 }, died(9)]).turns[0])).toBeNull();
   });
 });
 
@@ -492,7 +507,7 @@ describe("끝 까닭의 안내 줄", () => {
   it("까닭은 안내가 말하므로 구분선은 펼칠 일이 있을 때만 「N초 동안 작업」이다", () => {
     expect(workLine(refused)).toBeNull();
     expect(workLine(limited)).toBeNull();
-    expect(workLine(usedUp)).toEqual({ text: "3초 동안 작업", unfolds: true });
+    expect(workLine(usedUp)).toEqual({ text: "3초 동안 작업함", unfolds: true });
   });
 
   it("보통 턴에는 안내가 없다", () => {
@@ -748,12 +763,12 @@ describe("한 세션의 턴", () => {
     expect(foldThread([...lines, sent(4, 4, "다시 해 줘")]).running).toBe(true);
   });
 
-  it("「답하는 중」 줄은 도는 턴에 아직 아무 줄도 오지 않았을 때만 선다 — 답이 흐르면 그 턴의 머리줄이 말한다", () => {
+  it("「생각 중」 줄은 도는 턴에 아직 아무 줄도 오지 않았을 때만 선다 — 답이 흐르면 그 턴의 머리줄이 말한다", () => {
     const lines = [sent(1, 1, "고쳐 줘")];
-    expect(answeringLine(foldThread(lines))).toBe(true);
-    expect(answeringLine(foldThread([...lines, said(2, 2, "고치는 중")]))).toBe(false);
-    expect(answeringLine(foldThread([...lines, said(2, 2, "고치는 중"), ended(3, 3)]))).toBe(false);
-    expect(answeringLine(foldThread([]))).toBe(false);
+    expect(thinkingLine(foldThread(lines))).toBe(true);
+    expect(thinkingLine(foldThread([...lines, said(2, 2, "고치는 중")]))).toBe(false);
+    expect(thinkingLine(foldThread([...lines, said(2, 2, "고치는 중"), ended(3, 3)]))).toBe(false);
+    expect(thinkingLine(foldThread([]))).toBe(false);
   });
 });
 
@@ -1082,7 +1097,7 @@ describe("질문 카드(v1 티켓 26)", () => {
     expect(model.turns[0].entries.filter((entry) => entry.kind === "question")).toEqual([]);
   });
 
-  it("승인과 질문이 함께 걸리면 온 차례로 서고, 질문을 기다리는 세션도 「답하는 중」에 서지 않는다", () => {
+  it("승인과 질문이 함께 걸리면 온 차례로 서고, 질문을 기다리는 세션도 「생각 중」에 서지 않는다", () => {
     const permission: RecordLine = {
       seq: 8,
       at: at(8),
@@ -1098,7 +1113,7 @@ describe("질문 카드(v1 티켓 26)", () => {
     };
     const model = foldThread([...through(asked, 7), permission]);
     expect(model.asks.map((one) => one.card)).toEqual(["question", "command"]);
-    expect(answeringLine(model)).toBe(false);
+    expect(thinkingLine(model)).toBe(false);
   });
 });
 
@@ -1673,7 +1688,7 @@ describe("사용량", () => {
     const model = foldThread([sent, usage(2, 1000, 200000)]);
     expect(model.turns[0].entries).toEqual([]);
     expect(model.turns[0].answeredAt).toBeNull();
-    expect(answeringLine(model)).toBe(true);
+    expect(thinkingLine(model)).toBe(true);
   });
 
   it("모델을 부르지 않은 턴이나 값이 어긋난 줄은 사용량이 없다", () => {
@@ -1767,9 +1782,9 @@ describe("대화 정리", () => {
     expect(foldThread([sent, opened(), closed(3, "failed")]).compacting).toBe(false);
   });
 
-  it("정리 중에는 「답하는 중」이 서지 않고, 끝난 뒤 아직 답이 없으면 다시 선다", () => {
-    expect(answeringLine(foldThread(through(compact, 14)))).toBe(false);
-    expect(answeringLine(foldThread(through(compact, 15)))).toBe(true);
+  it("정리 중에는 「생각 중」이 서지 않고, 끝난 뒤 아직 답이 없으면 다시 선다", () => {
+    expect(thinkingLine(foldThread(through(compact, 14)))).toBe(false);
+    expect(thinkingLine(foldThread(through(compact, 15)))).toBe(true);
   });
 
   it("줄이 작업 로그에 들지 않는다 — 정리만 한 턴에는 구분선도 서지 않는다", () => {
@@ -1908,12 +1923,12 @@ describe("Runtime 경고", () => {
     expect(foldThread([...lines, sent(5)]).turns).toHaveLength(2);
   });
 
-  it("경고는 답이 아니다 — 「답하는 중」이 그대로 서고 답한 때가 적히지 않는다", () => {
+  it("경고는 답이 아니다 — 「생각 중」이 그대로 서고 답한 때가 적히지 않는다", () => {
     const lines = [sent(1), warned(2, "경고")];
     const model = foldThread(lines);
-    expect(answeringLine(model)).toBe(true);
+    expect(thinkingLine(model)).toBe(true);
     expect(model.turns[0].answeredAt).toBeNull();
-    expect(answeringLine(foldThread([...lines, said(3)]))).toBe(false);
+    expect(thinkingLine(foldThread([...lines, said(3)]))).toBe(false);
   });
 
   it("답 글 도중에 온 경고가 답을 둘로 끊지 않는다", () => {

@@ -7,10 +7,11 @@ import {
   openShell,
   typeIntoShell,
   unknownIpcCalls,
-  사람메뉴로간다,
+  가는곳으로간다,
   이름표,
   작업화면으로,
   칸들,
+  새셸을누른다,
 } from "./harness";
 
 // 티켓 17 — **셸을 스무 개 오가도 화면이 비지 않는다**(프로세스 결정 18 ③ · 프로세스 스펙 S23 · 스토리 49~51).
@@ -67,7 +68,7 @@ const toWork = (page: Page, work: (typeof WORKS)[number]) => 작업화면으로(
 
 /** nav의 `Terminal` — 최상위 터미널도 셸 화면이다. 들어가면 셸이 저절로 하나 뜬다. */
 async function toTerminal(page: Page): Promise<void> {
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
 }
 
@@ -101,7 +102,7 @@ test("셸 스무 개를 두 바퀴 오가도 켤 때마다 그 셸이 WebGL로 �
   await toTerminal(page);
   await fillShells(page, 7);
   await toWork(page, plainWork);
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(page).toHaveURL(/tab=terminal/);
   await fillShells(page, 7);
 

@@ -88,6 +88,11 @@ export interface ThreadComposerProps {
    * 안내 카드의 바꾸는 단추가 사라지기 때문에 보내기만 잠근다.
    */
   checking?: boolean;
+  /**
+   * 끌어다 놓기를 듣나 — 놓기는 창 전체의 이벤트라 듣는 입력창 모두에 간다. 숨어 있는 입력창(작업공간의 숨은 새 채팅 탭 — 내리지 않는다)은 듣지
+   * 않아야 보이지 않는 탭에 첨부가 붙지 않는다(restart 02a-16b). 기본은 듣는다.
+   */
+  drops?: boolean;
   /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창(과 그 안의 칩) 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
   card?: ReactNode;
   /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
@@ -122,6 +127,7 @@ function ThreadComposer({
   running,
   busy = false,
   checking = false,
+  drops = true,
   card,
   above,
   onSend,
@@ -195,7 +201,7 @@ function ThreadComposer({
       .then(() => field.current?.focus())
       .catch((error: unknown) => setProblem(String(error)));
   };
-  const dragging = useAttachmentDrop(!busy && !carded, attach);
+  const dragging = useAttachmentDrop(drops && !busy && !carded, attach);
   // 입력창이 카드에 자리를 내준 적이 있나 — 있으면 다시 설 때 떠오른다(처음 그린 입력창은 그대로 선다). 끌어다 놓는 동안에는 자리를 내주지 않는다.
   const returned = useChanged(carded);
   // 카드가 걷히면(고른 뒤) 입력칸이 포커스를 되받는다 — 키보드로 고른 손이 그대로 이어 쓴다(스토리 76). 다른 칸에 간 포커스는 두다.

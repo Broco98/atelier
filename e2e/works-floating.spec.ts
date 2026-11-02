@@ -45,13 +45,14 @@ const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", 
 // ── 떠 있는 것의 움직임 (결정 7 → 02 티켓 12) ──
 // 메뉴는 움직이지 않는다 — Codex 메뉴는 한 프레임에 서고 곧바로 걷힌다(02 구현 스펙 §12 · 티켓 12, `dropdown-menu.tsx` 머리말). 한때
 // 페이드와 확대(`duration-dropdown` · 30ms 지연 · 0.98 → 1)로 떴다. 열릴 때 움직이는 메뉴는 Thread 입력창의 모델 피커 하나이고 그것과
-// 동작 줄이기의 전역 규칙은 Thread 화면의 움직임 spec이 잰다. 대표는 셸 열기 `+`다 — 판 3이 처음 들인 떠 있는 부품이다.
+// 동작 줄이기의 전역 규칙은 Thread 화면의 움직임 spec이 잰다. 대표는 탭 줄의 `+`다 — 판 3이 처음 들인 떠 있는 부품이다. 작업공간 화면의
+// `+`는 「새 탭」 메뉴를 연다(restart 02a-8 — 한때 이름이 「셸 열기」였고 메뉴도 그 이름이었다).
 
 test("메뉴는 애니메이션 없이 한 프레임에 선다 — 움직임을 꺼도 같다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
-  const plus = page.getByRole("button", { name: "셸 열기" });
-  const menu = page.getByRole("menu", { name: "셸 열기" });
+  const plus = page.getByRole("button", { name: "새 탭", exact: true });
+  const menu = page.getByRole("menu");
   /** 메뉴 카드와 그 안에 걸린 움직임 — 키프레임도 전이도 없어야 한다. */
   const 움직임 = () =>
     menu.evaluate((el) => ({

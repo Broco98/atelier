@@ -21,6 +21,7 @@ import {
   unknownIpcCalls,
   파일탭주소 as codeUrl,
   주소로간다,
+  Project줄을누른다,
 } from "./harness";
 import type { WorktreeFile } from "@/features/code/types";
 import type { WorktreeTree } from "@/features/files/types";
@@ -29,7 +30,10 @@ import type { WorktreeTree } from "@/features/files/types";
 //
 // 감시자가 워크트리 안의 걸리지 않은 변경마다 `worktree:changed { slug, project }`를 쏜다(그 판정은 L1 `worktree_watch.rs`가
 // 진짜 저장소로 잰다). 앱 루트가 그것을 한 곳에서 듣고 그 워크트리의 데이터를 낡았다고 표시한다 — 다시 읽는 것은 **보이는
-// 것뿐이다**(S9): 트리는 files 칸이 보일 때, 내용은 그 파일 탭이 본문이나 묶음 열에 서 있을 때. 숨은 것은 보이는 순간 읽힌다.
+// 것뿐이다**(S9): 트리는 넓힌 카드의 Project 보기가 서 있을 때, 내용은 그 파일 탭이 본문에 서 있을 때. 숨은 것은 보이는 순간 읽힌다.
+//
+// 트리는 넓힌 카드의 Project 보기다(restart 02a-12 · 02a-14 — 「요약 카드」 → 그 Project 줄). 한때 레일 `files` 칸이 여는 작업 패널의
+// 몸이었고, 그 머리의 「새로고침」과 분할의 묶음 열이 다시 읽는 길이었다 — 02a-13 · 02a-14가 걷어, 그것을 재던 줄을 걷었다.
 //
 // 이 층에는 감시자가 없다 — 목업의 답을 갈고(`replaceAnswer`) 그 이벤트를 살아 있는 모든 구독에 쏘는 것(`fireEventToAll`)이
 // 「에이전트가 고쳤다」의 흉내다.
@@ -41,11 +45,12 @@ const TREE = "list_worktree_tree";
 const FOLDER = "list_worktree_folder";
 const READ = "read_worktree_file";
 
-const 레일칸 = (page: Page, name: "spec" | "files") =>
-  page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업공간 패널", exact: true });
+/** 넓힌 카드의 Project 보기 — 트리가 여기 선다. */
+const 트리 = (page: Page) => page.locator('[data-viewer="project"]');
 /** 트리의 행 — 파일 행은 확장자 꼬리표가 앞에 붙는다(`MD README.md`). */
-const 패널행 = (page: Page, name: string) => 작업패널(page).getByRole("button", { name, exact: true });
+const 패널행 = (page: Page, name: string) => 트리(page).getByRole("button", { name, exact: true });
+/** 넓힌 카드를 닫는다(「카드로 접기」) — 트리가 내려간다. */
+const 카드로접기 = (page: Page) => page.getByRole("button", { name: "카드로 접기", exact: true }).click();
 
 /** `billing` 트리 끝에 파일 하나가 더 선 답 — 에이전트가 만든 파일이다. */
 function billingWith(path: string) {
@@ -85,18 +90,20 @@ const turnStop = () => ({
   stopped: true,
 });
 
-async function openFiles(page: Page): Promise<void> {
-  await 레일칸(page, "files").click();
-  await expect(레일칸(page, "files")).toHaveAttribute("aria-pressed", "true");
-  await expect(패널행(page, "src")).toBeVisible();
+/** 창 머리 「요약 카드」를 열고 그 Project 줄을 눌러 넓힌 카드에 트리를 세운다. */
+async function openFiles(page: Page, project = "billing"): Promise<void> {
+  await page.getByRole("button", { name: "요약 카드", exact: true }).click();
+  await Project줄을누른다(page, project);
+  await expect(트리(page)).toBeVisible();
 }
 
-test("files 칸이 보일 때 그 워크트리의 `worktree:changed`가 오면 트리를 다시 묻고 에이전트가 만든 파일의 행이 선다", async ({
+test("Project 트리가 서 있을 때 그 워크트리의 `worktree:changed`가 오면 트리를 다시 묻고 에이전트가 만든 파일의 행이 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await openFiles(page);
+  await expect(패널행(page, "src")).toBeVisible();
   const before = await steadyCount(page, TREE);
   await expect(패널행(page, "MD CHANGELOG.md")).toHaveCount(0);
 
@@ -116,6 +123,7 @@ test("트리를 붙잡아 둔 채 신호를 세 번 쏘고 풀면, 붙잡힌 부
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await openFiles(page);
+  await expect(패널행(page, "src")).toBeVisible();
   await steadyCount(page, TREE);
 
   await holdCommand(page, TREE);
@@ -132,13 +140,14 @@ test("트리를 붙잡아 둔 채 신호를 세 번 쏘고 풀면, 붙잡힌 부
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("칸이 숨어 있는 동안 온 신호에는 묻지 않고, 칸이 보이는 순간 한 번 묻는다", async ({ page }) => {
+test("트리가 내려가 있는 동안 온 신호에는 묻지 않고, 다시 서는 순간 한 번 묻는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await openFiles(page);
-  // spec 칸으로 옮긴다 — files 몸은 숨어도 마운트된 채다
-  await 레일칸(page, "spec").click();
-  await expect(레일칸(page, "spec")).toHaveAttribute("aria-pressed", "true");
+  await expect(패널행(page, "src")).toBeVisible();
+  // 넓힌 카드를 닫는다 — 트리가 내려간다(한때 files 몸은 숨어도 마운트된 채였다)
+  await 카드로접기(page);
+  await expect(트리(page)).toHaveCount(0);
   const hidden = await steadyCount(page, TREE);
 
   await replaceAnswer(page, TREE, billingWith("CHANGELOG.md"));
@@ -147,17 +156,18 @@ test("칸이 숨어 있는 동안 온 신호에는 묻지 않고, 칸이 보이�
   expect(await steadyCount(page, TREE)).toBe(hidden);
 
   // 보이는 순간 한 번 읽어 새 행이 선다
-  await 레일칸(page, "files").click();
+  await Project줄을누른다(page, "billing");
   await expect(패널행(page, "MD CHANGELOG.md")).toBeVisible();
   expect((await steadyCount(page, TREE)) - hidden).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("다른 work의 워크트리 신호에는 묻지 않고, 프로젝트가 둘이면 그 프로젝트의 트리만 다시 묻는다", async ({ page }) => {
+test("다른 work의 워크트리 신호에는 묻지 않고, 프로젝트가 둘이면 선 트리의 프로젝트만 다시 묻는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${multiWork.slug}`);
-  await 레일칸(page, "files").click();
-  await expect(작업패널(page).getByRole("heading")).toHaveText(["빌링", "원장"]);
+  // 넓힌 카드의 트리는 Project 하나다 — 원장 트리를 세운다
+  await openFiles(page, "ledger");
+  await expect(패널행(page, "lib")).toBeVisible();
   // 그 프로젝트의 트리를 몇 번 물었나 — 멎은 뒤에 센다
   const asked = async (project: string) => {
     await steadyCount(page, TREE);
@@ -172,19 +182,23 @@ test("다른 work의 워크트리 신호에는 묻지 않고, 프로젝트가 �
   await settle(page);
   expect([await asked("billing"), await asked("ledger")]).toEqual([billing, ledger]);
 
-  // 이 work의 원장만 바뀌었다
+  // 이 work의 원장만 바뀌었다 — 빌링 트리는 서 있지 않아 이 work의 빌링 신호에도 묻지 않는다
   await fireEventToAll(page, EVENT, { slug: multiWork.slug, project: "ledger" });
   await expect.poll(() => asked("ledger")).toBe(ledger + 1);
+  await fireEventToAll(page, EVENT, { slug: multiWork.slug, project: "billing" });
+  await settle(page);
   expect(await asked("billing")).toBe(billing);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("창으로 돌아오기 · 이 work 셸의 「도는 중」 끝 · 칸을 다시 열기 · 새로고침이 각각 트리를 한 번 다시 묻는다", async ({ page }) => {
+// 한때 칸을 다시 열기 · 머리의 「새로고침」도 한 번씩 다시 물었다 — 02a-14가 files 칸과 새로고침을 걷었다.
+test("창으로 돌아오기 · 이 work 셸의 「도는 중」 끝이 각각 트리를 한 번 다시 묻는다", async ({ page }) => {
   await installFixtureBackend(page);
-  // 셸이 저절로 뜨는 work이다 — 그 셸이 턴을 마친다
+  // 셸이 저절로 뜨는 work이다 — 그 셸이 턴을 마친다. 요약 카드를 열면 채팅 탭이 켜지지만 셸은 묶음에 남아 돈다(restart 02a-10).
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await openFiles(page);
+  await expect(패널행(page, "src")).toBeVisible();
   /** 신호 하나를 주고, 트리를 그 뒤로 몇 번 더 물었는지 멎은 값으로 센다. */
   const askedAfter = async (signal: () => Promise<void>) => {
     const before = await steadyCount(page, TREE);
@@ -203,14 +217,6 @@ test("창으로 돌아오기 · 이 work 셸의 「도는 중」 끝 · 칸을 �
   await settle(page);
   expect(await steadyCount(page, TREE)).toBe(started);
   expect(await askedAfter(() => markAttention(page, turnStop())), "도는 중 끝").toBe(1);
-
-  // 칸을 닫았다 다시 연다(켜진 칸을 다시 누르면 닫힌다)
-  await 레일칸(page, "files").click();
-  await expect(레일칸(page, "files")).toHaveAttribute("aria-pressed", "false");
-  expect(await askedAfter(() => 레일칸(page, "files").click()), "칸 열기").toBe(1);
-
-  const refresh = () => 작업패널(page).getByRole("button", { name: "새로고침", exact: true }).click();
-  expect(await askedAfter(refresh), "새로고침").toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -223,6 +229,7 @@ test("「도는 중」이던 셸이 죽으면 — 깨끗이 끝나 빠지든 「
   await awaitSpawned(page, 1);
   await openShell(page);
   await openFiles(page);
+  await expect(패널행(page, "src")).toBeVisible();
   /** 신호 하나를 주고, 트리를 그 뒤로 몇 번 더 물었는지 멎은 값으로 센다. */
   const askedAfter = async (signal: () => Promise<void>) => {
     const before = await steadyCount(page, TREE);
@@ -241,9 +248,9 @@ test("「도는 중」이던 셸이 죽으면 — 깨끗이 끝나 빠지든 「
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 37 — 걸린 폴더 안은 실시간 신호로 다시 읽지 않는다. 펼칠 때 · 창 포커스 · 새로고침에만 읽는다. 턴 끝은 실시간 신호와
-// 같은 쪽이다 — 새로고침 버튼과 같은 문을 쓰면 턴마다 펼쳐 둔 `target/debug/deps`를 통째로 다시 읽는다.
-test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed` · 「도는 중」 끝으로는 다시 묻지 않고, 창으로 돌아오기 · 새로고침에는 한 번씩 다시 묻는다", async ({
+// 결정 37 — 걸린 폴더 안은 실시간 신호로 다시 읽지 않는다. 펼칠 때 · 창 포커스에만 읽는다(한때 머리의 「새로고침」도 — 02a-14가
+// 걷었다). 턴 끝은 실시간 신호와 같은 쪽이다 — 창 포커스와 같은 문을 쓰면 턴마다 펼쳐 둔 `target/debug/deps`를 통째로 다시 읽는다.
+test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed` · 「도는 중」 끝으로는 다시 묻지 않고, 창으로 돌아오기에는 한 번 다시 묻는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -272,9 +279,6 @@ test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed` · 「도는 중
   await returnToWindow(page);
   await expect.poll(() => callCount(page, FOLDER)).toBe(folders + 1);
   expect(await steadyCount(page, FOLDER), "창으로 돌아오기").toBe(folders + 1);
-  await 작업패널(page).getByRole("button", { name: "새로고침", exact: true }).click();
-  await expect.poll(() => callCount(page, FOLDER)).toBe(folders + 2);
-  expect(await steadyCount(page, FOLDER)).toBe(folders + 2);
   // 다시 읽는 동안에도 행은 그대로다
   await expect(패널행(page, "JS app.js")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -408,27 +412,6 @@ test.describe("코드 탭", () => {
     await expect(image).toBeVisible();
     const third = (await image.getAttribute("src")) ?? "";
     expect([자리(third), [first, second].includes(third)]).toEqual([자리(first), false]);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  // 분할이면 포커스가 문서 열이어도 묶음 열의 파일은 보이는 것이다(S9 · 07) — spec을 읽으며 옆 열의 코드를 보는 사람에게도
-  // 에이전트의 고침이 따라온다. 「본문 탭이 code일 때만 읽는다」로 좁히면 여기서 빨개진다.
-  test("분할의 묶음 열에 선 파일 탭은 포커스가 문서 열에 있어도 신호에 다시 읽힌다", async ({ page }) => {
-    await installFixtureBackend(page, { read_worktree_file: 답(줄들(3)) });
-    // `tab`이 없는 분할 주소 — 포커스는 문서 열이고 `code`는 묶음 열의 것이다(S12)
-    await page.goto(`/works/${pinnedWork.slug}?split=lr&code=${encodeURIComponent(`billing/${LONG}`)}`);
-    const column = page.getByRole("region", { name: `billing/${LONG}`, exact: true });
-    await expect.poll(() => 줄글(column)).toContain('const v0 = "값"; // 줄 1');
-    await expect(page).not.toHaveURL(/tab=/);
-    const reads = await steadyCount(page, READ);
-
-    await replaceAnswer(page, READ, 답(줄들(3, { at: 2, text: "const 옆열 = 2; // 에이전트" })));
-    await fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" });
-
-    await expect.poll(() => 줄글(column), { timeout: 60_000 }).toContain("const 옆열 = 2; // 에이전트");
-    expect((await steadyCount(page, READ)) - reads).toBe(1);
-    // 포커스는 그대로 문서 열이다 — 다시 읽기가 포커스를 옮기지 않았다
-    await expect(page).not.toHaveURL(/tab=/);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 

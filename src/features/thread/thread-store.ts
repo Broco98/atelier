@@ -130,8 +130,11 @@ const NO_WRITING: readonly DocWriting[] = [];
 interface UiState {
   /** Thread마다 입력 중인 글. */
   drafts: Readonly<Record<string, string>>;
-  /** 펼친 작업 로그 — Thread 열쇠 + 턴 열쇠. 끝난 턴은 접혀 있고, 머리줄을 누르면 여기 든다. */
-  expanded: Readonly<Record<string, true>>;
+  /**
+   * 사람이 고른 작업 로그의 펼침 — Thread 열쇠 + 턴 열쇠. 고른 적이 없는 턴은 그 턴의 처음 모양이다 — 끝난 턴은 접혀 있고 멈춘 턴은 펼쳐 있다(restart 02b-1).
+   * 머리줄을 누르면 고른 쪽이 여기 든다.
+   */
+  expanded: Readonly<Record<string, boolean>>;
   /** 바깥이 글을 채운 입력창(`fillDraft`) — 그 입력칸이 한 번 포커스를 받고(`takeFill`) 비운다. */
   filled: string | null;
   /** Thread마다 입력창에 붙은 인용(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글. 하나만 붙는다 — 새로 고르면 갈아 끼운다. */
@@ -170,10 +173,7 @@ export function takeFill(): void {
 
 export const turnKey = (thread: string, turn: string) => `${thread}\u0000${turn}`;
 
+/** 작업 로그를 펼치거나 접는다 — `open`이 없으면 고른 쪽을 뒤집는다(고른 적이 없으면 펼친다). 처음 모양이 펼친 턴은 부르는 쪽이 `open`을 준다. */
 export function toggleTurn(key: string, open?: boolean): void {
-  threadUiStore.setState((state) => {
-    const { [key]: was, ...rest } = state.expanded;
-    const next = open ?? !was;
-    return { ...state, expanded: next ? { ...rest, [key]: true } : rest };
-  });
+  threadUiStore.setState((state) => ({ ...state, expanded: { ...state.expanded, [key]: open ?? state.expanded[key] !== true } }));
 }

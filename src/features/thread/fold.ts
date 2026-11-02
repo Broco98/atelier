@@ -1110,11 +1110,12 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
 }
 
 /**
- * 「답하는 중」 줄을 세우나(캔버스 Messages 보드 「답하는 중」) — 턴이 도는데 아직 아무 줄도 오지 않았다(보낸 말 바로 뒤). 턴이 답 · 생각 · 도구
- * 줄을 흘리고 있으면 그 턴의 머리줄이 이미 말하므로 서지 않는다. 승인을 기다릴 때도 서지 않는다 — 답하는 것이 아니라 사람을 기다리고, 입력창
- * 자리의 카드가 말한다(v1 티켓 25). 대화를 정리하는 동안도 서지 않는다 — 「대화를 정리하는 중」이 말한다. 줄의 글은 Runtime 이름 하나다(`ThreadFlow`).
+ * 「생각 중」 줄을 세우나(States 보드 04 「생각 중 — 보낸 뒤 첫 출력까지」 · restart 02b-1) — 턴이 도는데 아직 아무 줄도 오지 않았다(보낸 말 바로 뒤).
+ * 턴이 답 · 생각 · 도구 줄을 흘리고 있으면 그 줄이 말하므로 서지 않는다. 승인을 기다릴 때도 서지 않는다 — 생각하는 것이 아니라 사람을 기다리고, 입력창
+ * 자리의 카드가 말한다(v1 티켓 25). 대화를 정리하는 동안도 서지 않는다 — 「대화를 정리하는 중」이 말한다. 한때 이 자리에 Runtime 이름의 「답하는 중」과
+ * 점 셋이 섰다(캔버스 Messages 보드).
  */
-export function answeringLine(model: ThreadModel): boolean {
+export function thinkingLine(model: ThreadModel): boolean {
   const last = model.turns[model.turns.length - 1];
   return model.running && last !== undefined && lastWork(last.entries) === null && model.asks.length === 0 && !model.compacting;
 }
@@ -1530,14 +1531,14 @@ export function continueAsk(turn: Turn): { label: string; text: string } | null 
 const plainEnd = (end: TurnEnd): boolean => end.stopReason === "end_turn" || END_NOTICES.has(end.stopReason ?? "") || end.cut !== null;
 
 /**
- * 작업 구분선의 글(02 구현 스펙 §8 · Diff-Chat 「작업 구분선」). `end_turn`이면 「N초 동안 작업」(Codex 결 — v1은 「작업함」), 우리가 멈춘
+ * 작업 구분선의 글(02 구현 스펙 §8 · States 보드 13 「턴 끝」). `end_turn`이면 「N초 동안 작업함」(restart 02b-1 — 한때 Codex 결의 「N초 동안 작업」), 우리가 멈춘
  * `cancelled`면 「N초 후에 중단했습니다」, 실패면 「N초 후에 실패했습니다」, 그 밖은 까닭을 보인다. 안내 줄이 말하는 끝 까닭은 `end_turn`과 같다(Thread 보드 「길이 제한」).
  * 우리가 멈추지 않은 `cancelled`는 앱이 거절했으면 「앱이 막아서 멈췄어요」(Tools 보드 「앱이 막아서 멈춤」 — 아래 안내가 까닭을 보인다), 아니면 사람의 거부다.
  */
 export function headline(end: TurnEnd): string {
   const took = spoken(end.durationMs);
   if (end.error !== null) return `${took} 후에 실패했습니다`;
-  if (plainEnd(end)) return `${took} 동안 작업`;
+  if (plainEnd(end)) return `${took} 동안 작업함`;
   if (end.stopReason === "cancelled") {
     if (end.cancelledByUs) return `${took} 후에 중단했습니다`;
     return end.appRefusal !== null ? "앱이 막아서 멈췄어요" : "거부해서 멈췄어요";
@@ -1561,17 +1562,29 @@ export function keptFolded(entry: Entry): boolean {
 /** 그리는 줄인가 — 글이 빈 생각은 그리지 않는다(Claude Code는 생각의 글을 빈 문자열로 준다). */
 export const shownEntry = (entry: Entry): boolean => entry.kind !== "thought" || entry.text.trim() !== "";
 
+/** 접으면 숨는 일인가 — 도구 줄 · 글이 있는 생각 · 승인 결정 줄 같은 작업 로그의 줄이다. 답 글과 접힌 턴에도 남는 줄(`keptFolded`)은 아니다. */
+const foldsAway = (entry: Entry): boolean => shownEntry(entry) && !keptFolded(entry);
+
+/**
+ * 도는 턴의 머리줄을 세우나(States 보드 05 「도구 실행」 · restart 02b-1) — 접으면 숨는 일이 하나라도 왔다. 말만 흘리는 턴과 아직 아무것도 오지 않은 턴은
+ * 머리 없이 선다(States 보드 04 · 12의 말만 한 턴) — 끝나도 구분선이 서지 않는 턴이라(`workLine`) 머리가 섰다 걷히며 글이 튀지 않는다. 일이 오면 그때 선다.
+ */
+export function workShown(turn: Turn): boolean {
+  return turn.entries.some((entry) => foldsAway(entry) && entry.kind !== "message");
+}
+
 /**
  * 끝난 턴의 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 글(`headline`)과 펼칠 것이 있나(`unfolds`). 펼칠 것은 턴 끝 메시지 앞의 줄
  * 가운데 접으면 숨는 것(도구 줄 · 생각 · 앞선 답 · 승인 결정 줄)이다.
  * - **펼칠 것 없이 끝난 턴(`end_turn`)에는 구분선이 없다** — 말만 한 턴에 빈 머리가 서지 않는다(Codex). 계획처럼 접힌 턴에도
  *   남는 줄만 있는 턴도 그렇다. 안내 줄이 말하는 턴(실패 · 거절 · 길이 제한 · 턴 한도)도 같다 — 까닭은 안내가 말한다.
+ * - **끊긴 턴에도 없다**(States 보드 15 「연결 끊김」 · restart 02b-1) — 한 일은 펼친 채 남고 안내가 까닭을 말한다. 한때 펼칠 일이 있으면 「N초 동안 작업」으로 접혔다.
  * - 그 밖에 끝 까닭이 있는 턴은 펼칠 것이 없어도 그 까닭이 선다 — 오류와 중단은 문장으로 말한다.
  * - 도는 턴은 null이다(「N초 동안 작업 중입니다」가 따로 선다 — `runningHeadline`).
  */
 export function workLine(turn: Turn): { text: string; unfolds: boolean } | null {
-  if (turn.end === null) return null;
-  const unfolds = turn.entries.slice(0, finalFrom(turn)).some((entry) => shownEntry(entry) && !keptFolded(entry));
+  if (turn.end === null || turn.end.cut !== null) return null;
+  const unfolds = turn.entries.slice(0, finalFrom(turn)).some(foldsAway);
   if (!unfolds && (plainEnd(turn.end) || turn.end.error !== null)) return null;
   return { text: headline(turn.end), unfolds };
 }

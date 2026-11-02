@@ -52,8 +52,13 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
     list_work_changes: CHANGES,
   });
   await page.goto(`/threads/${view.id}`);
-  // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
-  await expect(흐름(page).getByText(view.title, { exact: true })).toBeVisible({ timeout: 20_000 });
+  // 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭에 선다(restart 02a-4). 탭 칸 이름도 그 채팅 이름(첫 말)이라 같은 글이 둘이다 — 흐름의
+  // 것(뒤)을 집는다. **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
+  await expect(page).toHaveURL(`/works/${WORK.slug}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+  await expect(흐름(page).getByText(view.title, { exact: true }).last()).toBeVisible({ timeout: 20_000 });
+
+  // 요약 카드는 처음엔 닫혀 있다(restart 02a-9 — 오른쪽 자리의 처음 값은 spec 패널) — 창 머리의 「요약 카드」로 연다.
+  await page.getByRole("button", { name: "요약 카드", exact: true }).click();
 
   // 카드가 열리며 PR을 한 번 읽는다 — PR 줄은 「CI 확인 중」이고 그 글이 천천히 빛난다.
   await expect(PR줄(page)).toHaveText(/CI 확인 중/);

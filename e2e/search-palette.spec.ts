@@ -114,7 +114,8 @@ test("⌘K가 셸에 포커스가 있는 동안에도 팔레트를 연다", asyn
 test("치면 그 글자가 그대로 명령으로 나간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  // 앵커: 작업공간 화면이 섰다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8 — 한때 기본 문서 「개요」였다).
+  await expect(page.getByRole("main", { name: "새 채팅", exact: true })).toBeVisible();
 
   // **팔레트가 포커스를 가져와야 한다.** 안 가져오면 친 글자가 칸이 아니라 뒤 화면으로 간다.
   await 검색팔레트를연다(page);
@@ -205,7 +206,8 @@ test("메뉴가 쏜 ⌘K가 팔레트를 연다", async ({ page }) => {
 test("⌘⇧K·⌘⌥K로는 안 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  // 앵커: 작업공간 화면이 섰다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8 — 한때 기본 문서 「개요」였다).
+  await expect(page.getByRole("main", { name: "새 채팅", exact: true })).toBeVisible();
 
   await page.keyboard.press("Meta+Shift+k");
   await expect(palette(page)).toHaveCount(0);
@@ -474,10 +476,11 @@ test("팔레트 바닥 줄이 있는 키만 안내한다 — ↑↓ 고르기 ·
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 16·77·97. 방향키로 고른 것이 열리고, **분할이 그대로 남는다.**
-test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({ page }) => {
+// 결정 16·77·97. 방향키로 고른 것이 열린다. 셸 탭에서 고른 문서는 `tab`을 비우고 `file`을 적어, 처음 여는 규칙이 고른 채팅 탭(여기는 채팅이
+// 없어 새 채팅 탭)의 넓힌 카드에 선다(restart 02a-12). 한때 분할(`split=lr`)에서 골라 「분할이 그대로 남는다」를 쟀다 — 02a-13이 분할을 걷었다.
+test("방향키로 고른 문서로 가고, 셸 탭에서 골랐으면 채팅 탭의 넓힌 카드에 선다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${specWork.slug}?tab=terminal&split=lr`);
+  await page.goto(`/works/${specWork.slug}?tab=terminal`);
   await expect(page.locator(".xterm")).toHaveCount(1);
 
   await 검색팔레트를연다(page);
@@ -497,13 +500,12 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
   await expect
     .poll(() => new URL(page.url()).searchParams.get("file"))
     .toBe(specWork.specFiles[1]);
-  // **분할이 그대로다**(결정 16) — 문서를 갈아 끼우려고 화면을 다시 만들지 않는다.
-  await expect(page).toHaveURL(/split=lr/);
-  // 문서를 골랐으므로 본문은 spec으로 돌아온다(결정 50).
+  // 문서를 골랐으므로 본문은 셸에서 채팅 탭으로 온다(결정 50 · restart 02a-12).
   await expect(page).not.toHaveURL(/tab=terminal/);
-  // 화면에 선 것도 **그 문서**다 — 둘째 줄이 그림이라 본문이 그림으로 선다. 첫 줄을 열었으면
+  await expect(page).toHaveURL(/tab=chat/);
+  // 화면에 선 것도 **그 문서**다 — 둘째 줄이 그림이라 넓힌 카드가 그림으로 선다. 첫 줄을 열었으면
   // 마크다운이 서므로 주소와 화면이 함께 갈린다.
-  await expect(page.locator("main img")).toHaveCount(1);
+  await expect(page.locator("section[data-expanded] img")).toHaveCount(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -512,7 +514,8 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
 test("마우스로도 고를 수 있다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  // 앵커: 작업공간 화면이 섰다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8 — 한때 기본 문서 「개요」였다).
+  await expect(page.getByRole("main", { name: "새 채팅", exact: true })).toBeVisible();
 
   await pressSearchKey(page);
   await rows(page).nth(1).click();
@@ -554,7 +557,8 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
 test("팔레트는 창으로 읽히고, ↓로 켠 결과를 입력칸이 가리킨다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  // 앵커: 작업공간 화면이 섰다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8 — 한때 기본 문서 「개요」였다).
+  await expect(page.getByRole("main", { name: "새 채팅", exact: true })).toBeVisible();
 
   await pressSearchKey(page);
 
@@ -584,7 +588,8 @@ test("팔레트는 창으로 읽히고, ↓로 켠 결과를 입력칸이 가리
 test("그룹 머리를 누른 뒤에도 ↓와 Enter가 먹는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  // 앵커: 작업공간 화면이 섰다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8 — 한때 기본 문서 「개요」였다).
+  await expect(page.getByRole("main", { name: "새 채팅", exact: true })).toBeVisible();
 
   await pressSearchKey(page);
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
@@ -751,10 +756,11 @@ test("⌘K의 물음이 가는 곳 목록을 nav 순서대로 싣는다", async 
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   // **순서까지 본다.** 코어가 건넨 순서로 「가는 곳」 줄이 서므로(`search.rs`의
   // `destination_hits`) 이 배열이 곧 팔레트에 서는 순서이고, `Settings`가 맨 뒤인 것도
-  // 그 계약이다(결정 51). `Service`는 사람 메뉴와 같은 자리 — Projects 다음이다(03 구현 스펙 §3).
+  // 그 계약이다(결정 51). 차례는 사이드바 위 칸과 같다 — `Services`가 맨 앞이다(restart 02a-3 · 시안 Main 위 칸 · `nav-items.ts`. 한때
+  // 사람 메뉴의 차례로 Projects 다음이었다).
   await expect.poll(() => destinationsAsked(page)).toEqual([
-    "projects",
     "services",
+    "projects",
     "terminal",
     "processes",
     "archive",
@@ -787,7 +793,8 @@ test("확인 창이 떠 있어도 ⌘B는 먹는다", async ({ page }) => {
 
   await page.keyboard.press("Meta+b");
 
-  await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBe(0);
+  // 접힌 사이드바 상자는 본문 카드 왼쪽 틈 8로 남는다(restart 02a-2 — 한때 0).
+  await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBe(8);
   // 창은 그대로다 — 접힌 것은 뒤 화면이고, 답해야 하는 물음은 그대로 서 있다.
   await expect(ask).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);

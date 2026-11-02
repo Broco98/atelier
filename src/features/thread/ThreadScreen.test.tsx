@@ -328,6 +328,23 @@ describe("새 채팅 화면", () => {
     expect(html).toContain('placeholder="refund-api에서 무엇을 할까요?"');
   });
 
+  // States 보드 01 「빈 채팅」 · Thread 보드 `.ra-empty-q`(restart 02b-1) — 작업공간의 새 채팅은 물음 아래 그 작업공간의 slug · 브랜치가 서고 입력창은
+  // 바닥이다. 홈의 새 채팅에는 그 줄이 없다(Home 보드).
+  it("작업공간의 새 채팅은 물음 아래 그 작업공간의 slug · 브랜치가 선다 — 홈에는 없다", () => {
+    const client = new QueryClient();
+    client.setQueryData(worksQuery().queryKey, [workFixture({ slug: "watcher-failure-signal", branch: "feat/watcher-failure-signal" })]);
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <NewThreadScreen seed={{ ...SEEDLESS, link: { kind: "work", slug: "watcher-failure-signal" } }} />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    const words = html.replace(/<[^>]*>/g, "");
+    expect(words).toContain("무엇을 만들까요?watcher-failure-signal · feat/watcher-failure-signal");
+    expect(drawNew()).not.toContain(" · feat/");
+  });
+
   // 씨앗의 말은 화면이 선 뒤에 효과가 넣는다. 정적 그림에는 효과가 돌지 않아 그 자리를 채워 두고 재고, 주소에서 입력칸까지는 L3가 잰다.
   it("`?new=thread` · `?service=` · `?say=`의 말이 입력창에 채워져 있고 사람을 기다린다", () => {
     const say = "결제 서비스에 Project를 넣고 싶어요. ";

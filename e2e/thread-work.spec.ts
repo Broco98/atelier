@@ -64,9 +64,14 @@ async function openThread(page: Page, view: ThreadView, lines: readonly RecordLi
     thread_mark_read: answerByArg("thread", { [view.id]: { ...summaryOf(view), lastRead: view.lastSeq } }),
   });
   await page.goto(`/threads/${view.id}`);
-  // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
-  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true })).toBeVisible({ timeout: 20_000 });
+  // 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭에 선다(restart 02a-4) — 탭 칸 이름도 그 채팅 이름(첫 말)일 수 있어 흐름의 글은 뒤쪽을
+  // 집는다. **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
+  if (view.work) await expect(page).toHaveURL(`/works/${view.work}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true }).last()).toBeVisible({ timeout: 20_000 });
 }
+
+/** 창 머리의 「요약 카드」(restart 02a-9 — 한때 「요약 고정」). 오른쪽 자리는 처음엔 닫혀 있어 이것으로 연다. */
+const 요약카드단추 = (page: Page) => page.getByRole("button", { name: "요약 카드", exact: true });
 
 /**
  * 엔진이 Thread를 Work에 이었다 — 목록 요약 이벤트가 그 Work를 싣고 온다(`change_thread`). 다시 읽는 답(보기 · 목록 · 읽은 자리)도 그
@@ -143,15 +148,19 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   await streamLines(page, view.id, [ANSWERED, CREATED]);
   await linkTo(page, linked);
 
-  // 카드가 걷히고 그 자리에 결정 줄이, 턴 뒤에 이음 줄이 선다. 머리 줄 이름 앞에 그 Work 이름(누르면 카드가 열린다)이, 오른쪽 위에
-  // 요약 카드가 서고 요약 고정 토글이 켜진다 — 아직 worktree가 없어 Project는 읽기만이다(읽는 범위의 차례).
+  // 카드가 걷히고 그 자리에 결정 줄이, 턴 뒤에 이음 줄이 선다. 이은 채팅은 그 작업공간 화면의 채팅 탭으로 옮겨 선다(주소만 바뀐다 — restart
+  // 02a-4). 한때 머리 줄 이름 앞에 그 Work 이름이 서고 요약 카드가 저절로 섰다 — 작업공간의 채팅 탭에는 그 머리가 없고(탭이 이름을 맡는다), 오른쪽
+  // 자리는 처음엔 닫혀 있어(02a-9) 창 머리의 「요약 카드」로 연다. 아직 worktree가 없어 Project는 읽기만이다(읽는 범위의 차례).
   await expect(card).toHaveCount(0);
+  await expect(page).toHaveURL(`/works/${MADE.slug}?tab=chat&thread=${view.id}`);
   await expect(흐름(page).locator('[data-decision="work-created"]')).toHaveText(
     ["작업공간 만들기", ...MADE.projects, MADE.branch].join(" · "),
   );
   await expect(흐름(page).locator('[data-system="work"]')).toHaveText(`작업공간 ${MADE.title}을 만들고 이 채팅에 연결함`);
-  await expect(page.getByRole("button", { name: `작업공간 열기: ${MADE.title}`, exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "요약 고정", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: `작업공간 열기: ${MADE.title}`, exact: true })).toHaveCount(0);
+  await expect(요약카드단추(page)).toHaveAttribute("aria-pressed", "false");
+  await 요약카드단추(page).click();
+  await expect(요약카드단추(page)).toHaveAttribute("aria-pressed", "true");
   const workCard = page.getByRole("region", { name: "요약", exact: true });
   await expect(workCard).toContainText(MADE.title);
   await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/, /^web-app\s*읽기만/]);
@@ -197,11 +206,14 @@ test("이은 Thread에서 Host가 Work 밖 Project를 고치려 하면 카드가
   };
   const linked = { slug: ASK.work, title: workTitleOf(project, ASK.work), branch: TREE.branch, projects: ASK.workProjects };
   await openThread(page, view, project, [...WORKS, workView(linked)]);
+  await 요약카드단추(page).click();
   const workCard = page.getByRole("region", { name: "요약", exact: true });
   await expect(workCard).toContainText(linked.title);
   await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/, /^web-app\s*읽기만/]);
 
-  // 물음 줄 — 입력창 자리에 카드가 선다. 물음 · 까닭과 선택지 셋(붙이고 고치기 · 읽기만 · 아니요)이다.
+  // 물음 줄 — 입력창 자리에 카드가 선다. 물음 · 까닭과 선택지 셋(붙이고 고치기 · 읽기만 · 아니요)이다. 「요약 카드」를 누르느라 옮긴 포커스를 입력칸에
+  // 되돌려 둔다 — 카드는 입력창의 포커스를 이어받는다.
+  await 입력칸(page).focus();
   await streamLines(page, view.id, [PROJECT_ASKED]);
   const card = page.getByRole("group", { name: "Claude Code가 이 작업공간에 없는 Project를 고치려고 해요", exact: true });
   await expect(card).toBeVisible();

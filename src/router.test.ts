@@ -112,7 +112,7 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
     origin: "http://localhost",
     context: { queryClient },
   });
-  return { router, history };
+  return { router, history, queryClient };
 }
 
 // 라우터 상태를 히스토리 이동에 따라오게 한다. 앱에서는 RouterProvider 안의
@@ -354,6 +354,30 @@ describe("Thread의 주소", () => {
     expect(history.length).toBe(length);
     await goBack(router, history);
     expect(router.state.location.pathname).toBe("/works/work-a");
+  });
+
+  // **작업공간 화면은 목록을 받아 둔 뒤에 선다**(restart 02a-15c). 앱을 작업공간 주소에서 켜면 목록이 아직 없다 — 그 사이 화면이 서면 고른
+  // 작업공간이 없는 빈 화면(「아직 작업공간이 없어요」)이 먼저 그려지고, 레일 · spec 패널이 접힌 채 그려졌다가 목록이 오면 0에서 자라 본문
+  // 폭이 움직였다(02a-14 「처음 켜면 자라는 움직임 없이 선다」). 목록은 주입하는 값이라 도는 조회 하나를 심어 두고 그 답을 붙잡는다.
+  it("작업공간 주소에 처음 닿으면 목록이 올 때까지 그 화면에 닿지 않는다", async () => {
+    const { router, queryClient } = setup(["/works/work-a"]);
+    queryClient.removeQueries({ queryKey: worksQuery().queryKey });
+    let answer: (list: Array<WorkView>) => void = () => {};
+    void queryClient.prefetchQuery({
+      queryKey: worksQuery().queryKey,
+      queryFn: () => new Promise<Array<WorkView>>((resolve) => (answer = resolve)),
+    });
+    let arrived = false;
+    const loading = router.load().then(() => {
+      arrived = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(arrived, "목록이 오기 전에 작업공간 화면에 닿았다").toBe(false);
+
+    answer(works("work-a", "work-b"));
+    await loading;
+    expect(router.state.location.pathname).toBe("/works/work-a");
+    expect(router.state.matches.map((match) => match.status)).not.toContain("pending");
   });
 });
 
