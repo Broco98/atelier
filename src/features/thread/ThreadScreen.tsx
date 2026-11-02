@@ -526,35 +526,32 @@ function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
   };
 }
 
+/** 작업공간의 오른쪽 자리의 처음 값 — spec 패널이다(SummarySheet 표 첫 줄). */
+const WORK_FIRST = "spec";
+
 /**
  * **작업공간 화면의 오른쪽 자리**(restart 02a-9 · 구현 스펙 「02a — 오른쪽 자리」) — 그 작업공간의 값(`workSeat`)과 그것을 읽는 것 한 묶음이다:
  * spec 패널 열림 · 요약 카드 열림 · 넓힌 카드 · 넓은 동안 사이드바 접기, 그리고 채팅 탭 몸에 건넬 것(`card` — 대화의 문서 카드와 PR의 「변경
  * 사항 보기」가 넓히는 길). 작업공간 화면이 부르고 채팅 탭 몸(`WorkChat`) · 켜진 새 채팅 탭 몸(`WorkNewChat` — restart 02a-11)은 받은 대로
  * 그린다. 한때 이 묶음이 채팅 화면의 지역 상태였다 — spec 패널이 작업공간 화면에 있어 그 화면이 쥐어야 둘이 한 자리를 나눈다.
  *
- * - **처음 값은 spec 패널이다**(SummarySheet 표 첫 줄) — 분할인 채 들어오면 패널이 접혀 있다(`split` — 결정 88).
- * - **넓힌 카드는 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이 본문에 서 있을 때만이다**(`chat`) — 셸 · 파일 탭 · 문서가 본문이면 카드가 없어 넓힌
+ * - **처음 값은 spec 패널이다**(SummarySheet 표 첫 줄). 한때 분할인 채 들어오면 패널이 접혀 있었다(결정 88 — restart 02a-13이 분할을 걷었다).
+ * - **넓힌 카드는 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이 본문에 서 있을 때만이다**(`chat`) — 셸 · 파일 탭이 본문이면 카드가 없어 넓힌
  *   것도 없고, 접었던 사이드바가 돌아온다.
- * - **본문 탭이 바뀌면 표의 탭 줄대로 값을 바꾼다**(`tab` — restart 02a-10 · `followTab`) — 셸 · 파일 탭 · 문서가 켜지면 요약 카드가 닫히고, 다른
+ * - **본문 탭이 바뀌면 표의 탭 줄대로 값을 바꾼다**(`tab` — restart 02a-10 · `followTab`) — 셸 · 파일 탭이 켜지면 요약 카드가 닫히고, 다른
  *   채팅 탭이 켜지면 넓힌 카드가 작은 카드로 돌아온다. 모르는 한 틱(`undefined`)은 세지 않는다.
  * - **넓힌 카드의 Project 트리에서 바뀌지 않은 파일은 파일 탭으로 연다**(`openFile` — restart 02a-12) — 탭을 여는 것은 작업공간 화면이다.
  */
 export function useWorkRightPlace(
   work: WorkView | null,
-  {
-    split,
-    chat,
-    tab,
-    openFile,
-  }: { split: boolean; chat: boolean; tab: BodyTab | undefined; openFile: (target: CodeTarget) => void },
+  { chat, tab, openFile }: { chat: boolean; tab: BodyTab | undefined; openFile: (target: CodeTarget) => void },
 ) {
   const slug = work?.slug ?? null;
   const key = slug === null ? null : workSeat(slug);
-  const first = split ? null : "spec";
-  const [seat, move] = useRightSeat(key, first);
+  const [seat, move] = useRightSeat(key, WORK_FIRST);
   useEffect(() => {
-    if (key !== null && tab !== undefined) followTab(key, first, tab);
-    // 본문 탭이 바뀔 때만 잰다 — 처음 값(`first`)이 분할로 바뀌어도 탭은 그대로다(`useRightSeat`와 같다).
+    if (key !== null && tab !== undefined) followTab(key, WORK_FIRST, tab);
+    // 본문 탭이 바뀔 때만 잰다.
   }, [key, tab]);
   const shown = rightShown(seat, chat);
   useFoldSidebar(shown.opened !== null);

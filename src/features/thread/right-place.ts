@@ -33,7 +33,7 @@ export interface RightSeat {
  * 오른쪽 자리를 바꾸는 손짓.
  * - `show` — 그것을 세운다(레일의 spec 칸 · 머리의 작업공간 이름 · PR의 「변경 사항 보기」가 넓힐 수 없는 자리). 이미 서 있으면 그대로다 —
  *   넓힌 카드도 걷지 않는다.
- * - `hide` — 그것이 서 있으면 걷는다(분할을 켤 때 spec 패널 · 레일의 켜진 칸을 다시 누름).
+ * - `hide` — 그것이 서 있으면 걷는다(레일의 켜진 칸을 다시 누름).
  * - `toggle` — 서 있으면 걷고 아니면 세운다(요약 단추 · 패널 토글 · ⌘Enter).
  * - `expand` — 요약 카드를 넓혀 그것을 연다(대화의 문서 카드 · PR의 「변경 사항 보기」 · 카드의 줄).
  * - `collapse` — 넓힌 카드의 × — 작은 카드로 돌아온다.
@@ -114,8 +114,8 @@ export function moveSeat(key: string, first: RightPlace, move: RightMove): void 
 }
 
 /**
- * **본문 탭**(restart 02a-10) — 작업공간 화면의 본문(분할이면 묶음 열)에 선 탭이다. 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이면 그 칸의 id, 셸 ·
- * 파일 탭 · 문서면 `null`이다. 칸의 id로 재는 것은 새 채팅 탭이 첫 말로 채팅 탭이 되어도 같은 칸이라 같은 탭이어야 해서다(`settleNewChatTab`).
+ * **본문 탭**(restart 02a-10) — 작업공간 화면의 본문에 선 탭이다. 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이면 그 칸의 id, 셸 ·
+ * 파일 탭이면 `null`이다. 칸의 id로 재는 것은 새 채팅 탭이 첫 말로 채팅 탭이 되어도 같은 칸이라 같은 탭이어야 해서다(`settleNewChatTab`).
  */
 export type BodyTab = number | null;
 
@@ -188,8 +188,8 @@ export function cardDocFile(opened: Opened | null, file: string | null): string 
 /**
  * 그 열쇠의 값과 바꾸는 길. 열쇠가 없으면(고른 작업공간이 없다) 처음 값이고 바꾸는 길은 아무 일도 안 한다.
  *
- * **처음 읽은 값을 적어 둔다** — 작업공간의 처음 값은 분할 여부를 탄다(분할인 채 들어오면 spec 패널이 접혀 있다 — 결정 88). 적지 않으면 분할을 끄는
- * 순간 처음 값이 바뀌어 사람이 손대지 않은 패널이 저절로 열린다.
+ * **처음 읽은 값을 적어 둔다** — 처음 값이 뒤에 바뀌어도 사람이 손대지 않은 자리가 저절로 바뀌지 않게. 한때 작업공간의 처음 값이 분할 여부를
+ * 탔다(결정 88 — restart 02a-13이 분할을 걷었다).
  */
 export function useRightSeat(key: string | null, first: RightPlace): readonly [RightSeat, (move: RightMove) => void] {
   const seat = useStore(rightPlaceStore, (state) => (key === null ? firstSeat(first) : seatOf(state, key, first)));

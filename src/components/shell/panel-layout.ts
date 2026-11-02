@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
-// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `SIDEBAR_MOTION` · `foldingInnerClass` · `panelMotionMs`)과 접힐 때의
+// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `SIDEBAR_MOTION` · `foldingInnerClass`)과 접힐 때의
 // 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
 // 카드 사이 틈을 스크립트가 읽는 길(`cardGapPx`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
 // 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
@@ -13,7 +13,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 
 /**
  * 탭 줄(`ShellTabs`)을 **머리에 이는 카드**의 바닥 — 카드가 그 줄의 min-content보다 좁아지지 않는다(codex-ds 스펙 §4 「탭 줄」
- * — 줄이 본문 카드 머리로 내려왔다). work 화면의 본문 카드(문서 · 터미널), 분할의 열 카드, `/terminal`의 카드가 든다.
+ * — 줄이 본문 카드 머리로 내려왔다). work 화면의 본문 카드(채팅 · 터미널 · 파일), `/terminal`의 카드가 든다.
  *
  * 줄 안에서 줄어드는 것은 셸 칸 상자뿐이고 그 바닥이 칸 하나다(`ShellTabs`의 상자 주석). 그런데 카드가
  * `min-w-0`이면 줄이 그 바닥을 들고 있어도 카드가 먼저 0까지 줄어, 넘치는 몫이 카드 모서리에 잘린다. 그래서
@@ -21,13 +21,13 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
  * 줄의 min-content가 본문 열의 바닥이 되어(`TAB_ROW_COLUMN`) 사이드바가 자리를 내준다 — 사이드바는 줄어들 수 있고 이
  * 카드는 못 준다.
  *
- * **숫자가 아니라 min-content인 것**은 줄의 폭이 화면마다 갈려서다(`spec` 칸이 없는 `/terminal`, 열 닫기 `×`가 서는 분할의
- * 터미널 열, 칸이 없는 줄) — 손으로 더한 합은 이 자리에서 세 번 틀렸다.
+ * **숫자가 아니라 min-content인 것**은 줄의 폭이 화면마다 갈려서다(작업공간의 「새 탭」 메뉴 `+`, 칸이 없는 줄 — 한때 `spec` 칸 ·
+ * 분할 열의 닫기 `×`도 갈랐다) — 손으로 더한 합은 이 자리에서 세 번 틀렸다.
  *
  * **카드의 min-content에 줄만 들어가야 한다.** 카드에는 xterm 캔버스와 문서 본문(넓은 표·코드 블록), 탭 줄 아래 경로
  * 줄(`PathBar`)도 사는데 그것들의 min-content까지 세면 소스 보기를 켤 때마다 바닥이 부풀어 패널이 창 밖으로 밀린다. 그래서
  * 줄 아닌 자식은 `contain: inline-size`로 제 내용의 폭을 바깥에 안 알린다 — 그려지는 폭은 그대로다(카드가 늘여 준다).
- * 줄이 없는 카드(분할의 문서 열)도 같은 클래스를 들면 자식이 모두 격리되어 바닥이 없다.
+ * 줄이 없는 카드가 같은 클래스를 들면 자식이 모두 격리되어 바닥이 없다.
  */
 export const TAB_ROW_CARD = "min-w-min [&>:not([data-tab-row])]:contain-inline-size";
 
@@ -66,9 +66,9 @@ export const PANEL_MIN_WIDTH = 260;
 export const PANEL_MAX_WIDTH = 560;
 
 /**
- * 카드 사이 틈(px) — 토큰 `--space-2`를 그 요소에서 읽는다. 카드 줄의 작업 패널 카드와 분할의 두 열이 이 틈을 두고 서서(`Frame`), 그려진
- * 상자의 폭에서 틈을 빼야 카드의 폭이 나오는 자리가 부른다 — 틈 자리 손잡이가 재는 칸의 폭(`useResizableWidth`의 `drawnWidth`)과
- * 분할의 두 열이 나눠 갖는 폭(`Frame`의 `sharedWidth`)이다. 숫자를 그 자리에 적으면 토큰이 바뀌는 날 그 자리만 낡는다.
+ * 카드 사이 틈(px) — 토큰 `--space-2`를 그 요소에서 읽는다. 카드 줄의 작업 패널 카드가 이 틈을 두고 서서(`Frame`), 그려진
+ * 상자의 폭에서 틈을 빼야 카드의 폭이 나오는 자리가 부른다 — 틈 자리 손잡이가 재는 칸의 폭(`useResizableWidth`의 `drawnWidth`)이다(한때
+ * 분할의 두 열이 나눠 갖는 폭도 이것으로 쟀다). 숫자를 그 자리에 적으면 토큰이 바뀌는 날 그 자리만 낡는다.
  * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다.
  *
  * 한때(02 구현 스펙 §3 S2) 흰 판 한 장 안의 칸이 둘레 틈 없이 0.5 선(`PANE_RULE`)으로 갈렸다 — restart 02a-2가 판을 걷고 영역을 다시
@@ -88,10 +88,10 @@ export function cardGapPx(from: HTMLElement): number {
  * 안쪽 열이 폭이 다 오기 전에 잘리거나(지연이 짧다) 다 온 뒤에 한 번 더 되흐른다(길다). 둘이 같은 토큰(`--duration-panel-open`)을
  * 읽는 것으로 그 같음을 든다(`panel-layout.test.ts`).
  *
- * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 목록 칸의 폭과 분할 열 폭이 훌쩍 뛰는 순간(둘 다 `Frame`)과, 넓힌 요약 카드 곁에서
+ * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 목록 칸의 폭이 훌쩍 뛰는 순간(`Frame`)과, 넓힌 요약 카드 곁에서
  * 대화 폭 · 카드 자리가 옮겨 가는 순간(`ThreadScreen` — Motion 「카드가 넓어진다」도 500ms spring이다)이다. 제 리터럴로 다시
- * 적으면 한쪽만 고친 날 카드 모서리가 경계를 지나쳤다 되돌아온다. 분할 열이 뛰는 순간을 끝내는 타이머는 CSS가 아니라서 같은 토큰을
- * `panelMotionMs`로 읽는다. 사이드바는 같은 곡선에 길이만 다르다(아래 `SIDEBAR_MOTION`).
+ * 적으면 한쪽만 고친 날 카드 모서리가 경계를 지나쳤다 되돌아온다. 사이드바는 같은 곡선에 길이만 다르다(아래 `SIDEBAR_MOTION`).
+ * 한때 분할 열이 뛰는 순간을 끝내는 타이머가 같은 토큰을 스크립트로 읽었다(`panelMotionMs` — restart 02a-13이 분할과 함께 걷었다).
  *
  * **동작 줄이기면 곧바로 바뀐다**(시안 `.ra-panelwrap { transition: none }`) — 사이드바와 같은 갈래다.
  */
@@ -111,17 +111,6 @@ export const PANEL_MOTION = "duration-panel-open ease-spring motion-reduce:trans
  */
 export const SIDEBAR_MOTION = "duration-sidebar ease-spring motion-reduce:transition-none";
 
-/**
- * 패널 여닫기 길이(ms) — `--duration-panel-open`을 문서 뿌리에서 읽는다. 패널과 같은 박자로 움직인 것이 **언제 끝나는지**를 스크립트가
- * 알아야 하는 자리(분할의 되돌림 — `useSplitRatio`)가 부른다. 그 자리가 수를 따로 들면 토큰을 고친 날 타이머만 옛 길이로 남는다.
- * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다 — 그때는 옮겨 갈 트랜지션도 없다.
- */
-export function panelMotionMs(): number {
-  const value = getComputedStyle(document.documentElement).getPropertyValue("--duration-panel-open").trim();
-  const time = parseFloat(value);
-  if (!Number.isFinite(time)) return 0;
-  return value.endsWith("ms") ? time : time * 1000;
-}
 
 /**
  * 접히는 패널 **안쪽 열**의 클래스 — 사이드바와 오른쪽 패널(작업 패널 · spec 목록 패널, `Frame`의 `PanelBox`)이 같은 장치를 쓰고,

@@ -95,7 +95,7 @@ describe("경로 복사 · 줄 끝", () => {
   });
 
   // 닫기 ×는 미리보기에만 단다(codex-ds 결정 13) — 줄이 스스로 세우는 닫기는 없다. 줄 끝 칸은 부르는 쪽이 건넬 때만 선다
-  // (분할 spec 열의 열 닫기 — codex-ds 스펙 S14).
+  // (넓힌 카드의 「카드로 접기」 — 한때 분할 spec 열의 열 닫기였다, codex-ds 스펙 S14).
   it("줄 끝 칸은 건넨 것만 서고, 경로 복사 뒤에 선다", () => {
     expect(render()).not.toMatch(/aria-label="[^"]*닫기"/);
     const markup = renderToStaticMarkup(

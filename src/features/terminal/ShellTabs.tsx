@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { Copy, CopyX, File, FileCode, FolderOpen, MessageSquare, Pencil, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
+import { Copy, CopyX, FileCode, MessageSquare, Pencil, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import {
   ContextMenu,
@@ -37,21 +37,6 @@ import { gapLineLeft, sidewaysIntent, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
 /**
- * 탭 줄 맨 앞에 고정으로 서는 문서 칸(결정 7·8).
- *
- * `on`은 **본문이 문서인가**이지 마지막으로 누른 칸이 아니다 — 분할이면 이것과 `showing`이
- * 함께 참이고, 그때 켜진 칸이 둘이다(결정 12).
- */
-export interface SpecTab {
-  on: boolean;
-  onSelect: () => void;
-  /** spec 탭 메뉴의 「Finder에서 열기」 — 그 work의 spec 폴더를 연다(codex-ds 스펙 §9). */
-  onOpenFolder: () => void;
-  /** spec 탭 메뉴의 「spec 경로 복사」 — 그 work의 spec 경로를 참조 표기로 쓴다(codex-ds 스펙 §9). */
-  onCopyPath: () => void;
-}
-
-/**
  * 칸을 누른 순간 — 자리와, 끌기를 걸지 가를 것(누른 버튼 · ⌃). 우클릭과 macOS의 ⌃클릭은 메뉴의 몸짓이라 끌기를 안 건다(구현 노트 Q9).
  * 화면에 내려가는 것은 자리뿐이다(`onDragTab`).
  */
@@ -63,15 +48,14 @@ interface TabPress {
 }
 
 /**
- * `spec` **바로 뒤에** 서는 고정 칸 하나(three-axes 결정 9 · S21) — 화면이 목록으로 넘긴다. 한때 `chat` 탭이 이 자리에 설 계획이었는데,
+ * 묶음 **앞에** 서는 고정 칸 하나(three-axes 결정 9 · S21) — 화면이 목록으로 넘긴다. 한때 `chat` 탭이 이 자리에 설 계획이었는데,
  * restart 02a-4가 채팅 탭을 **묶음의 칸**으로 세웠다(`ChatTab` — 셸 · 파일 탭과 같은 규칙으로 끌리고 닫힌다, 구현 스펙 「02a」). 지금 넘기는
- * 화면은 없다.
+ * 화면은 없다. 한때 그 앞에 고정 칸 `spec`(문서 탭)이 섰다 — restart 02a-13이 걷었다.
  *
- * **묶음의 칸이 아니라서 셸 칸의 성질을 하나도 안 갖는다.** 숫자 키를 받지 않고(⌘1은 `spec`, ⌘2~9는 묶음 — 번호는 묶음의
- * 칸끼리만 센다), 분할에 들지 않고(끄는 자리가 없다 — 분할은 늘 `spec ▏ 묶음의 지금 탭`), 순서를 바꾸지 않고, `×`가 없다. 모양과 켜짐을
- * 말하는 법은 `spec` 칸 그대로다.
+ * **묶음의 칸이 아니라서 셸 칸의 성질을 하나도 안 갖는다.** 숫자 키를 받지 않고(번호는 묶음의 칸끼리만 센다), 순서를 바꾸지 않고,
+ * `×`가 없다.
  *
- * `id`는 칸의 `data-tab` 값이다 — `spec` · `shell` · `code`(파일 탭) · `chat`(채팅 탭) · `new-chat`(새 채팅 탭) · `new`는 이 줄이 이미
+ * `id`는 칸의 `data-tab` 값이다 — `shell` · `code`(파일 탭) · `chat`(채팅 탭) · `new-chat`(새 채팅 탭) · `new`는 이 줄이 이미
  * 쓰므로 고르지 않는다. 묶음에 칸
  * 종류가 늘면 그 표식도 여기 더한다. 글리프는 값으로 받는다: 이 줄은 `features/works`를 모른다(머리말).
  */
@@ -79,7 +63,7 @@ export interface FixedTab {
   id: string;
   label: string;
   icon: LucideIcon;
-  /** 본문이 이 칸의 것인가 — `spec`의 `on`과 같은 뜻이다. */
+  /** 본문이 이 칸의 것인가. */
   on: boolean;
   onSelect: () => void;
 }
@@ -115,27 +99,15 @@ interface ShellTabsProps {
    * 이 줄이 그리는 화면 — work의 slug이고, **빈 글자 `""`면 최상위 터미널**이다. `null`이라는
    * 갈래는 없다.
    *
-   * **이 파일에서 `null`은 다른 뜻이다.** 아래 `spec`의 `null`은 「문서 칸이 없다」,
-   * `onDragTab`의 `shellId === null`은 「그 문서 칸」이다 — 최상위 터미널과는 상관이 없다.
-   * 부르는 쪽(WorksPage)의 `null`은 또 「고른 작업이 없다」이고, 그 화면은 셸이 설 자리가
+   * 부르는 쪽(WorksPage)의 `null`은 「고른 작업이 없다」이고, 그 화면은 셸이 설 자리가
    * 아예 없어 이 줄을 세우지 않는다.
    */
   owner: ShellOwner;
   /** 이 Work의 프로젝트들. 둘 이상이면 `+`가 어디에 띄울지 물어본다(결정 24). */
   projects: string[];
   /**
-   * 맨 앞에 고정으로 서는 `spec` 칸 — **`null`이면 셸부터 선다**(결정 8).
-   *
-   * **화면마다 갈리는 것이 이 한 칸뿐이다.** `shellForNav`가 `firstKey`로 같은 비대칭을
-   * 이미 들고 있다: work 화면은 ⌘1이 spec이라 셸이 2부터고, `/terminal`은 문서가 없어
-   * 1부터다. 여기서 갈래를 하나 더 만들지 않고 그 모양을 그대로 받는다.
-   *
-   * `on`은 **본문이 문서인가**이지 마지막으로 누른 칸이 아니다 — 분할이면 이것과 아래
-   * `showing`이 함께 참이고, 그때 켜진 칸이 둘이다(결정 12).
-   */
-  spec: SpecTab | null;
-  /**
-   * `spec` 바로 뒤에 서는 고정 칸들(`FixedTab`) — 넘긴 순서대로 선다. **선택이다**: `/terminal`처럼 넘길 것이 없는
+   * 묶음 앞에 서는 고정 칸들(`FixedTab`) — 넘긴 순서대로 선다. 한때 그 앞에 문서 칸 `spec`이 늘 섰다(결정 7 · 8 — restart 02a-13이 걷었다.
+   * 이제 두 화면 모두 묶음부터 서고 ⌘1이 첫 칸이다). **선택이다**: `/terminal`처럼 넘길 것이 없는
    * 화면은 안 준다. 빠뜨려도 조용히 망가지는 것이 없어서다 — 끄는 콜백을 필수로 둔 까닭(아래 `onDragTab`)과 반대다.
    */
   fixed?: readonly FixedTab[];
@@ -179,26 +151,24 @@ interface ShellTabsProps {
    */
   onNewChat?: () => void;
   /**
-   * 칸을 눌렀다 — 끌기를 걸어 둔다(UI개선 결정 11 · 결정 12). 문턱을 넘으면 끄는 중이 되고, 떨군 곳이
-   * 정한다: work 화면의 본문 절반이면 분할, 이 줄의 틈이면 순서(UI개선 스펙 S10).
+   * 칸을 눌렀다 — 끌기를 걸어 둔다(UI개선 결정 11). 문턱을 넘으면 끄는 중이 되고, 이 줄의 틈에 떨구면 순서가 바뀐다(UI개선 스펙
+   * S10). 한때 work 화면의 본문 절반에 떨구면 분할이 섰다(결정 12 — restart 02a-13이 걷었다).
    *
-   * 맨 앞 문서 칸은 `null`, 묶음의 칸(셸 칸 · 파일 탭)은 그 칸의 id다. **갈래를 새로 만들지 않는다** —
-   * `DragSource`가 `shellId`로 이미 그 둘을 가르고 있고(「묶음의 칸일 때만 있다」)
-   * 여기서 그 타입을 이름으로 부를 수 없을 뿐이다. 묶음의 칸이 셸인지 파일 탭인지는 id로 부르는 쪽이
-   * 레지스트리에서 찾는다(`onSelect` · `onClose`와 같다).
+   * 받는 것은 묶음의 칸(셸 칸 · 파일 탭 · 채팅 탭)의 id다. 그 칸이 무슨 종류인지는 id로 부르는 쪽이 레지스트리에서 찾는다(`onSelect` ·
+   * `onClose`와 같다).
    *
    * **두 화면 다 준다 — 필수다.** 한때 `/terminal`은 이 콜백을 안 줘서 안 끌렸다(떨굴 분할이
-   * work 화면의 것이었다). 이제 그 화면도 순서를 바꾸려고 끌므로(UI개선 결정 11) 선택으로 두면
+   * work 화면의 것이었다). 그 화면도 순서를 바꾸려고 끌므로(UI개선 결정 11) 선택으로 두면
    * 한 화면이 빼먹어도 컴파일되고 조용히 안 끌린다.
    *
    * **드래그 모듈도 스토어도 여기서 import하지 않는다.** 이 줄이 스스로 하는 것은 누른 동안
    * 제 칸 사각형을 재고 포인터 아래 틈 번호를 셈하는 데까지다 — 끌기를 거는 것, 틈을 적는 것,
    * 놓았을 때 옮기는 것은 스토어를 이미 구독하는 화면이 준다. 제스처는 기능 폴더 밖 `@/lib/pointer-drag`에 살아 두 화면 다 딛는다.
    */
-  onDragTab: (shellId: number | null, from: { clientX: number; clientY: number }) => void;
+  onDragTab: (shellId: number, from: { clientX: number; clientY: number }) => void;
   /**
    * 끄는 동안 틈 선을 세울 자리 — 드래그 상태의 틈 번호를 화면이 그대로 내린다. `null`이면
-   * 선이 없다. 번호는 **이 줄 묶음 칸들 사이**의 것이다(0이 첫 칸 앞, 곧 `spec` 뒤).
+   * 선이 없다. 번호는 **이 줄 묶음 칸들 사이**의 것이다(0이 첫 칸 앞).
    */
   slot: number | null;
   /**
@@ -220,32 +190,32 @@ interface ShellTabsProps {
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
    *
-   * 무엇이 오는지는 화면이 정한다 — work 화면은 분할의 터미널 열에서 그 열을 닫는 `×`를 두고(codex-ds 스펙 S14),
-   * 그 밖에서는 아무것도 안 둔다. 상태 배지 · ⋯ · 분할은 이 줄이 아니라 머리 줄에 선다(`WorksPage`).
+   * 무엇이 오는지는 화면이 정한다 — 지금 두는 화면은 없다(한때 work 화면이 분할의 터미널 열을 닫는 `×`를 두었다 — codex-ds 스펙 S14,
+   * restart 02a-13이 분할을 걷었다). 상태 배지 · ⋯ · 요약 카드는 이 줄이 아니라 머리 줄에 선다(`WorksPage`).
    */
   actions?: React.ReactNode;
-  /** 검사가 이 줄을 정체성으로 집는 표식(분할 열 머리의 `data-column`) — 줄의 머리 상자에 그대로 단다. */
+  /** 검사가 이 줄을 정체성으로 집는 표식 — 줄의 머리 상자에 그대로 단다. */
   [mark: `data-${string}`]: string | undefined;
 }
 
-// 본문 카드 머리의 **가로 탭 줄**(결정 7·8·10). `[spec][고정 칸…][묶음…][+]`가 왼쪽부터 차고 오른쪽 끝에
+// 본문 카드 머리의 **가로 탭 줄**(결정 7·8·10). `[고정 칸…][묶음…][+]`가 왼쪽부터 차고 오른쪽 끝에
 // 조작이 고정된다. 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아온 것이다(adr-03).
 // 고정 칸은 화면이 넘기는 `FixedTab`이다(three-axes 결정 9) — 숫자 키를 안 받아 아래 순서의 셈에 안 든다.
 // **묶음**(CONTEXT)은 스크롤 상자 안의 칸들이고 그 차례는 레지스트리가 든다(`bundleOf`) — 셸 칸과 **파일 탭** 칸이 구분선 없이
 // 한 차례로 선다(git-integration 결정 31). 파일 탭의 표시(이름 · 툴팁)는 칸이 든 정체에서 나온다 — 이 줄이 따로 받지 않는다.
 //
-// **새 순서를 발명하지 않는다.** ⌘1~9가 이미 이 순서를 세고 있어서(work 화면은 ⌘1이 spec,
-// ⌘2~9가 묶음 — `shell-registry.ts`의 `shellForNav`) 이 줄이 하는 일은 키보드가 이미 아는
+// **새 순서를 발명하지 않는다.** ⌘1~9가 이미 이 순서를 세고 있어서(두 화면 모두 ⌘1이 묶음의 첫 칸이다 —
+// `shell-registry.ts`의 `shellForNav`) 이 줄이 하는 일은 키보드가 이미 아는
 // 순서를 눈에 보이게 하는 것뿐이다. 화면에 보이는 순서와 ⌘1~9가 고르는 것이 어긋나면
 // 이 줄이 한 일이 없다.
 //
 // **이 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」 · DS `TabRow`). 한때 창 맨 위 줄(`<header>` — 지금의 머리 줄)에 서던 줄이
-// 그 탭이 보여 줄 카드 안 맨 위로 내려왔다 — 문서 카드 · 터미널 카드 · 분할의 터미널 열 · `/terminal`의 카드가 이 줄을
+// 그 탭이 보여 줄 카드 안 맨 위로 내려왔다 — 채팅 카드 · 터미널 카드 · 코드 카드 · `/terminal`의 카드가 이 줄을
 // 머리로 인다(`head`). 머리 상자(46 · 아래 0.5px 선 · 안쪽 8)를 이 컴포넌트가 그리고 `data-tab-row`를 단다 — 그 줄을 이는
 // 카드의 바닥(`panel-layout`의 `TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 그 표식으로 줄을 가른다. 카드 안이라 창을 끄는 자리가
 // 아니다 — 끄는 자리는 크롬 맨 위 머리 줄 하나다(`ShellHeadRow` · `Frame` 머리말).
 //
-// **칸은 Tab으로 다닌다**(codex-ds 스펙 §9 — 목록이 아니라 roving이 없다). spec 칸 · 고정 칸 · 셸 칸과 파일 탭의 이름 · 닫기 · `+`가
+// **칸은 Tab으로 다닌다**(codex-ds 스펙 §9 — 목록이 아니라 roving이 없다). 고정 칸 · 셸 칸과 파일 탭의 이름 · 닫기 · `+`가
 // 저마다 정류장이고 `tabIndex`를 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
 //
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
@@ -258,7 +228,6 @@ function ShellTabs({
   owner,
   projects,
   defaultCwd,
-  spec,
   fixed = [],
   showing,
   chat,
@@ -310,7 +279,7 @@ function ShellTabs({
   tabIds.current = tabs.map((tab) => tab.id);
 
   // 묶음 칸을 누른 동안의 줄 기하(`tab-gap.ts`). **누를 때 한 번 재고** 손을 떼면 버린다 —
-  // 움직일 때마다 재면 포인터 이동마다 레이아웃을 읽고, 버리지 않으면 다음에 문서 칸을
+  // 움직일 때마다 재면 포인터 이동마다 레이아웃을 읽고, 버리지 않으면 다음에 다른 칸을
   // 끌 때 옛 기하로 틈이 선다.
   //
   // **같은 값을 두 곳에 둔다 — 읽는 쪽이 둘이라서다.** 틈 선은 그리는 중에 읽으므로 상태
@@ -327,7 +296,7 @@ function ShellTabs({
   // 포인터가 **가만히 있어도** 구르므로 이동 이벤트가 아니라 프레임에서 굴린다(아래 `onDragTab`).
   const pointerX = useRef<number | null>(null);
   // 누른 자리와, 그 뒤 **옆으로 끌 뜻**이 한 번이라도 보였는가(`tab-gap`의 `sidewaysIntent`). 뜻이 보이기
-  // 전에는 가장자리여도 안 구른다 — 본문 절반으로 곧장 내려가는 손이 탭 줄을 지나며 줄을 밀지 않게.
+  // 전에는 가장자리여도 안 구른다 — 줄 밖으로 곧장 내려가는 손이 탭 줄을 지나며 줄을 밀지 않게.
   // 한 번 보이면 끌기 끝까지 붙든다 — 끝에 붙여 가만히 있는 손도 굴러야 한다.
   const pressedAt = useRef<{ x: number; y: number } | null>(null);
   const sideways = useRef(false);
@@ -366,15 +335,10 @@ function ShellTabs({
       onCopyCwd: (cwd: string) => latest.current.onCopyCwd?.(cwd),
       onRenameChat: (thread: string, title: string) => latest.current.chat.onRename(thread, title),
       chatMenu: (rename: () => void) => latest.current.chat.menu(rename),
-      onDragTab: (id: number | null, from: TabPress) => {
+      onDragTab: (id: number, from: TabPress) => {
         // **오른쪽 버튼 · ⌃가 실린 누름은 끌기가 아니다**(구현 노트 Q9) — 메뉴를 여는 몸짓이다. 걸어 두면 메뉴를 연 손이 움직이는
-        // 대로 문턱을 넘어 끄는 중이 된다. 문서 칸도 같은 거름을 지난다.
+        // 대로 문턱을 넘어 끄는 중이 된다.
         if (from.button !== 0 || from.ctrlKey) return;
-        // 문서 칸은 순서에 안 낀다 — 줄 기하를 안 재고 화면에 그대로 건넨다(그 칸의 주석).
-        if (id === null) {
-          latest.current.onDragTab(null, from);
-          return;
-        }
         const measured = measureStrip(stripRef.current, tabIds.current.indexOf(id));
         press(id, measured);
         if (measured) {
@@ -447,8 +411,7 @@ function ShellTabs({
   // 읽힌다. 넘치지 않는 폭에서는 아무 일도 안 하는 호출이다.
   //
   // 켜진 칸을 **속성 하나를 새로 만들지 않고** 집는다 — 이름 버튼의 `aria-pressed`가 이미
-  // 그것을 말하고, 이 상자 안에서 참인 것은 하나뿐이다(분할일 때 함께 켜지는 `spec`은
-  // 이 상자 밖에 산다). 칸의 종류를 안 가리므로 묶음의 어느 칸이 켜져도 같은 줄이 돈다.
+  // 그것을 말하고, 이 상자 안에서 참인 것은 하나뿐이다. 칸의 종류를 안 가리므로 묶음의 어느 칸이 켜져도 같은 줄이 돈다.
   useEffect(() => {
     stripRef.current
       ?.querySelector<HTMLElement>('button[aria-pressed="true"]')
@@ -463,7 +426,7 @@ function ShellTabs({
     //
     // **끄는 동안 이 줄이 틈 소비자다**(UI개선 스펙 S10). **줄 전체**에서 듣는 것은 높이 때문이다 — 스크롤 상자는 칸
     // 높이(28px)에 링 자리(4px씩)만 더한 높이라 46px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이
-    // 아니다(`tabGap`). 본문 받침(놓기 겹판)은 이 줄 아래부터 덮으므로(`WorksPage`) 두 소비자가 겹치지 않는다. 줄 위에서 떼면
+    // 아니다(`tabGap`). 줄 위에서 떼면
     // 이 듣기가 창의 듣기(`drop` · 제스처의 `end`)보다 먼저 받는다 — React는 앱의 뿌리 요소에서 듣고, 그 요소가 창보다
     // 먼저 버블을 받는다.
     <div
@@ -474,21 +437,9 @@ function ShellTabs({
       onPointerUp={tabHandlers.onSlotDrop}
       className="relative flex h-(--size-tab-row) shrink-0 items-center gap-0.5 bg-surface px-2 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border"
     >
-      {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
-          고정된다. ⌘W가 여기서 아무 일도 안 하는 것(결정 13)이 같은 말이다.
-
-          닫는 버튼이 없어 칸이 버튼 하나로 끝나므로 켜짐 표시(`tab-on`)와 그것을 말하는
-          속성(`aria-pressed`)이 **같은 요소**에 붙는다. 아래 셸 칸은 형제 버튼 둘이라
-          그럴 수 없다 — 그쪽 주석이 이유를 든다.
-
-          글리프는 한때 사이드바에 있던 `spec` 줄이 쓰던 `File` 그대로다 — 판 04가 그 줄을
-          걷어(결정 6) 지금은 이 칸이 문서를 고르는 유일한 자리다. 라벨이 소문자 영어인 것은
-          CONTEXT.md다 — 「무엇을 볼까」를 고르는 것들(탭 줄 · 레일 칸)의 한 가족이다. */}
-      {spec && <SpecTabButton spec={spec} onDragTab={tabHandlers.onDragTab} />}
-
-      {/* `spec` 뒤의 고정 칸들(three-axes 결정 9). **묶음 상자 밖, 세로선 앞이다** — 상자 안에 들면 켜진 칸 `scrollIntoView`
-          · 틈 번호 · 줄어드는 몫이 이 칸까지 세어 묶음 칸의 셈이 밀린다. 모양과 켜짐은 `spec` 칸 그대로이고(결정 25 — 같은
-          알약, 안 줄어든다) **`onPointerDown`이 없다**: 분할에 들지 않고 순서에도 안 낀다(`FixedTab`). */}
+      {/* 묶음 앞의 고정 칸들(three-axes 결정 9). **묶음 상자 밖, 세로선 앞이다** — 상자 안에 들면 켜진 칸 `scrollIntoView`
+          · 틈 번호 · 줄어드는 몫이 이 칸까지 세어 묶음 칸의 셈이 밀린다. 알약은 묶음의 칸과 같은 결이고(결정 25 — 안 줄어든다)
+          **`onPointerDown`이 없다**: 순서에 안 낀다(`FixedTab`). 한때 그 앞에 문서 칸 `spec`이 늘 섰다(restart 02a-13이 걷었다). */}
       {fixed.map((tab) => (
         <button
           key={tab.id}
@@ -504,13 +455,11 @@ function ShellTabs({
         </button>
       ))}
 
-      {/* `spec`와 묶음 **사이**의 세로선(결정 25). 말하는 것은 「여기서부터 묶음이다」 하나다 —
-          왼쪽은 고정된 칸(`spec`과 그 뒤 칸들)이고 오른쪽은 스크롤하는 상자(묶음)다. 종류가 다르다는 말은 위 칸의
-          바탕이 따로 한다.
+      {/* 고정 칸과 묶음 **사이**의 세로선(결정 25). 말하는 것은 「여기서부터 묶음이다」 하나다 —
+          왼쪽은 고정된 칸이고 오른쪽은 스크롤하는 상자(묶음)다.
 
-          **고정 칸(`spec` · 그 뒤 칸들)이 있을 때만 선다.** `/terminal`에는 그 칸이 없어(결정 8) 가를 것이 없는데,
-          조건 없이 두면 그 화면에서 줄 맨 앞에 이유 없는 선 하나가 남는다. */}
-      {(spec || fixed.length > 0) && (
+          **고정 칸이 있을 때만 선다.** 없으면 가를 것이 없는데, 조건 없이 두면 줄 맨 앞에 이유 없는 선 하나가 남는다. */}
+      {fixed.length > 0 && (
         <span
           aria-hidden
           data-tab-rule
@@ -520,7 +469,7 @@ function ShellTabs({
         />
       )}
 
-      {/* 묶음의 칸만 **가로로 스크롤한다**(결정 20). `spec`·`+`·조작은 이 상자 밖이라 자리가
+      {/* 묶음의 칸만 **가로로 스크롤한다**(결정 20). 고정 칸·`+`·조작은 이 상자 밖이라 자리가
           고정이고, 줄이 넘치는 몫은 이 상자 하나가 받는다 — 형제가 모두 `shrink-0`이고
           여기만 줄어들 수 있어서다. 그래서 **탭 줄 자체는 넘치지 않는다**: 조작이
           창 밖으로 밀려나던 것이 그것 때문이었다.
@@ -528,9 +477,9 @@ function ShellTabs({
           칸은 그 전에 먼저 균등하게 줄어든다(결정 11). 스크롤은 여덟 칸이 다 최소 폭에
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
           여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 그 옆에 자리가 고정된 것들
-          (`spec` · 세로선 · `+` · 조작 · 줄 사이 gap · 좌우 안쪽)이 이어 선다.
-          **줄의 폭은 창 폭이 아니다** — 이 줄을 머리에 인 카드의 폭이라 창에서 사이드바 · 열린 작업 패널(분할이면 옆
-          열까지) · 레일 열(칸이 둘 이상일 때만 선다)을 뺀 나머지다. 창이 더 작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도
+          (`+` · 조작 · 줄 사이 gap · 좌우 안쪽)이 이어 선다.
+          **줄의 폭은 창 폭이 아니다** — 이 줄을 머리에 인 카드의 폭이라 창에서 사이드바 · 열린 작업 패널 · 레일 열(칸이 둘
+          이상일 때만 선다)을 뺀 나머지다. 창이 더 작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도
           안 들어간다.
 
           **그래도 칸 하나는 늘 온전히 보인다 — 이 상자 안쪽의 바닥이 칸 하나(44px)다.** 한때
@@ -694,13 +643,12 @@ function ShellTabs({
         />
       )}
 
-      {/* 오른쪽 끝 조작 — 조작이 있을 때만 선다(지금은 분할의 터미널 열을 닫는 `×` 하나 — `WorksPage`). 앞의 빈 자리가
+      {/* 오른쪽 끝 조작 — 조작이 있을 때만 선다(지금 두는 화면은 없다 — 한때 분할의 터미널 열을 닫는 `×`였다). 앞의 빈 자리가
           탭과 조작 사이의 남는 폭을 먹어 조작을 줄 끝에 붙이고, `min-w-4`는 칸이 꽉 찼을 때도 `+`와 조작이 맞붙지 않게
           남기는 값이다. 조작이 없는 줄에는 빈 자리도 없다 — 줄의 바닥(min-content)에 쓸모없는 16px이 들지 않게.
 
           조작이 여럿이면 그 사이는 DS 툴바의 4다(`.at-toolbar` — 줄 안 칸 사이와 같은 값). 한때 셸 컨트롤 간격
-          (`--titlebar-control-gap`)을 빌렸는데, 그 값은 창 컨트롤의 Codex 값(2)이 되어 이 줄의 것이 아니다. 지금은 `×` 하나라
-          그 간격이 드러나지 않는다. */}
+          (`--titlebar-control-gap`)을 빌렸는데, 그 값은 창 컨트롤의 Codex 값(2)이 되어 이 줄의 것이 아니다. */}
       {actions && (
         <>
           <span className="min-w-4 flex-1" />
@@ -714,9 +662,9 @@ function ShellTabs({
 }
 
 /**
- * 고정 칸(`spec` · 그 뒤 칸들 — `FixedTab`)의 알약. **두 자리가 한 규격이다** — 한쪽만 손보면 같은 줄의 고정 칸이 둘로 갈린다.
+ * 고정 칸(`FixedTab`)의 알약. 한때 문서 칸 `spec`과 한 규격이었다(restart 02a-13이 그 칸을 걷었다).
  *
- * **이 칸은 안 줄어든다**(결정 20). 고정 탭이라 이름이 `spec` 넉 자로 고정이고, 줄일 것이 애초에 없다 — 그런데 `shrink`가
+ * **이 칸은 안 줄어든다**(결정 20). 고정 탭이라 이름이 짧게 고정이고, 줄일 것이 애초에 없다 — 그런데 `shrink`가
  * 살아 있으면 넘칠 때 flex가 **폭에 비례해서** 깎아, 좁은 칸(66px)과 셸 칸(180px)이 나란히 6할씩 잃는다. 그러면 이 칸이
  * 글리프도 못 담는 27px가 되면서 정작 셸 칸은 73px로 멀쩡하다. 줄어드는 것을 셸 칸 여덟으로 몰아 두는 것이 「균등」이
  * 성립하는 조건이다.
@@ -1011,9 +959,9 @@ const ShellTab = memo(function ShellTab({
           >
             <div className={BUNDLE_BODY}>
               {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
-                  분할 중에는 켜진 칸이 둘인데(결정 12) tablist에서 selected가 둘이면 잘못된
-                  ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고
-                  있어(분할 토글·소스 토글) 새 어휘를 들이면 화면 안에서 말이 두 벌이 된다.
+                  한때 분할 중에는 켜진 칸이 둘이었고(결정 12) tablist에서 selected가 둘이면 잘못된
+                  ARIA였다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고
+                  있어(요약 단추·소스 토글) 새 어휘를 들이면 화면 안에서 말이 두 벌이 된다.
 
                   gap-1.5가 글리프와 이름 사이를 벌린다(시안 `.ra-tabx`의 6). */}
               {editing ? (
@@ -1083,7 +1031,7 @@ const ShellTab = memo(function ShellTab({
                     openMenuByKey(event);
                   }}
                   // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
-                  // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
+                  // 차례가 바뀐다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
                   onPointerDown={(event) => onDragTab(shell.id, event)}
                   className={NAME_BUTTON}
                 >
@@ -1190,65 +1138,6 @@ interface CodeTabProps {
 }
 
 /**
- * 맨 앞 문서 칸 — **spec 탭 메뉴의 대상이다**(codex-ds 스펙 §9 · 결정 6). 메뉴는 「Finder에서 열기」 · 「spec 경로 복사」 둘이고, 셸 칸과 같은
- * 잣대다 — 커서 자리에 서고, 켜짐 · 주소는 그대로이며, 열린 동안만 이 칸에 대상 테두리(`focus-ring`의 `[data-menu-target]`)가 선다. 닫히면
- * 포커스가 이 칸으로 돌아온다.
- *
- * 제 컴포넌트인 것은 메뉴의 열림이 이 칸 하나의 상태라서다. **Root가 감싸는 것은 이 칸 하나다** — 줄을 감싸면 `+`의 셸 고르기 메뉴가 이
- * Root에 붙는다(Root의 문맥이 그 아래 메뉴로 샌다).
- */
-function SpecTabButton({ spec, onDragTab }: { spec: SpecTab; onDragTab: (id: null, from: TabPress) => void }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
-  return (
-    <ContextMenu open={menuOpen} onOpenChange={setMenuOpen}>
-      <ContextMenuTrigger
-        render={
-          <button
-            ref={button}
-            type="button"
-            data-tab="spec"
-            aria-pressed={spec.on}
-            tabIndex={0}
-            data-menu-target={menuOpen ? "" : undefined}
-            // ⌃클릭은 macOS의 우클릭이다 — 메뉴를 여는 몸짓이라 문서로 가지 않는다(구현 노트 Q9).
-            onClick={(event) => {
-              if (!event.ctrlKey) spec.onSelect();
-            }}
-            // ⇧F10 · 메뉴 키는 이 칸의 메뉴를 그 곁에 연다(`openMenuByKey`).
-            onKeyDown={openMenuByKey}
-            // 본문 위로 끌면 그 절반에 문서가 선다(결정 12) — 사이드바의 `spec` 잎이 하던
-            // 몫이 이 칸으로 왔다. **누르는 것과 끄는 것이 한 버튼에 산다**: 5px 문턱이
-            // 둘을 가르므로(`armDrag`) 문턱 안쪽의 눌림은 그냥 클릭이다. 오른쪽 버튼 · ⌃가 실린 누름은 줄의 거름이 버린다.
-            //
-            // **순서엔 안 낀다** — 늘 맨 앞이다(UI개선 스펙 §6). 이 칸을 누르면 줄 기하를 안 재므로
-            // 끄는 동안 틈이 서지 않고, 묶음 칸의 틈은 이 칸 뒤부터 센다(`tab-gap.ts`).
-            onPointerDown={(event) => onDragTab(null, event)}
-            // 알약의 규격은 고정 칸 한 벌이다(`fixedTabClass`) — 뒤에 서는 고정 칸들(`FixedTab`)과 갈리지 않는다.
-            className={fixedTabClass(spec.on)}
-          >
-            <File className={TAB_GLYPH} />
-            <span className="min-w-0 truncate">spec</span>
-          </button>
-        }
-      />
-      <ContextMenuContent finalFocus={() => button.current ?? true}>
-        {/* 날 경로를 넘기지 않는다 — 경로는 백엔드가 slug로 푼다(codex-ds 스펙 S6). work 메뉴의 Finder ▸ 「spec」과 같은 길이다. */}
-        <ContextMenuItem onClick={spec.onOpenFolder}>
-          <FolderOpen />
-          <span className="min-w-0 flex-1 truncate">Finder에서 열기</span>
-        </ContextMenuItem>
-        {/* 앱의 참조 표기다(끝에 `/`) — work 메뉴의 복사 ▸ 「spec 경로」와 같은 값이다. */}
-        <ContextMenuItem onClick={spec.onCopyPath}>
-          <Copy />
-          <span className="min-w-0 flex-1 truncate">spec 경로 복사</span>
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  );
-}
-
-/**
  * **파일 탭** 칸 하나(git-integration 결정 38 — 셸 칸의 틀을 쓴다). 폭(글자 폭 · 최대 200 · 바닥 44 — restart 02a-5) · 켜짐 면 · 앞의
  * 글리프 · 좁아지면 이름이 물러나는 규칙 · 켜진 칸에만 남는 `×`가 셸 칸(`ShellTab`)과 같다 — 셸과 파일이 한 줄에서 같은 비율로 줄어든다(스토리 29).
  *
@@ -1324,7 +1213,7 @@ interface ChatTabProps {
  *
  * - **닫기**(`×` · 우클릭 메뉴 · ⌘W) — 칸만 빠진다(`removeViewTab`). 채팅과 세션은 남고 돌던 턴도 계속 돈다 — 칸을 닫아도 채팅에는 아무
  *   것도 부르지 않는다. 사이드바에서 다시 연다. 확인이 없다(프로세스가 없다 — 파일 탭과 같다).
- * - **끌기** — 이름 버튼이 끄는 자리이고 셸 칸과 같은 규칙이다: 줄의 틈에 놓으면 차례가 바뀌고, 본문 절반에 놓으면 분할의 묶음 열에 선다.
+ * - **끌기** — 이름 버튼이 끄는 자리이고 셸 칸과 같은 규칙이다: 줄의 틈에 놓으면 차례가 바뀐다.
  * - **이름 바꾸기** — 두 번 누르기 · F2 · 우클릭 메뉴의 「이름 바꾸기」. 이름 자리가 그대로 입력칸이 되고(`InlineRename`), 고친 이름은
  *   그 채팅의 이름이다 — 사이드바 줄과 머리 줄이 같은 이름을 읽는다. 비우면 원래 이름이다(`revert` — 채팅 이름에는 「붙인 이름」이 따로
  *   없다).

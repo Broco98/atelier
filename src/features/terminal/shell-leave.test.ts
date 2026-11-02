@@ -5,7 +5,7 @@ import type { ShellOrigin, ShellsState } from "./shell-registry";
 
 // 떠남(프로세스 스펙 S17)과 그때 회수할 셸(프로세스 결정 7). 순수 모듈이라 기본 환경(node)에서 돈다.
 //
-// **떠남은 owner가 바뀌는 것이다 — 패인이 내려가는 것이 아니다.** 같은 work 안에서 spec 탭으로
+// **떠남은 owner가 바뀌는 것이다 — 패인이 내려가는 것이 아니다.** 같은 work 안에서 채팅 탭으로
 // 바꿀 때도 터미널 패인은 내려가지만, 주소가 가리키는 owner는 그대로다. 그래서 아래는 주소 → owner와
 // (앞 owner, 뒤 owner) → 회수할 셸, 두 층으로 잰다.
 
@@ -60,9 +60,9 @@ describe("떠날 때 회수할 셸", () => {
     expect(reclaimOnLeave(state, 가, null)).toEqual([안씀]);
   });
 
-  it("같은 owner에 머물면 — 같은 work의 spec 탭 전환 — 떠남이 아니다", () => {
+  it("같은 owner에 머물면 — 같은 work의 채팅 탭 전환 — 떠남이 아니다", () => {
     const { state } = 네칸();
-    // spec 탭과 터미널 탭은 같은 주소다(탭은 search에 있다) — owner가 그대로다.
+    // 채팅 탭과 터미널 탭은 같은 주소다(탭은 search에 있다) — owner가 그대로다.
     expect(screenOwner("/works/ga")).toBe(가);
     expect(reclaimOnLeave(state, 가, 가)).toEqual([]);
   });

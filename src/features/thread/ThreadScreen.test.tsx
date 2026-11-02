@@ -542,7 +542,7 @@ describe("작업공간 밖 채팅의 대화", () => {
 
   /** 작업공간 화면이 하듯 그 작업공간의 오른쪽 자리를 쥐어 채팅 탭 몸에 건넨다 — 문서 카드의 자리(spec 폴더)도 거기서 온다. */
   function TabBody({ id, work }: { id: string; work: WorkView }) {
-    const right = useWorkRightPlace(work, { split: false, chat: true, tab: 1, openFile: () => {} });
+    const right = useWorkRightPlace(work, { chat: true, tab: 1, openFile: () => {} });
     return <WorkChat thread={id} card={right.card} />;
   }
 

@@ -4,7 +4,7 @@
 
 /**
  * 모션 토큰의 길이(ms) — `--duration-relaxed` 같은 이름을 문서 뿌리에서 읽는다(`index.css`의 `@theme static`). 스크립트가
- * 수를 따로 들면 토큰을 고친 날 그 셈만 옛 박자로 남는다(`panelMotionMs`와 같은 까닭). 스타일시트 없이 그린 자리(정적 렌더 · 시험)에서는
+ * 수를 따로 들면 토큰을 고친 날 그 셈만 옛 박자로 남는다. 스타일시트 없이 그린 자리(정적 렌더 · 시험)에서는
  * 0이다 — 그때는 움직일 CSS도 없다.
  */
 export function motionMs(name: string): number {

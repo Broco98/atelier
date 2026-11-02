@@ -33,25 +33,14 @@ describe("문서 줄이 가는 곳", () => {
     expect(hitTarget(doc())).toEqual({
       to: "/works/$slug",
       params: { slug: "가" },
-      search: { file: "overview.md", tab: undefined, split: undefined, code: undefined, thread: undefined },
+      search: { file: "overview.md", tab: undefined, code: undefined, thread: undefined },
     });
-    rememberView("채팅을-보던것", { tab: "chat", split: null, file: "기억에적힌것.md", code: null, thread: "20261010-100000" });
+    rememberView("채팅을-보던것", { tab: "chat", file: "기억에적힌것.md", code: null, thread: "20261010-100000" });
     expect(hitTarget(doc({ slug: "채팅을-보던것" }))).toMatchObject({
       search: { file: "overview.md", tab: "chat", thread: "20261010-100000" },
     });
-    rememberView("셸을-보던것", { tab: "terminal", split: null, file: null, code: null, thread: null });
+    rememberView("셸을-보던것", { tab: "terminal", file: null, code: null, thread: null });
     expect(hitTarget(doc({ slug: "셸을-보던것" }))).toMatchObject({ search: { file: "overview.md", tab: undefined } });
-  });
-
-  // 결정 16·77. **「그 work의 기억 위에 문서를 얹어」 간다** — 분할해 둔 채로 문서를 골라도 분할이 안 무너지고 문서 열에 선다(분할은 02a-13이
-  // 걷는다 — 그때까지 문서 열이 옛 입구다).
-  it("분할은 그 work의 기억에서 살아남고 탭은 spec으로 돌아온다", () => {
-    rememberView("갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md", code: null, thread: null });
-    expect(hitTarget(doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
-      to: "/works/$slug",
-      params: { slug: "갈라둔것" },
-      search: { file: "01-판/spec.md", tab: "spec", split: "rl" },
-    });
   });
 
   // 아카이브 문서는 **아카이브 화면**으로 간다. 경로는 work 루트 기준이고(`record.md`가
@@ -99,27 +88,33 @@ describe("본문 줄이 가는 곳", () => {
 });
 
 describe("work 줄이 가는 곳", () => {
-  // 결정 14·77 · #156 수용 기준 2(「문서·탭·분할이 살아 있다」). **문서 줄과 다른 일이다** —
-  // 여기서는 문서를 안 골랐으므로 spec으로 떨어지지 않고, 그 work을 마지막으로 보던 화면이
-  // **셋 다** 그대로 선다. 주소를 짓는 모양이 work을 여는 다른 문들과 **같아야 한다**
+  // 결정 77 · #156 수용 기준 2(「문서·탭이 살아 있다」 — 분할은 restart 02a-13이 걷었다). **문서 줄과 다른 일이다** —
+  // 여기서는 문서를 안 골랐으므로 그 work을 마지막으로 보던 화면이 그대로 선다: 채팅 탭에서 넓힌 카드로 보던 문서는 그대로,
+  // 셸을 보던 work은 셸로. 주소를 짓는 모양이 work을 여는 다른 문들과 **같아야 한다**
   // (`recallSearch`): work을 여는 길이 여럿인데 도착지가 갈리면 어긋나도 화면에 티가 안 난다.
   // 사이드바의 Work 줄은 이제 그 Work의 대화로 간다(v1 티켓 37) — 옛 작업 화면은 이 줄로 연다.
-  it("그 work을 마지막으로 보던 화면으로 간다 — 문서·탭·분할 셋 다", () => {
-    rememberView("터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md", code: null, thread: null });
+  it("그 work을 마지막으로 보던 화면으로 간다 — 탭과 넓힌 카드의 문서", () => {
+    rememberView("채팅보던것", { tab: "chat", file: "03-판/spec.md", code: null, thread: "20261010-100000" });
+    expect(hitTarget(workHit({ slug: "채팅보던것" }))).toEqual({
+      to: "/works/$slug",
+      params: { slug: "채팅보던것" },
+      search: { tab: "chat", file: "03-판/spec.md", thread: "20261010-100000" },
+    });
+    rememberView("터미널보던것", { tab: "terminal", file: null, code: null, thread: null });
     expect(hitTarget(workHit({ slug: "터미널보던것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "터미널보던것" },
-      search: { tab: "terminal", split: "lr", file: "03-판/spec.md" },
+      search: { tab: "terminal" },
     });
   });
 
-  // 기억이 없으면 기본값이다 — 방금 만들어 아직 안 열어 본 work이 그 자리다(결정 14가
-  // 세우려는 것이 바로 그런 work이다).
+  // 기억이 없으면 처음 여는 규칙이다 — 방금 만들어 아직 안 열어 본 work이 그 자리다. 주소에 탭도 문서도 없다 — 기본 문서를
+  // 열지 않는다(restart 02a-13 — 결정 14를 뒤집었다).
   it("아직 안 본 work은 기본 화면으로 간다", () => {
     expect(hitTarget(workHit({ slug: "방금만든것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "방금만든것" },
-      search: { tab: undefined, split: undefined, file: undefined },
+      search: { tab: undefined, file: undefined },
     });
   });
 

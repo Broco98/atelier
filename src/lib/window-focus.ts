@@ -3,7 +3,7 @@
  * (프로세스 스펙 S41 — 띠와 같은 규칙 · `looked.ts`의 `useSeeWhileLooking`)가 이 한 판정을 읽는다. 두 자리가 따로 적으면 한쪽만 고친 날 같은 창을
  * 두 판정이 다르게 본다. 이 앱은 창이 하나라 어느 창인지 물을 것이 없다.
  *
- * **`document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다.** 이벤트만으로는 못 가른다 — 분할에서 spec 프레임을 누르면
+ * **`document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다.** 이벤트만으로는 못 가른다 — 문서 프레임(html 문서)을 누르면
  * 부모 `window`에 `blur`가 오는데(SpecViewer의 `useFrameFocused`가 그 실측을 들고 있다) 그때도 앱은 앞에 있다. `hasFocus()`는 그
  * 경우에 참이고 다른 앱으로 넘어갔을 때만 거짓이라, 두 경우가 갈린다.
  *

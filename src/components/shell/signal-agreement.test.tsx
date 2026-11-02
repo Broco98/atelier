@@ -172,7 +172,7 @@ function 띠(state: ShellsState): string {
  * 색을 다시 고르기 가장 쉬운 자리다. 한쪽만 그리면 나머지 한쪽이 이 그물 밖에 남는다.
  *
  * `showing`이 거짓이면 그 화면의 셸 칸이 하나도 안 켜진다(`ShellTabs`의 그 prop) —
- * 본문이 문서인 화면이 그 모양이고, 부르는 칸을 탭 줄에서 **찾는** 화면이 바로 그것이다.
+ * 본문이 셸이 아닌 화면이 그 모양이고, 부르는 칸을 탭 줄에서 **찾는** 화면이 바로 그것이다.
  */
 function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
   return renderToStaticMarkup(
@@ -181,7 +181,6 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       owner={소유}
       projects={["atelier"]}
       defaultCwd={null}
-      spec={{ on: !켜짐, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} }}
       showing={켜짐}
       chat={{ title: () => "", onRename: () => {}, menu: () => null }}
       onSelect={() => {}}
