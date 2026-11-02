@@ -177,12 +177,17 @@ function TerminalPane({ work }: { work: WorkView | null }) {
               <EmptyTitle>아직 셸이 없어요</EmptyTitle>
               <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>
             </EmptyHeader>
-            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 글자는 단축키 표의 `newShell`이다. 한때 이 키를 「상한에 닿았으면
+            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 글자는 단축키 표의 `newTab`이다. 한때 이 키를 「상한에 닿았으면
                 안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는 것이 되어서인데, 위 주석대로
-                그 조건이 여기서는 늘 거짓이다. */}
-            <EmptyContent>
-              <Kbd>{HOTKEYS.newShell.glyph}</Kbd>
-            </EmptyContent>
+                그 조건이 여기서는 늘 거짓이다.
+
+                **최상위 터미널에서만 선다**(restart 02a-8) — 작업공간 화면의 ⌘T는 새 채팅 탭을 연다. 거기서 셸을 여는 길은 `+` 메뉴의 셸
+                줄이고 위 문장이 그것을 말한다. */}
+            {work === null && (
+              <EmptyContent>
+                <Kbd>{HOTKEYS.newTab.glyph}</Kbd>
+              </EmptyContent>
+            )}
           </Empty>
         </div>
       )}

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import WorksView from "./-works-view";
-import { codeOf, splitOf, threadOf, validateWorkSearch, viewTab } from "./-work-search";
+import { codeOf, opensWork, splitOf, threadOf, validateWorkSearch, viewTab } from "./-work-search";
 
 export const Route = createFileRoute("/works/$slug")({
   component: WorkRoute,
@@ -24,6 +24,8 @@ function WorkRoute() {
       code={tab === "code" || split !== null ? codeOf(search) : null}
       // 채팅 탭도 같다(restart 02a-4) — 본문(`tab=chat`)이나 분할의 묶음 열에 선다.
       thread={tab === "chat" || split !== null ? threadOf(search) : null}
+      // 탭도 채팅도 적지 않은 주소 — 작업공간을 처음 여는 규칙이 탭을 세운다. `tab=chat`만 적은 주소는 새 채팅 탭이다(restart 02a-8).
+      opening={opensWork(search)}
     />
   );
 }

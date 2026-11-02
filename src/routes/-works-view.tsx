@@ -16,6 +16,7 @@ import {
   codeSearch,
   columnSearch,
   fileSearch,
+  newChatSearch,
   openingSearch,
   recallSearch,
   rememberView,
@@ -37,6 +38,7 @@ function WorksView({
   split = null,
   code = null,
   thread = null,
+  opening = false,
 }: {
   slug: string | null;
   file?: string | null;
@@ -46,6 +48,11 @@ function WorksView({
   code?: string | null;
   /** 주소가 말하는 채팅 탭의 채팅 — 본문(`tab=chat`)이나 분할의 묶음 열에 선 것이다(restart 02a-4). */
   thread?: string | null;
+  /**
+   * 주소가 **작업공간을 처음 여는 주소**다(`opensWork` — 탭도 채팅도 적지 않았다). 이 화면이 처음 여는 규칙으로 탭을 세운다. `tab=chat`만
+   * 적은 주소(새 채팅 탭, restart 02a-8)와 `tab`이 같은 `chat`이라 값만으로는 못 가른다 — 원래 주소를 읽는 라우트가 건넨다.
+   */
+  opening?: boolean;
 }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
@@ -125,6 +132,20 @@ function WorksView({
     },
     [navigate, slug],
   );
+
+  /**
+   * **새 채팅 탭으로 간다**(restart 02a-8) — 주소만 `tab=chat`(`thread` 없음)으로 고친다. 어느 새 채팅 탭인지는 묶음이 쥐어, 그 칸을 세우거나
+   * 켜는 일은 화면이 먼저 한다(셸 탭과 같다). 분할은 꺼진다(`newChatSearch`). 탭 줄 · 단축키의 손짓이라 replace다(결정 13).
+   */
+  const openNewChat = useCallback(() => {
+    if (slug === null) return;
+    void navigate({
+      to: "/works/$slug",
+      params: { slug },
+      search: (prev: object) => newChatSearch(prev),
+      replace: true,
+    });
+  }, [navigate, slug]);
 
   // 분할 전환 — 켜기·끄기·좌우 맞바꾸기 · 열 고르기가 전부 여기다(결정 97). **열과 묶음 열을 함께 받는다**:
   // 열의 `×`는 분할을 끄면서 **남는 쪽**을 정하고(결정 89), 토글은 지금 열을 그대로 넘긴다. 묶음 열에 설 묶음의 지금 탭
@@ -206,21 +227,23 @@ function WorksView({
   // **보던 화면을 적어 둔다**(결정 77·97). 쓰는 자리가 여기 하나인 것은 주소가 정본이기
   // 때문이다 — 화면을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab, 분할 토글,
   // 드래그로 여럿인데, 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다.
+  //
+  // 처음 여는 주소는 탭을 적지 않는다(`tab: null`, restart 02a-8) — 그 주소의 `chat`은 기본 값이지 새 채팅 탭이 아니다.
   useEffect(() => {
-    if (slug !== null && exists) rememberView(slug, { tab, split, file, code, thread });
-  }, [slug, exists, tab, split, file, code, thread]);
+    if (slug !== null && exists) rememberView(slug, { tab: opening ? null : tab, split, file, code, thread });
+  }, [slug, exists, opening, tab, split, file, code, thread]);
 
-  // **작업공간을 처음 여는 규칙**(restart 02a-4) — 어느 채팅인지 모르는 채팅 탭(값이 없는 주소 — 기본 값이 채팅이다)에 닿으면 가장 최근
-  // 채팅 탭 하나를 세우고 주소를 고친다. 채팅이 없는 작업공간은 **임시로** spec이다(02a-8이 새 채팅 탭으로 바꾼다 — `openingSearch`).
+  // **작업공간을 처음 여는 규칙**(restart 02a-4) — 값이 없는 주소(`opening` — 탭도 채팅도 적지 않았다)에 닿으면 가장 최근 채팅 탭 하나를
+  // 세우고 주소를 고친다. 채팅이 없는 작업공간은 새 채팅 탭이 선다(restart 02a-8 — `openingSearch`).
   // 「가장 최근」은 사이드바 작업공간 줄과 같은 규칙이다(`landingOf` — 마지막 말의 때). 그 말은 이미 읽어 둔 기록에서 이 순간에
   // 센다 — 기록 줄마다 이 화면이 다시 그려지지 않게 구독하지 않는다. 주소만 고치므로 replace다.
   //
-  // 채팅 목록을 아직 못 읽었으면 기다린다 — 「채팅이 없다」로 읽으면 채팅이 있는 작업공간이 spec으로 열린다. 읽기가 실패하면 빈
+  // 채팅 목록을 아직 못 읽었으면 기다린다 — 「채팅이 없다」로 읽으면 채팅이 있는 작업공간이 새 채팅 탭으로 열린다. 읽기가 실패하면 빈
   // 목록으로 친다.
   const { data: threads, isPending: threadsPending } = useThreads();
-  const opening = slug !== null && exists && tab === "chat" && thread === null && !threadsPending;
+  const lands = opening && slug !== null && exists && !threadsPending;
   useEffect(() => {
-    if (!opening || slug === null) return;
+    if (!lands || slug === null) return;
     const records = threadRecordStore.state;
     const landing = landingOf(threads ?? [], slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
     void navigate({
@@ -229,7 +252,7 @@ function WorksView({
       search: (prev: object) => openingSearch(prev, landing),
       replace: true,
     });
-  }, [opening, slug]);
+  }, [lands, slug]);
 
   // **켜진 채팅 탭이 이 작업공간을 떠났다**(restart 02a-4) — 그 작업공간이 보관되거나 지워졌으면(코어의 `gone`) 그 채팅의 `/threads/:id`로
   // 옮긴다. 그 채팅은 읽기만 되는 채팅으로 거기 선다. 판단은 목록이 아니라 그 채팅의 값으로 한다(`chatHome`) — 목록은 방금 만든 작업공간을
@@ -304,6 +327,8 @@ function WorksView({
       onOpenCode={openCodeTab}
       thread={thread}
       onOpenChat={openChatTab}
+      onOpenNewChat={openNewChat}
+      opening={opening}
       split={split}
       onSelectSplit={selectSplit}
       onFollowBundle={followBundle}

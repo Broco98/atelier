@@ -16,6 +16,7 @@ import {
   NO_SHELLS,
   openChatTab,
   openCodeTab,
+  openNewChatTab,
   openShell,
   setAttention,
   setRunning,
@@ -81,6 +82,7 @@ function render(
     showing = true,
     actions = undefined as React.ReactNode,
     chatTitle = (thread: string) => `채팅 ${thread}`,
+    onNewChat = undefined as (() => void) | undefined,
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -99,6 +101,7 @@ function render(
       onRename={() => {}}
       onCloseOthers={() => {}}
       onOpen={() => {}}
+      onNewChat={onNewChat}
       onDragTab={() => {}}
       slot={null}
       onSlot={() => {}}
@@ -1032,6 +1035,50 @@ describe("`+`", () => {
 
   it("상한 아래에서는 안 잠긴다", () => {
     expect(plusOf(render(opened(MAX_SHELLS - 1).state))).not.toMatch(/aria-disabled/);
+  });
+});
+
+// restart 02a-8 — **새 채팅 탭.** 작업공간 화면의 `+`는 「새 탭」 메뉴다 — 맨 윗줄이 「새 채팅」(⌘T)이고 그 아래가 셸 줄이다(시안 `Main`의
+// 「새 탭 ⌘T」 · 구현 스펙 「02a」의 「+와 ⌘T 메뉴 맨 위에 새 채팅」). 새 채팅 탭은 묶음의 칸으로 서고, 첫 말을 보내면 같은 자리에서 채팅 탭이
+// 된다. `/terminal`에는 채팅이 없어(`onNewChat`을 안 준다) `+`가 그대로 셸을 연다.
+describe("새 채팅 탭", () => {
+  const newTab = (markup: string) => markup.match(/<button[^>]*aria-label="새 탭"[^>]*>/)?.[0] ?? "";
+  const chatting = { onNewChat: () => {} };
+
+  it("묶음의 차례 그대로 「새 채팅」으로 서고, 켜지면 켜진 칸이 그것 하나다", () => {
+    const state = openNewChatTab(opened(1).state, WORK);
+    const cells = cellsOf(render(state, chatting));
+    expect(cells.map((cell) => cell.kind)).toEqual(["spec", "shell", "new-chat", "new"]);
+    expect(cells[2].markup).toContain(">새 채팅<");
+    expect(cells[2].markup).toContain(renderToStaticMarkup(<MessageSquare className="x" />).match(/<path[^>]*>/)![0]);
+    expect(cells[2].markup).toContain('aria-label="새 채팅 닫기"');
+    expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"')).map((cell) => cell.kind)).toEqual(["new-chat"]);
+  });
+
+  it("작업공간 화면의 `+`는 「새 탭」 메뉴이고 ⌘T를 가르친다 — 프로젝트가 하나여도 메뉴다", () => {
+    for (const projects of [[], ["atelier"], ["atelier", "cli"]]) {
+      const plus = newTab(render(NO_SHELLS, { ...chatting, projects }));
+      expect(plus, projects.join()).toMatch(/aria-haspopup="menu"/);
+      // ⌘T는 이 버튼을 누르는 키가 아니라 메뉴 맨 윗줄(「새 채팅」)의 키다 — 글자로 가르치고 `aria-keyshortcuts`는 안 단다(`shortcutElsewhere`).
+      expect(plus, projects.join()).toContain('aria-description="⌘T"');
+      expect(plus, projects.join()).not.toContain("aria-keyshortcuts");
+    }
+    // `/terminal`은 그대로 셸 열기다.
+    expect(render(NO_SHELLS)).toContain('aria-label="셸 열기"');
+    expect(render(NO_SHELLS)).not.toContain('aria-label="새 탭"');
+  });
+
+  // 새 채팅은 셸 상한과 무관하다 — 상한이어도 메뉴가 열려야 「새 채팅」에 닿는다. 셸 줄만 꺼지고 그 머리가 잠긴 이유를 말한다(메뉴 안은 열어야
+  // 서서 마크업에 없다 — 소스에서 본다).
+  it("셸 상한이어도 「새 탭」은 잠기지 않는다", () => {
+    const plus = newTab(render(opened(MAX_SHELLS).state, chatting));
+    expect(plus).not.toBe("");
+    expect(plus).not.toMatch(/aria-disabled/);
+    const picker = readFileSync(fileURLToPath(new URL("./ShellPicker.tsx", import.meta.url)), "utf8");
+    expect(picker).toContain('<DropdownMenuItem ref={firstRef} label="새 채팅" shortcut="newTab" onClick={onNewChat}>');
+    expect(picker).toContain("if (next && locked && onNewChat === undefined) {");
+    expect(picker).toContain("disabled={shellsOff}");
+    expect(picker.indexOf('label="새 채팅"')).toBeLessThan(picker.indexOf("<DropdownMenuGroup>"));
   });
 });
 

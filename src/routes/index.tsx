@@ -1,6 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ownerOf } from "@/features/terminal/shell-registry";
+import { showNewChatTab } from "@/features/terminal/terminal-store";
+import { newChatKey } from "@/features/thread/new-chat";
 import { NewThreadScreen } from "@/features/thread/ThreadScreen";
+import { fillDraft } from "@/features/thread/thread-store";
 import { newThreadKey, seedOf, validateNewThreadSearch } from "./-new-thread-search";
+import { newChatDoor } from "./-work-search";
 
 // `/`는 **새 Thread**다(v1 구현 스펙 §13 · S26) — 앱은 늘 여기로 열린다. 한때 이 자리는 작업 목록으로 넘기기만 하는 주소였고
 // (`/works`로 리다이렉트 → 이번 세션의 마지막 work), 그 마지막 자리 기억을 v1 티켓 05가 걷었다. 진입이 저장소를 읽지 않는 것은 그대로다
@@ -17,5 +23,24 @@ export const Route = createFileRoute("/")({
 // 틀(머리 줄 · 흰 판)은 앱 셸이 그려 화면이 사이드바 상태를 읽지 않는다(02 구현 스펙 §3).
 function NewThreadRoute() {
   const seed = seedOf(Route.useSearch());
+  if (seed.link?.kind === "work") return <WorkSeed slug={seed.link.slug} say={seed.say} />;
   return <NewThreadScreen key={newThreadKey(seed)} seed={seed} />;
+}
+
+/**
+ * **`?work=<slug>`는 그 작업공간의 새 채팅 탭으로 간다**(restart 02a-8 — 한때 홈에 그 작업공간의 잠긴 칩을 세웠다). 어느 새 채팅 탭인지는 묶음이
+ * 쥔다 — 켜진 새 채팅 탭이면 그 탭, 아니면 첫 새 채팅 탭, 없으면 하나 세운다(`showNewChatTab` — 주소 `tab=chat`이 가리키는 그 탭이다).
+ * 입력 글(`?say=`)이 있으면 그 탭의 입력창에 채운다 — 보내지 않는다. 범위 씨앗(`?service=` · `?project=`)은 따라가지 않는다 — 작업공간의 범위는
+ * 그 작업공간의 것이다. 주소만 바꾸므로 replace다.
+ */
+function WorkSeed({ slug, say }: { slug: string; say: string | null }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (say !== null) {
+      const tab = showNewChatTab(ownerOf(slug));
+      if (tab !== null) fillDraft(newChatKey(tab), say);
+    }
+    void navigate({ ...newChatDoor(slug), replace: true });
+  }, [navigate, slug, say]);
+  return null;
 }

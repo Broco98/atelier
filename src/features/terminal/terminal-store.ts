@@ -62,8 +62,12 @@ import {
   NO_QUIET_NOTICE,
   quietCloseNotice,
   quietShellsOf,
+  activeTabOf,
   openChatTab,
+  openNewChatTab,
   removeViewTab,
+  settleNewChatTab,
+  withNewChatActive,
   removeShell,
   runningOfId,
   setAttention,
@@ -347,6 +351,31 @@ export function showCodeTab(owner: ShellOwner, target: CodeTarget): void {
  */
 export function showChatTab(owner: ShellOwner, thread: string): void {
   terminalStore.setState((state) => openChatTab(state, owner, thread));
+}
+
+/**
+ * 그 화면 묶음 끝에 **새 채팅 탭**을 세우고 켠다(`openNewChatTab`, restart 02a-8 — `+` · ⌘T의 「새 채팅」, 마지막 칸이 빠진 자리). 세운 칸의 id를
+ * 돌려준다 — 최상위 터미널이면 세우지 않아 `null`이다.
+ */
+export function openNewChat(owner: ShellOwner): number | null {
+  terminalStore.setState((state) => openNewChatTab(state, owner));
+  const active = activeTabOf(terminalStore.state, owner);
+  return active?.kind === "new-chat" ? active.id : null;
+}
+
+/**
+ * 그 화면의 지금 탭이 **새 채팅 탭**이 되게 한다(`withNewChatActive`, restart 02a-8) — 주소가 새 채팅 탭을 말할 때(`tab=chat`, `thread` 없음)
+ * work 화면이 부르고, `?work=` 씨앗이 입력 글을 채울 탭을 찾을 때도 부른다. 켜진 새 채팅 탭의 id를 돌려준다.
+ */
+export function showNewChatTab(owner: ShellOwner): number | null {
+  terminalStore.setState((state) => withNewChatActive(state, owner));
+  const active = activeTabOf(terminalStore.state, owner);
+  return active?.kind === "new-chat" ? active.id : null;
+}
+
+/** 그 새 채팅 탭이 채팅 탭이 된다(`settleNewChatTab`, restart 02a-8) — 첫 말의 답이 왔다. 켜짐은 그대로다. */
+export function settleNewChat(id: number, thread: string): void {
+  terminalStore.setState((state) => settleNewChatTab(state, id, thread));
 }
 
 /**

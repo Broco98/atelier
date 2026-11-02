@@ -11,7 +11,10 @@ import {
   codeSearch,
   columnSearch,
   forgetVanishedViews,
+  newChatDoor,
+  newChatSearch,
   openingSearch,
+  opensWork,
   recallSearch,
   recallView,
   rememberView,
@@ -207,15 +210,80 @@ describe("채팅 탭의 주소", () => {
     });
   });
 
-  // 작업공간을 처음 여는 규칙 — 가장 최근 채팅 탭 하나가 선다. 채팅이 없는 작업공간은 **임시로** spec이다(02a-8이 새 채팅 탭으로 바꾼다).
-  it("처음 여는 주소는 가장 최근 채팅이고, 채팅이 없으면 임시로 spec이다", () => {
+  // 작업공간을 처음 여는 규칙 — 가장 최근 채팅 탭 하나가 선다. 채팅이 없는 작업공간은 새 채팅 탭이 선다(restart 02a-8).
+  it("처음 여는 주소는 가장 최근 채팅이고, 채팅이 없으면 새 채팅 탭이다", () => {
     expect(openingSearch({ file: "a.md" }, { kind: "thread", id: X })).toEqual({
       file: "a.md",
       tab: "chat",
       code: undefined,
       thread: X,
     });
-    expect(openingSearch({}, { kind: "new", work: "가" })).toEqual({ tab: "spec", code: undefined, thread: undefined });
+    expect(openingSearch({ file: "a.md" }, { kind: "new", work: "가" })).toEqual({
+      file: "a.md",
+      tab: "chat",
+      code: undefined,
+      thread: undefined,
+      split: undefined,
+    });
+  });
+});
+
+// restart 02a-8 — **새 채팅 탭의 주소.** `tab=chat`에 `thread`가 없다. 어느 새 채팅 탭인지는 셸 탭처럼 묶음이 쥔다. 값이 없는 주소(처음 여는 규칙)와
+// 다른 주소다 — `tab=chat`을 적는다.
+describe("새 채팅 탭의 주소", () => {
+  const X = "20261010-100000";
+
+  it("새 채팅 탭으로 가면 `chat`만 적히고 채팅 · 파일 탭은 걷힌다 — 문서는 남는다", () => {
+    expect(newChatSearch({ file: "a.md", tab: "chat" as const, thread: X })).toEqual({
+      file: "a.md",
+      tab: "chat",
+      code: undefined,
+      thread: undefined,
+      split: undefined,
+    });
+    expect(newChatSearch({ tab: "code" as const, code: "billing/src/a.ts" })).toEqual({
+      tab: "chat",
+      code: undefined,
+      thread: undefined,
+      split: undefined,
+    });
+  });
+
+  // 새 채팅 탭은 분할의 묶음 열에 서지 않는다(02a-13이 분할을 걷을 때까지) — 그리로 가면 분할이 꺼진다.
+  it("분할이면 분할을 끄고 새 채팅 탭이 본문에 선다", () => {
+    expect(newChatSearch({ tab: "terminal" as const, split: "lr" as const })).toEqual({
+      tab: "chat",
+      code: undefined,
+      thread: undefined,
+      split: undefined,
+    });
+  });
+
+  it("묶음 쪽에서 새 채팅 탭이 켜지면 본문이 따라간다 — 문서를 보는 단일 뷰는 그대로다", () => {
+    expect(bundleSearch({ tab: "chat" as const, thread: X }, { kind: "new-chat" })).toEqual({
+      tab: "chat",
+      code: undefined,
+      thread: undefined,
+      split: undefined,
+    });
+    expect(bundleSearch({ tab: "spec" as const, file: "a.md" }, { kind: "new-chat" })).toEqual({
+      tab: "spec",
+      file: "a.md",
+      code: undefined,
+      thread: undefined,
+    });
+  });
+
+  // 값이 없는 주소만 처음 여는 규칙을 탄다. `tab=chat`은 새 채팅 탭이라는 다른 뜻이다.
+  it("처음 여는 주소는 탭 · 채팅이 없는 주소다 — `tab=chat`은 새 채팅 탭이다", () => {
+    expect(opensWork({})).toBe(true);
+    expect(opensWork({ tab: "zzz" })).toBe(true);
+    // 가리키는 파일이 없는 `tab=code`도 기본 값이다 — 처음 여는 규칙을 탄다.
+    expect(opensWork({ tab: "code" })).toBe(true);
+    expect(opensWork({ tab: "chat" })).toBe(false);
+    expect(opensWork({ thread: X })).toBe(false);
+    expect(opensWork({ tab: "terminal" })).toBe(false);
+    expect(opensWork({ tab: "spec" })).toBe(false);
   });
 });
 
@@ -244,8 +312,9 @@ describe("채팅이 서는 작업공간", () => {
 // **모듈 스코프 Map이라 이 파일 안에서 새어 나간다.** 검사마다 다른 슬러그를 쓴다 —
 // 비우는 함수를 내보내면 생산 코드에 아무도 안 부르는 이름이 하나 생긴다.
 describe("work마다 마지막으로 보던 화면", () => {
-  it("적어 두지 않은 work은 어느 채팅인지 모르는 채팅 탭 단일 뷰다", () => {
-    expect(recallView("처음-보는-work")).toEqual({ tab: "chat", split: null, file: null, code: null, thread: null });
+  // 탭이 `null`이면 주소에 탭을 적지 않는다 — 작업공간을 처음 여는 규칙이 탭을 세운다(restart 02a-8 — 「채팅 · `thread` 없음」은 이제 새 채팅 탭이다).
+  it("적어 두지 않은 work은 처음 여는 규칙을 탄다", () => {
+    expect(recallView("처음-보는-work")).toEqual({ tab: null, split: null, file: null, code: null, thread: null });
   });
 
   it("적어 둔 것을 그대로 돌려준다", () => {
@@ -258,7 +327,7 @@ describe("work마다 마지막으로 보던 화면", () => {
 
   it("work마다 따로 센다", () => {
     rememberView("나", { tab: "terminal", split: "lr", file: "01-판/spec.md", code: null, thread: null });
-    expect(recallView("다")).toEqual({ tab: "chat", split: null, file: null, code: null, thread: null });
+    expect(recallView("다")).toEqual({ tab: null, split: null, file: null, code: null, thread: null });
   });
 
   // **work을 여는 문이 전부 이 값을 쓴다** — `recallSearch`가 그 합성의 이름이다. 빈 객체
@@ -327,9 +396,15 @@ describe("work마다 마지막으로 보던 화면", () => {
     });
   });
 
-  // 어느 채팅인지 모르는 채팅 탭은 주소에 적지 않는다 — 값이 없는 주소에 닿으면 작업공간을 처음 여는 규칙이 탭을 세운다(`openingSearch`).
+  // 아직 안 본 work은 주소에 탭을 적지 않는다 — 값이 없는 주소에 닿으면 작업공간을 처음 여는 규칙이 탭을 세운다(`openingSearch`).
   it("아직 안 본 work의 씨앗에는 탭이 없다", () => {
     expect(recallSearch("처음-여는-work")).toEqual({ tab: undefined, split: undefined, file: undefined });
+  });
+
+  // restart 02a-8 — 새 채팅 탭을 보다 떠난 작업공간은 새 채팅 탭으로 돌아온다. 처음 여는 규칙을 다시 타면 가장 최근 채팅으로 간다.
+  it("새 채팅 탭을 보다 떠난 work은 새 채팅 탭으로 돌아온다", () => {
+    rememberView("거", { tab: "chat", split: null, file: null, code: null, thread: null });
+    expect(recallSearch("거")).toEqual({ tab: "chat", split: undefined, file: undefined });
   });
 
   // git-integration 판 01 — **키가 slug라** 삭제로 풀린 slug에 새 work이 서면 지운 work의 기억이 그 work의 씨앗이 된다.
@@ -339,7 +414,7 @@ describe("work마다 마지막으로 보던 화면", () => {
     rememberView("차", { tab: "code", split: null, file: null, code: "billing/src/a.ts", thread: null });
     rememberView("카", { tab: "terminal", split: "lr", file: "01-판/spec.md", code: null, thread: null });
     forgetVanishedViews(["카"]);
-    expect(recallView("차")).toEqual({ tab: "chat", split: null, file: null, code: null, thread: null });
+    expect(recallView("차")).toEqual({ tab: null, split: null, file: null, code: null, thread: null });
     expect(recallView("카")).toEqual({ tab: "terminal", split: "lr", file: "01-판/spec.md", code: null, thread: null });
   });
 });
@@ -354,6 +429,24 @@ describe("Link로 work을 여는 문", () => {
       to: "/works/$slug",
       params: { slug: "타" },
       search: { tab: "terminal", split: "lr", file: "02-판/spec.md" },
+    });
+  });
+
+  // restart 02a-8 — **그 작업공간의 새 채팅 탭으로 가는 문.** 요약 카드 ⋯의 「이 작업공간에서 새 채팅」 · 채팅이 없는 작업공간 줄 · `?work=` 씨앗이
+  // 지난다. 기억(분할 빼고 보던 문서)을 씨앗으로 삼고 `tab=chat`만 적는다 — 어느 새 채팅 탭인지는 묶음이 쥔다.
+  it("새 채팅 탭으로 가는 문은 그 work의 기억 위에 `tab=chat`만 적는다", () => {
+    rememberView("하나", { tab: "chat", split: "lr", file: "02-판/spec.md", code: null, thread: "20261010-100000" });
+    expect(newChatDoor("하나")).toEqual({
+      to: "/works/$slug",
+      params: { slug: "하나" },
+      search: { tab: "chat", split: undefined, file: "02-판/spec.md", code: undefined, thread: undefined },
+    });
+    expect(newChatDoor("처음-여는-곳").search).toEqual({
+      tab: "chat",
+      split: undefined,
+      file: undefined,
+      code: undefined,
+      thread: undefined,
     });
   });
 
@@ -383,9 +476,21 @@ describe("두 view의 배선", () => {
     // 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다 — 길마다 적으면 한 길만 늙는다.
     const view = read("./-works-view.tsx");
     expect(view.split("rememberView(").length - 1).toBe(1);
+    // 처음 여는 주소(`opening`)는 탭 없음으로 적는다(restart 02a-8) — 그 주소의 `chat`은 기본 값이라, 적어 두면 돌아올 때 새 채팅 탭이 된다.
     expect(view).toContain(
-      "if (slug !== null && exists) rememberView(slug, { tab, split, file, code, thread });",
+      "if (slug !== null && exists) rememberView(slug, { tab: opening ? null : tab, split, file, code, thread });",
     );
+  });
+
+  // restart 02a-8 — `/?work=<slug>`는 그 작업공간의 새 채팅 탭으로 가는 문이다. 어느 새 채팅 탭인지는 묶음이 쥐어 `tab=chat`이 가리킬 그
+  // 탭을 먼저 세우고(`showNewChatTab`), 입력 글(`?say=`)은 그 탭의 열쇠에 채운다 — 홈의 열쇠(`NEW_THREAD`)에 채우면 그 글이 홈에 선다. 옮기는
+  // 것은 화면의 효과라 라우터 seam(`router.test.ts`)에 안 보여 원문으로 못박는다.
+  it("`/?work=`는 새 채팅 탭으로 옮기고, 입력 글은 그 탭의 열쇠에 채운다", () => {
+    const home = read("./index.tsx");
+    expect(home).toContain('if (seed.link?.kind === "work") return <WorkSeed slug={seed.link.slug} say={seed.say} />;');
+    expect(home).toContain(`const tab = showNewChatTab(ownerOf(slug));
+      if (tab !== null) fillDraft(newChatKey(tab), say);`);
+    expect(home).toContain("void navigate({ ...newChatDoor(slug), replace: true });");
   });
 
   // **「열었다」를 적는 자리도 하나다**(결정 14) — 그리고 위와 **다른 effect**여야 한다.

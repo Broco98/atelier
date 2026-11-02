@@ -34,6 +34,7 @@ import { useRoving } from "@/lib/roving";
 import { readExpanded, rovingKeys, splitWorkSections, threadRowKey, toggleExpanded } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
+import { newChatDoor } from "@/routes/-work-search";
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 한때 초안 구역의 접힘(`sidebar-drafts-open`)도 여기 있었다 — 구역이 걷히면서(UI개선 결정 5) 키도
@@ -256,18 +257,18 @@ function SidebarWorkList({
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
-  // 그 Work의 대화로 간다(v1 티켓 37 · 구현 스펙 §13) — 가장 최근의 Thread, 없으면 그 Work를 고른 새 Thread(`/?work=` — v1 티켓 34의
-  // 씨앗)다. 최근은 마지막 말의 때이고(`landingOf`), 그 말은 사이드바가 이미 읽어 둔 기록에서 **누른 순간에** 센다(`useWaiting`이 모든
+  // 그 Work의 대화로 간다(v1 티켓 37 · 구현 스펙 §13) — 가장 최근의 Thread, 없으면 그 작업공간의 새 채팅 탭이다(restart 02a-8 —
+  // `newChatDoor`). 최근은 마지막 말의 때이고(`landingOf`), 그 말은 사이드바가 이미 읽어 둔 기록에서 **누른 순간에** 센다(`useWaiting`이 모든
   // Thread를 읽는다) — 목록이 기록 줄마다 다시 그려지지 않게 구독하지 않는다. 아직 못 읽은 Thread는 선 때로 견준다.
   const goTo = (slug: string, pointer: boolean) => {
     closeCard();
     if (pointer) quiet.current = slug;
     const records = threadRecordStore.state;
     const landing = landingOf(threads, slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
-    // 그 채팅은 이 작업공간의 채팅 탭에 선다(restart 02a-4 — `useOpenChat`). 채팅이 없으면 그 Work의 새 채팅이다(02a-8이 새 채팅 탭으로 바꾼다).
+    // 그 채팅은 이 작업공간의 채팅 탭에 선다(restart 02a-4 — `useOpenChat`). 채팅이 없으면 그 작업공간의 새 채팅 탭이다(restart 02a-8).
     const thread = landing.kind === "thread" ? threads.find((one) => one.id === landing.id) : undefined;
     if (thread) openChat(thread);
-    else void navigate({ to: "/", search: { work: slug } });
+    else void navigate(newChatDoor(slug));
   };
 
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
