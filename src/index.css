@@ -247,7 +247,6 @@
     --color-term-ok: var(--term-ok);
     --color-term-hi: var(--term-hi);
     /* **Codex 실측 색**(02 구현 스펙 §3~§12 · 티켓 01) — DS 2판 표 밖의 값이다. 쓰임은 아래 `:root`의 같은 머리말이 든다. */
-    --color-fg-bubble: var(--fg-bubble);
     --color-fg-placeholder: var(--fg-placeholder);
     --color-fg-subtle: var(--fg-subtle);
     --color-fg-faint: var(--fg-faint);
@@ -258,7 +257,6 @@
     --color-fg-thinking: var(--fg-thinking);
     --color-mine: var(--mine);
     --color-mine-soft: var(--mine-soft);
-    --color-surface-codespan: var(--surface-codespan);
     --color-surface-tray: var(--surface-tray);
     --color-border-panel: var(--border-panel);
     --color-border-summary: var(--border-summary);
@@ -506,14 +504,10 @@
     --text-nav-row: 14px;
     --text-nav-row--line-height: 20px;
     --text-nav-row--font-weight: 500;
-    /* Codex 실측(02 구현 스펙 §8 · §11 · 티켓 01). DS 표 밖의 둘이다.
+    /* Codex 실측(02 구현 스펙 §8 · 티켓 01). DS 표 밖의 하나다. 첫 화면 물음의 28 / 34(`home`)는 restart 02b-1이 시안의 `heading-lg`로 옮기며 걷었다.
          codespan  .92em          답 안 인라인 코드(08) — 둘레 글자의 .92(고정 13px가 아니다). 줄 높이를 정하지 않아 글줄의 줄 높이를
-                                  그대로 따른다(시안 `.ic`). 상자는 바탕 `surface-codespan` · 반경 `codespan` · 안쪽 1 / 6 — 높이 17이 된다
-         home      28 / 34        첫 화면의 「무엇을 만들까요?」(10, 시안 F1-Home) — 굵기 400(적지 않는다, 위 머리말) · 자간 −0.2 */
+                                  그대로 따른다(시안 `.ic`). 상자는 바탕 `fill-soft` · 반경 `codespan` · 안쪽 1 / 6 — 높이 17이 된다 */
     --text-codespan: 0.92em;
-    --text-home: 28px;
-    --text-home--line-height: 34px;
-    --text-home--letter-spacing: -0.2px;
 }
 
 /* **Codex 반경**(codex-ds 결정 27). 이름과 값은 DS 「Atelier」 2판 그대로이고 다크가 없다. DS 이름이 곧 Tailwind 반경
@@ -544,7 +538,6 @@
      row          10         12.5         사이드바 줄(05)
      summary      12         15           요약 카드(07)
      tray         15          —           첫 화면 입력창 밑 트레이의 아래 두 모서리(10) — 시안에서도 둥근 15 하나다
-     speech       16         22           사람 말풍선(08, S24 — 시안 「≈16 둥근 사각」. 22의 둥근 `bubble`과는 다른 단계다)
      slot         20         25           입력창 자리 카드 — 승인 · 계획 · 질문 · Work 만들기 · Project 붙이기(11)
      prompt       22          —           입력창(10) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는 round」). DS `composer`(28)는
                                           입력창 자리 카드 · 알림 카드 · 읽기만 줄 · 끌어 놓기 자리도 읽어 그대로 둔다
@@ -580,7 +573,6 @@
     --radius-summary: 12px;
     --radius-tray: 15px;
     --radius-2xl: 16px;
-    --radius-speech: 16px;
     --radius-3xl: 20px;
     --radius-slot: 20px;
     --radius-bubble: 22px;
@@ -597,12 +589,11 @@
         --radius-row: 12.5px;
         --radius-summary: 15px;
         --radius-slot: 25px;
-        --radius-speech: 22px;
     }
 }
 
 /* superellipse 단계의 모서리 모양(위 반경 머리말) — 큰 값이 서는 그 창에서만 모서리를 superellipse(1.5)로 바꾼다. superellipse 단계
-   (`rounded-codespan` · `rounded-row` · `rounded-summary` · `rounded-speech` · `rounded-slot`)와 늘 함께 단다. */
+   (`rounded-codespan` · `rounded-row` · `rounded-summary` · `rounded-slot`)와 늘 함께 단다. */
 @utility corner-superellipse {
     @supports (corner-shape: superellipse(1.5)) {
         corner-shape: superellipse(1.5);
@@ -919,9 +910,9 @@
        Components · Screen-Live)이 적은 값을 그대로 든다. 이름은 자리를 말한다. **다크 값은 대개 없다** — 02는 라이트만이고(v1 S34) `.dark`에서는
        이 값을 물려받는다. restart 시안이 다섯(`fg-placeholder` · `fg-thinking` · `surface-tray` · `accent-solid-pending` · `shimmer-band`)에 다크
        값을 주었다(restart 티켓 02a-1 — `.dark`). 쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓):
-         fg-bubble             사람 말풍선의 글자(08) — 바탕은 그대로 `bubble-user`
          fg-placeholder        입력창 자리표시(10) · 03 Project 추가 창의 새 자리 줄 「이름」 · Service 미리보기 카드의 「이름 없음」(빈 칸의 자리표시)
-         fg-subtle             입력창 칩의 글자(10) · 작업 구분선의 글자와 꺾쇠(09) · 응답 액션 글리프(08)
+         fg-subtle             입력창 칩의 글자(10) · 응답 액션 글리프(08) · 한때 작업 구분선의 글자와 꺾쇠(09 — restart 02b-1이 턴 머리를
+                               `fg-tertiary`로 옮겼다)
          fg-faint              요약 카드 결과물의 자리표시(07) · 한때 바닥 사람 줄의 꺾쇠(04 — restart 02a-3이 걷었다)
          fg-label              요약 카드의 라벨과 머리의 Work 이름(07)
          fg-icon               요약 카드 소스 줄의 글리프 · 03 화면들의 글리프 · 한때 사람 메뉴의 글리프(04 — restart 02a-3이 걷었다)
@@ -930,14 +921,14 @@
          fg-titlebar-disabled  갈 수 없는 뒤 · 앞(02)
          fg-thinking           「생각 중」의 바랜 글자(12) — 띠(`shimmer-band`)가 그 위를 밝게 지나간다
          mine                  내 차례 알약의 글자(05) · 위 칸 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
-         surface-codespan      답 안 인라인 코드의 바탕(08)
          surface-tray          첫 화면 입력창 밑 트레이(10) · 대기 메시지(11)
          border-panel          흰 판의 0.5 테두리(02). 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
          border-summary        요약 카드의 0.5 테두리(07)
          border-slot           입력창 자리 카드의 1px 테두리(11)
          border-faint          작업 중 점의 흰 원(32) 1px 테두리(11)
          separator             머리 줄 가운데 앞 세로선(02) · 한때 사람 메뉴의 구분선(04 — restart 02a-3이 메뉴를 걷었다)
-         separator-soft        요약 카드의 칸 구분선(07) · 작업 구분선 아래 선(09) · 답한 질문 카드의 테두리(11)
+         separator-soft        요약 카드의 칸 구분선(07) · 답한 질문 카드의 테두리(11) · 한때 작업 구분선 아래 선(09 — restart 02b-1이 턴 머리
+                               아래 0.5 `border-heavy`로 옮겼다)
          fill-nav-selected     한때 사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말). restart 02a-3 뒤로 앱이 읽지 않는다
          fill-toggle-on        Thread 머리 줄 요약 단추의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
@@ -949,7 +940,6 @@
          fg-tray-ghost         흐린 트레이 칩의 글자(02 — 아직 Work가 서지 않은 「새 Work」, 06 — 비어 있는 Service 칩 · `.tray .tc.ghost` 45%).
                                글리프는 `fg-tray-ghost-icon`(35%)
          border-tray-on        고른 Service 칩의 흰 면(`surface`)을 두르는 0.5 고리(06 — `.tray .tc.on` 14%) */
-    --fg-bubble: #0c274a;
     --fg-placeholder: #c7c7c8;
     --fg-subtle: #8e8f90;
     --fg-faint: #a4a4a5;
@@ -959,7 +949,6 @@
     --fg-titlebar-disabled: #cbcbcb;
     --fg-thinking: #aeaeae;
     --mine: #2c67c5;
-    --surface-codespan: #e8e9e9;
     --surface-tray: #f4f4f4;
     --border-panel: #e8e8e8;
     --border-summary: #dadadb;
@@ -1038,10 +1027,9 @@
     --fg-notice-warn-line: #9a5b00;
 
     /* **restart 시안 색**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 시안 `restart-tokens.css` · 티켓 02a-1). 라이트와 다크가 함께 선다(`.dark`).
-       아직 쓰는 자리가 없다(괄호 안은 쓰게 될 티켓).
+       괄호 안은 쓰는 자리를 짓는 티켓이다.
          tool-rail-on    레일 켜짐 표시의 면 — 라이트는 `fill-selected`와 같은 #eff0f0, 다크는 Air 실측(02a-14)
-         bubble-user-fg  사람 말풍선의 글자(02b-1). 지금 말풍선은 위 「Codex 실측 색」의 `fg-bubble`(#0c274a — 시안은 #0c264a, 라이트만)을
-                         읽는다. 02b-1이 말풍선을 이 이름으로 옮기면 `fg-bubble`을 걷는다 */
+         bubble-user-fg  사람 말풍선의 글자 — 02b-1이 말풍선을 이 이름으로 옮기며 Codex 실측의 `fg-bubble`(#0c274a · 라이트만)을 걷었다 */
     --tool-rail-on: #eff0f0;
     --bubble-user-fg: #0c264a;
 
@@ -2157,8 +2145,7 @@ body[data-palette-open] [data-scrollbar] {
 }
 
 /* **줄 바뀜**(보드 「도구 줄 바뀜」 200ms · 감속 · 위아래 4px) — 그 자리의 줄이 다른 줄로 바뀌면 새 줄이 아래 4에서 떠올라 선명해진다. 줄
-   높이는 그대로라 아래가 밀리지 않는다. 도구 줄이 끝나 완료형이 될 때, 도는 작업 구분선이 「N초 동안 작업」이 될 때, 시스템 줄 · 「답하는
-   중」이 설 때, 카드가 걷히고 입력창이 돌아올 때, 목록 줄의 상태 칸이 바뀔 때(보드 「목록 상태 바뀜」 200ms, v1 티켓 41)가 이것이다.
+   높이는 그대로라 아래가 밀리지 않는다. 도구 줄이 끝나 완료형이 될 때, 도는 턴 머리가 「N초 동안 작업함」이 될 때, 시스템 줄이 설 때, 카드가 걷히고 입력창이 돌아올 때, 목록 줄의 상태 칸이 바뀔 때(보드 「목록 상태 바뀜」 200ms, v1 티켓 41)가 이것이다.
    보드는 옛 줄이 위로 4 걷히며 겹쳐 바뀌지만, 옛 줄은 곧바로 걷힌다(섹션 머리말 — 날 때는 움직이지 않는다). */
 @keyframes row-in {
     from {

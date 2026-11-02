@@ -57,7 +57,7 @@ import { atBottom, leavingPlace, type ReadingPlace } from "./reading-place";
 import { chatSeat, followTab, rightShown, useRightSeat, workSeat, type BodyTab, type RightMove } from "./right-place";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, FollowTail, StartingLine, TURN_GAP, UserMessage, type FlowActions, type SentWords } from "./ThreadFlow";
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
@@ -80,22 +80,22 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   뒤에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)가, 오른쪽 끝에 요약 단추(「요약 카드」)가 선다(restart 02a-7 · 시안 MainLoose 창
 //   머리 — 한때 「…」도 오른쪽 끝이었다. Work 없는 Thread에도 선다 — 첫 말 전의 새 Thread에는 둘 다 없다, S23). 옛 Work 알약(브랜치)은
 //   걷었다(S14). 이 화면은 탭 줄이 없는 채팅 — 작업공간 밖 채팅과 읽기만 되는 채팅 — 의 자리다(restart 02a-4 · 02a-7).
-// - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
-//   아래 28에 입력창과 트레이뿐이다. 시안의 Service 제안 줄은 짓지 않는다(03
-//   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 범위를
+// - **빈 Thread**(Home 보드 · States 보드 01 · restart 02b-1) — 가운데에 「무엇을 만들까요?」(24 / 28 · 600) 한 줄, 그 아래 24에 입력창과
+//   트레이뿐이다. 작업공간의 새 채팅 탭은 물음 아래에 그 작업공간의 slug · 브랜치가 서고 입력창은 바닥이다(`NewChat`). 한때 Codex 실측의 28 · 보통
+//   굵기였다. 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 범위를
 //   고른다(03 §5). 고른 범위는 입력창이 쥐었다가 첫 말과 함께 간다(`service-chip.ts` — 씨앗 `?service=` · `?project=`가 처음 쥔다). 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을
 //   이미 말한다). 어디서 일할지는 주소 씨앗이 정한다(`startLink`) — 씨앗이 없으면 작업공간 없는 채팅이고, `?new=work`는 ×로 뺄 수 있는 「새 작업공간」
 //   칩을 세운다. `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — 그 탭이 그 Work의 잠긴 칩을 세운다, `WorkNewChat`). 입력 글
 //   씨앗(`?say=`)은 입력창에 넣기만 하고 보내는 것은 사람이다. 시작할 곳을 입력창
 //   안내가 따른다(`startPlaceholder`). 첫 말을 보내면 엔진이 고른 것대로
-//   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
-//   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
+//   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「채팅을 시작하는
+//   중」이 반짝인다(States 보드 02). 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **트레이**(03 §5) — Thread 화면에도 선다. 입력창이 화면 아래에 붙으므로 상자 위다. Work 칩은 잠겨 보이기만 한다(`lockedWork`
 //   — 이은 Work 이름은 누르면 그 Work 화면, 「작업공간 없이 대화」, 아직 Work가 서지 않은 흐린 「새 작업공간」). 첫 말을 보내 Session이 열리기를
 //   기다리는 동안도 같은 잠긴 트레이가 바닥 입력창 위에 선다. 범위 칩과 범위 줄은 첫 말 뒤에 서지 않는다 — 범위는 대화로 바꾼다(Service 도구).
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
-//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
-//   §10). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
+//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 원 안에 점 셋이 선다(02
+//   §10 — 바닥에서는 원이 없다, States 보드 · restart 02b-1). 흐름은 위 32 · 아래 28을 띄운다(Thread 보드 `.ra-col`). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
 //   자리는 그 Session의 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
 //   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
@@ -135,6 +135,9 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
  * 폭이다. 문서 · 설정이 읽는 `size-thread`(768)는 그대로다(02 결정 「01 · 공유 토큰은 새 이름으로」).
  */
 const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
+
+/** 받은 말의 턴이 기록에 서기를 기다리는 길이 — 그 안에 서지 않으면 보낸 말풍선을 걷는다(`ThreadBody`). */
+const PENDING_GRACE = 1500;
 
 /** 이은 Work의 화면으로 가는 길 — 잠긴 Work 칩이 누른다. 사이드바 · ⌘K가 그 Work를 여는 주소와 같다(`recallSearch`). */
 function useOpenWork(): (slug: string) => void {
@@ -358,37 +361,49 @@ function NewChat({
       placeholder={startPlaceholder(link, title)}
     />
   );
+  // 작업공간의 새 채팅 탭은 대화 자리에 물음이 서고 입력창은 바닥이다(States 보드 01 · Thread 보드 `.ra-empty-q`). 홈은 물음 · 입력창 · 트레이가
+  // 한가운데 묶음이다(Home 보드 `.ra-home`).
+  const docked = link.kind === "work";
   return (
     // 첫 화면과 첫 말을 보낸 뒤가 한 틀이다 — 입력창은 같은 자리(둘째 칸)에 남아 갈아 서지 않는다. 그래야 보내기 원이 ↑에서 스피너로
     // 모핑하고(02 §9 · Screen-Live 단계 1) 입력칸이 포커스를 지킨다. 첫 칸만 물음 ↔ 보낸 말로 바뀐다.
-    // - 첫 화면: 가운데 묶음 — 물음 아래 28에 입력창 · 트레이다. 아래 210을 비우고 가운데에 선다: F1-Home의 아래 88(`main{padding:0
-    //   16px 88px}`)에 짓지 않은 Service 제안 줄의 자리 122(위 22 + 줄 32 × 3 + 사이 2 × 2)를 더한 것이다 — 물음과 입력창이 시안의 그
-    //   자리에 선다.
-    // - 첫 말을 보낸 뒤: Session이 열려 그 채팅으로 갈아 서기까지 보낸 말과 「생각 중」이 서고, 입력창은 바닥으로 내려간다.
+    // - 홈의 첫 화면: 가운데 묶음 — 물음 아래 24에 입력창 · 트레이이고, 아래 72를 비우고 가운데에 선다(`.ra-home{gap:24px; padding:0 16px 72px}`).
+    // - 새 채팅 탭의 첫 화면: 대화 자리(채팅 탭의 흐름과 같은 안쪽 32 / 28) 가운데에 물음(24 / 28 · 600)과 그 아래 6에 작업공간의 slug · 브랜치(13 /
+    //   18 `fg-tertiary`)가 서고, 입력창은 채팅 탭과 같은 바닥 자리다.
+    // - 첫 말을 보낸 뒤: Session이 열려 그 채팅으로 갈아 서기까지 보낸 말과 「채팅을 시작하는 중」이 서고(States 보드 02), 입력창은 바닥이다.
     // 열은 채팅 본문과 같은 칸(`Beside`)이다 — 요약 카드가 열려 있으면(새 채팅 탭) 물음 · 보낸 말 · 입력창이 함께 카드를 비켜난다.
     <div
       className={cn(
         "relative flex min-h-0 flex-1 flex-col",
-        starting === null && "items-center justify-center overflow-y-auto px-4 pb-52.5 scroll-quiet",
+        starting === null && !docked && "items-center justify-center gap-6 overflow-y-auto px-4 pb-18 scroll-quiet",
       )}
     >
-      {starting === null ? (
-        <div className="mb-7 w-full">
+      {starting !== null ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-8 pb-7 scroll-quiet">
           <Beside open={beside}>
-            <h1 className="text-center text-home">무엇을 만들까요?</h1>
-          </Beside>
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-          <Beside open={beside}>
-            <div className={`flex flex-col ${TURN_GAP} text-chat-body`}>
+            <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
               <UserMessage text={starting.text} attachments={starting.attachments} quote={starting.quote} />
-              <p className="think-shimmer text-sm">생각 중</p>
+              <StartingLine />
             </div>
           </Beside>
         </div>
+      ) : docked ? (
+        <div className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto px-4 pt-8 pb-7 scroll-quiet">
+          <Beside open={beside}>
+            <div data-empty-chat className="flex min-h-65 flex-col items-center justify-center gap-1.5 text-center">
+              <h1 className="text-heading-lg">무엇을 만들까요?</h1>
+              <p className="text-chat-meta text-fg-tertiary">{[work, linked?.branch].filter(Boolean).join(" · ")}</p>
+            </div>
+          </Beside>
+        </div>
+      ) : (
+        <div className="w-full">
+          <Beside open={beside}>
+            <h1 className="text-center text-heading-lg">무엇을 만들까요?</h1>
+          </Beside>
+        </div>
       )}
-      <div className={starting === null ? "w-full" : "px-5 pb-4"}>
+      <div className={starting === null && !docked ? "w-full" : "px-4 pb-4"}>
         <Beside open={beside}>{composer}</Beside>
       </div>
       {/* 안내 카드의 「설치 안내」 · 「터미널에서 로그인」(셸 상한)이 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
@@ -868,8 +883,9 @@ function ThreadBody({
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
   const askingCwd = asking ? view.cwd : null;
-  // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
-  // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
+  // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 원 안에 선다. 바닥에 있으면 원이 없다 — 일하는 것은 흐름의 머리줄 ·
+  // 「생각 중」이 말한다(States 보드 05~12, restart 02b-1 — 한때 바닥에서도 그 자리에 점 셋의 원이 섰다). 입력창 자리에 카드가 서서 사람을
+  // 기다리면 서지 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
   const working = model.running && asking === null;
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
@@ -899,7 +915,27 @@ function ThreadBody({
     const el = scroller.current;
     if (el && stuck.current) el.scrollTop = el.scrollHeight;
   }, []);
-  useLayoutEffect(follow, [follow, lines]);
+  // 보냈지만 기록에 아직 서지 않은 말(States 보드 02 · 03) — Session이 내려가 있던 채팅은 Session이 열린 뒤에야 보낸 말이 기록에 선다. 그 턴이
+  // 기록에 서면 걷히고, 보내지 못했으면 곧바로 걷힌다(쓰던 글은 입력창이 되돌린다). 받았는데 턴이 서지 않으면(그사이 턴이 돌아 대기 줄로 갔다)
+  // 잠시 뒤 걷힌다. 도는 동안 보낸 말은 대기 줄이 말한다.
+  const [pending, setPending] = useState<(SentWords & { turns: number }) | null>(null);
+  const shownPending = pending !== null && pending.turns === model.turns.length ? pending : null;
+  const send = (text: string, attachments: readonly Attachment[], quote: Quote | null) => {
+    stuck.current = true;
+    const sending = threadApi.send(thread, text, attachments, quote);
+    if (model.running) return sending;
+    const mine = { text, attachments, quote, turns: model.turns.length };
+    const drop = () => setPending((now) => (now === mine ? null : now));
+    setPending(mine);
+    return sending.then(
+      () => void window.setTimeout(drop, PENDING_GRACE),
+      (error: unknown) => {
+        drop();
+        throw error;
+      },
+    );
+  };
+  useLayoutEffect(follow, [follow, lines, shownPending]);
 
   // 읽은 자리(S38) — 요약이 정본이고(Thread 화면 밖에서도 요약 이벤트가 고친다), 방금 적으러 보낸 자리는 답이 오기 전에도 다시 보내지
   // 않는다. 안내 카드는 입력창 자리에 서므로 흐름은 그대로 보인다.
@@ -1004,7 +1040,7 @@ function ThreadBody({
             setAway(!bottom);
             if (bottom) read();
           }}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-4 scroll-quiet"
+          className="min-h-0 flex-1 overflow-y-auto px-4 pt-8 pb-7 scroll-quiet"
         >
           <Beside open={beside}>
             <LogPlace.Provider value={view.cwd}>
@@ -1016,6 +1052,7 @@ function ThreadBody({
                       model={model}
                       runtime={runtime}
                       actions={flowActions}
+                      pending={shownPending}
                     />
                   </FollowTail.Provider>
                 </ResultPlace.Provider>
@@ -1033,10 +1070,7 @@ function ThreadBody({
               commands={lists.commands}
               running={model.running}
               stopped={stopped}
-              onSend={(text, attachments, quote) => {
-                stuck.current = true;
-                return threadApi.send(thread, text, attachments, quote);
-              }}
+              onSend={send}
               onStop={() => threadApi.stop(thread)}
               onNewThread={() => void navigate({ to: "/" })}
               problem={problem ?? chipProblem}
@@ -1081,11 +1115,11 @@ function ThreadBody({
                 ) : null
               }
               above={
-                (changes || away || working || queue.length > 0) && (
+                (changes || away || queue.length > 0) && (
                   <>
-                    {(changes || away || working) && (
-                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」 · 작업 중 점은 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽
-                      // 끝이었다. 작업 중 점은 Codex처럼 그 원 안에 선다 — 02 §10).
+                    {(changes || away) && (
+                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」는 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽 끝이었다.
+                      // 작업 중 점은 Codex처럼 그 원 안에 선다 — 02 §10).
                       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                         {changes && last ? (
                           <ChangesPill
@@ -1098,7 +1132,7 @@ function ThreadBody({
                         ) : (
                           <span />
                         )}
-                        {away ? (
+                        {away && (
                           // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
                           // 서고, 올려 두거나 포커스가 오면 ↓로 바뀐다(Motion 보드 「작업 중 점」 — Codex).
                           <button
@@ -1113,12 +1147,6 @@ function ThreadBody({
                               aria-hidden
                             />
                           </button>
-                        ) : (
-                          working && (
-                            <span role="img" aria-label="작업 중" className={SLOT_CIRCLE}>
-                              <WorkingDots />
-                            </span>
-                          )
                         )}
                       </div>
                     )}
