@@ -23,7 +23,7 @@ beforeEach(() => {
 describe("Runtime마다의 상태", () => {
   it("Codex의 로그인 끊김은 Codex 카드만 세운다 — Claude는 그대로다", async () => {
     const { applyEngineEvent, engineOf, guideKind, threadEngineStore } = await store();
-    applyEngineEvent({ agent: "codex", found: true, loggedIn: false, login: null, missing: [] });
+    applyEngineEvent({ agent: "codex", found: true, loggedIn: false, missing: [] });
     const state = threadEngineStore.state;
     expect(guideKind(engineOf(state, "codex"), false)).toBe("logged-out");
     expect(guideKind(engineOf(state, "claude-code"), false)).toBeNull();

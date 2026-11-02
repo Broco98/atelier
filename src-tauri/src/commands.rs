@@ -462,15 +462,18 @@ pub async fn open_archived_spec_folder(app: tauri::AppHandle, slug: String) -> C
 // PTY 명령 일곱. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 
+// `command`는 시작 명령이다(restart 01c-10) — 셸이 처음 말한 뒤 그 줄을 쳐 넣는다. 「터미널에서 로그인」이 로그인 명령을 싣고, 그 밖의
+// 셸은 `null`이다.
 #[tauri::command]
 pub async fn pty_spawn(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
+    command: Option<String>,
     on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
 ) -> CmdResult<pty::PtySpawned> {
-    pty::spawn(&pool, cwd, cols, rows, on_frame)
+    pty::spawn(&pool, cwd, cols, rows, command, on_frame)
 }
 
 #[tauri::command]
@@ -834,26 +837,14 @@ pub async fn thread_check_engine(
     to_host(&engine, "Runtime을 확인하지 못했습니다", move |host| host.check_engine(runtime.into(), reread)).await
 }
 
-/// 그 Runtime의 로그인 명령을 띄운다. 진행과 끝은 엔진 상태 이벤트(`thread::ENGINE_EVENT`)로 온다.
+/// 그 Runtime의 로그인 명령 한 줄(restart 01c-10) — 「터미널에서 로그인」이 Terminal에 연 새 셸에 친다(`pty_spawn`의 `command`). 앱은
+/// 로그인 명령을 띄우지 않는다. 로그인을 마친 뒤 「다시 확인」(`thread_check_engine`)이 기다리던 채팅을 다시 띄운다.
 #[tauri::command]
-pub async fn thread_start_login(
+pub async fn thread_login_command(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     runtime: atelier_acp::Runtime,
-) -> CmdResult<()> {
-    to_host(&engine, "로그인을 시작하지 못했습니다", move |host| host.start_login(runtime.into())).await
-}
-
-/// 그 Runtime의 도는 로그인 명령을 거둔다.
-#[tauri::command]
-pub async fn thread_cancel_login(
-    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    runtime: atelier_acp::Runtime,
-) -> CmdResult<()> {
-    to_host(&engine, "로그인을 취소하지 못했습니다", move |host| {
-        host.cancel_login(runtime.into());
-        Ok::<_, Infallible>(())
-    })
-    .await
+) -> CmdResult<String> {
+    to_host(&engine, "로그인 명령을 찾지 못했습니다", move |host| host.login_command(runtime.into())).await
 }
 
 /// 앱 종료 확인 창의 셈(S40 · three-axes 티켓 23) — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 대기 줄은

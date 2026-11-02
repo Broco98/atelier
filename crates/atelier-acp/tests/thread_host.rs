@@ -482,7 +482,7 @@ fn 로그인이_풀린_claude는_thread에_로그인_필요_줄을_남기고_로
     assert_eq!(record.last().unwrap()["payload"], json!({"state": "login-required"}));
     assert_eq!(
         events.engine_states().last(),
-        Some(&atelier_acp::EngineState { agent: atelier_acp::Agent::Claude, found: true, logged_in: Some(false), login: None, missing: vec![] }),
+        Some(&atelier_acp::EngineState { agent: atelier_acp::Agent::Claude, found: true, logged_in: Some(false), missing: vec![] }),
         "설정 화면이 읽는 엔진 상태가 나간다"
     );
     assert_eq!(

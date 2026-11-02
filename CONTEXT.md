@@ -253,6 +253,8 @@ three-axes 대화창이 「에이전트」라 부르던 것(Claude Code · Codex
 잠긴다 — Thread 하나가 Runtime 세션 하나다. 화면과 기록은 두 Runtime 모두 ACP 줄 하나로 읽는다.
 찾았나 · 로그인됐나는 Runtime마다 따로다. 쓸 수 없으면 그 Runtime의 Thread에만 입력창 자리에 안내 카드가 서고, 쓰던 말은 입력창에 남는다.
 새 Thread는 Runtime을 고른 순간에, 선 Thread는 Session을 열 때 확인한다. 첫 말 전이면 카드에서 다른 Runtime으로 바꾼다.
+로그인은 앱 안에서 하지 않는다 — 카드의 「터미널에서 로그인」이 `Terminal`에 새 셸을 열어 Runtime의 로그인 명령을 치고, 로그인을 마친 뒤
+「다시 확인」이 로그인을 기다리던 Thread를 다시 띄운다.
 _피할 말_: 하네스, 엔진, 봇, 어시스턴트, 페르소나
 
 **Thread 도구**:

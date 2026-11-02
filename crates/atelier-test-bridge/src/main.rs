@@ -273,12 +273,11 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("startup_report", |_| in_app_only("시작 보고는 앱 프로세스가 붙잡아 둔 값입니다")),
     // Thread 명령(v1 티켓 04 · 구현 스펙 §18)은 **앱 프로세스가 쥔 Thread 엔진**을 부른다 — 엔진은 오래 사는 Agent 프로세스와 그
     // 연결을 쥔다. 호출마다 새로 뜨고 끝나는 다리는 Agent를 쥘 수 없고, 띄운다 해도 다리가 끝나는 순간 함께 끊긴다. 목록 · 기록
-    // 읽기도 같이 둔다 — 색인과 떠 있는 Session의 기록 끝은 엔진 메모리에 있다. 로그인 시작 · 취소도 엔진이 쥔 로그인 명령
-    // 프로세스를 띄우고 거둔다. Thread 엔진은 L4로 재지 않는다(구현 스펙 「L4는 더하지 않는다」). three-axes의 `chat_` 명령은 v1
+    // 읽기도 같이 둔다 — 색인과 떠 있는 Session의 기록 끝은 엔진 메모리에 있다. 로그인 명령(restart 01c-10)도 엔진이 쥔
+    // 로그인 env에서 찾는다. Thread 엔진은 L4로 재지 않는다(구현 스펙 「L4는 더하지 않는다」). three-axes의 `chat_` 명령은 v1
     // 티켓 08이 걷었다.
     ("thread_check_engine", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_start_login", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
-    ("thread_cancel_login", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_login_command", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_quit_counts", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_list", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_get", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),

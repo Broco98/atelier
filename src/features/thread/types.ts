@@ -24,30 +24,21 @@ export type EngineCheck =
   | { state: "found"; programs: { name: string; path: string }[]; loggedIn: boolean }
   | { state: "missing"; missing: MissingProgram[] };
 
-/** 로그인 셸의 PATH에서 못 찾은 실행 파일 하나 — 이름과 설치 명령(안내 카드의 「명령 복사」가 이것을 넣는다). */
+/** 로그인 셸의 PATH에서 못 찾은 실행 파일 하나 — 이름과 설치 명령(안내 카드의 「설치 안내」가 이것을 복사한다). */
 export interface MissingProgram {
   name: string;
   install: string;
 }
 
 /**
- * 로그인 명령의 진행(`atelier_acp::LoginProgress`). 도는 중이면 명령이 찍은 첫 `https://` URL(「링크 복사」의 값 — 찍기 전에는
- * `null`), 끝났으면 사람이 취소했는지와 exit code(시그널로 끝났으면 `null`)다.
- */
-export type LoginProgress =
-  | { state: "running"; url: string | null }
-  | { state: "ended"; cancelled: boolean; exitCode: number | null };
-
-/**
- * 엔진 상태 이벤트가 싣는 것(`atelier_acp::EngineState`). `loggedIn`이 `null`이면 모른다 — 못 찾았거나 로그인 명령이 도는
- * 중이다. 「끝남」과 함께 온 `loggedIn`이 끝난 뒤 저절로 다시 돈 확인의 답이다. 엔진은 채팅의 Runtime마다 하나다(`claude`가
- * Claude Code, restart 01c-9). 못 찾았으면 빠진 것과 설치 명령이 실린다 — 세션을 열다 못 찾은 때도 안내 카드가 설치 명령을 보인다.
+ * 엔진 상태 이벤트가 싣는 것(`atelier_acp::EngineState`). `loggedIn`이 `null`이면 모른다 — 못 찾았다. 엔진은 채팅의 Runtime마다
+ * 하나다(`claude`가 Claude Code, restart 01c-9). 못 찾았으면 빠진 것과 설치 명령이 실린다 — 세션을 열다 못 찾은 때도 안내 카드가 설치
+ * 명령을 보인다. 로그인 진행은 없다 — 로그인은 Terminal의 셸에서 한다(restart 01c-10).
  */
 export interface EngineState {
   agent: "claude" | "codex";
   found: boolean;
   loggedIn: boolean | null;
-  login: LoginProgress | null;
   missing: MissingProgram[];
 }
 

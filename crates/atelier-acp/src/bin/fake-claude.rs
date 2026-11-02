@@ -1,7 +1,7 @@
 //! 검사가 진짜 `claude` 대신 상대하는 가짜 claude. 검사는 이것을 임시 PATH에 `claude`라는 이름의 링크로 둔다.
 //!
-//! - `auth status` · `auth login` — 로그인 확인과 로그인 명령의 흉내(three-axes 티켓 12). 몸은 `src/fakes/login.rs`이고
-//!   가짜 `codex`와 함께 쓴다 — 로그인 상태 파일 · 문 · 영수증의 약속은 그 파일 머리에 있다.
+//! - `auth status` — 로그인 확인의 흉내(three-axes 티켓 12). 몸은 `src/fakes/login.rs`이고 가짜 `codex`와 함께 쓴다 — 로그인
+//!   상태 파일 · 영수증의 약속은 그 파일 머리에 있다. 로그인 명령(`auth login`)은 흉내 내지 않는다(restart 01c-10).
 //! - `-p …` — 진짜 claude **2.1.309**의 stream-json 원문(v1 티켓 09가 다시 녹음)과 조각이 든 **2.1.316**의 원문(restart 티켓 01b-1)을
 //!   되감는다(three-axes 티켓 13). 셸 스크립트로는 제어 메시지에 답하기 버거워 Rust bin으로 짰다(워크플로 티켓 07). 아래는 이 갈래의
 //!   약속이다.

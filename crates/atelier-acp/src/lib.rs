@@ -26,7 +26,7 @@ pub use host::{
     ConversationHost, DocWriting, FlowChunk, FlowKind, HostBuilder, HostError, HostEvent, ProjectAddChoice, ProjectChoice, QuestionReply,
     QueuedMessage, QuitCounts, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, TranslatorCommand, WorkChoice,
 };
-pub use login::{EngineState, LoginProgress};
+pub use login::EngineState;
 pub use policy::AskLevel;
 pub use login_env::{LoginShellError, ShellSource};
 pub use quote::Quote;

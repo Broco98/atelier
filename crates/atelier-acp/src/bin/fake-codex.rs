@@ -1,7 +1,7 @@
 //! 검사가 진짜 `codex` 대신 상대하는 가짜 codex. 검사는 이것을 임시 PATH에 `codex`라는 이름의 링크로 둔다.
 //!
-//! - `login status` · `login` — 로그인 확인과 로그인 명령의 흉내(three-axes 티켓 12). 몸은 `src/fakes/login.rs`이고
-//!   가짜 `claude`와 함께 쓴다 — 로그인 상태 파일 · 문 · 영수증의 약속은 그 파일 머리에 있다.
+//! - `login status` — 로그인 확인의 흉내(three-axes 티켓 12). 몸은 `src/fakes/login.rs`이고 가짜 `claude`와 함께 쓴다 — 로그인
+//!   상태 파일 · 영수증의 약속은 그 파일 머리에 있다. 로그인 명령(`login`)은 흉내 내지 않는다(restart 01c-10).
 //! - 그 밖의 인자는 아무것도 하지 않고 exit 0이다. 대화의 `codex`는 가짜 ACP 에이전트가 `CODEX_PATH`로 받기만 하고
 //!   부르지 않는다.
 

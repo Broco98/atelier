@@ -16,8 +16,9 @@ import type {
 // **인자 객체가 평평해야 한다.** `tauri-commands.test.ts`의 인자 대조가 중첩 `{}`를 만나면
 // 그 호출을 통째로 못 보고 넘어간다(`features/works/api.ts`가 같은 이유를 적어 뒀다).
 export const terminalApi = {
-  spawn: (cwd: string | null, cols: number, rows: number, onFrame: Channel<PtyFrame>) =>
-    invoke<PtySpawned>("pty_spawn", { cwd, cols, rows, onFrame }),
+  // `command`는 시작 명령이다(restart 01c-10) — 셸이 처음 말한 뒤 백엔드가 그 줄을 쳐 넣는다. 「터미널에서 로그인」만 싣고 그 밖의 셸은 `null`이다.
+  spawn: (cwd: string | null, cols: number, rows: number, command: string | null, onFrame: Channel<PtyFrame>) =>
+    invoke<PtySpawned>("pty_spawn", { cwd, cols, rows, command, onFrame }),
   write: (id: number, data: string) => invoke<void>("pty_write", { id, data }),
   resize: (id: number, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),

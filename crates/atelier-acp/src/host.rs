@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
-use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
+use crate::login::{self, EngineState, LoginDesk, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::policy::Card;
 use crate::quote::Quote;
@@ -52,8 +52,8 @@ const CHUNK_BEAT: Duration = Duration::from_millis(33);
 /// 호스트가 내보내는 것 — 엔진 상태와 Thread의 기록 줄 · 흐르는 글 · 대기 줄 · 목록 요약.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostEvent {
-    /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 엔진을 확인할 때, Runtime이 로그인을 요구할 때,
-    /// 로그인 명령이 돌고 끝날 때 나간다(three-axes 티켓 12).
+    /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 빠진 것. 엔진을 확인할 때, 세션을 열다 못 찾았을 때, Runtime이 로그인을 요구할 때
+    /// 나간다(three-axes 티켓 12 · restart 01c-9).
     Engine(EngineState),
     /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이다(v1 티켓 04). 화면은 Thread를 이것 하나로 그린다.
     ThreadRecord { thread: String, line: RecordLine },
@@ -651,7 +651,7 @@ pub enum HostError {
     BadAttachment(String),
     /// Thread 폴더를 읽거나 쓰지 못했다.
     Record(String),
-    /// 로그인 명령을 띄우지 못했다.
+    /// 터미널에서 칠 로그인 명령을 짓지 못했다 — 찾은 실행 파일의 경로를 글로 읽지 못했다(restart 01c-10).
     Login(String),
     /// 그 id의 Thread가 없다(v1 티켓 04) — 폴더가 없거나 id의 꼴이 아니다.
     ThreadNotFound(String),
@@ -744,11 +744,12 @@ impl ConversationHost {
     }
 
     /// 엔진 확인 — 그 엔진을 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾고, 찾았으면 로그인돼 있는지 엔진에게 묻는다
-    /// (three-axes 티켓 12). `reread`는 안내 카드의 「다시 확인」이다. 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 env를 새로
-    /// 읽는다. v1의 화면은 Claude만 묻는다(S3) — Codex를 찾는 길은 크레이트에 남는다.
+    /// (three-axes 티켓 12). `reread`는 안내 카드의 「다시 찾기」 · 「다시 확인」이다. 설치하거나 터미널에서 로그인한 뒤 앱을 다시 켜지
+    /// 않고 이어 가도록 로그인 env를 새로 읽는다.
     ///
     /// - 답은 엔진 상태 이벤트로도 나간다 — 같은 엔진을 쓰는 다른 Thread의 카드도 따라 바뀐다.
-    /// - 로그인돼 있으면 그 엔진의 로그인을 기다리던 Session을 다시 띄운다 — 터미널에서 로그인하고 「다시 확인」을 누른 때다.
+    /// - 로그인돼 있으면 그 엔진의 로그인을 기다리던 Session을 다시 띄운다(`relaunch_waiting`) — 터미널에서 로그인하고 「다시 확인」을
+    ///   누른 때다(restart 01c-10 — 앱 안 로그인은 없다).
     ///
     /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다리고(한도 10초), 로그인을 묻는다(한도 10초).
     pub fn check_engine(&self, agent: Agent, reread: bool) -> Result<EngineCheck, LoginShellError> {
@@ -761,6 +762,17 @@ impl ConversationHost {
         Ok(check)
     }
 
+    /// 터미널에서 칠 그 엔진의 로그인 명령 한 줄(restart 01c-10 — 「터미널에서 로그인」). 로그인 셸의 PATH에서 찾은 실행 파일이라, 앱이
+    /// 확인하는 그 프로그램으로 로그인한다. 못 찾으면 그 엔진의 「못 찾음」을 알린다 — 카드가 「설치 안내」로 바뀐다. 로그인은 묻지 않는다.
+    ///
+    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
+    pub fn login_command(&self, agent: Agent) -> Result<String, HostError> {
+        let env = self.login_env(false)?;
+        let programs = self.find_programs(agent, &env)?;
+        login::login_command(agent, &programs)
+            .ok_or_else(|| HostError::Login(format!("{}의 로그인 명령을 짓지 못했습니다", agent.display_name())))
+    }
+
     /// 로그인 셸의 PATH — Runtime 밖의 도구(Work의 PR을 읽는 `gh`, v1 티켓 33)도 Runtime처럼 내 터미널과 같은 자리에서
     /// 찾게 한다. Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보인다. 쥔 로그인 env를 쓰고, 셸을 다시 띄우지 않는다.
     /// 읽지 못하면 없다 — 부르는 쪽이 앱의 PATH로 물러선다.
@@ -768,54 +780,6 @@ impl ConversationHost {
     /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
     pub fn login_path(&self) -> Option<OsString> {
         self.login_env(false).ok()?.path().map(OsString::from)
-    }
-
-    /// 로그인 시작 — 그 엔진의 로그인 명령(`claude auth login` · `codex login`)을 TTY 없이 새 세션에 띄운다(three-axes
-    /// 결정 30). 명령이 브라우저를 스스로 연다. 기다리지 않는다 — 진행은 엔진 상태 이벤트로 온다:
-    ///
-    /// 1. 도는 중(링크 없음) → 명령이 `https://` URL을 찍으면 도는 중(링크) — 「링크 복사」의 값이다.
-    /// 2. 명령이 끝나면 확인을 저절로 다시 돌고 「끝남」과 그 답(됨 · 안 됨)을 알린다.
-    /// 3. 됨이면 그 엔진의 로그인을 기다리던 Session을 다시 띄운다. 기록은 그대로다.
-    ///
-    /// 엔진마다 한 번에 하나다 — 이미 돌면 새로 띄우지 않고 지금의 진행을 다시 알린다. 로그인 명령의 끝을 지켜보는 스레드가
-    /// 호스트를 약하게 쥐므로 `Arc`로 부른다.
-    ///
-    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
-    pub fn start_login(self: Arc<Self>, agent: Agent) -> Result<(), HostError> {
-        let env = self.login_env(false)?;
-        let programs = self.find_programs(agent, &env)?;
-        let host = Arc::downgrade(&self);
-        self.logins
-            .start(agent, &programs, &env, &login::quiet_place(&env, &self.data_root), move |ended| {
-                if let Some(host) = host.upgrade() {
-                    host.login_ended(agent, ended);
-                }
-            })
-            .map_err(HostError::Login)
-    }
-
-    /// 로그인 취소 — 도는 로그인 명령의 프로세스 그룹에 SIGTERM을 보낸다(SIGINT가 아니다). 1초 안에 끝나지 않으면 그룹째
-    /// SIGKILL이다. 「끝남(취소)」은 엔진 상태 이벤트로 온다. 도는 것이 없으면 아무 일도 하지 않는다.
-    ///
-    /// 막히는 호출이다 — 최대 1초 남짓.
-    pub fn cancel_login(&self, agent: Agent) {
-        self.logins.cancel(agent);
-    }
-
-    /// 로그인 명령이 끝났다 — 확인을 다시 돌고 「끝남」을 알리고, 됨이면 기다리던 Session을 다시 띄운다. 끝을 지켜보는
-    /// 스레드에서 돈다.
-    fn login_ended(&self, agent: Agent, ended: LoginProgress) {
-        let (found, logged_in, missing) = match self.login_env(false) {
-            Ok(env) => match self.engine_check(agent, &env) {
-                EngineCheck::Found { logged_in, .. } => (true, Some(logged_in), Vec::new()),
-                EngineCheck::Missing { missing } => (false, None, missing),
-            },
-            Err(_) => (false, None, Vec::new()),
-        };
-        self.logins.announce(EngineState { agent, found, logged_in, login: Some(ended), missing });
-        if logged_in == Some(true) {
-            self.relaunch_waiting(agent);
-        }
     }
 
     /// 그 엔진의 로그인을 기다리던 Session들을 다시 띄운다 — 같은 기록에 이어 적고, 되살리기의 길(resume → load → 새로)로 연다.
@@ -876,12 +840,9 @@ impl ConversationHost {
     /// 모든 Session의 stdin을 **한꺼번에** 닫고 1초를 **한 번만** 기다린 뒤 그룹들을 SIGKILL한다 — Session마다 1초씩 줄을 세우면
     /// N초가 된다.
     pub fn shut_down(&self) {
-        // 로그인 명령도 끈다 — SIGTERM을 먼저 보내 두고, Session들을 끄는 1초 뒤에 남은 것을 SIGKILL한다.
-        self.logins.begin_close();
         let mut sessions = self.threads.drain_sessions();
         mark_taken(sessions.iter().map(|session| &*session.conv));
         end_together(sessions.iter_mut().map(|session| (&mut session.agent, &*session.conv)).collect());
-        self.logins.finish_close();
     }
 
     /// 쥔 로그인 env. 없거나 다시 읽으라면 셸을 띄워 읽는다. 다시 읽기가 실패하면 쥔 것도 버린다 —

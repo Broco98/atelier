@@ -120,8 +120,8 @@ mod tests {
         );
     }
 
-    /// **대기 줄 바뀜은 Thread · 대기 줄 전체를, 목록 요약은 요약 한 줄을, 엔진 상태는 엔진 · 찾음 · 로그인 여부 ·
-    /// 로그인 진행을 싣는다.** 안내 카드가 진행의 `state`로 「로그인 중(링크)」과 「끝남」을 가르고, 「링크 복사」는 `url`을 쓴다.
+    /// **대기 줄 바뀜은 Thread · 대기 줄 전체를, 목록 요약은 요약 한 줄을, 엔진 상태는 엔진 · 찾음 · 로그인 여부 · 빠진 것을
+    /// 싣는다.** 로그인 진행은 없다 — 로그인은 Terminal의 셸에서 한다(restart 01c-10).
     #[test]
     fn the_queue_list_and_engine_events_carry_their_whole_value() {
         let queue = vec![atelier_acp::QueuedMessage { id: "q1".into(), text: "기다리는 말".into(), send_now: false }];
@@ -154,49 +154,23 @@ mod tests {
             agent: atelier_acp::Agent::Claude,
             found: true,
             logged_in: Some(false),
-            login: None,
             missing: vec![],
         });
         assert_eq!(
             wire(&engine),
-            ("thread:engine", json!({"agent": "claude", "found": true, "loggedIn": false, "login": null, "missing": []}))
+            ("thread:engine", json!({"agent": "claude", "found": true, "loggedIn": false, "missing": []}))
         );
         // 못 찾았으면 빠진 것과 설치 명령이 실린다(restart 01c-9) — 세션을 열다 못 찾은 채팅에도 설치 안내 카드가 선다.
         let missing = HostEvent::Engine(atelier_acp::EngineState {
             agent: atelier_acp::Agent::Codex,
             found: false,
             logged_in: None,
-            login: None,
             missing: vec![atelier_acp::MissingProgram { name: "node", install: "brew install node" }],
         });
         assert_eq!(
             wire(&missing).1,
-            json!({"agent": "codex", "found": false, "loggedIn": null, "login": null,
+            json!({"agent": "codex", "found": false, "loggedIn": null,
                    "missing": [{"name": "node", "install": "brew install node"}]}),
-        );
-        let running = HostEvent::Engine(atelier_acp::EngineState {
-            agent: atelier_acp::Agent::Claude,
-            found: true,
-            logged_in: None,
-            login: Some(atelier_acp::LoginProgress::Running { url: Some("https://claude.com/cai/oauth/authorize?x".into()) }),
-            missing: vec![],
-        });
-        assert_eq!(
-            wire(&running).1,
-            json!({"agent": "claude", "found": true, "loggedIn": null,
-                   "login": {"state": "running", "url": "https://claude.com/cai/oauth/authorize?x"}, "missing": []}),
-        );
-        let ended = HostEvent::Engine(atelier_acp::EngineState {
-            agent: atelier_acp::Agent::Claude,
-            found: true,
-            logged_in: Some(true),
-            login: Some(atelier_acp::LoginProgress::Ended { cancelled: false, exit_code: Some(0) }),
-            missing: vec![],
-        });
-        assert_eq!(
-            wire(&ended).1,
-            json!({"agent": "claude", "found": true, "loggedIn": true,
-                   "login": {"state": "ended", "cancelled": false, "exitCode": 0}, "missing": []}),
         );
     }
 

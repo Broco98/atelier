@@ -49,7 +49,7 @@ fn probe(pool: &Arc<PtyPool>) -> (pty::PtySpawned, String) {
         Ok(())
     });
 
-    let spawned = pty::spawn(pool, None, 200, 24, channel)
+    let spawned = pty::spawn(pool, None, 200, 24, None, channel)
         .unwrap_or_else(|e| panic!("최상위 터미널이 안 떴다: {e}"));
     pty::write(pool, spawned.id, PROBE).expect("셸에 쓰지 못했다");
 
