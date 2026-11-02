@@ -996,6 +996,63 @@ export const FIXTURE_THREAD: ThreadView = {
 };
 
 /**
+ * **작업공간에 이은 채팅 둘**(restart 02a-16) — 고정 작업공간 `pinned-work`(`WORKS[0]`)에 이었다. 채팅 탭 · 오른쪽 자리를 재는 검사가 이것으로
+ * 사이드바의 채팅 줄 · 작업공간을 처음 여는 규칙 · 요약 카드가 설 채팅 탭을 세운다(`workChatAnswers`). 기록은 비어 있다 — 탭 · 자리를 재는
+ * 검사는 대화를 읽지 않는다(대화가 필요한 검사는 `thread-records`의 축복한 기록을 제 답으로 준다).
+ *
+ * **기본 표(`thread_list: []`)에는 넣지 않는다** — 사이드바 Work 줄(`Work줄이가는곳`) · 작업공간을 처음 여는 규칙을 딛는 앞 검사들이 「채팅이
+ * 없는 작업공간은 새 채팅 탭」을 딛고 선다. 말이 없어 「가장 최근」은 선 때로 가른다(`landingOf`) — 둘째가 하루 늦게 섰다.
+ */
+export const WORK_CHATS: readonly ThreadView[] = [
+  {
+    ...FIXTURE_THREAD,
+    id: "20261020-090000",
+    title: "실패 신호 구현",
+    createdAt: "2026-10-20T09:00:00.000+09:00",
+    work: WORKS[0].slug,
+    cwd: `~/.atelier/works/${WORKS[0].slug}`,
+    lastSeq: 0,
+  },
+  {
+    ...FIXTURE_THREAD,
+    id: "20261021-090000",
+    title: "배너 문구 리뷰",
+    createdAt: "2026-10-21T09:00:00.000+09:00",
+    work: WORKS[0].slug,
+    cwd: `~/.atelier/works/${WORKS[0].slug}`,
+    lastSeq: 0,
+  },
+];
+
+/** 채팅 하나의 목록 요약(`thread_list` 줄 · 이름 바꾸기 · 읽은 자리의 답) — 화면이 여는 채팅 그대로다. */
+export const chatSummaryOf = (view: ThreadView): ThreadSummary => ({
+  id: view.id,
+  title: view.title,
+  createdAt: view.createdAt,
+  work: view.work,
+  lastRead: view.lastRead,
+  readOnly: view.readOnly,
+  broken: null,
+});
+
+/**
+ * 그 채팅들을 여는 답 — 목록 · 보기 · 기록 · 읽은 자리다. 기록은 `records`에 준 채팅만 그 줄이고 나머지는 빈 기록이다. `installFixtureBackend`의
+ * 덮어쓰기에 그대로 펼친다.
+ */
+export function workChatAnswers(
+  views: readonly ThreadView[] = WORK_CHATS,
+  records: Readonly<Record<string, readonly ThreadRecordLine[]>> = {},
+): Record<string, unknown> {
+  const byId = <T>(make: (view: ThreadView) => T) => Object.fromEntries(views.map((view) => [view.id, make(view)]));
+  return {
+    thread_list: views.map(chatSummaryOf),
+    thread_get: answerByArg("thread", byId((view) => view)),
+    thread_read_record: answerByArg("thread", byId((view) => records[view.id] ?? [])),
+    thread_mark_read: answerByArg("thread", byId((view) => ({ ...chatSummaryOf(view), lastRead: view.lastSeq }))),
+  };
+}
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
