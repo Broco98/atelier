@@ -47,7 +47,6 @@ interface SetupOptions {
   projects?: Array<ProjectView>;
   archives?: Array<ArchiveEntry>;
   lastWork?: string | null;
-  lastArchive?: string | null;
 }
 
 /**
@@ -100,7 +99,6 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   shellStore.setState((state) => ({
     ...state,
     workSlug: options.lastWork ?? null,
-    archiveSlug: options.lastArchive ?? null,
     lastPlace: null,
   }));
 
@@ -423,20 +421,13 @@ describe("무선택 주소의 정규화", () => {
     expect(history.length).toBe(1);
   });
 
-  // 아카이브도 같은 규칙이다. **목록 칸이 곁에 상주하기 때문에** 그래도 된다 —
-  // 곁에 선 목록 없이 목록과 상세가 같은 영역을 번갈아 쓰던 판에서는 이 정규화가 목록을 볼
-  // 방법을 통째로 없앴고, 그래서 그때는 아카이브만 규칙에서 빼야 했다. 곁에 선 목록(그때의
-  // 목록 패널, 지금의 목록 칸)이 그 예외를 지웠다.
-  it("아카이브에도 같은 규칙이 적용된다", async () => {
-    const { router } = setup(["/archive"], { lastArchive: "치운-b" });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/archive/치운-b");
-  });
-
-  it("아카이브가 하나도 없으면 정규화하지 않고 빈 상태에 머문다", async () => {
-    const { router } = setup(["/archive"], { archives: [] });
+  // **Archive도 이 규칙 밖이다**(restart 03-4 · 스펙 「03 — 목록과 상세」) — 문서 | 목록 2단을 걷어 `/archive`가 목록이고 상세(`/archive/$slug`)가
+  // 그 자리를 번갈아 쓴다. 한때는 목록 칸이 곁에 상주해 마지막으로 보던 아카이브로 정규화했다 — 지금 그러면 목록을 볼 길이 없다.
+  it("아카이브는 목록 화면이라 정규화하지 않는다", async () => {
+    const { router, history } = setup(["/archive"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/archive");
+    expect(history.length).toBe(1);
   });
 });
 
@@ -683,15 +674,15 @@ describe("선택한 항목의 히스토리 의미론", () => {
   // 탭 전환은 무선택 주소로 가고 거기서 정규화가 한 번 더 일어난다.
   // 정규화가 push였다면 여기서 뒤로가기를 두 번 눌러야 한다 — 그 회귀를 이 테스트가 잡는다.
   it("탭을 전환한 뒤 뒤로가기 한 번이면 이전 탭에서 보던 항목으로 간다", async () => {
-    const { router, history } = setup(["/works/work-a"], { lastArchive: "치운-b" });
+    const { router, history } = setup(["/archive/치운-a"], { lastWork: "work-b" });
     await router.load();
 
-    await router.navigate({ to: "/archive" });
-    expect(router.state.location.pathname).toBe("/archive/치운-b");
+    await router.navigate({ to: "/works" });
+    expect(router.state.location.pathname).toBe("/works/work-b");
     expect(history.length).toBe(2);
 
     await goBack(router, history);
-    expect(router.state.location.pathname).toBe("/works/work-a");
+    expect(router.state.location.pathname).toBe("/archive/치운-a");
   });
 });
 
@@ -739,12 +730,12 @@ describe("문서 전환의 히스토리 의미론", () => {
     expect(router.state.location.search).toEqual({});
   });
 
-  // 아카이브도 같은 규칙이다 — 같은 문서를 어느 화면에서 열든 뒤로가기가 다르게 굴면 안 된다. 문서는 spec 목록 패널의
-  // 트리에서 고르고(Works의 트리와 같은 훑기), 고르는 이동은 주소에 아카이브와 문서를 함께 싣는다(`-archive-view.tsx`의 `selectDoc`).
+  // 아카이브도 같은 규칙이다 — 같은 문서를 어느 화면에서 열든 뒤로가기가 다르게 굴면 안 된다. 문서는
+  // 상세의 「문서」 트리에서 고르고(Works의 트리와 같은 훑기), 고르는 이동은 주소에 아카이브와 문서를 함께 싣는다(`ArchiveDetail`의 `selectDoc`).
   const archive = (slug: string, file?: string) =>
     ({ to: "/archive/$slug", params: { slug }, search: file ? { file } : {} }) as const;
 
-  it("spec 목록 패널의 트리로 문서를 훑어도 히스토리가 늘지 않는다", async () => {
+  it("상세의 문서 트리로 문서를 훑어도 히스토리가 늘지 않는다", async () => {
     const { router, history } = setup(["/archive/치운-a"]);
     await router.load();
 

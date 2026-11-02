@@ -426,12 +426,12 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
 
 // 아카이브 화면도 같은 두 보기를 쓴다 — 문서를 그리는 규칙이 갈라지면 같은 spec이
 // 어디서 열렸느냐에 따라 다르게 보인다. 둘 다 work에 의존하지 않아 그대로 나간다.
-export function SourceView({ content, wide = false }: { content: string; wide?: boolean }) {
+export function SourceView({ content, wide = false, className }: { content: string; wide?: boolean; className?: string }) {
   const lines = content.split("\n");
   return (
     // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다. 첫 줄이 예쁜 보기의 첫 블록과 같은 y(경로 줄
-    // 아래 24)에 서서 보기 묶음을 오가도 본문이 위아래로 튀지 않는다.
-    <div className={cn(bodyColumn(wide), "py-6")}>
+    // 아래 24)에 서서 보기 묶음을 오가도 본문이 위아래로 튀지 않는다. 열이 다른 자리(Archive 상세의 문서 칸)는 `className`으로 덮는다.
+    <div className={cn(bodyColumn(wide), "py-6", className)}>
       {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
           **줄번호 열은 글 거터 20 안쪽, 글이 서는 줄에서 시작한다**(codex-ds 결정 27) — 거터가 20이라 48 열이 들어설 자리가
           그 밖에 없다. 그래서 원문의 코드 첫 글자는 예쁜 보기 글보다 줄번호 열만큼 안쪽이다: 원문은 「글」이 아니라 「코드」라
@@ -501,6 +501,9 @@ interface PrettyViewProps {
   // 이미지를 읽을 절대 경로의 기준. 모르면(아카이브 화면) 로컬 이미지는 그리지 않는다 —
   // 아카이브 목록은 경량이라 문서 위치를 담지 않는다.
   specRoot: string | null;
+  // 본문 열을 덮는다 — 문서 카드가 아니라 판 안의 한 칸에 서는 자리(Archive 상세의 문서 칸 — restart 03-4 · 보드 Places `.pl-prose`)가 쓴다.
+  // 없으면 문서 카드의 열(`bodyColumn`)과 여백이다.
+  className?: string;
 }
 
 // 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
@@ -569,6 +572,7 @@ export const PrettyView = memo(function PrettyView({
   files,
   onNavigate,
   specRoot,
+  className,
 }: PrettyViewProps) {
   // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
   // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
@@ -847,7 +851,7 @@ export const PrettyView = memo(function PrettyView({
     // 세로에도 건다. 보기 묶음을 오갈 때 본문이 위아래로 튀지 않는다.
     // 글자는 문서 본문 단계(`text-chat-body` 14/22.75)와 `fg`다(DS `Prose`) — 문단 · 목록 · 콜아웃이 물려받는다(표는
     // 글자색만 물려받고 크기는 `SpecTable`의 `text-sm`이다).
-    <article className={cn(bodyColumn(wide), "pt-5 pb-16 text-chat-body text-fg")}>
+    <article className={cn(bodyColumn(wide), "pt-5 pb-16 text-chat-body text-fg", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>

@@ -70,3 +70,16 @@ export function placeDay(day: string): string {
   if (!hit) return "—";
   return `${Number(hit[1])}년 ${Number(hit[2])}월 ${Number(hit[3])}일`;
 }
+
+/**
+ * 시각 칸이 날일 때의 글(restart 03-4 · 보드 Places Archive 「10월 28일」 · 「—」) — Archive의 「보관한 날」이다. 거리(`placeWhen`)가 아니라 그날이다:
+ * 보관함은 언제 치웠는지를 날로 기억하는 자리라 「6일」보다 「10월 28일」이 읽힌다. 올해면 「M월 D일」, 아니면 해까지다(`placeWhen`의 날짜 갈래와
+ * 같은 꼴). 저장된 날(`YYYY-MM-DD`)을 글에서 읽어 시간대를 타지 않는다. 없거나 읽지 못하면 「—」다.
+ */
+export function placeDate(day: string | null, now: number): string {
+  const hit = day === null ? null : /^(\d{4})-(\d{2})-(\d{2})/.exec(day);
+  if (!hit) return "—";
+  const [year, month, date] = [Number(hit[1]), Number(hit[2]), Number(hit[3])];
+  const short = `${month}월 ${date}일`;
+  return year === new Date(now).getFullYear() ? short : `${year}년 ${short}`;
+}

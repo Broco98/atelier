@@ -1,201 +1,122 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import ArchivePage from "./ArchivePage";
-import { ToastProvider } from "@/components/ui/toast";
-import { archivedDocsQuery, archiveQuery } from "./hooks";
-import type { ArchivedDocs, ArchiveEntry } from "./types";
-import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import ArchivePlace from "./ArchivePage";
+import { archiveQuery } from "./hooks";
+import type { ArchiveEntry } from "./types";
 
-// 머리(이름 · 할 일)는 앱 셸의 머리 줄로 포털을 탄다 — 정적 렌더는 포털을 못 그려, 머리를 이 화면의 마크업 안 머리 줄에 곧장 세운다
-// (`screen-head-inline`).
-vi.mock("@/components/shell/ShellHead", async (actual) =>
-  (await import("@/components/shell/screen-head-inline")).inlineScreenHead(actual),
-);
+// Archive 목록(restart 03-4 · 보드 MainArchive · PlaceSheet 「세 화면」 · 「Archive 없음」 · Places `DATA.archive`) — seam은 그린 꼴(markup)이다(이 저장소의
+// L2에는 DOM이 없다). 누르고 치는 것(⌘F · 줄 누름 → 상세 · 돌아오면 찾는 글 · 정렬 · 스크롤이 그대로 · 움직임)은 L3가 잰다. 값은 보드 장면을 따른
+// 꾸민 것이다.
 
-// 아카이브 화면을 통째로 그려 잰다. 목록 머리의 정렬 · 거르기 메뉴와 머리 줄의 프로젝트 글자 · spec 목록 패널의 트리는 서로
-// 다른 자리에 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 한 번에 걸린다.
-//
-// 호버 카드 조각(`WorkPeek.test.tsx`)과 달리 프로바이더를 세운다. 이 화면은 목록도 문서도 스스로
-// 조회하므로 순수 표현일 수 없고, 「목록이 왔다」와 「아직이다」가 빈 화면의 갈래를
-// 가르기 때문에(`entriesPending`) 캐시를 심어 도착을 흉내낸다 — `WorksPage.test.tsx` 방식.
+vi.mock("@tanstack/react-router", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => () => Promise.resolve(),
+  useParams: () => ({}),
+  Outlet: () => null,
+  // 라우터 없이 그린다 — 이름 링크는 갈 곳을 그대로 적는 맨 링크로.
+  Link: ({ to, params, children, ...rest }: { to: string; params: { slug: string }; children: ReactNode }) => (
+    <a href={to.replace("$slug", params.slug)} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+// 토스트 자리는 앱 셸의 공급자 안에서만 선다 — 여기서는 비운다.
+vi.mock("@/components/ui/toast", async (original) => ({
+  ...(await original<typeof import("@/components/ui/toast")>()),
+  Toaster: () => null,
+}));
 
-const withProject: ArchiveEntry = {
-  slug: "shipped",
-  title: "치운 것",
+const NOW = new Date(2026, 10, 3, 9, 0, 0);
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+afterEach(() => vi.useRealTimers());
+
+const entry = (slug: string, title: string, over: Partial<ArchiveEntry> = {}): ArchiveEntry => ({
+  slug,
+  title,
   status: "done",
-  archivedAt: "2026-08-16",
+  archivedAt: null,
   projects: ["atelier"],
-};
+  branch: null,
+  ...over,
+});
 
-// 토스트 자리(Viewport)는 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트 Provider를 여기서도 싼다(S14).
-function render(
-  entries: ArchiveEntry[],
-  selectedSlug: string | null = null,
-  // 고른 아카이브의 문서 답 — 심으면 spec 목록 패널이 도착한 트리를 그린다(패널은 열린 채 선다)
-  docs?: ArchivedDocs,
-  currentFile: string | null = null,
-): string {
+// 백엔드 차례(보관한 날 내림차순)와 다르게 준다 — 화면이 보관한 날 순으로 다시 세운다.
+const ENTRIES = [
+  entry("moved-folder", "old-notes", { status: "draft", projects: [] }),
+  entry("three-axes", "세 축 구조", { archivedAt: "2026-10-12" }),
+  entry("process-manager", "프로세스 매니저", { archivedAt: "2026-10-28" }),
+  entry("pay-retry", "결제 재시도", { status: "review", archivedAt: "2025-09-30", projects: ["backend", "front"] }),
+];
+
+function render(entries: ArchiveEntry[] = ENTRIES) {
   const client = new QueryClient();
-  // `[]`도 심는다 — 안 심으면 pending이라 빈 화면이 아예 안 그려진다(도착 전에는 아무 말도
-  // 하지 않는 것이 이 화면의 계약이다).
   client.setQueryData(archiveQuery().queryKey, entries);
-  if (docs) client.setQueryData(archivedDocsQuery(selectedSlug).queryKey, docs);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <ToastProvider>
-        <ArchivePage
-          sidebarOpen
-          selectedSlug={selectedSlug}
-          currentFile={currentFile}
-          onSelect={() => {}}
-          onSelectDoc={() => {}}
-          onFollowLink={() => {}}
-        />
-      </ToastProvider>
+      <ArchivePlace />
     </QueryClientProvider>,
   );
 }
 
-beforeEach(() => {
-  // 목록 칸의 폭이 여기서 온다 — 없으면 첫 렌더에서 던진다
-  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
-});
+/** 몸의 줄들 — [이름 링크의 갈 곳, 이름, 줄의 꼴]. 머리 줄은 링크가 없다. */
+const rowsOf = (html: string) =>
+  [...html.matchAll(/<div><div role="row"[^>]*>([\s\S]*?)<\/div><\/div>/g)].map((row) => [
+    row[1].match(/<a href="([^"]+)"/)?.[1] ?? "",
+    row[1].match(/<a [^>]*>([^<]+)<\/a>/)?.[1] ?? "",
+    row[1],
+  ]);
+const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
-describe("프로젝트 자리", () => {
-  // 거르개의 줄(「모든 프로젝트」 · 프로젝트들)은 메뉴 안이라 닫힌 정적 마크업에는 없다 — 메뉴를 열어 고르는 것은 L3
-  // (`archive-docs.spec.ts`)가 잰다. 여기는 그 메뉴를 여는 버튼과 머리 줄의 프로젝트 글자다.
-  it("프로젝트가 붙은 아카이브를 그리면 목록 머리에 정렬 · 거르기 버튼이, 머리 줄에 그 프로젝트가 선다", () => {
-    const markup = render([withProject], "shipped");
-    expect(markup).toContain('aria-label="정렬 · 거르기"');
-    // 버튼의 설명이 지금 값이다 — 처음은 백엔드 차례 · 거르지 않음(바꾼 뒤의 설명은 L3 `archive-docs.spec.ts`가 잰다).
-    expect(markup).toContain('aria-description="최근에 치운 순 · 모든 프로젝트"');
-    const head = /<header[\s\S]*?<\/header>/.exec(markup)?.[0] ?? "";
-    expect(head).toContain(">atelier · 8월 16일에 치움<");
-  });
-});
-
-describe("아무것도 안 치웠을 때", () => {
-  it("문구는 그대로다", () => {
-    const markup = render([]);
-    expect(markup).toContain("아직 치운 작업공간이 없어요");
-    expect(markup).toContain("끝난 작업공간의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.");
-    expect(markup).toContain(
-      "끝난 작업공간의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요.",
-    );
-  });
-});
-
-// 좁혀서 0개일 때 하는 말은 **렌더로 못 닿는다** — 검색어를 치거나 필터를 골라야 하는데
-// 정적 마크업에는 그럴 손이 없다. 그래서 낱말의 계약은 `archive-copy.test.ts`가 재고,
-// 화면이 리터럴로 되돌아가지 않았는지만 여기서 소스로 본다.
-//
-// **fail-closed로 짠다**: 파일이 옮겨지면 readFileSync가 던지고, 목록 칸이 통째로
-// 사라져도 아래 첫 두 줄이 빨개진다. 「못 찾았으니 깨끗하다」로 떨어질 길이 없어야 검사다.
-describe("좁혀서 0개일 때 하는 말", () => {
-  it("목록이 그 문장을 손으로 적지 않는다", () => {
-    const src = readFileSync(fileURLToPath(new URL("./ArchiveList.tsx", import.meta.url)), "utf8");
-
-    // 잴 대상이 아직 거기 있다는 것부터 — 없으면 아래 「리터럴이 없다」는 공허하게 참이다
-    expect(src).toContain("아카이브 검색");
-    expect(src).toMatch(/narrowedNotice\(/);
-
-    // 이 문장은 **프로젝트 필터가 만든 좁힘**이다 — 낱말의 정본은 `archive-copy.ts` 하나다.
-    expect(src).not.toContain("해당 프로젝트의 아카이브가 없어요");
-  });
-});
-
-// **입력은 손으로 적은 spec 트리다**(spec 레이아웃 구현 스펙 Testing 「앱」) — 앱에는 규칙이 없어
-// 여기서 재는 것은 「받은 것을 받은 대로 그리는가」뿐이다. 그래서 아래 트리는 일부러 이름으로 세울
-// 때의 순서가 아니다: 판이 최신부터 서고, 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다
-// (spec 레이아웃 구현 스펙 7절 허용 차이 4). 이름으로 알아보던 앱이라면 판을 오름차순으로 다시
-// 세우고 `tickets/`에 아이콘을 줬다.
-describe("아카이브 트리는 받은 spec 트리를 spec/ 아래에 그린다", () => {
-  const file = (path: string, icon: string | null = null): SpecTreeItem => ({
-    name: path.slice(path.lastIndexOf("/") + 1),
-    path,
-    kind: "file",
-    icon,
-    group: null,
-    children: [],
-  });
-  const folder = (
-    path: string,
-    children: SpecTreeItem[],
-    icon: string | null = null,
-    group: SpecTreeGroup | null = null,
-  ): SpecTreeItem => ({ ...file(path, icon), kind: "folder", group, children });
-  const iteration = (n: number, latest: boolean): SpecTreeGroup => ({ key: "{n}-{name}", n, latest });
-
-  const DOCS: ArchivedDocs = {
-    docs: [
-      "record.md",
-      "spec/01-첫째-판/지난-계획.md",
-      "spec/02-둘째-판/plan.md",
-      "spec/overview.md",
-      "spec/tickets/할일.md",
-    ],
-    specTree: {
-      fallback: null,
-      defaultDoc: "overview.md",
-      items: [
-        file("overview.md", "compass"),
-        folder("02-둘째-판", [file("02-둘째-판/plan.md")], "layers", iteration(2, true)),
-        folder("01-첫째-판", [file("01-첫째-판/지난-계획.md")], "layers", iteration(1, false)),
-        folder("tickets", [file("tickets/할일.md")]),
-      ],
-    },
-  };
-
-  const shipped = { ...withProject, slug: "shipped" };
-  const tree = (currentFile: string | null = null) =>
-    render([shipped], "shipped", DOCS, currentFile);
-  /** 행 이름이 마크업에 선 자리. 없으면 -1이다. 행의 글자는 태그 사이에 홀로 선다(`>이름<`). */
-  const at = (markup: string, name: string) => markup.indexOf(`>${name}<`);
-  /** 이름으로 트리의 접히는 행 하나(여는 button부터 닫는 button까지). */
-  const folderRow = (markup: string, name: string) =>
-    (markup.match(/<button[^>]*aria-expanded="[^"]*"[^>]*>[\s\S]*?<\/button>/g) ?? []).find((row) =>
-      row.endsWith(`>${name}</span></button>`),
-    ) ?? "";
-  /** 이름으로 파일 행 하나 — 배경(선택 표시)을 가진 바깥 div의 여는 태그부터 이름까지. */
-  const fileRow = (markup: string, name: string) => {
-    const end = markup.indexOf(`>${name}</span></button>`);
-    if (end < 0) return "";
-    return markup.slice(markup.lastIndexOf('<div class="group', end), end);
-  };
-
-  it("뿌리에 기록 행과 spec/ 행이 서고, 그 아래가 받은 순서대로 선다", () => {
-    const markup = tree();
-    const shown = ["record.md", "spec", "overview.md", "02-둘째-판", "plan.md", "01-첫째-판", "tickets", "할일.md"];
-    const positions = shown.map((name) => at(markup, name));
-    expect(positions.every((one) => one >= 0), `${shown} → ${positions}`).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    // `spec/`는 접히는 폴더 행이고 펼친 채 선다. 판은 최신만 펼친다(spec 레이아웃 티켓 05와 같은 규칙).
-    expect(folderRow(markup, "spec")).toContain('aria-expanded="true"');
-    expect(folderRow(markup, "01-첫째-판")).toContain('aria-expanded="false"');
-    expect(at(markup, "지난-계획.md")).toBe(-1);
+describe("Archive 목록", () => {
+  it("줄은 보관한 날 순이고 이름 옆에 상태와 Project, 시각 칸에 그날이 선다 — 날이 없는 줄은 끝에 「—」다", () => {
+    const rows = rowsOf(render());
+    expect(rows.map((row) => row[0])).toEqual([
+      "/archive/process-manager",
+      "/archive/three-axes",
+      "/archive/pay-retry",
+      "/archive/moved-folder",
+    ]);
+    expect(rows.map((row) => textOf(row[2]))).toEqual([
+      "프로세스 매니저 완료 · atelier 10월 28일",
+      "세 축 구조 완료 · atelier 10월 12일",
+      "결제 재시도 검토 · backend · front 2025년 9월 30일",
+      "old-notes 초안 —",
+    ]);
   });
 
-  it("받은 아이콘으로 선다 — 아이콘을 받은 파일 행에는 라벨이 없고, 자리 밖 tickets/에는 아이콘이 없다", () => {
-    const markup = tree();
-    expect(fileRow(markup, "overview.md")).toContain("lucide-compass");
-    expect(fileRow(markup, "overview.md")).not.toContain(">MD</span>");
-    // 기록은 레이아웃이 모르는 파일이라 지금처럼 확장자 라벨이다
-    expect(fileRow(markup, "record.md")).toContain(">MD</span>");
-    expect(folderRow(markup, "02-둘째-판")).toContain("lucide-layers");
-    const glyphs = (row: string) => row.match(/class="lucide lucide-[^ "]+/g);
-    expect(glyphs(folderRow(markup, "tickets"))).toEqual(['class="lucide lucide-chevron-right']);
-    expect(glyphs(folderRow(markup, "spec"))).toEqual(['class="lucide lucide-chevron-right']);
+  it("줄 오른쪽은 ⋯ 하나다 — 작업공간 만들기 · 새 채팅은 없다", () => {
+    const labels = (row: string) => [...row.matchAll(/<button[^>]*aria-label="([^"]+)"/g)].map((m) => m[1]);
+    expect(rowsOf(render()).map((row) => labels(row[2]))).toEqual([
+      ["프로세스 매니저 메뉴"],
+      ["세 축 구조 메뉴"],
+      ["결제 재시도 메뉴"],
+      ["old-notes 메뉴"],
+    ]);
   });
 
-  it("선택 표시는 spec/가 다시 붙은 경로로 켜진다", () => {
-    const markup = tree("spec/02-둘째-판/plan.md");
-    expect(fileRow(markup, "plan.md")).toContain("selected-row");
-    expect(fileRow(markup, "record.md")).not.toContain("selected-row");
-    // 기본 문서는 지금 규칙 그대로 목록의 첫 문서다 — 트리의 기본 문서(`overview.md`)가 아니다
-    expect(fileRow(tree(), "record.md")).toContain("selected-row");
-    expect(fileRow(tree(), "overview.md")).not.toContain("selected-row");
+  it("머리는 제목 · ⌘F로 서는 찾기 칸뿐이고(주 단추 없음), 표의 열 머리는 이름 · 보관한 날(지금 정렬 — 내림차순)이다", () => {
+    const html = render();
+    expect(html).toMatch(/<h1[^>]*>Archive<\/h1>/);
+    expect(html).toMatch(/<input type="search"[^>]*placeholder="Archive 찾기"[^>]*aria-label="Archive 찾기"[^>]*aria-keyshortcuts="Meta\+F"/);
+    const head = html.slice(html.indexOf("<h1"), html.indexOf('role="table"'));
+    expect(head.match(/<button/g)).toBeNull();
+    expect(html).toContain('<div role="table" aria-label="Archive 목록">');
+    const heads = [...html.matchAll(/<span role="columnheader"( aria-sort="(\w+)")?><button type="button"[^>]*>([^<]+)</g)].map((m) => [m[3], m[2] ?? null]);
+    expect(heads).toEqual([
+      ["이름", null],
+      ["보관한 날", "descending"],
+    ]);
+  });
+
+  it("보관한 것이 없으면 찾기 칸 없이 가운데에 까닭이 서고, 할 일 단추는 없다", () => {
+    const html = render([]);
+    expect(html).not.toContain('type="search"');
+    expect(html).not.toContain("<button");
+    expect(textOf(html)).toBe("Archive 보관한 작업공간이 없어요 작업공간을 종료하면 문서와 기록이 여기에 남아요.");
   });
 });

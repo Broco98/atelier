@@ -36,6 +36,7 @@ const SHELVED: ArchiveEntry = {
   status: "active",
   archivedAt: "2026-10-24T05:10:00Z",
   projects: MADE.projects,
+  branch: MADE.branch,
 };
 /** ⌘K에 그 Thread의 이름을 치면 — 보관된 Work의 Thread 줄이다(core `search.rs` · S43). */
 const FOUND: SearchResults = { hits: [{ kind: "thread", id: view.id, title: view.title, archived: true }] };

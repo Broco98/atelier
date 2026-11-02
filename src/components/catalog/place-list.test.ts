@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIRST_SORT, nextSort, placeDay, placeWhen, sortPlaces, type PlaceSort } from "./place-list";
+import { FIRST_SORT, nextSort, placeDate, placeDay, placeWhen, sortPlaces, type PlaceSort } from "./place-list";
 
 // 공용 목록 틀의 갈래(restart 03-1 · 보드 PlaceSheet 「규격」 · 「움직임과 조작」 · Places) — 줄의 차례, 열 머리를 누른 뒤의 정렬, 시각 칸의 글.
 // Projects · Services · Archive가 함께 쓴다. 기대 글은 보드의 글자 그대로다(「12분」 · 「3일」 · 「2주」 · 「4주」).
@@ -85,5 +85,25 @@ describe("상세 위 카드의 날짜", () => {
   it("읽지 못한 날은 「—」다", () => {
     expect(placeDay("")).toBe("—");
     expect(placeDay("어제")).toBe("—");
+  });
+});
+
+// Archive의 시각 칸은 「보관한 날」이다(restart 03-4 · 보드 Places Archive 「10월 28일」 · 「9월 30일」 · 「—」) — 거리가 아니라 그날이다.
+describe("보관한 날 칸의 글", () => {
+  const now = new Date(2026, 10, 3, 9, 0, 0).getTime();
+
+  it("올해의 날은 「M월 D일」이다 — 오늘 · 어제도 거리로 말하지 않는다", () => {
+    expect(placeDate("2026-10-28", now)).toBe("10월 28일");
+    expect(placeDate("2026-11-03", now)).toBe("11월 3일");
+    expect(placeDate("2026-01-05", now)).toBe("1월 5일");
+  });
+
+  it("지난해의 날은 해까지 적는다", () => {
+    expect(placeDate("2025-12-31", now)).toBe("2025년 12월 31일");
+  });
+
+  it("날이 없거나 읽지 못하면 「—」다", () => {
+    expect(placeDate(null, now)).toBe("—");
+    expect(placeDate("어제", now)).toBe("—");
   });
 });

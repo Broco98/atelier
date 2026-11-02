@@ -428,7 +428,7 @@ const shelved: ThreadView = {
 };
 /** 작업공간에 잇지 않은 채팅 — 같은 대화다. */
 const loose: ThreadView = { ...shelved, id: "20261026-090000", work: null, readOnly: null };
-const SHELVED: ArchiveEntry = { slug: MADE.slug, title: MADE.title, status: "active", archivedAt: "2026-10-24T05:10:00Z", projects: MADE.projects };
+const SHELVED: ArchiveEntry = { slug: MADE.slug, title: MADE.title, status: "active", archivedAt: "2026-10-24T05:10:00Z", projects: MADE.projects, branch: MADE.branch };
 
 // **작업공간 밖 채팅**(구현 스펙 「오른쪽 자리는 작은 요약 카드만 쓴다. 넓힌 카드는 없고, 대화의 문서 카드와 바뀐 파일 알약도 그리지 않는다. 열
 // 곳이 없기 때문이다」) — `/threads/:id`에 선 채팅이다. 작업공간에 잇지 않은 채팅과 보관된 작업공간의 채팅이다.

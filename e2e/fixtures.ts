@@ -423,6 +423,7 @@ export const ARCHIVE: ArchiveEntry[] = [
     status: "done",
     archivedAt: "2026-08-10T03:04:05Z",
     projects: ["billing"],
+    branch: "feat/shipped-work",
   },
   {
     // 손으로 옮겨 둔 폴더 — 기록도 spec도 없다. `archivedAt`이 없는 것도 같은 사정이다
@@ -432,6 +433,7 @@ export const ARCHIVE: ArchiveEntry[] = [
     status: "active",
     archivedAt: null,
     projects: [],
+    branch: null,
   },
 ];
 

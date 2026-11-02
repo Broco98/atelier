@@ -13,12 +13,11 @@ interface PanelToggleProps {
 }
 
 /**
- * 패널 토글(ui-refresh 결정 9 · CONTEXT.md) — 그 화면의 오른쪽 패널(작업 화면은 작업 패널, Archive는 spec 목록 패널 — codex-ds 결정 32)을
- * 여닫는 버튼 하나. **머리 줄**의 오른쪽 맨 끝에 선다(codex-ds 스펙 §4 · §10 · 02 구현 스펙 §3 S2) — 작업 화면이면 「요약 카드」 뒤,
- * Archive면 ⋯ 뒤다. 자리는 `Frame`의 `FrameHead`가 잡는다(DS `.at-winctl-r`). 한때 레일이 서면 머리 카드 밖 레일 열 위로 나갔다(DS
+ * 패널 토글(ui-refresh 결정 9 · CONTEXT.md) — 그 화면의 오른쪽 패널(작업공간의 spec 패널 — codex-ds 결정 32)을
+ * 여닫는 버튼 하나. **머리 줄**의 오른쪽 맨 끝에 선다(codex-ds 스펙 §4 · §10 · 02 구현 스펙 §3 S2) — 작업 화면이면 「요약 카드」 뒤다.
+ * 한때 Archive에도 서서 spec 목록 패널을 여닫았다(restart 03-4가 그 패널을 걷었다). 자리는 `Frame`의 `FrameHead`가 잡는다(DS `.at-winctl-r`). 한때 레일이 서면 머리 카드 밖 레일 열 위로 나갔다(DS
  * `.at-railtop`) — 머리 카드를 걷어 화면 것이 머리 줄에 바로 서며 레일이 서든 안 서든 같은 자리가 됐다. 열림만 뒤집고 고른 레일 칸은
- * 그대로 둔다 — ⌘Enter와 같은 일이다(판정은 아래 `togglesPanel`, 듣는 자리는 `WorksPage` ·
- * `ArchivePage`).
+ * 그대로 둔다 — ⌘Enter와 같은 일이다(판정은 아래 `togglesPanel`, 듣는 자리는 `WorksPage`).
  *
  * 왼쪽 셸 컨트롤의 사이드바 토글(`PanelLeft`)을 뒤집은 그림이다. 모양은 머리 줄의 아이콘 단추 한 벌이다(`headButton` — 28 ·
  * `radius-lg` · 글리프 16 `fg-titlebar`, hover는 `quiet-hover` — Thread 머리 줄의 「…」 · 요약 단추와 같다, 02 결정 「머리 줄은 한
@@ -51,9 +50,8 @@ function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
 }
 
 /**
- * ⌘Enter가 **패널 토글 몫인가** — 위 버튼과 같은 일을 하는 키다. 여닫는 것은 그 화면의 오른쪽 패널이다(작업 화면은 작업 패널,
- * Archive는 spec 목록 패널 — codex-ds 결정 32). 판정은 이 한 벌이고, 듣는 자리는 화면마다 하나씩이라(`WorksPage` · `ArchivePage`)
- * 저마다 제 패널의 열림을 뒤집는다.
+ * ⌘Enter가 **패널 토글 몫인가** — 위 버튼과 같은 일을 하는 키다. 여닫는 것은 그 화면의 오른쪽 패널이다(작업공간의 spec 패널 —
+ * codex-ds 결정 32). 판정은 이 한 벌이고, 듣는 자리는 그 화면 하나다(`WorksPage`). 한때 Archive도 제 spec 목록 패널을 이것으로 여닫았다.
  *
  * **기능 폴더 밖에 산다.** 한때 이 판정이 `features/works/WorksPage`에 있었고 Archive가 그것을 import했다 — 그 바람에 보관함
  * 화면의 청크가 작업 화면 모듈 전체(탭 줄 · 터미널 · 작업 패널)를 끌어왔다(`panel-layout.ts` 머리말의 사고와 같은 모양).

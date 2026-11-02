@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as ProcessesRouteImport } from './routes/processes'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -39,6 +40,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ArchiveRoute = ArchiveRouteImport.update({
+  id: '/archive',
+  path: '/archive',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProcessesRoute = ProcessesRouteImport.update({
   id: '/processes',
   path: '/processes',
@@ -60,14 +66,14 @@ const TerminalRoute = TerminalRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const ArchiveIndexRoute = ArchiveIndexRouteImport.update({
-  id: '/archive/',
-  path: '/archive/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => ArchiveRoute,
 } as any)
 const ArchiveSlugRoute = ArchiveSlugRouteImport.update({
-  id: '/archive/$slug',
-  path: '/archive/$slug',
-  getParentRoute: () => rootRouteImport,
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ArchiveRoute,
 } as any)
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
   id: '/',
@@ -157,6 +163,7 @@ const SettingsSpecLayoutEditRoute = SettingsSpecLayoutEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRouteWithChildren
   '/processes': typeof ProcessesRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
@@ -207,6 +214,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRouteWithChildren
   '/processes': typeof ProcessesRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
@@ -235,6 +243,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/archive'
     | '/processes'
     | '/projects'
     | '/settings'
@@ -284,6 +293,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/archive'
     | '/processes'
     | '/projects'
     | '/settings'
@@ -311,16 +321,15 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArchiveRoute: typeof ArchiveRouteWithChildren
   ProcessesRoute: typeof ProcessesRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
-  ArchiveSlugRoute: typeof ArchiveSlugRoute
   ServicesSlugRoute: typeof ServicesSlugRoute
   ServicesNewRoute: typeof ServicesNewRoute
   ThreadsIdRoute: typeof ThreadsIdRoute
   WorksSlugRoute: typeof WorksSlugRoute
-  ArchiveIndexRoute: typeof ArchiveIndexRoute
   ServicesIndexRoute: typeof ServicesIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
   ServicesSlugEditRoute: typeof ServicesSlugEditRoute
@@ -333,6 +342,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/archive': {
+      id: '/archive'
+      path: '/archive'
+      fullPath: '/archive'
+      preLoaderRoute: typeof ArchiveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/processes': {
@@ -365,17 +381,17 @@ declare module '@tanstack/react-router' {
     }
     '/archive/': {
       id: '/archive/'
-      path: '/archive'
+      path: '/'
       fullPath: '/archive/'
       preLoaderRoute: typeof ArchiveIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ArchiveRoute
     }
     '/archive/$slug': {
       id: '/archive/$slug'
-      path: '/archive/$slug'
+      path: '/$slug'
       fullPath: '/archive/$slug'
       preLoaderRoute: typeof ArchiveSlugRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ArchiveRoute
     }
     '/projects/': {
       id: '/projects/'
@@ -499,6 +515,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ArchiveRouteChildren {
+  ArchiveSlugRoute: typeof ArchiveSlugRoute
+  ArchiveIndexRoute: typeof ArchiveIndexRoute
+}
+
+const ArchiveRouteChildren: ArchiveRouteChildren = {
+  ArchiveSlugRoute: ArchiveSlugRoute,
+  ArchiveIndexRoute: ArchiveIndexRoute,
+}
+
+const ArchiveRouteWithChildren =
+  ArchiveRoute._addFileChildren(ArchiveRouteChildren)
+
 interface ProjectsRouteChildren {
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
@@ -550,16 +579,15 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArchiveRoute: ArchiveRouteWithChildren,
   ProcessesRoute: ProcessesRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,
-  ArchiveSlugRoute: ArchiveSlugRoute,
   ServicesSlugRoute: ServicesSlugRoute,
   ServicesNewRoute: ServicesNewRoute,
   ThreadsIdRoute: ThreadsIdRoute,
   WorksSlugRoute: WorksSlugRoute,
-  ArchiveIndexRoute: ArchiveIndexRoute,
   ServicesIndexRoute: ServicesIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
   ServicesSlugEditRoute: ServicesSlugEditRoute,
