@@ -13,6 +13,7 @@ import {
   foldThread,
   headline,
   keptFolded,
+  runningHeadline,
   usageText,
   workLine,
   workShown,
@@ -158,7 +159,7 @@ describe("시스템 줄", () => {
     expect(turn.end && headline(turn.end)).toBe("9초 동안 작업함");
     // 그 앞의 `ToolSearch`(도구 들이기)는 서지 않는다.
     const tools = turn.entries.filter((entry) => entry.kind === "tool");
-    expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["atelier-thread.rename_thread 불러옴"]);
+    expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["사용함 rename_thread"]);
     expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual([
       "Thread 이름을 「환불 API 버그」로 바꿨습니다.",
     ]);
@@ -515,9 +516,43 @@ describe("끝 까닭의 안내 줄", () => {
   });
 
   it("멈춘 턴과 거부로 멈춘 턴은 안내가 아니라 구분선이 말한다", () => {
-    const end = { durationMs: 1000, error: null, cut: null, cutReason: null, appRefusal: null, at: at(1) };
+    const end = { durationMs: 1000, waitedMs: 0, error: null, cut: null, cutReason: null, appRefusal: null, at: at(1) };
     expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: true })).toBe("1초 후에 중단했습니다");
     expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: false })).toBe("거부해서 멈췄어요");
+  });
+});
+
+// 사람을 기다리는 동안 시계가 멈춘다(restart 02b-4 · Tools 보드 「승인 대기 — 사람을 기다리는 동안 시계는 멈춘다」). 바탕은 엔진이 축복한 승인 기록이고
+// (`thread-permission` — 보낸 말 4초 · 물음 8초 · 답 9초 · 끝 13초), 답부터 뒤의 줄을 30초 늦춰 사람이 30초 기다린 턴으로 만든다.
+describe("사람을 기다리는 동안의 시계", () => {
+  const blessedAsk = record("thread-permission");
+  const asked = blessedAsk.find((line) => line.kind === "permission" && (line.payload as { state?: string }).state === "asked")!.seq;
+  const later = (when: string) => new Date(Date.parse(when) + 30_000).toISOString();
+  const waited = blessedAsk.map((line) => {
+    if (line.seq <= asked) return line;
+    const moved = { ...line, at: later(line.at) };
+    if (line.kind !== "turn-end") return moved;
+    const payload = line.payload as { durationMs: number };
+    return { ...moved, payload: { ...payload, durationMs: payload.durationMs + 30_000 } };
+  });
+  const sentAt = Date.parse(blessedAsk.find((line) => line.kind === "sent")!.at);
+  const turnOf = (lines: readonly RecordLine[]) => foldThread(lines).turns[0];
+
+  it("물음이 걸린 동안은 도는 턴의 시간이 물은 때에 멈춰 있다", () => {
+    const turn = turnOf(through(waited, asked));
+    expect(runningHeadline(turn, sentAt + 4_000)).toBe("4초 동안 작업 중입니다");
+    expect(runningHeadline(turn, sentAt + 25_000)).toBe("4초 동안 작업 중입니다");
+  });
+
+  it("답하면 기다린 시간(물음 8초 → 답 39초)을 빼고 다시 센다", () => {
+    const turn = turnOf(through(waited, asked + 2));
+    expect(runningHeadline(turn, sentAt + 37_000)).toBe("6초 동안 작업 중입니다");
+  });
+
+  it("끝난 턴의 머리도 기다린 시간을 뺀다 — 끝나는 순간 시간이 뛰지 않는다", () => {
+    // 엔진이 잰 39초에서 기다린 31초를 뺀다. 축복한 기록 그대로면 9초에서 1초를 뺀다.
+    expect(headline(turnOf(waited).end!)).toBe("8초 동안 작업함");
+    expect(headline(turnOf(blessedAsk).end!)).toBe("8초 동안 작업함");
   });
 });
 
@@ -643,16 +678,17 @@ describe("승인 카드의 물음과 결정 줄(v1 티켓 24)", () => {
     payload: { state: "answered", requestId: "r1", ...payload },
   });
 
-  it("물음은 카드 종류 · Policy 이름 · 다시 묻지 않기 허락을 들고, 그 도구 줄은 「승인을 기다리는 중」이다", () => {
+  it("물음은 카드 종류 · Policy 이름 · 다시 묻지 않기 허락을 들고, 그 도구 줄은 「승인을 기다립니다」다", () => {
     const model = foldThread(asking);
     expect(model.pending.map((request) => [request.card, request.policy, request.grant])).toEqual([
       ["command", "매번 묻기", ["Bash(pnpm prisma *)"]],
     ]);
     const tool = model.pending[0].tool;
-    expect(tool && phraseText(describeTool(tool).phrase)).toBe("pnpm prisma migrate dev --name partial_refund 승인을 기다리는 중");
+    expect(tool && phraseText(describeTool(tool).phrase)).toBe("승인을 기다립니다 pnpm prisma migrate dev --name partial_refund");
   });
 
-  it("사람이 답하면 카드가 걷히고, 그 턴의 도구 줄 뒤에 고른 것이 결정 줄로 선다", () => {
+  // 결정 줄은 그 도구 줄 바로 위다(restart 02b-4 · Thread 보드 「한 번만 허용함」 뒤에 「편집함 watcher.rs」). 한때 도구 줄 뒤에 섰다.
+  it("사람이 답하면 카드가 걷히고, 그 턴의 도구 줄 바로 위에 고른 것이 결정 줄로 선다", () => {
     const model = foldThread([
       ...asking,
       answered({ optionId: "allow_once", granted: { rules: ["Bash(pnpm prisma *)"], work: "refund-api" } }),
@@ -660,15 +696,15 @@ describe("승인 카드의 물음과 결정 줄(v1 티켓 24)", () => {
     ]);
     expect(model.pending).toEqual([]);
     const entries = model.turns[2].entries;
-    expect(entries.map((entry) => entry.kind)).toEqual(["tool", "decision"]);
-    const decision = entries[1];
+    expect(entries.map((entry) => entry.kind)).toEqual(["decision", "tool"]);
+    const decision = entries[0];
     expect(decision.kind === "decision" && [decision.allowed, decision.granted, decision.words, decision.toolCall.kind]).toEqual([
       true,
       { rules: ["Bash(pnpm prisma *)"], work: "refund-api" },
       null,
       "execute",
     ]);
-    const tool = entries[0];
+    const tool = entries[1];
     expect(tool.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("pnpm prisma migrate dev --name partial_refund 실행 중");
   });
 
@@ -825,7 +861,7 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     expect(model.pending).toEqual([]);
     const tools = model.turns[0].entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => [phraseText(describeTool(tool).phrase), tool.allowed, tool.denied])).toEqual([
-      ["allowed.txt 작성함", "편집 자동", false],
+      ["생성됨 allowed.txt", "편집 자동", false],
     ]);
   });
 
@@ -1388,7 +1424,7 @@ describe("서브에이전트의 안쪽 도구", () => {
 
   it("기록된 안쪽 도구를 바깥 줄처럼 말한다 — 대화의 도구 줄로는 서지 않는다", () => {
     const model = foldThread(subagent);
-    expect(said(agentOf(model))).toEqual(["note.md 읽음"]);
+    expect(said(agentOf(model))).toEqual(["읽음 note.md"]);
     expect(model.turns[1].entries.filter((entry) => entry.kind === "tool")).toHaveLength(1);
   });
 
@@ -1445,19 +1481,19 @@ describe("서브에이전트의 안쪽 도구", () => {
       const agent = agentOf(foldThread([...agentLines(1), called(3, "a", name, input), returned(4, "a", "결과")]));
       return said(agent)[0];
     };
-    expect(worded("Grep", { pattern: "retry" })).toBe("retry 찾음");
-    expect(worded("Glob", { pattern: "**/*.rs" })).toBe("**/*.rs 찾음");
-    expect(worded("WebFetch", { url: "https://example.com" })).toBe("https://example.com 가져옴");
-    expect(worded("WebSearch", { query: "retry" })).toBe("웹에서 retry 찾아봄");
-    expect(worded("NotebookEdit", { notebook_path: "/w/a.ipynb" })).toBe("a.ipynb 수정함");
-    expect(worded("Skill", { skill: "tdd" })).toBe("tdd 스킬 읽음");
-    expect(worded("TodoWrite", { todos: [] })).toBe("TodoWrite 씀");
+    expect(worded("Grep", { pattern: "retry" })).toBe("검색함 retry");
+    expect(worded("Glob", { pattern: "**/*.rs" })).toBe("검색함 **/*.rs");
+    expect(worded("WebFetch", { url: "https://example.com" })).toBe("가져옴 https://example.com");
+    expect(worded("WebSearch", { query: "retry" })).toBe("웹 검색함 retry");
+    expect(worded("NotebookEdit", { notebook_path: "/w/a.ipynb" })).toBe("편집함 a.ipynb");
+    expect(worded("Skill", { skill: "tdd" })).toBe("스킬 읽음 tdd");
+    expect(worded("TodoWrite", { todos: [] })).toBe("실행 완료 TodoWrite");
     expect(worded("Agent", { subagent_type: "explorer", description: "조사" })).toBe("explorer에게 맡김");
 
     const edits = { file_path: "/w/a.rs", edits: [{ old_string: "a", new_string: "b" }, { old_string: "c", new_string: "d" }] };
     const [multi] = agentOf(foldThread([...agentLines(1), called(3, "a", "MultiEdit", edits), returned(4, "a", "고쳤어요")])).inner;
     expect(describeTool(multi).diffs.map((piece) => [piece.added, piece.deleted])).toEqual([[1, 1], [1, 1]]);
-    expect(phraseText(describeTool(multi).phrase)).toBe("a.rs 수정함");
+    expect(phraseText(describeTool(multi).phrase)).toBe("편집함 a.rs");
   });
 
   it("마지막 하나가 아니라 모두, 온 차례로 쥔다 — 끝난 줄 · 실패한 줄 · 도는 줄이 제 때를 말한다", () => {
@@ -1472,7 +1508,7 @@ describe("서브에이전트의 안쪽 도구", () => {
         called(8, "c", "Bash", { command: "cargo test" }),
       ]),
     );
-    expect(said(agent)).toEqual(["watcher.rs 읽음", "retry 찾지 못함", "cargo test 실행 중"]);
+    expect(said(agent)).toEqual(["읽음 watcher.rs", "검색하지 못함 retry", "cargo test 실행 중"]);
     expect(agent.inner.map((tool) => [tool.startedAt, tool.endedAt])).toEqual([
       [at(3), at(4)],
       [at(5), at(6)],
@@ -1504,10 +1540,10 @@ describe("서브에이전트의 안쪽 도구", () => {
     expect(stateOf([...running, closed])).toBe("running");
     const ended: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 4000 } };
     expect(stateOf([...running, closed, ended])).toBe("cut");
-    // 우리가 멈췄다 — 바깥 줄이 멈춤으로 닫히면 안쪽 줄도 「중단함」이다.
+    // 우리가 멈췄다 — 바깥 줄이 멈춤으로 닫히면 안쪽 줄도 ■ 「중지됨」이다.
     const failed = update(4, 4, { sessionUpdate: "tool_call_update", toolCallId: AGENT, status: "failed" });
     const stopped: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "cancelled", cancelledByUs: true, durationMs: 4000 } };
-    expect(said(agentOf(foldThread([...running, failed, stopped])))).toEqual(["cargo test 중단함"]);
+    expect(said(agentOf(foldThread([...running, failed, stopped])))).toEqual(["중지됨 cargo test"]);
   });
 });
 
@@ -1647,7 +1683,7 @@ describe("Codex 기록", () => {
     expect(claudeRan).toBeDefined();
     expect(form(ran)).toEqual(form(claudeRan!));
     expect(ran.shell && [ran.shell.command, ran.shell.output]).toEqual(["echo atelier", "atelier"]);
-    expect(phraseText(ran.phrase)).toBe("echo atelier 실행함");
+    expect(phraseText(ran.phrase)).toBe("실행 완료 echo atelier");
   });
 
   it("편집 줄은 Claude의 쓰기 줄과 같은 모양이고, 바뀐 파일 표시와 문서 카드를 만든다", () => {

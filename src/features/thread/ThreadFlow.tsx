@@ -1,12 +1,12 @@
 import { createContext, Fragment, memo, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, TriangleAlert, X } from "lucide-react";
+import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { AnsweredCards } from "./AnsweredCards";
 import { decisionText } from "./approval";
-import { useArrival } from "./arrival";
+import { useArrival, useChanged } from "./arrival";
 import {
   continueAsk,
   cutNotice,
@@ -62,10 +62,11 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   뒤에야 보낸 말이 기록에 선다). Session이 열리는 동안은 그 아래 「채팅을 시작하는 중」이 반짝인다(`StartingLine`). 보낸 말이 서고 첫 출력이
 //   오기 전까지는 말풍선 아래 「생각 중」이다(`thinkingLine`). 머리줄도 이름 줄도 없다.
 // - **작업 로그** — 일하는 동안은 턴 머리 「N초 동안 작업 중입니다」가 반짝이고 그 아래로 도구 줄이 쌓인다(접으면 숨는 일이 와야 머리가 선다 —
-//   `workShown`. 말만 하는 턴에는 끝까지 머리가 없다). 승인을 기다리면 「· 승인을 기다립니다」가 링크 색으로 붙는다. 끝나면 턴 머리 「N초 동안
+//   `workShown`. 말만 하는 턴에는 끝까지 머리가 없다). 사람의 답을 기다리면 시간 대신 「승인을 기다립니다」(경고색)만 서고 시계가 멈춘다 — 머리의
+//   시간은 기다린 동안을 뺀다(restart 02b-4 · Tools 보드 「승인 대기」 · `fold.ts`의 `waitedMs`). 끝나면 턴 머리 「N초 동안
 //   작업함 ›」(그 아래 0.5 선 — States 보드 13)으로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다. 머리를 누르면 생각 · 도구 줄 · 앞선
 //   답이 높이와 함께 펼쳐진다(`Unfold`). 답이 흐르는 동안은 접지 않는다 — 흐르는 글이 마지막 답인지는 턴이 끝나야 안다(States 보드 12와 다르다,
-//   restart 결정 「02b-1 — 답이 흐르는 동안 로그를 접지 않는다」). **펼칠 것 없이 끝난 턴(말만 한 턴)에는 머리가 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 뒤의 결정 줄이다(v1 티켓 24 — 「✓ 명령
+//   restart 결정 「02b-1 — 답이 흐르는 동안 로그를 접지 않는다」). **펼칠 것 없이 끝난 턴(말만 한 턴)에는 머리가 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 바로 위의 결정 줄이다(v1 티켓 24 · restart 02b-4 — 「✓ 명령
 //   실행을 승인함 · 비슷한 명령 허용」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
 //   「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 작업공간 … 을 만들고 이 채팅에 연결함」이다.
@@ -245,7 +246,7 @@ function WarningLine({ warning }: { warning: Pick<WarningEntry, "key" | "lines">
 }
 
 /**
- * 도는 턴의 머리줄 끝에 붙는 기다림 — 그 턴이 물은 것이 있으면 무엇을 기다리는지다. 승인은 시안 문장 그대로(「승인을 기다립니다」),
+ * 도는 턴의 머리줄에 시간 대신 서는 기다림 — 그 턴이 물은 것이 있으면 무엇을 기다리는지다. 승인은 시안 문장 그대로(「승인을 기다립니다」),
  * 시안에 없는 셋은 해요체다(코드 리뷰 1차 A4).
  */
 function waitingFor(model: ThreadModel): string | null {
@@ -293,7 +294,7 @@ interface TurnViewProps {
   runtime: string;
   /** 사람이 고른 작업 로그의 펼침 — 고른 적이 없으면 `undefined`이고, 멈춘 턴은 펼쳐 있고 다른 턴은 접혀 있다. */
   open: boolean | undefined;
-  /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
+  /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄에 시간 대신 경고색으로 선다(restart 02b-4). */
   waiting: string | null;
   /** 이 턴이 대화를 정리하는 중인가 — 「생각 중」 자리에 「대화를 정리하는 중」이 선다. */
   compacting: boolean;
@@ -342,6 +343,8 @@ const TurnView = memo(function TurnView({
   // 글이 빈 생각은 그리지 않는다(`shownEntry`).
   const before = turn.entries.slice(0, from).filter(shownEntry);
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
+  // 멈춘 턴 · 거부로 멈춘 턴 · 앱이 막아서 멈춘 턴은 로그가 펼친 채 남는다(Tools 보드 「사람이 멈춤」 · 「거부로 멈춤」 · 「앱이 막아서 멈춤」).
+  const halted = turn.end?.stopReason === "cancelled";
   const cutTurn = turn.end !== null && turn.end.cut !== null;
   const flat = running || cutTurn;
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
@@ -354,7 +357,7 @@ const TurnView = memo(function TurnView({
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
   // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴과 끊긴 턴에는 없다. 펼칠 것이 없는 구분선은 늘 접힌 모양이다.
   const line = workLine(turn);
-  const unfolded = line?.unfolds === true && (open ?? stopped);
+  const unfolded = line?.unfolds === true && (open ?? halted);
   const onToggle = () => toggleTurn(turnKey(thread, turn.key), !unfolded);
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
@@ -439,7 +442,8 @@ function sameTurnView(a: TurnViewProps, b: TurnViewProps): boolean {
  * 600ms, 4s마다 한 번).
  */
 function ThinkingLine({ children }: { children: ReactNode }) {
-  return <p className="think-shimmer text-sm leading-5.5">{children}</p>;
+  // 작업 로그 아래에 서면 턴 칸 사이 16이다(States 10 — 턴 안 줄 사이 8 + 8). 턴의 첫 줄이면(States 04) 말풍선 아래 그대로다.
+  return <p className="think-shimmer text-sm leading-5.5 not-first:mt-2">{children}</p>;
 }
 
 /**
@@ -476,46 +480,57 @@ function FlowingThought() {
   return <ThreadMarkdown text={flowing} className="w-full text-fg-tertiary" />;
 }
 
-/** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 사람의 답을 기다리면 그 말이 링크 색으로 붙는다. */
+/**
+ * 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 사람의 답을 기다리면 시간 대신 그 말 하나가 경고색으로 선다(Tools 보드 「승인 대기」 · States 07 —
+ * 시계는 멈춰 있다가 답하면 기다린 만큼을 빼고 이어 센다, `runningHeadline`). 두 글은 같은 자리에서 바뀌며 떠오른다(줄 바뀜).
+ */
 function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (waiting) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, []);
-  const text = runningHeadline(turn, now);
+  }, [waiting]);
+  const swapped = useChanged(waiting !== null);
   // 끝난 턴의 머리 자리에 선다(States 보드 05~11 `.ra-shimmer` — 14 / 22, 셰브런 없음) — 글은 띠가 지나가고 그 아래 가는 선이 같다.
   return (
     <WorkDivider running>
       {waiting ? (
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span>{text}</span>
-          <span aria-hidden>·</span>
-          <span className="text-link">{waiting}</span>
+        <span key="waiting" className={cn("leading-5.5 text-warning", swapped && "row-in")}>
+          {waiting}
         </span>
       ) : (
-        <span className="chat-shimmer leading-5.5">{text}</span>
+        <span key="clock" className={cn("chat-shimmer leading-5.5", swapped && "row-in")}>
+          {runningHeadline(turn, now)}
+        </span>
       )}
     </WorkDivider>
   );
 }
 
+/** 작업 로그의 한 줄로 서는 줄인가 — 도구 줄과 승인 결정 줄 · 답이 없어 닫힌 카드의 줄(Tools 보드 `.ra-log-list` — 줄 사이 4). */
+const logLine = (entry: Entry): entry is ToolEntry | DecisionEntry | UnansweredEntry =>
+  entry.kind === "tool" || entry.kind === "decision" || entry.kind === "unanswered";
+
 /**
- * 턴의 줄들 — 잇따른 도구 줄은 작업 로그의 한 묶음이다(줄 사이 틈 없이, 묶음 줄 포함). 흐르는 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
+ * 턴의 줄들 — 잇따른 도구 줄 · 결정 줄은 작업 로그의 한 묶음이다(Tools 보드 `.ra-log-list` — 줄 24 · 줄 사이 4, 묶음 줄 포함). 묶음 밖의 줄(중간 설명 ·
+ * 계획 · 카드)과는 턴 안 줄 사이 8이다 — 보드의 줄 사이 4 + 글 줄의 위아래 4와 같다. 흐르는 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
  */
 function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: ReactNode }) {
   const runs: Entry[][] = [];
   for (const entry of entries) {
     const last = runs[runs.length - 1];
-    if (entry.kind === "tool" && last && last[0].kind === "tool") last.push(entry);
+    if (logLine(entry) && last && logLine(last[0])) last.push(entry);
     else runs.push([entry]);
   }
   const rows = runs.map((run) => {
     const [first] = run;
-    if (first.kind === "tool") {
+    if (logLine(first)) {
+      // 열쇠는 묶음의 첫 도구 줄이다 — 답한 결정 줄이 그 도구 줄 위로 들어와도 묶음을 다시 세우지 않는다.
+      const key = (run.find((entry) => entry.kind === "tool") ?? first).key;
       return (
-        <div key={first.key} data-log-run className="flex w-full flex-col">
-          <ToolRows tools={run as ToolEntry[]} />
+        <div key={key} data-log-run className="flex w-full flex-col gap-1">
+          <LogLines entries={run as (ToolEntry | DecisionEntry | UnansweredEntry)[]} />
         </div>
       );
     }
@@ -523,6 +538,30 @@ function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: R
     return <EntryView key={first.key} entry={first} />;
   });
   return <>{tail === null ? rows : [...rows, tail]}</>;
+}
+
+/** 작업 로그 한 묶음의 줄들 — 잇따른 도구 줄은 `ToolRows`(읽기 · 찾기 묶음), 결정 줄은 제 줄이다. */
+function LogLines({ entries }: { entries: readonly (ToolEntry | DecisionEntry | UnansweredEntry)[] }) {
+  const parts: (ToolEntry[] | DecisionEntry | UnansweredEntry)[] = [];
+  for (const entry of entries) {
+    const last = parts[parts.length - 1];
+    if (entry.kind !== "tool") parts.push(entry);
+    else if (Array.isArray(last)) last.push(entry);
+    else parts.push([entry]);
+  }
+  return (
+    <>
+      {parts.map((part) =>
+        Array.isArray(part) ? (
+          <ToolRows key={part[0].key} tools={part} />
+        ) : part.kind === "decision" ? (
+          <DecisionRow key={part.key} entry={part} />
+        ) : (
+          <UnansweredRow key={part.key} entry={part} />
+        ),
+      )}
+    </>
+  );
 }
 
 /**
@@ -548,15 +587,16 @@ function EntryView({ entry }: { entry: Entry }) {
       return <ThreadMarkdown text={entry.text} className="w-full text-fg-tertiary" />;
     case "tool":
       return <ToolRows tools={[entry]} />;
+    // 계획 상자는 작업 로그 안에서 위아래 6을 더 둔다(Tools 보드 `.ra-plan` margin 6 — 줄 사이 4 + 6 = 10, 턴 안 줄 사이 8 + 2).
     case "plan":
       return (
-        <div className="w-full">
+        <div className="my-0.5 w-full">
           <PlanCard text={entry.text} />
         </div>
       );
     case "checklist":
       return (
-        <div className="w-full">
+        <div className="my-0.5 w-full">
           <Checklist items={entry.items} />
         </div>
       );
@@ -584,15 +624,24 @@ export function AnsweredRow({ entry }: { entry: QuestionEntry }) {
   return <AnsweredCards cards={answeredCards(entry)} card="question" choice={entry.choice ?? ""} arrival={entry.key} />;
 }
 
-/** 결정 줄(Screen-Thread · Approval 보드 `.done-line`) — 아이콘 16과 13/20 `fg-tertiary` 한 줄. 남긴 말은 뒤에 따옴표로 진하게 선다. */
+/**
+ * 승인 결정 줄의 모양(Tools 보드 「승인 결정 줄」 `.ra-decision` · restart 02b-4) — 글리프 14 · 사이 6 · 24 줄 · 13 / 18 `fg-tool`. 거부와 답이 없어 닫은
+ * 줄(`.no`)은 경고색이다. 카드가 걷힌 자리에 칩으로 나타난다(`chip-in`).
+ */
+const DECISION = "flex min-h-6 w-fit max-w-full flex-wrap items-center gap-1.5 text-chat-meta";
+
+/**
+ * 결정 줄(Tools 보드 「승인 결정 줄」) — 허락은 ✓, 「다시 묻지 않기」로 준 허락은 방패 ✓, 거부는 ✕(경고색)다. 남긴 말은 뒤에 따옴표로 선다. 글은 아직
+ * 「명령 실행을 승인함 · …」이다 — 보드의 「한 번만 허용함」 · 「거부함」으로 바꾸는 것은 결정 줄의 글을 맞추는 02b-5다.
+ */
 function DecisionRow({ entry }: { entry: DecisionEntry }) {
-  const Icon = entry.allowed ? Check : X;
+  const Icon = !entry.allowed ? X : entry.granted ? ShieldCheck : Check;
   return (
     <p
       data-decision={entry.allowed ? "allowed" : "refused"}
-      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
+      className={cn(DECISION, entry.allowed ? "text-fg-tool" : "text-warning", useArrival("chip-in", entry.key))}
     >
-      <Icon className="size-4 shrink-0" aria-hidden />
+      <Icon className="size-3.5 shrink-0" aria-hidden />
       <span>{decisionText(entry)}</span>
       {entry.words && <span className="min-w-0 text-fg-secondary wrap-anywhere">「{entry.words}」</span>}
     </p>
@@ -600,16 +649,13 @@ function DecisionRow({ entry }: { entry: DecisionEntry }) {
 }
 
 /**
- * 답이 없어 닫힌 카드의 결정 줄(01c-8 · Tools 보드 「승인 결정 줄」의 마지막 줄 `.ra-decision.no`) — 승인 결정 줄의 거부와 같은 모양이다. Codex 채팅에서만
- * 선다 — Claude 채팅의 카드는 닫히지 않는다.
+ * 답이 없어 닫힌 카드의 결정 줄(01c-8 · Tools 보드 「승인 결정 줄」의 마지막 줄 `.ra-decision.no`) — 승인 결정 줄의 거부와 같은 모양(✕ · 경고색)이다. Codex
+ * 채팅에서만 선다 — Claude 채팅의 카드는 닫히지 않는다.
  */
 function UnansweredRow({ entry }: { entry: UnansweredEntry }) {
   return (
-    <p
-      data-decision="unanswered"
-      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
-    >
-      <X className="size-4 shrink-0" aria-hidden />
+    <p data-decision="unanswered" className={cn(DECISION, "text-warning", useArrival("chip-in", entry.key))}>
+      <X className="size-3.5 shrink-0" aria-hidden />
       <span>답이 없어 닫음 · Codex는 5분까지만 기다려요</span>
     </p>
   );

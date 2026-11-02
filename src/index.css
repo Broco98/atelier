@@ -645,6 +645,8 @@
        rise        320ms  보낸 말 말풍선이 아래 12 · .985배에서 자리에 섬 — 곡선 `ease-enter-snappy`(02b-7)
        bar         400ms  Processes의 막대 · 쌓인 막대가 폭만 옮겨 감 — 곡선 `ease-panel`(시안 ProcessSheet 「보기와 움직임」 · 03-11)
        beat        700ms  Processes 머리의 표본 점이 새 값마다 한 번 번짐 — 곡선 `ease-out`(같은 표 · 03-11)
+       delay-fold  700ms  성공한 명령 출력이 끝나고 스스로 접히기까지(Tools 보드 「명령 출력 — 성공」 · 02b-4). 움직임이 아니라 기다림이라 `WorkLog`의
+                          `useShellOpen`이 읽는다 — 접힘 자체는 `unfold`다
      Motion 보드의 「목록에서 상세로」 240ms는 보드가 토큰 이름 없이 적은 값이라 여기 두지 않는다. */
 @theme static {
     --duration-basic: 150ms;
@@ -675,6 +677,7 @@
     --stagger-wave: 100ms;
     --delay-think: 600ms;
     --delay-tip: 200ms;
+    --delay-fold: 700ms;
 
     --ease-settle: cubic-bezier(0.2, 0.8, 0.2, 1);
     --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
@@ -2155,6 +2158,22 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility row-in {
     animation: row-in var(--duration-swap) var(--ease-settle) both;
+}
+
+/* **작업 로그의 가림**(restart 02b-4 · Tools 보드 「명령 출력」 · 「변경 카드」) — 움직임이 아니라 넘친 글을 옅게 하는 가림이다.
+   - 명령 출력(`.ra-out .o`)은 144까지 서고 끝 줄들이 보인다 — 위 24가 투명에서 또렷해진다. 보드는 짧은 출력에도 같은 가림을 건다.
+   - 변경 카드의 바뀐 줄은 240까지 서고, 넘치면 아래 24가 옅어진다(넘칠 때만 — 줄 수로 가른다, `WorkLog`의 `DiffCard`).
+   - 지운 줄의 막대(`.ra-ln.del .bar`)는 `diff-deleted` 1 · 빈칸 1.8의 135° 빗금이다 — 더한 줄의 찬 막대와 색이 아니라 모양으로도 갈린다. */
+@utility tool-output-fade {
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 24px);
+    mask-image: linear-gradient(180deg, transparent, #000 24px);
+}
+@utility diff-overflow-fade {
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent);
+}
+@utility diff-bar-deleted {
+    background: repeating-linear-gradient(135deg, var(--diff-deleted) 0 1px, transparent 1px 2.8px);
 }
 
 /* **표본 점의 번짐**(restart 03-11 · 시안 ProcessSheet 「보기와 움직임」 — 700ms `ease-out`). Processes 머리의 성공 점이 새 값이 온 순간에만
