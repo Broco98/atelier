@@ -782,8 +782,9 @@ function WorkRow({
       {/* **펼침 단추 — 이은 Thread가 있는 Work에만 선다**(v1 티켓 37 · 02 S10). ▸ 14 `fg-subtle`(시안 `.row .chev` #8e8f90), 펴면 ⌄로 돈다(구획
           머리의 ⌄와 같은 시간 · 곡선). 누르면 펼침만 뒤집는다 — 행의 누름(그 Work로 가기)으로 올라가지 않는다. Tab 정류장이 아니다(핀과
           같다) — 키보드는 이름 버튼의 → ←다.
-          **폴더 위에 겹쳐 서고, 행을 가리킬 때만 보인다**(02 구현 스펙 §4 「호버 때 폴더 글리프 자리에 꺾쇠가 선다」). 단추는 행 왼쪽 32(행
-          안쪽 8 + 폴더 16 + 사이 8)를 덮고 ▸가 폴더 가운데에 선다 — 가리키면 폴더가 비키고 ▸가 선다. 펼친 것은 아래에 선 Thread 줄이 말한다. */}
+          **폴더 위에 겹쳐 서고, 행을 가리킬 때만 보인다**(02 구현 스펙 §4 「호버 때 폴더 글리프 자리에 꺾쇠가 선다」). 단추는 행 왼쪽 31(행
+          안쪽 8 + 폴더 15 + 같은 8)을 덮고 ▸가 폴더 가운데에 선다 — 가리키면 폴더가 비키고 ▸가 선다. 폭은 폴더 가운데(8 + 7.5)의 두 배다 — 02a-3이
+          폴더를 16 → 15로 줄일 때 단추가 32로 남아 ▸가 0.5 비켜났다(02a-15). 펼친 것은 아래에 선 Thread 줄이 말한다. */}
       {hasThreads && (
         <button
           type="button"
@@ -797,7 +798,7 @@ function WorkRow({
             onToggleThreads(work.slug);
           }}
           className={cn(
-            "absolute inset-y-0 left-0 flex w-8 items-center justify-center text-fg-subtle opacity-0 outline-none transition-colors group-hover:opacity-100 hover:text-fg-secondary focus-ring",
+            "absolute inset-y-0 left-0 flex w-7.75 items-center justify-center text-fg-subtle opacity-0 outline-none transition-colors group-hover:opacity-100 hover:text-fg-secondary focus-ring",
             SIDEBAR_ROW_SHAPE,
           )}
         >

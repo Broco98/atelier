@@ -8,6 +8,7 @@ import {
   clipboardWrites,
   fireEvent,
   installFixtureBackend,
+  ipcCallArgs,
   ipcFailure,
   recordClipboard,
   replaceAnswer,
@@ -46,7 +47,8 @@ const 파일탭차례 = (page: Page) => 파일탭들(page).evaluateAll((cells) =
 /** 그 파일 탭의 `×` — 접근 이름이 `<파일 이름> 닫기`다. 좁은 폭에서 꺼진 칸의 `×`는 접히므로 칸을 먼저 켠다. */
 const 닫기 = (page: Page, ref: string) => 파일탭(page, ref).locator('button[aria-label$=" 닫기"]');
 const 셸칸 = (page: Page) => page.locator('[data-tab="shell"]');
-const 문서카드 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
+/** 새 채팅 탭의 몸 — 채팅이 없는 작업공간을 열거나 묶음이 비면 선다(restart 02a-8). */
+const 새채팅 = (page: Page) => page.getByRole("main", { name: "새 채팅", exact: true });
 
 test("주소가 가리키는 파일이 묶음 끝에 파일 탭으로 서고, 본문에 줄 번호 붙은 원문과 경로 줄이 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -80,8 +82,9 @@ test("주소가 가리키는 파일이 묶음 끝에 파일 탭으로 서고, �
   // 셸 화면은 내려갔다 — 본문은 하나다.
   await expect(page.locator(".xterm")).toHaveCount(0);
 
-  // **같은 주소로 다시 가도 탭은 하나다**(스토리 24) — 정체가 같으면 새로 서지 않는다.
-  await page.locator('[data-tab="spec"]').click();
+  // **같은 주소로 다시 가도 탭은 하나다**(스토리 24) — 정체가 같으면 새로 서지 않는다. 셸 칸으로 갔다가 돌아온다(한때 spec 칸이었다 —
+  // restart 02a-13이 걷었다).
+  await 묶음(page).first().locator("button[aria-pressed]").click();
   await expect(card).toHaveCount(0);
   await 주소로간다(page, codeUrl("billing/src/main.ts"));
   await expect(card).toBeVisible();
@@ -135,7 +138,8 @@ test("`×`와 ⌘W가 파일 탭을 확인 없이 닫고, 오른쪽 → 왼쪽 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("묶음의 마지막 칸을 닫으면 spec으로 간다", async ({ page }) => {
+// 묶음이 비면 새 채팅 탭이 선다(restart 02a-8 — 한때 spec 칸이 켜졌다).
+test("묶음의 마지막 칸을 닫으면 새 채팅 탭이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   // 주소로 곧장 파일 탭에 들어온다 — 터미널 본문이 한 번도 안 서서 셸이 저절로 뜨지 않는다. 묶음은 파일 탭 하나다.
   await page.goto(codeUrl("billing/README.md"));
@@ -144,10 +148,12 @@ test("묶음의 마지막 칸을 닫으면 spec으로 간다", async ({ page }) 
 
   await 닫기(page, "billing/README.md").click();
 
-  await expect(묶음(page)).toHaveCount(0);
-  await expect(page.locator('[data-tab="spec"]')).toHaveAttribute("aria-pressed", "true");
-  await expect(문서카드(page)).toBeVisible();
-  await expect(page).not.toHaveURL(/tab=|code=/);
+  await expect(파일탭들(page)).toHaveCount(0);
+  await expect(묶음(page)).toHaveCount(1);
+  await expect(묶음(page).first()).toHaveAttribute("data-tab", "new-chat");
+  await expect(새채팅(page)).toBeVisible();
+  await expect(page).toHaveURL(/tab=chat/);
+  await expect(page).not.toHaveURL(/code=|thread=/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -163,7 +169,7 @@ test("뒤로가기로 묶음에 없는 파일을 가리키면 그 탭이 다시 
   await expect.poll(() => 파일탭차례(page)).toEqual(["billing/README.md"]);
   await expect(코드카드(page, "billing/README.md")).toBeVisible();
 
-  // 뒤로가기의 주소는 닫힌 파일을 가리킨다 — spec으로 조용히 떨어지지 않고 그 탭을 묶음 끝에 다시 연다(스토리 60).
+  // 뒤로가기의 주소는 닫힌 파일을 가리킨다 — 다른 탭으로 조용히 떨어지지 않고 그 탭을 묶음 끝에 다시 연다(스토리 60).
   await page.goBack();
   await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
   await expect.poll(() => 파일탭차례(page)).toEqual(["billing/README.md", "billing/src/main.ts"]);
@@ -171,11 +177,30 @@ test("뒤로가기로 묶음에 없는 파일을 가리키면 그 탭이 다시 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("`tab=code`만 있고 파일이 없으면 spec이다", async ({ page }) => {
+// 주소에 `tab`이 없으면 처음 여는 규칙으로 선다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8). **기본 문서를 읽지 않는다**(02a-13 —
+// 한때 work 화면이 spec 트리의 기본 문서(`specTree.defaultDoc`)를 문서 탭으로 열고 그것 하나만 읽었다, spec 레이아웃 티켓 04 ·
+// 걷힌 `spec-default-doc.spec.ts`). 기본 문서가 있는 work(`pinned-work` — `overview.md`, `multi-work` — `넓은.md`)도, 빈 spec 폴더의 work(`plain-work`)도
+// 같다. 읽기가 나간 경로로 잰다 — 본문으로는 「안 읽었다」를 못 가른다. `defaultDoc`은 코어 값이라 fixture · L4가 그대로 든다.
+test("작업공간을 주소 없이 열면 새 채팅 탭이 서고, 기본 문서가 있어도 spec 문서를 읽지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  for (const one of [work, multiWork, plainWork]) {
+    await page.goto(`/works/${one.slug}`);
+    await expect(새채팅(page)).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/works/${one.slug}\\?tab=chat$`));
+    if (one !== plainWork) expect(one.specTree.defaultDoc, `${one.slug}: 앵커 — fixture 트리에 기본 문서가 있다`).not.toBeNull();
+    // 진입 이펙트가 돌 틈을 준다 — 0을 재는 검사라 기다림이 없으면 너무 일찍 초록이다.
+    await page.waitForTimeout(300);
+    expect(await ipcCallArgs(page, "read_spec_file", "path"), `${one.slug}: 읽은 spec 문서`).toEqual([]);
+  }
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 가리키는 파일이 없으면 처음 여는 규칙으로 선다 — 채팅이 없는 작업공간이라 새 채팅 탭이다(restart 02a-8 — 한때 spec이었다).
+test("`tab=code`만 있고 파일이 없으면 새 채팅 탭이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${work.slug}?tab=code`);
-  await expect(문서카드(page)).toBeVisible();
-  await expect(page.locator('[data-tab="spec"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(새채팅(page)).toBeVisible();
+  await expect(page.locator('[data-tab="new-chat"]')).toHaveCount(1);
   await expect(파일탭들(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -215,7 +240,7 @@ test("셸 탭 → 파일 탭 → 셸 탭으로 오가도 셸 화면이 그대로
 
   await 주소로간다(page, codeUrl("billing/src/main.ts"));
   await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
-  // 터미널 카드는 내려간다 — spec으로 갈 때와 같다.
+  // 터미널 카드는 내려간다 — 다른 탭으로 갈 때와 같다.
   await expect(page.locator(".xterm")).toHaveCount(0);
 
   await 셸칸(page).locator("button[aria-pressed]").click();
@@ -231,7 +256,7 @@ test("셸 탭 → 파일 탭 → 셸 탭으로 오가도 셸 화면이 그대로
 test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 work에 없는 프로젝트는 그 까닭이 탭 안에 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(codeUrl("billing/gone.ts"));
-  // spec으로 조용히 돌아가지 않는다 — 탭은 서고 본문이 까닭을 말한다(스토리 61 · 82).
+  // 다른 탭으로 조용히 돌아가지 않는다 — 탭은 서고 본문이 까닭을 말한다(스토리 61 · 82).
   await expect(파일탭(page, "billing/gone.ts")).toHaveCount(1);
   await expect(코드카드(page, "billing/gone.ts")).toContainText("지워진 파일");
 
@@ -336,7 +361,7 @@ test("목록에서 사라진 work의 slug로 새 work이 서면 지운 work이 �
   await page.goto(codeUrl("billing/README.md"));
   await expect(코드카드(page, "billing/README.md")).toBeVisible();
   await 작업화면으로(page, plainWork);
-  await expect(문서카드(page)).toBeVisible();
+  await expect(새채팅(page)).toBeVisible();
 
   await archiveByMcp(page, WORKS, work.slug);
   await expect(workRow(page, work.slug)).toHaveCount(0);
@@ -345,7 +370,7 @@ test("목록에서 사라진 work의 slug로 새 work이 서면 지운 work이 �
   await fireEvent(page, "works:changed", null);
   await 작업화면으로(page, work);
 
-  await expect(문서카드(page)).toBeVisible();
+  await expect(새채팅(page)).toBeVisible();
   await expect(page).not.toHaveURL(/code=/);
   await expect(파일탭들(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);

@@ -81,6 +81,8 @@ const 대상들: Array<{
     name: "사이드바 work 행",
     setUp: async (page) => {
       await page.goto(`/works/${plainWork.slug}`);
+      // 주소 없이 열면 새 채팅 탭이 서며 주소가 `tab=chat`으로 고쳐진다(restart 02a-8) — 그 뒤의 주소를 「그대로」의 기준으로 잡는다.
+      await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=chat`);
       return { target: 버튼(page.locator("[data-worklist]"), pinnedWork.title), work: pinnedWork, selected: plainWork.slug };
     },
     // 그 Work의 Thread다 — 이은 Thread가 없으면 그 Work를 고른 새 Thread(v1 티켓 37).
@@ -100,7 +102,8 @@ const 대상들: Array<{
         payload: { message: "어느 쪽으로 할까요?" },
       });
       await 작업화면으로(page, pinnedWork);
-      await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
+      // 그 work의 마지막 화면이 없으면 새 채팅 탭이다(restart 02a-8).
+      await expect(page).toHaveURL(`/works/${pinnedWork.slug}?tab=chat`);
       return {
         target: 버튼(띠(page), `${plainWork.title} — 나를 기다림`),
         work: plainWork,
@@ -114,6 +117,7 @@ const 대상들: Array<{
     name: "머리 줄 이름",
     setUp: async (page) => {
       await page.goto(`/works/${pinnedWork.slug}`);
+      await expect(page).toHaveURL(`/works/${pinnedWork.slug}?tab=chat`);
       return { target: 화면머리(page).getByText(pinnedWork.title, { exact: true }), work: pinnedWork, selected: pinnedWork.slug };
     },
   },
@@ -219,7 +223,7 @@ test("다른 work를 보는 중에 행의 메뉴에서 「고정 풀기」를 �
   await expect
     .poll(async () => (await ipcCallArgs(page, "set_work_pinned", "pinned")).map(({ args }) => args))
     .toEqual([{ slug: pinnedWork.slug, pinned: false }]);
-  await expect(page).toHaveURL(`/works/${plainWork.slug}`);
+  await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=chat`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -358,13 +362,16 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   const list = (await page.locator("[data-worklist]").boundingBox())!;
   const lastRow = (await page.locator("[data-work-row]").last().boundingBox())!;
   const nav = (await page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }).boundingBox())!;
-  const bar = (await page.locator("[data-slot=path-bar]").first().boundingBox())!;
+  // 본문 카드의 탭 줄 — 칸 · `+` 뒤 빈 자리다. 한때 문서 카드의 경로 줄 가운데였다 — 주소 없이 열면 이제 새 채팅 탭이라(restart 02a-8) 경로 줄은
+  // 넓힌 카드에만 선다(02a-13).
+  const tabRow = (await page.locator("[data-tab-row]").first().boundingBox())!;
+  const bar = { x: tabRow.x + tabRow.width - 80, y: tabRow.y, width: 40, height: tabRow.height };
   const viewport = page.viewportSize()!;
   const spots: Array<[string, number, number]> = [
     ["머리 줄 오른쪽 회색", viewport.width - 4, card.y + card.height / 2],
     ["머리 줄 안 빈 자리", (name.x + name.width + badge.x) / 2, card.y + card.height / 2],
-    // 문서 카드의 빈 곳은 경로 줄의 가운데다 — 카드의 몸은 문서가 서면 문서 글이라 제 메뉴가 선다(`target-menus.spec.ts`).
-    ["문서 카드 경로 줄 빈 자리", bar.x + bar.width / 2, bar.y + bar.height / 2],
+    // 본문 카드의 빈 곳은 탭 줄 끝 쪽이다 — 칸 · `+`는 제 메뉴가 선다(`shell-tab-menu.spec.ts`).
+    ["본문 카드 탭 줄 빈 자리", bar.x + bar.width / 2, bar.y + bar.height / 2],
     ["사이드바 nav 항목", nav.x + nav.width / 2, nav.y + nav.height / 2],
     // 목록 안이지만 행이 아닌 자리 — 목록이 대상을 찾지 못해 메뉴를 안 연다. 목록은 제 높이로 서서(v1 티켓 07) 남는 자리가 없고,
     // 마지막 행 아래의 바닥 안쪽 여백(4 — `pb-1`)이 그 자리다.
@@ -372,10 +379,10 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   ];
   // 앵커: 목록 빈 자리는 마지막 행 아래이고 목록 안이다 — 행에 떨어지거나 밖으로 새면 「목록이 대상을 못 찾는다」가 아무것도 안 잰다.
   expect(list.y + list.height - 2).toBeGreaterThan(lastRow.y + lastRow.height);
-  // 앵커: 경로 줄의 가운데는 경로 칩 · 버튼 · 문서 글 어느 것도 아니다 — 거기 떨어지면 「빈 곳」을 안 잰다.
+  // 앵커: 탭 줄 끝 쪽은 칸 · 버튼 어느 것도 아니다 — 거기 떨어지면 「빈 곳」을 안 잰다.
   expect(
     await page.evaluate(
-      ([x, y]) => document.elementFromPoint(x, y)?.closest("button, a, [data-doc-text]") === null,
+      ([x, y]) => document.elementFromPoint(x, y)?.closest("button, a, [data-tab]") === null,
       [bar.x + bar.width / 2, bar.y + bar.height / 2],
     ),
   ).toBe(true);
@@ -386,6 +393,6 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   await expect.poll(async () => (await 막힘()).length).toBe(spots.length);
   expect(await 막힘()).toEqual(spots.map(() => true));
   await expect(메뉴(page)).toHaveCount(0);
-  await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
+  await expect(page).toHaveURL(`/works/${pinnedWork.slug}?tab=chat`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

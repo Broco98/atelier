@@ -35,11 +35,12 @@ export const SQUEEZED_SIDEBAR = 300;
  */
 export async function squeezedWidth(page: Page): Promise<number> {
   const { floor, rest } = await page.evaluate(() => {
-    // 틀의 뿌리 — 흰 판 안 사이드바 오른쪽의 상자(`Frame`의 칸 줄 · 레일 열을 이는 가로 상자)다. 그 min-content가 탭 줄의 바닥이다 — 탭
-    // 줄을 이는 칸의 바닥과 칸 줄의 다른 칸(열린 작업 패널의 최소 폭)을 더한 본문 열의 바닥이다(레일 열이 서면 그 폭도 더한다 —
-    // `panel-layout`의 `TAB_ROW_COLUMN`). 머리 줄은 판 위 크롬의 창 전폭 줄이라(02 구현 스펙 §3) 이 바닥에 들지 않는다 — 머리 줄의 할 일
-    // 묶음이 눌리지 않는지는 `rowOf`의 `workActions`가 따로 잰다. 판의 띄움(양옆 5)과 테두리는 `rest`에 든다.
-    const column = document.querySelector('[data-slot="panel"]')!.lastElementChild as HTMLElement;
+    // 카드 자리 — 사이드바 오른쪽의 가로 상자(`AppShell`의 `[data-slot="cards"]` — 화면의 카드들과 작업공간 도구 기둥을 인다, restart 02a-2 ·
+    // 02a-14)다. 그 min-content가 탭 줄의 바닥이다 — 탭 줄을 이는 카드의 바닥과 다른 카드(열린 작업 패널의 최소 폭 · 레일)와 그 틈을
+    // 더한 값이다(`panel-layout`의 `TAB_ROW_COLUMN`). 머리 줄은 크롬의 창 전폭 줄이라(02 구현 스펙 §3) 이 바닥에 들지 않는다 — 머리 줄의
+    // 할 일 묶음이 눌리지 않는지는 `rowOf`의 `workActions`가 따로 잰다. 창 끝 틈(오른쪽 8)은 `rest`에 든다. 한때 이 자리는 흰 판
+    // (`[data-slot="panel"]`)의 마지막 자식이었다.
+    const column = document.querySelector('[data-slot="cards"]') as HTMLElement;
     const now = column.getBoundingClientRect().width;
     const sidebar = document.querySelector("aside")!.getBoundingClientRect().width;
     const style = column.getAttribute("style");
@@ -60,8 +61,7 @@ export async function widenSidebar(page: Page): Promise<void> {
 
 export interface Row {
   width: number;
-  spec: number;
-  /** 줄 높이. 한 줄이면 `size-toolbar`(46px) 그대로다 — 넘겨 접히면 커진다. */
+  /** 줄 높이. 한 줄이면 `size-tab-row`(40px) 그대로다 — 넘겨 접히면 커진다(restart 02a-5 — 한때 `size-toolbar` 46). */
   height: number;
   /** 줄이 제 상자 밖으로 넘친 폭. **0이어야 한다** — 넘치면 오른쪽 끝 조작이 창 밖으로 밀린다. */
   spill: number;
@@ -123,7 +123,6 @@ export async function rowOf(page: Page): Promise<Row> {
     return {
       height: box.height,
       width: box.width,
-      spec: document.querySelector('[data-tab="spec"]')?.getBoundingClientRect().width ?? 0,
       spill: row.scrollWidth - row.clientWidth,
       pageSpill: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       strip: {
@@ -180,7 +179,8 @@ export async function settle<T>(page: Page, sample: () => Promise<T>, interval =
 }
 
 /**
- * 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30).
+ * 상한까지 셸을 채운다. 「정말 8칸이다」의 관찰 가능한 형태는 칸 수이고, `/terminal`에서는 `+`가 잠기는 것이다(결정 30). 작업공간 화면의
+ * `+`는 「새 탭」 메뉴라 상한에서도 안 잠긴다 — 메뉴의 셸 줄이 꺼진다(restart 02a-8).
  *
  * 칸은 `openShell`로 **하나씩** 연다 — 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고
  * (`awaitSpawned`의 머리말), 안 기다리면 여덟 번의 왕복이 서로 겹쳐 **몇 번째 칸이 몇 번
@@ -192,5 +192,7 @@ export async function fillToCap(page: Page): Promise<void> {
   // 이미 몇 칸이 서 있어도 상관없이 상한까지 채운다 — 부르는 자리마다 시작 칸 수가 다르다.
   await tabs.first().waitFor();
   for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) await openShell(page);
-  await expect(page.locator('[data-tab="new"]')).toHaveAttribute("aria-disabled", "true");
+  await expect(tabs).toHaveCount(MAX_SHELLS);
+  const plus = page.locator('[data-tab="new"]');
+  if ((await plus.getAttribute("aria-haspopup")) !== "menu") await expect(plus).toHaveAttribute("aria-disabled", "true");
 }

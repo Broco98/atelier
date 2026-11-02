@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Store, useStore } from "@tanstack/react-store";
 import { PanelBox } from "./Frame";
@@ -73,11 +73,14 @@ export function useWorkPanelWidth(): ResizableWidth {
 export function WorkToolsBoxes({
   tools,
   size,
+  still = false,
   onSlot,
   children,
 }: {
   tools: WorkToolsState | null;
   size: ResizableWidth;
+  /** 이번 그림은 움직이지 않고 선다(`WorkToolsColumn`의 `useFirstFrame`) — 상자와 레일의 트랜지션을 끈다. */
+  still?: boolean;
   onSlot?: (slot: HTMLElement | null) => void;
   children?: ReactNode;
 }) {
@@ -91,6 +94,7 @@ export function WorkToolsBoxes({
         // 카드는 옅어지지 않고 상자에 잘리기만 한다(시안 `.ra-panelwrap` · `clippingInnerClass`) — 작업공간 안의 여닫기도, 떠날 때도 같다.
         // 떠나는 500ms 동안은 남긴 마지막 몸(`holdBody`)이 그대로 보인다. 한때(02a-2 · 02a-14b) 작업공간 안의 여닫기는 옅어졌다.
         fade={false}
+        still={still}
         slot={{
           label: WORK_PANEL_LABEL,
           open,
@@ -103,7 +107,7 @@ export function WorkToolsBoxes({
           ),
         }}
       />
-      <Rail shown={tools !== null} open={open} onPick={toggle} controls={WORK_PANEL_ID} />
+      <Rail shown={tools !== null} open={open} onPick={toggle} controls={WORK_PANEL_ID} still={still} />
     </>
   );
 }
@@ -111,10 +115,29 @@ export function WorkToolsBoxes({
 /**
  * 앱 셸의 작업공간 도구 기둥 — 카드 자리 오른쪽 끝, 화면 뒤에 선다(`AppShell`). 값을 구독해 그린다. 폭 훅이 여기 있는 것은 상자가 화면을
  * 넘어 사는 자리라서다 — 화면이 쥐면 작업공간에 들어올 때마다 저장값을 다시 읽는다.
+ *
+ * **첫 프레임까지는 움직이지 않는다**(`useFirstFrame`, restart 02a-15c). 앱을 작업공간에서 켜면 기둥은 접힌 채 마운트되고 같은 커밋의 레이아웃
+ * 이펙트가 값을 적는다(`WorkTools`) — 그려지기 전이어도 그 사이 브라우저가 접힌 모양을 셈해 두면(화면의 이펙트가 상자를 재는 것 하나로 족하다)
+ * 폭 트랜지션이 걸려 0에서 자랐다. 첫 프레임 뒤로는 박자대로다 — 다른 화면에서 들어오면 이미 접혀 그려진 기둥이 자란다.
  */
 export function WorkToolsColumn({ onSlot }: { onSlot: (slot: HTMLElement | null) => void }) {
   const tools = useStore(workToolsStore, (state) => state);
-  return <WorkToolsBoxes tools={tools} size={useWorkPanelWidth()} onSlot={onSlot} />;
+  const still = useFirstFrame();
+  return <WorkToolsBoxes tools={tools} size={useWorkPanelWidth()} still={still} onSlot={onSlot} />;
+}
+
+/**
+ * 마운트에서 **첫 애니메이션 프레임까지** 참이다 — 그 프레임의 콜백이 거짓으로 바꾼다. 패시브 이펙트가 아니라 프레임에 매는 것은 같은 커밋의
+ * 레이아웃 이펙트가 부른 동기 다시 그리기가 패시브 이펙트를 먼저 비우기 때문이다 — 이펙트에서 바로 거짓으로 두면 첫 값과 함께 트랜지션이
+ * 켜진다. 창이 가려져 프레임이 안 오면 보일 때까지 참이다(그동안 움직일 것이 보이지 않는다).
+ */
+function useFirstFrame(): boolean {
+  const [first, setFirst] = useState(true);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setFirst(false));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return first;
 }
 
 /**

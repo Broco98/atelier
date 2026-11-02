@@ -856,6 +856,24 @@ describe("Work 줄이 그 Work의 Thread를 품는다", () => {
     expect(laneOf(chunkOf(markup, "가"))).toContain("group-hover:opacity-0");
     expect(laneOf(chunkOf(markup, "나"))).not.toContain("group-hover:opacity-0");
   });
+
+  it("꺾쇠의 가운데가 레인 가운데다 — 단추는 행 왼쪽 끝에서 레인 끝 너머로 같은 만큼 덮는다", () => {
+    // 단추는 행 왼쪽 끝(`left-0`)에서 서고 꺾쇠는 그 가운데다. 레인은 이름 칸의 안쪽(`pl-*`) 뒤에 선다. 02a-3이 레인을 16 → 15로 줄였을 때
+    // 단추 폭(32)이 그대로라 꺾쇠가 레인 가운데에서 0.5 비켜났다(L3 `spacing` 「▸ 가운데 = 레인 가운데」). 수는 클래스에서 읽는다(눈금 4px).
+    const markup = chunkOf(render(works("가"), ALL, { threadCounts: { 가: 1 } }), "가");
+    const scale = (name: string, prefix: string) => {
+      const step = new RegExp(`(?:^|\\s)${prefix}-(\\d+(?:\\.\\d+)?)(?:\\s|$)`).exec(name)?.[1];
+      return step === undefined ? Number.NaN : Number(step) * 4;
+    };
+    const classesOf = (tag: string) => tag.match(/class="([^"]*)"/)?.[1] ?? "";
+    const expander = classesOf(/<button[^>]*data-expander="가"[^>]*>/.exec(markup)?.[0] ?? "");
+    const lane = classesOf(laneOf(markup));
+    const nameCell = classesOf(/<button type="button" class="[^"]*"/.exec(markup)?.[0] ?? "");
+    expect(expander).toMatch(/(?:^|\s)left-0(?:\s|$)/);
+    const [width, inset, laneSize] = [scale(expander, "w"), scale(nameCell, "pl"), scale(lane, "size")];
+    expect([width, inset, laneSize].every(Number.isFinite), `단추 ${width} · 안쪽 ${inset} · 레인 ${laneSize}`).toBe(true);
+    expect(width / 2).toBe(inset + laneSize / 2);
+  });
 });
 
 // **Work 묶음 머리의 +는 「작업공간 만들기」다**(02 구현 스펙 §4 · S5 · 캔버스 F2-Work `.sec .ib`) — 「새 작업공간」 칩을 세워 새 Thread를 연다. 누르면

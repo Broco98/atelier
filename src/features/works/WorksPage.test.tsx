@@ -1335,6 +1335,21 @@ describe("WorksPage 오른쪽 자리", () => {
     expect(markup).toContain("width:var(--size-thread-beside)");
   });
 
+  // 토스트는 한 장이고(S26) 화면마다 자리가 하나다(S14) — 넓힌 카드가 서 있으면 그 보기(`ExpandedViewer`)의 자리가 받는다(구현 스펙 「설치
+  // 안내」 줄 · 채팅 본문의 `toasts={!expanded}`와 같다). 두 자리가 한 관리자를 읽으면 같은 토스트가 두 자리에 함께 선다(02a-15 — L3
+  // `target-menus` 「Works 문서에서 … 복사」).
+  it("넓힌 카드가 서 있으면 토스트 자리는 그 보기의 것 하나다 — 작은 카드 · 카드 없음에서는 화면의 자리 하나다", () => {
+    const places = (markup: string) => markup.match(/aria-label="메시지"/g)?.length ?? 0;
+    expect(places(onChat()), "카드 없음").toBe(1);
+    moveSeat(seat, "spec", { kind: "toggle", place: "summary" });
+    expect(places(onChat()), "작은 카드").toBe(1);
+    moveSeat(seat, "spec", { kind: "expand", target: { kind: "doc", path: "overview.md" } });
+    const expanded = onChat();
+    expect(expanded, "넓힌 카드를 찾지 못했다").toMatch(/<section[^>]*aria-label="요약"[^>]*data-expanded=""/);
+    expect(places(expanded), "넓힌 카드").toBe(1);
+    expect(expanded.indexOf('aria-label="메시지"'), "자리가 넓힌 카드의 보기 안에 선다").toBeGreaterThan(expanded.indexOf("data-viewer="));
+  });
+
   it("넓힌 카드의 × 뒤 — 작은 카드로 돌아오고 spec 패널은 접힌 채다", () => {
     moveSeat(seat, "spec", { kind: "expand", target: { kind: "doc", path: "overview.md" } });
     moveSeat(seat, "spec", { kind: "collapse" });
@@ -1750,8 +1765,10 @@ describe("WorksPage 새 채팅 탭", () => {
     const shown = bodyOf(markup, second);
     expect(shown).toMatch(/^<div[^>]*class="contents"/);
     expect(shown).toContain('aria-label="보낼 말"');
-    // 작업공간은 탭이 선 묶음의 것이다 — 잠긴 Work 칩이 이 작업공간을 말한다.
-    expect(shown).toContain(`aria-label="작업공간으로 가기: ${work.title}"`);
+    // 작업공간은 탭이 선 묶음의 것이다 — 빈 칸의 말이 이 작업공간을 말한다. 잠긴 Work 칩은 없다(restart 02b-2 — 시안 Composer의
+    // 트레이에 Work 칩이 없다).
+    expect(shown).toContain(`${work.title}에서 무엇을 할까요?`);
+    expect(shown).not.toContain("작업공간으로 가기");
     expect(pathBarOf(markup)).toBe("");
   });
 
@@ -1779,6 +1796,18 @@ describe("WorksPage 새 채팅 탭", () => {
     }
     // 셸을 보는 중이면 둘 다 숨는다.
     expect(bodyOf(drawNewChat("terminal"), second)).toMatch(/^<div[^>]*class="hidden"/);
+  });
+
+  // **끌어다 놓기는 켜진 탭의 입력창만 듣는다**(restart 02a-16b · 구현 스펙 「새 채팅의 글」 — 「글과 첨부의 열쇠를 탭마다 나눈다」). 놓기는 창 전체의
+  // 이벤트라(Tauri `onDragDropEvent`) 듣는 입력창 모두에 간다. 숨은 새 채팅 탭은 위처럼 내리지 않으므로, 그 입력창이 들으면 보이지 않는 탭에도
+  // 첨부가 붙는다(L3 `new-chat-tabs`). 셸 · 파일 탭이 켜져 있으면 듣는 입력창이 없다 — 숨은 채팅 탭은 내려가 듣지 않는다. 듣는 것은 이펙트라
+  // 정적 그림에 없어 화면 → 몸 → 입력창의 배선을 리터럴로 못박고, 손짓은 L3가 잰다.
+  it("숨은 새 채팅 탭의 입력창은 끌어다 놓기를 듣지 않는다 — 켜진 새 채팅 탭만 듣는다", () => {
+    const thread = (file: string) => readFileSync(fileURLToPath(new URL(`../thread/${file}`, import.meta.url)), "utf8");
+    expect(source("WorksPage.tsx")).toMatch(/<WorkNewChat\n\s+work=\{panelWork\.slug\}\n\s+draftKey=\{newChatKey\(one\.id\)\}\n\s+shown=\{visibleNewChat\?\.id === one\.id\}/);
+    expect(thread("ThreadScreen.tsx")).toMatch(/<NewChat\n\s+link=\{link\}[^]*?\n\s+drops=\{shown\}/);
+    expect(thread("ThreadScreen.tsx")).toMatch(/<ThreadComposer\n\s+draftKey=\{draftKey\}[^]*?\n\s+drops=\{drops\}/);
+    expect(thread("ThreadComposer.tsx")).toContain("useAttachmentDrop(drops && !busy && !carded, attach)");
   });
 
   it("다른 작업공간의 새 채팅 탭은 이 화면에 꽂히지 않는다", () => {
@@ -1927,8 +1956,18 @@ describe("셸 안 ⌘T의 요청은 그 셸의 화면에만 간다", () => {
 // 「묶음 → 주소」가 따라간다. 옛 갈래(분할째로 걷고 문서로 간다 — restart 02a-13이 분할을 걷었다)가 남으면 새 칸과 문서가 한 틱에 겹친다.
 it("묶음의 마지막 칸이 닫히면 새 채팅 탭을 세우고, 본문은 묶음 → 주소가 옮긴다", () => {
   const page = source("WorksPage.tsx");
-  expect(page).toContain("if (emptied && tabOwner !== null) openNewChat(tabOwner);");
+  expect(page).toContain("if (emptied && !left && tabOwner !== null) openNewChat(tabOwner);");
   expect(page).not.toContain('changeSplit(null, "spec");');
+});
+
+// **떠난 작업공간의 묶음은 다시 채우지 않는다**(restart 02a-15c · 구현 스펙 「작업공간이 바뀌는 순간」). UI 아카이브 · 삭제의 회수(`closeShellsOf`)는
+// 화면이 목록에서 그 작업공간을 잃기 전에 묶음을 통째로 걷는다. 그것을 「마지막 칸이 닫혔다」로 읽어 새 채팅 탭을 세우면 「묶음 → 주소」가 켜진
+// 채팅 탭(`thread`)을 주소에서 걷어, 목록이 그 작업공간을 잃는 순간 다른 작업공간으로 넘어갔다(L3 `thread-archived`) — 그 채팅의
+// `/threads/:id`로 가야 한다. 화면은 회수의 알림(`onWorkReclaimed` — terminal-store.test.ts)으로 안다. 이펙트라 렌더로 안 보여 배선을 읽는다.
+it("회수가 걷은 묶음은 마지막 칸이 닫힌 것으로 세지 않는다 — 그 작업공간이 떠났다", () => {
+  const page = source("WorksPage.tsx");
+  expect(page).toContain("onWorkReclaimed(");
+  expect(page).toContain("const left = tabOwner !== null && reclaimed.current === tabOwner;");
 });
 
 // 고른 항목이 하나도 없을 때의 본문. 목록을 비우고 `selectedSlug`를 `null`로 두면 그 화면이

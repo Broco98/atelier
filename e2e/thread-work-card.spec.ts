@@ -104,9 +104,11 @@ const 카드앞틈 = async (page: Page) => {
   return Math.round(card - composer);
 };
 /** 대화 칸의 오른쪽 끝 — 본문의 왼쪽 끝에서 잰다(넓힌 카드의 480). 폭은 패널 박자로 옮겨 가므로(v1 티켓 43) 되풀이해 읽는다. */
+// 작업공간의 채팅 탭에서는 본문 카드(`main`)의 첫 자식이 탭 줄이라(restart 02a-4) 대화 칸을 차례로 못 집는다 — 넓은 동안 대화 칸은 그 폭
+// (`--size-thread-beside`)을 제 스타일로 든다(`ThreadScreen`의 `CardRoom`).
 const 대화끝 = (page: Page) =>
   흐름(page).evaluate((main) => {
-    const column = main.firstElementChild?.firstElementChild;
+    const column = main.querySelector('[style*="--size-thread-beside"]');
     if (!(column instanceof HTMLElement)) throw new Error("대화 칸이 없다");
     return Math.round(column.getBoundingClientRect().right - main.getBoundingClientRect().left);
   });
@@ -136,11 +138,17 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
     }),
   });
   await page.goto(`/threads/${view.id}`);
+  // 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭에 선다(restart 02a-4) — 탭 칸 이름도 그 채팅 이름(첫 말)이라 흐름의 글은 뒤쪽을 집는다.
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
-  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page).toHaveURL(`/works/${MADE.slug}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true }).last()).toBeVisible({ timeout: 20_000 });
   const 사이드바 = page.locator("aside[data-sidebar]");
+  // 사이드바의 그려진 폭 — 접히면 틈 8로 남는다(restart 02a-1 — 한때 0이라 숨었다).
+  const 사이드바폭 = () => 사이드바.evaluate((el) => Math.round(el.getBoundingClientRect().width));
   await expect(사이드바).toBeVisible();
   await expect(입력칸(page)).toBeVisible();
+  // 오른쪽 자리는 처음엔 spec 패널이다(restart 02a-9) — 창 머리의 「요약 카드」로 작은 카드를 세운다.
+  await page.getByRole("button", { name: "요약 카드", exact: true }).click();
 
   // 작은 카드 — 「변경 사항」 한 줄(Work의 바뀐 줄 합), 소스의 문서 · Project. 파일마다의 줄은 아직 없다. 대화 열 · 입력창은 카드 왼쪽
   // 16 앞에서 멈추도록 비켜 준다.
@@ -157,7 +165,7 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect(보기(page, "doc").getByRole("heading", { level: 1 })).toHaveText(WRITTEN[OVERVIEW].split("\n")[0].replace(/^# /, ""));
   await expect(보기(page, "doc").getByRole("navigation", { name: "위치", exact: true })).toContainText(OVERVIEW);
   await expect.poll(() => 대화끝(page)).toBe(480);
-  await expect(사이드바).toBeHidden();
+  await expect.poll(사이드바폭).toBe(8);
 
   // Host가 그 문서를 쓰는 중이다 — 보기의 머리와 카드의 줄에 「쓰는 중」이 선다. 다시 읽은 글은 바뀐 블록만 칠한다.
   const writing: WorkWritingEvent = {
@@ -221,7 +229,7 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await 보기(page, "change").getByRole("button", { name: "카드로 접기", exact: true }).click();
   await expect(넓힌카드(page)).toHaveCount(0);
   await expect(카드(page)).toBeVisible();
-  await expect(사이드바).toBeVisible();
+  await expect.poll(사이드바폭).toBeGreaterThan(8);
   await expect.poll(() => 카드앞틈(page)).toBeGreaterThanOrEqual(16);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

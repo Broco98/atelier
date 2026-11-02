@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { SEARCH_HITS, WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 검색팔레트를연다, 작업화면으로 } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 검색팔레트를연다, 새셸을누른다, 작업화면으로 } from "./harness";
 
 // 결정 12·14. **work 화면이 떠 있게 되면 그 work을 「열었다」로 센다.**
 //
@@ -30,7 +30,8 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  // 작업공간 화면은 새 채팅 탭으로 선다(restart 02a-13 — 한때 본문에 기본 문서 「개요」가 섰다).
+  await expect(page.locator('[data-tab="new-chat"]')).toBeVisible();
 
   // **그 work의 slug로 나간다.** 수를 절대값으로 못 박지 않는 것은 dev의 StrictMode가
   // effect를 마운트마다 두 번 돌리기 때문이다 — **「정확히 한 번」은 이 층에서 못 잰다.**
@@ -58,8 +59,8 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
 
   expect(await touched(page), "문서를 바꾸는데 「열었다」가 또 나갔다").toEqual(afterOpen);
 
-  // ── ③ 탭을 바꾼다(셸을 연다). 이것도 같은 work 안이다.
-  await page.locator('[data-tab="new"]').click();
+  // ── ③ 탭을 바꾼다(`+` 메뉴의 「새 셸」로 셸을 연다 — restart 02a-8). 이것도 같은 work 안이다.
+  await 새셸을누른다(page);
   await expect(page.locator(".xterm")).toHaveCount(1);
 
   expect(await touched(page), "탭을 바꾸는데 「열었다」가 또 나갔다").toEqual(afterOpen);

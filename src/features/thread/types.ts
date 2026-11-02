@@ -103,8 +103,8 @@ export interface ThreadView {
   /** 지금 흐르는 글 — 받은 글 전부를 실은 오프셋 0의 조각이다. 새로 그린 화면이 이것에 다음 조각을 잇는다(`settleFlowing`). */
   flowing: FlowChunk | null;
   /**
-   * 「새 작업공간」 칩을 둔 채 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. Work가 서기 전까지 잠긴 Work 칩이
-   * 흐린 「새 작업공간」이다(`lockedWork`).
+   * 「새 작업공간」 칩을 둔 채 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. 화면은 읽지 않는다 — 첫 말 뒤 입력창에는 Work 칩이
+   * 없다(restart 02b-2).
    */
   newWork?: boolean;
   /**

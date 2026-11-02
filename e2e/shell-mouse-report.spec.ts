@@ -1,11 +1,11 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, ipcCallArgs, unknownIpcCalls, writeShell } from "./harness";
+import { awaitSpawned, installFixtureBackend, ipcCallArgs, unknownIpcCalls, writeShell, 칸들 } from "./harness";
 
 // **떼어진 셸은 좌표가 `NaN`인 마우스 보고를 셸로 보내지 않는다**(terminal-nan-grid-guard 결정 10 · 15).
 //
-// 셸을 누르면 xterm은 끌기 · 놓음 리스너를 **document에** 달고 놓음이 와야 거둔다. 그 사이 ⌘1로 `spec`에 가면 셸의 집이
+// 셸을 누르면 xterm은 끌기 · 놓음 리스너를 **document에** 달고 놓음이 와야 거둔다. 그 사이 ⌘T로 새 채팅 탭에 가면(한때 ⌘1로 `spec`) 셸의 집이
 // DOM에서 빠지는데(`detachShell`) 리스너는 남아, 그 뒤의 끌기를 떼어진 요소로 잰다 — 계산 스타일이 빈 문자열이라 좌표가
 // `NaN`이 되고, 그 보고가 `onData` → `pty_write`로 나간다(이 work의 `spec/research/마우스-NaN-기전.md`). 무엇이 망가진
 // 보고인지는 L2(`mouse-report.test.ts`)가 갈래로 잰다. **이 층이 재는 것은 그 거르기가 진짜 출구에 붙어 있는가**다 — 진짜
@@ -50,7 +50,7 @@ async function wiggleUntilMotion(page: Page): Promise<void> {
   }).toPass({ timeout: 10_000 });
 }
 
-test("셸을 누른 채 ⌘1로 떼어져도 그 뒤의 끌기 · 놓음이 셸에 NaN 보고를 보내지 않는다", async ({ page }) => {
+test("셸을 누른 채 ⌘T로 떼어져도 그 뒤의 끌기 · 놓음이 셸에 NaN 보고를 보내지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -70,10 +70,12 @@ test("셸을 누른 채 ⌘1로 떼어져도 그 뒤의 끌기 · 놓음이 셸�
     .poll(() => sentToShell(page), { message: "떼기 전 끌기가 보고로 안 나갔다" })
     .toMatch(/\x1b\[<32;\d+;\d+M/);
 
-  // ⌘1 — work 화면의 첫 칸은 `spec`이다. 셸의 집이 화면에서 떼어진다.
-  await page.keyboard.press("Meta+1");
+  // ⌘T — 작업공간 화면에서 새 채팅 탭을 켠다(restart 02a-8). 셸의 집이 화면에서 떼어진다. 한때 ⌘1이 첫 칸 `spec`으로 갔다 — 02a-13이
+  // spec 탭을 걷어 ⌘N은 묶음의 N번째 칸이고, 첫 칸이 셸 자신일 수 있다.
+  await page.keyboard.press("Meta+t");
   await expect(page.locator(".xterm")).toHaveCount(0);
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  await expect(page).toHaveURL(/tab=chat/);
+  await expect(page.locator('[data-tab="new-chat"]')).toBeVisible();
 
   // 떼어진 채 앱의 다른 곳을 끌고 놓는다.
   for (const [x, y] of [[300, 200], [500, 320], [700, 440], [900, 560]] as const) {
@@ -83,7 +85,8 @@ test("셸을 누른 채 ⌘1로 떼어져도 그 뒤의 끌기 · 놓음이 셸�
 
   // **앵커** — 셸로 돌아와 그 위의 움직임이 보고로 나갔다. 사건은 온 순서대로 처리되니, 이것이 기록에 있으면 앞의 끌기 ·
   // 놓음도 모두 출구를 지났다 — 그 뒤에 센 0은 진짜 0이다. 다시 붙은 셸의 마우스가 그대로 쓰이는 것도 여기서 선다.
-  await page.keyboard.press("Meta+2");
+  // 셸 칸을 눌러 돌아온다 — 칸의 차례(⌘N)는 새 채팅 탭이 어디 서느냐에 달려 이름으로 집는다(한때 ⌘2였다 — 첫 칸이 `spec`이었다).
+  await 칸들(page).locator("button[aria-pressed]").click();
   await expect(page.locator(".xterm")).toHaveCount(1);
   await wiggleUntilMotion(page);
 

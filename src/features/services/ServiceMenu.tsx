@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Folder, Layers, MessageSquare, Settings, SquarePen, X, type LucideIcon } from "lucide-react";
+import { Layers, Settings, SquarePen, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,11 +15,10 @@ import { CrumbSlash } from "@/components/catalog/DetailParts";
 import { useProjects } from "@/features/projects/hooks";
 import type { WorkView } from "@/features/works/types";
 import { useSetService, useServices } from "./hooks";
-import type { ScopePick } from "./scope";
-import { HOST_MAKE, scopeMenu, serviceMenu, serviceName } from "./service-view";
+import { HOST_MAKE, serviceMenu, serviceName } from "./service-view";
 
 // **Service 메뉴**(03 구현 스펙 §10 · 시안 F4-WorkSpaced · F4-WorkNoSpace) — Work 화면 머리 줄의 흐린 Service가 연다. 줄은 순수 함수가 짓는다
-// (`serviceMenu`). 트레이의 범위 칩은 Project 줄이 더한 **범위 메뉴**(`ScopeMenuItems` · 시안 Composer 「범위 메뉴」)를 연다.
+// (`serviceMenu`). 입력창 트레이의 범위 칩이 여는 **범위 메뉴**는 입력창 칩의 메뉴다(`ComposerChips`의 `ScopeChip` — 시안 Composer 「범위 메뉴」).
 //
 //   Service 빼기 · 등록된 Project 3개를 모두 읽어요         ← Service가 없으면 「Service 없음」 ✓
 //   ──
@@ -28,7 +27,7 @@ import { HOST_MAKE, scopeMenu, serviceMenu, serviceName } from "./service-view";
 //   ──
 //   ⚙ Service 관리                            메뉴 › Service
 //
-// - 하나도 없으면 목록 자리에 「아직 Service가 없어요」 · 「대화로 Service 만들기」(첫 화면을 「작업공간 없이 대화」와 입력 글로 연다 — §14 S16)다.
+// - 하나도 없으면 목록 자리에 「아직 Service가 없어요」 · 「대화로 Service 만들기」(첫 화면을 작업공간 없는 새 채팅과 입력 글로 연다 — §14 S16)다.
 // - 줄은 시안 `.pmenu .mi2`(min 32 · 13.5/19 · 곁말 12/16)를 앱의 두 줄 항목(`size="note"`)이 그린다 — 폭은 내용을 따르되 300부터(`note`).
 // - 고른 것은 부르는 쪽이 적는다(`onPick` — Work면 그 Work, 범위 칩이면 입력창). 같은 것을 다시 고르면 아무것도 하지 않는다.
 
@@ -113,7 +112,7 @@ export function ServiceMenuItems({ current, onPick }: { current: string | null; 
   );
 }
 
-/** 「Service 관리」 줄 — Service 메뉴와 범위 메뉴의 끝이다. */
+/** 「Service 관리」 줄 — Service 메뉴의 끝이다. */
 function ManageServices() {
   const navigate = useNavigate();
   return (
@@ -144,69 +143,6 @@ function MakeService() {
         </span>
       </DropdownMenuItem>
     </DropdownMenuGroup>
-  );
-}
-
-/** 범위 메뉴 줄의 글리프 — 시안 Composer 「범위 메뉴」. */
-const SCOPE_GLYPH: Record<"none" | "service" | "project", LucideIcon> = { none: MessageSquare, service: Layers, project: Folder };
-
-/** 라디오 값 — Service와 Project의 slug가 겹쳐도 갈린다. */
-const scopeValue = (pick: ScopePick) => (pick === null ? NONE : `${pick.kind}:${pick.slug}`);
-
-/**
- * 범위 메뉴의 몸(시안 Composer 「범위 메뉴」) — 새 채팅의 범위 칩이 연다. 범위 없음 · Service · Project에서 이 채팅이 읽을 곳을 고른다. 고른 것은
- * 입력창이 쥐었다가 첫 말과 함께 간다. 작업공간을 고른 동안은 그 작업공간의 Service만 고른다(`withProjects`가 아니다).
- */
-export function ScopeMenuItems({
-  current,
-  onPick,
-  withProjects,
-}: {
-  current: ScopePick;
-  onPick: (pick: ScopePick) => void;
-  withProjects: boolean;
-}) {
-  const { data: services = [] } = useServices();
-  const { data: projects = [] } = useProjects();
-  const rows = scopeMenu(services, projects, current, withProjects);
-  const value = scopeValue(rows.find((row) => row.current)?.pick ?? null);
-  return (
-    <DropdownMenuRadioGroup
-      value={value}
-      onValueChange={(next: string) => {
-        if (next === value) return;
-        const row = rows.find((one) => scopeValue(one.pick) === next);
-        if (row) onPick(row.pick);
-      }}
-    >
-      <DropdownMenuGroup>
-        <DropdownMenuLabel>이 채팅이 읽을 곳</DropdownMenuLabel>
-        {rows.map((row) => {
-          const Glyph = SCOPE_GLYPH[row.pick?.kind ?? "none"];
-          return (
-            <DropdownMenuRadioItem
-              key={scopeValue(row.pick)}
-              value={scopeValue(row.pick)}
-              label={row.name}
-              aria-label={row.troubled ? `${row.name} 문제 있음` : row.name}
-              aria-description={row.note}
-              size="note"
-            >
-              <Glyph className="mt-0.5" aria-hidden />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate">{row.name}</span>
-                  {row.troubled && <span className="shrink-0 text-xs text-fg-tertiary">문제 있음</span>}
-                </span>
-                <span className="truncate text-xs text-fg-tertiary">{row.note}</span>
-              </span>
-            </DropdownMenuRadioItem>
-          );
-        })}
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      {services.length > 0 ? <ManageServices /> : <MakeService />}
-    </DropdownMenuRadioGroup>
   );
 }
 

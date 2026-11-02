@@ -8,8 +8,8 @@ import {
   unknownIpcCalls,
   끄는자리,
   띠,
-  사람메뉴항목,
-  사람줄,
+  위칸,
+  위칸줄,
   셸입력,
   줄표시,
   창검색버튼,
@@ -22,25 +22,24 @@ import {
   검색팔레트를연다,
   그림자,
   화면머리,
-  흰판,
-  흰판안,
+  카드자리끝,
 } from "./harness";
 import { lineOf, linesThrough, record, seqOf, summaryOf, threadOf } from "./thread-records";
 import { formatMemory } from "@/features/processes/metrics";
 
-// 02 티켓 13a — 흐름 「틀과 사이드바」(02 구현 스펙 §3 · §4 · §5 · Testing Decisions). **어느 주소에서나 같은 머리 줄 하나와 흰 판 하나에
-// 사이드바와 본문이 서고**, 사이드바 위 줄 두 행(새 Thread · 내 차례)과 ⌘N, Work 줄의 상태 표시 하나가 그 Work의 Thread와 셸
-// 가운데 가장 센 것이며, Work 묶음 +가 「작업공간 만들기」로 새 Thread를 열고, 사람 메뉴가 지금 화면들과 메모리 합계를 들고, 머리 카드였던 화면들이
-// 머리 줄에 제 이름과 할 일을 세운다.
+// 02 티켓 13a — 흐름 「틀과 사이드바」(02 구현 스펙 §3 · §4 · §5 · Testing Decisions). **어느 주소에서나 같은 머리 줄 하나와 카드 자리에
+// 사이드바와 본문 카드가 서고**(restart 02a-2 — 한때 흰 판 하나), 사이드바 위 칸(새 Thread · 내 차례 · 가는 곳 다섯 — 02a-3)과 ⌘N, Work 줄의
+// 상태 표시 하나가 그 Work의 Thread와 셸 가운데 가장 센 것이며, Work 묶음 +가 「작업공간 만들기」로 새 Thread를 열고, 위 칸 Processes 줄이
+// 메모리 합계를 들고, 머리 카드였던 화면들이 머리 줄에 제 이름과 할 일을 세운다.
 //
 // 같은 것을 두 번 재지 않는다 — 다른 spec이 이미 재는 것:
-//   판 안 칸의 자리 · 칸 사이 선 · 판 안이 끄는 자리가 아님 · 머리 줄 컨트롤 크기 · 끄는 자리   `frame.spec.ts`
-//   사이드바 차례 · 사람 메뉴의 행선지 · ⌘K로 Thread · 「새 채팅」을 누르면 첫 화면            `thread-sidebar.spec.ts`
+//   카드의 자리 · 카드 사이 틈 · 카드 안이 끄는 자리가 아님 · 머리 줄 컨트롤 크기 · 끄는 자리   `frame.spec.ts`
+//   사이드바 차례 · 위 칸의 행선지 · ⌘K로 Thread · 「새 채팅」을 누르면 첫 화면               `thread-sidebar.spec.ts`
 //   Thread 줄 다섯 상태 표시                                                                   `thread-status.spec.ts`
 //   「내 차례」를 켜고 다시 눌러 끄기 · 기다리는 순서                                           `thread-waiting.spec.ts`
 //   Work 줄의 셸 신호(내 차례 알약 · 새 결과 점) · 레인은 폴더 · 호버 카드                       `works-sidebar.spec.ts` · `shell-*.spec.ts`
 //   위 줄 ↑↓ · Tab 차례(창 컨트롤 → 머리 줄 → 사이드바 …)                                      `keyboard.spec.ts`
-//   ⌘N의 메뉴 바 항목 · ⌘N 글자 크기 · 사람 줄 기하 · `●`(손볼 것)                              `hotkeys` · `type-scale` · `sidebar-quiet` · `spacing` · `processes-nav-meta`
+//   ⌘N의 메뉴 바 항목 · ⌘N 글자 크기 · 맨 아래 설정 줄 기하 · `●`(손볼 것)                       `hotkeys` · `type-scale` · `sidebar-quiet` · `spacing` · `processes-nav-meta`
 //   Thread 화면의 머리 줄(이름 · 「…」 · 요약 고정)                                              `thread-screen.spec.ts`
 
 const thread = FIXTURE_THREAD;
@@ -65,15 +64,35 @@ async function boxOf(target: Locator) {
   return { ...box, right: box.x + box.width, bottom: box.y + box.height };
 }
 
-// ─── 머리 줄과 흰 판 ───────────────────────────────────────────────────────────────────────────────────────────────
+// ─── 머리 줄과 카드 ───────────────────────────────────────────────────────────────────────────────────────────────
 
-// **틀은 하나다**(02 구현 스펙 §3 「틀이 하나다」). 한때 두 벌이었다 — Thread 화면들(`/` · `/threads/<id>`)의 `PlainFrame`과
-// 나머지 화면의 `Frame`. 이제 앱 셸이 그리는 한 틀에 모든 화면이 선다: 크롬(`surface-shell`) 맨 위 44 머리 줄 하나에 신호등 자리 · 셸
-// 컨트롤 · 지금 화면의 자리가 서고, 그 아래 크롬 왼쪽 끝 + 5에 사이드바가, 그 오른쪽 끝에서 흰 판 하나(오 · 아래 5, 0.5 `border-panel`,
-// 둥글기 12, 위 그림자 `shadow-panel`)가 선다. **사이드바는 판 밖 크롬 위다**(03 구현 스펙 §3 · 스토리 1 · 2 · 3) — 바탕도 선도 없이 머리 줄 아래에서
-// 창 아래 끝까지 서고, 판 안에는 본문만 든다(한때 사이드바가 판 안 왼쪽에 섰다). 화면 자리는 판 안 왼쪽 끝에서 시작하고 앞에 세로선
-// (`separator` 1 × 20)이 선다 — 화면이 아무것도 보내지 않으면(새 Thread) 선도 없다. 머리 줄 아래에는 선이 없다(한때 Thread 머리 줄 아래 0.5
-// 선이 섰다).
+/** 본문 카드 — 본문(`main`)을 품은 카드다. 공용 틀 · 채팅 화면은 `main` 자신이 카드이고, 내용 | 목록 카드는 `main`이 그 안의 칸이다. */
+const 본문카드 = (page: Page) =>
+  page.locator("main").evaluate((main) => {
+    const card = main.closest('[data-slot="card"]') ?? main;
+    const box = card.getBoundingClientRect();
+    const style = getComputedStyle(card);
+    return {
+      x: box.left,
+      y: box.top,
+      right: box.right,
+      bottom: box.bottom,
+      tone: card.getAttribute("data-tone"),
+      radius: style.borderTopLeftRadius,
+      shadow: style.boxShadow,
+      fill: style.backgroundColor,
+    };
+  });
+
+// **틀은 하나다**(02 구현 스펙 §3 「틀이 하나다」 · restart 02a-2). 앱 셸이 그리는 한 틀에 모든 화면이 선다: 크롬(`surface-shell`) 맨 위 44
+// 머리 줄(`--size-titlebar`) 하나에 신호등 자리 · 셸 컨트롤 · 지금 화면의 자리가 서고, 그 아래 창 왼쪽 끝 0에 사이드바가, 그 오른쪽 끝에서
+// 카드 자리(창 오 · 아래 끝 8 — 앱 셸 줄의 `pr-2 pb-2`)가 선다. 카드 자리에 겉은 없고 화면의 카드들이 8 틈으로 선다 — 카드는 둥글기 8 ·
+// 0.5 링(`shadow-hairline`) · 면 `surface`다. **사이드바는 카드 밖 크롬 위다** — 바탕도 선도 없이 머리 줄 아래에서 창 아래 끝 8 앞까지 선다.
+// 화면 자리는 사이드바와 상관없이 셸 컨트롤 끝 + 6에서 시작하고 앞에 세로선(0.5 × 16 `border-heavy`, 위아래 14)이 선다 — 화면이 아무것도
+// 보내지 않으면(새 Thread) 선도 없다(02a-7). 머리 줄 아래에는 선이 없다.
+//
+// 한때(02 §3 S2 – 02a-1) 카드 자리에 흰 판 한 장(오 · 아래 5, 0.5 `border-panel`, 둥글기 12, 위 그림자 `shadow-panel`)이 서고 사이드바가 창
+// 왼쪽 + 5에 섰으며, 화면 자리는 판 안 왼쪽 끝에서 1 × 24 `separator` 세로선 뒤에 섰다 — 02a-2가 판을 걷고 02a-7이 화면 자리를 옮겼다.
 //
 // 주소마다 하나씩 잰다 — 틀이 둘로 갈려 한 벌만 고쳐진 날 그 벌의 주소만 빨개진다.
 const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown>; ready: (page: Page) => Locator; head: boolean }[] = [
@@ -112,7 +131,7 @@ const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown
 ];
 
 for (const address of ADDRESSES) {
-  test(`${address.name}: 머리 줄 44 하나에 셸 컨트롤과 화면 자리가 서고, 흰 판 하나에 사이드바와 본문이 든다`, async ({ page }) => {
+  test(`${address.name}: 머리 줄 44 하나에 셸 컨트롤과 화면 자리가 서고, 카드 자리에 본문 카드가 선다`, async ({ page }) => {
     await installFixtureBackend(page, address.overrides);
     await page.goto(address.url);
     // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 그 화면을 처음 변환하는 것을 기다린다.
@@ -120,10 +139,8 @@ for (const address of ADDRESSES) {
     const viewport = page.viewportSize()!;
 
     // 머리 줄 — 창 맨 위 44 줄 하나다. 아래에 선이 없다. 높이는 토큰에서 읽고 스펙의 수(44)는 따로 센다.
-    const row = await page.evaluate(() =>
-      parseFloat(getComputedStyle(document.querySelector("[data-titlebar]")!).getPropertyValue("--titlebar-height")),
-    );
-    expect(row, "머리 줄 높이 — 02 구현 스펙 §3").toBe(44);
+    const row = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--size-titlebar")));
+    expect(row, "머리 줄 높이 — 02 구현 스펙 §3 · 시안 size-titlebar").toBe(44);
     await expect(page.locator("header")).toHaveCount(1);
     const header = await boxOf(page.locator("header"));
     expect([header.x, header.y, header.right, header.bottom], "머리 줄").toEqual([0, 0, viewport.width, row]);
@@ -132,51 +149,39 @@ for (const address of ADDRESSES) {
     const toggle = await boxOf(page.getByRole("button", { name: "사이드바 토글", exact: true }));
     expect([toggle.x, toggle.y + toggle.height / 2], "사이드바 토글 자리").toEqual([89, row / 2]);
 
-    // 사이드바 — 판 밖 크롬 위, 창 왼쪽 끝 + 5에서 머리 줄 아래부터 창 아래 끝까지다. 바탕 · 오른쪽 선이 없다(크롬이 비친다).
+    // 사이드바 — 카드 밖 크롬 위, 창 왼쪽 끝 0에서 머리 줄 아래부터 창 아래 끝 8 앞까지다. 바탕 · 오른쪽 선이 없다(크롬이 비친다).
     const side = await boxOf(사이드바(page));
-    expect([side.x, side.y, side.bottom], "사이드바 — 판 밖 크롬 위").toEqual([5, row, viewport.height]);
+    expect([side.x, side.y, side.bottom], "사이드바 — 카드 밖 크롬 위").toEqual([0, row, viewport.height - 8]);
     expect(
       await 사이드바(page).evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el, "::after").content]),
       "사이드바의 바탕 · ::after 선",
     ).toEqual(["rgba(0, 0, 0, 0)", "none"]);
 
-    // 흰 판 — 하나이고, 사이드바 오른쪽 끝에서 머리 줄 아래 크롬 오 · 아래 끝 5까지다.
-    const panel = 흰판(page);
-    await expect(panel).toHaveCount(1);
-    const outer = await boxOf(panel);
-    expect([outer.x, outer.y, outer.right, outer.bottom], "흰 판").toEqual([side.right, row, viewport.width - 5, viewport.height - 5]);
-    const [radius, border, borderStyle, borderColor, shadow, fill] = await 칠한값(
-      panel,
-      "border-top-left-radius",
-      "border-top-width",
-      "border-top-style",
-      "border-top-color",
-      "box-shadow",
-      "background-color",
-    );
-    expect([radius, border, borderStyle], "판의 둥글기 · 테두리").toEqual(["12px", "0.5px", "solid"]);
-    expect(borderColor, "테두리 색 — border-panel").toBe(await 토큰색(page, "--border-panel"));
-    expect(await 토큰색(page, "--border-panel"), "DS 수 — #e8e8e8").toBe("rgb(232, 232, 232)");
-    expect(그림자(shadow), "판의 위 그림자 — shadow-panel").toBe(await 토큰값(page, "box-shadow", "--shadow-panel"));
-    expect(fill, "판의 면").toBe(await 토큰색(page, "--surface"));
+    // 카드 자리 — 사이드바 오른쪽 끝에서 머리 줄 아래, 창 오 · 아래 끝 8까지다. 흰 판은 없다.
+    const 자리 = await 카드자리끝(page);
+    expect([자리.x, 자리.y, 자리.right, 자리.bottom], "카드 자리").toEqual([side.right, row, viewport.width - 8, viewport.height - 8]);
+    await expect(page.locator('[data-slot="panel"]'), "흰 판은 걷혔다").toHaveCount(0);
 
-    // 판 안 — 본문(`main` 하나)이 판 안 왼쪽 위에서 아래끝까지 선다.
-    const 판 = await 흰판안(page);
+    // 본문 카드 — 카드 자리 왼쪽 위에서 아래끝까지 서고, 둥글기 8 · 0.5 링 · 면 `surface`다(터미널 카드의 면은 테마의 바탕이다).
     await expect(page.locator("main")).toHaveCount(1);
-    const main = await boxOf(page.locator("main"));
-    expect([main.x, main.y, main.bottom], "본문 — 판 안").toEqual([판.x, 판.y, 판.bottom]);
-    expect(main.right, "본문은 판 안에서 끝난다").toBeLessThanOrEqual(판.right);
+    const card = await 본문카드(page);
+    expect([card.x, card.y, card.bottom], "본문 카드 — 카드 자리 안").toEqual([자리.x, 자리.y, 자리.bottom]);
+    expect(card.right, "본문 카드는 카드 자리 안에서 끝난다").toBeLessThanOrEqual(자리.right);
+    expect(card.radius, "카드 둥글기 — rounded-card 8").toBe("8px");
+    expect(그림자(card.shadow), "카드 링 — shadow-hairline").toBe(await 토큰값(page, "box-shadow", "--shadow-hairline"));
+    if (card.tone !== "terminal") expect(card.fill, "카드의 면").toBe(await 토큰색(page, "--surface"));
 
-    // 화면 자리 — 판 안 왼쪽 끝(사이드바 끝 + 판 테두리 0.5)에서 시작하고, 화면이 보낸 것이 있으면 앞에 세로선이 선다.
+    // 화면 자리 — 셸 컨트롤 끝 + 6에서 시작하고(사이드바와 무관), 화면이 보낸 것이 있으면 앞에 세로선이 선다.
     const slot = 화면머리(page);
-    expect((await boxOf(slot)).x, "화면 자리 왼쪽 끝 = 판 안 왼쪽 끝").toBe(판.x);
+    const search = await boxOf(창검색버튼(page));
+    expect((await boxOf(slot)).x, "화면 자리 왼쪽 끝 = 셸 컨트롤 끝 + 6").toBe(search.right + 6);
     const 선 = await slot.evaluate((el) => {
       const style = getComputedStyle(el, "::before");
       const 선다 = style.display !== "none" && style.content !== "none" && style.content !== "normal";
       return [선다, style.width, style.top, style.bottom, style.backgroundColor];
     });
     if (address.head) {
-      expect(선, "화면 자리 앞 세로선").toEqual([true, "1px", "12px", "12px", await 토큰색(page, "--separator")]);
+      expect(선, "화면 자리 앞 세로선").toEqual([true, "0.5px", "14px", "14px", await 토큰색(page, "--border-heavy")]);
     } else {
       await expect(slot, "새 Thread는 머리 줄에 보내는 것이 없다").toBeEmpty();
       expect(선[0], "보낸 것이 없으면 세로선도 없다").toBe(false);
@@ -185,10 +190,10 @@ for (const address of ADDRESSES) {
   });
 }
 
-// **화면 자리의 왼쪽 끝은 사이드바를 따른다**(02 구현 스펙 §3 「머리 줄 가운데」 · 03 스토리 6) — 열렸으면 판 안 왼쪽 끝(사이드바 오른쪽 끝 +
-// 판 테두리), 접혔으면 셸 컨트롤 바로 뒤(끝 + 8)이고 그때는 세로선이 없다. 사이드바를 끄는 동안은 둘 다 트랜지션 없이 커서를 곧장 따른다
-// (`ShellHeadRow`의 `dragging`). Work 화면의 ⌘B는 `frame.spec.ts`가 잰다 — 여기는 Thread 화면(한때 `PlainFrame`)에서 끌기와 ⌘B 둘이다.
-test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따르고, ⌘B로 접으면 셸 컨트롤 끝 + 8에서 세로선 없이 선다", async ({ page }) => {
+// **화면 자리는 사이드바를 따르지 않는다**(restart 02a-7 · 시안 MainLoose) — 사이드바를 끌어도 ⌘B로 접어도 셸 컨트롤 끝 + 6 그대로이고
+// 세로선도 그대로다. 본문 카드만 사이드바 끝을 따른다(접히면 사이드바 상자가 틈 8로 남아 카드가 x 8에 선다 — 02a-2). 한때(02 §3 – 02a-6)
+// 화면 자리는 열렸으면 판 안 왼쪽 끝, 접혔으면 셸 컨트롤 끝 + 8에서 세로선 없이 섰다.
+test("Thread: 사이드바를 끌어도 ⌘B로 접어도 머리 줄 화면 자리와 세로선은 그대로이고, 본문 카드만 사이드바 끝을 따른다", async ({ page }) => {
   await installFixtureBackend(page, THREAD_ANSWERS);
   await page.goto(`/threads/${thread.id}`);
   await expect(page.getByRole("main", { name: thread.title, exact: true })).toBeVisible({ timeout: 20_000 });
@@ -201,13 +206,13 @@ test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따�
     });
   const 자리 = async () => (await boxOf(slot)).x;
   const 끝 = async () => (await boxOf(사이드바(page))).right;
+  const 카드 = async () => (await 본문카드(page)).x;
   const before = await 끝();
-  // 판 안 왼쪽 끝 = 사이드바 끝 + 판 테두리 — 판이 사이드바 끝에서 서고(겉 상자), 테두리를 덜어 내는 셈은 `흰판안` 한 곳이다.
-  const 판안 = (await 흰판안(page)).x;
-  expect(await 자리(), "앵커: 화면 자리가 판 안 왼쪽 끝에서 시작한다").toBe(판안);
-  expect((await boxOf(흰판(page))).x, "흰 판은 사이드바 끝에서 선다").toBe(before);
+  const head = (await boxOf(창검색버튼(page))).right + 6;
+  expect(await 자리(), "앵커: 화면 자리가 셸 컨트롤 끝 + 6에서 시작한다").toBe(head);
+  expect(await 카드(), "본문 카드는 사이드바 끝에서 선다").toBe(before);
 
-  // 사이드바 오른쪽 끝의 폭 손잡이를 40 오른쪽으로 끈다 — 사이드바가 넓어지고 화면 자리 · 본문이 그 끝을 따른다.
+  // 사이드바 오른쪽 끝의 폭 손잡이를 40 오른쪽으로 끈다 — 사이드바가 넓어지고 본문 카드가 그 끝을 따른다. 화면 자리는 그대로다.
   const handle = await boxOf(사이드바(page).locator('[title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]'));
   const [x, y] = [handle.x + handle.width / 2, handle.y + handle.height / 2];
   await page.mouse.move(x, y);
@@ -215,18 +220,18 @@ test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따�
   await page.mouse.move(x + 40, y, { steps: 5 });
   await page.mouse.up();
   await expect.poll(끝).toBe(before + 40);
-  await expect.poll(자리).toBe(판안 + 40);
-  expect((await boxOf(page.locator("main"))).x, "본문도 따른다").toBe(판안 + 40);
+  await expect.poll(카드).toBe(before + 40);
+  expect(await 자리(), "끈 뒤에도 화면 자리는 그대로").toBe(head);
   expect(await 선(), "열린 동안 세로선").toBe(true);
 
-  // ⌘B — 접으면 화면 자리가 셸 컨트롤 끝 + 8에서 시작하고 세로선이 걷힌다. 다시 펴면 끈 폭의 끝으로 돌아온다.
+  // ⌘B — 접으면 사이드바 상자가 틈 8로 남아 본문 카드가 x 8에 선다. 화면 자리와 세로선은 그대로다. 다시 펴면 끈 폭의 끝으로 돌아온다.
   await page.keyboard.press("Meta+b");
-  const search = await boxOf(창검색버튼(page));
-  await expect.poll(자리).toBe(search.right + 8);
-  expect(await 선(), "접힌 동안 세로선").toBe(false);
+  await expect.poll(카드).toBe(8);
+  expect(await 자리(), "접힌 동안에도 화면 자리는 그대로").toBe(head);
+  expect(await 선(), "접힌 동안에도 세로선").toBe(true);
   await page.keyboard.press("Meta+b");
-  await expect.poll(자리).toBe(판안 + 40);
-  expect(await 선()).toBe(true);
+  await expect.poll(카드).toBe(before + 40);
+  expect(await 자리()).toBe(head);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -237,12 +242,12 @@ const ASKED = lineOf(permission, "permission", "asked");
 /** 승인을 묻고 기다리는 Thread — 나를 기다린다(내 차례). */
 const asking = threadOf("20261025-090100", permission, { live: true, lastSeq: ASKED.seq });
 
-// **위 줄은 두 행이다**(02 구현 스펙 §4 — 01a-1이 Library를 걷었다) — 새 Thread · 내 차례, 행 모양은 다른 사이드바 줄과 같은 30 · 간격 31이고 첫
-// 행이 머리 줄 바로 밑 + 2에 선다(03 구현 스펙 §3 · 스토리 4 — 사이드바가 판 밖으로 나오며 위 안쪽이 12에서 2가 됐다. 한때 그 자리에
-// 「전체 | 내 차례」 마디가 섰다). 「새 채팅」 끝에는 그 키 ⌘N이 옅게(12 · 3단계 색 `fg-tertiary`)
+// **위 칸은 새 Thread · 내 차례로 시작한다**(02 구현 스펙 §4 — 01a-1이 Library를 걷었다 · restart 02a-3 — 그 뒤로 가는 곳 다섯이 선다), 행
+// 모양은 다른 사이드바 줄과 같은 30 · 줄 사이 2(시안 `.ra-sr-row`)이고 첫 행이 머리 줄 바로 밑에 선다(02a-3이 위 안쪽 여백을 걷었다 — 한때
+// 머리 줄 밑 + 2 · 간격 31이었다. 그 앞에는 「전체 | 내 차례」 마디가 섰다). 「새 채팅」 끝에는 그 키 ⌘N이 옅게(12 · 3단계 색 `fg-tertiary`)
 // 행 안쪽 오른쪽 끝에 선다 — 보이는 글은 「새 채팅 ⌘N」이지만 이름은 「새 채팅」이고 키는 `aria-keyshortcuts`가 말한다. 「내 차례」 끝에는
 // 나를 기다리는 Thread 수가 파랗게(12/500 `mine`) 서고 이름에 함께 든다(「내 차례 1」). 0이면 비는 것은 `thread-sidebar.spec.ts`가 잰다.
-test("위 줄 두 행이 머리 줄 밑 + 2부터 30 · 간격 31로 서고 — 새 Thread 끝에 ⌘N이 옅게, 내 차례 끝에 기다리는 수가 파랗게 선다", async ({
+test("위 칸 첫 두 행이 머리 줄 바로 밑부터 30 · 줄 사이 2로 서고 — 새 Thread 끝에 ⌘N이 옅게, 내 차례 끝에 기다리는 수가 파랗게 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -259,7 +264,7 @@ test("위 줄 두 행이 머리 줄 밑 + 2부터 30 · 간격 31로 서고 — 
   const header = await boxOf(page.locator("header"));
   const rows = await Promise.all([새Thread, 내차례].map((one) => boxOf(one.locator(".."))));
   expect(rows.map((one) => one.height), "행 높이").toEqual([30, 30]);
-  expect(rows.map((one) => one.y - header.bottom), "머리 줄 밑에서 — 2 · 간격 31").toEqual([2, 33]);
+  expect(rows.map((one) => one.y - header.bottom), "머리 줄 밑에서 — 0 · 줄 사이 2").toEqual([0, 32]);
 
   // ⌘N — 옅은 12 글자가 행 버튼 안쪽 오른쪽 끝에 서고, 이름에는 안 든다.
   await expect(새Thread).toHaveAttribute("aria-keyshortcuts", "Meta+N");
@@ -437,7 +442,8 @@ test("Work 줄은 그 Work의 Thread와 셸 가운데 가장 센 상태 하나�
   await expect(표시).toHaveAttribute("data-mark", "failed");
 
   // 셸에서 눈을 떼고 턴이 끝난다 — 안 본 끝은 새 결과라 실패한 Thread보다 약하다. 앵커는 띠의 「확인할 것」 줄이다(끝이 정말 닿았다).
-  await page.locator('[data-tab="spec"]').click();
+  // 눈을 떼는 길은 ⌘T의 새 채팅 탭이다(restart 02a-8 — 한때 spec 칸을 눌렀다).
+  await page.keyboard.press("Meta+t");
   await expect(page).not.toHaveURL(/tab=terminal/);
   await markAttention(page, {
     agent: "claude",
@@ -494,17 +500,18 @@ test("Work가 없으면 Work 묶음 머리 아래에 안내 한 줄이 12 · 3�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ─── 사람 메뉴 ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── 위 칸의 가는 곳과 맨 아래 설정 ─────────────────────────────────────────────────────────────────────────────
 
-// **사람 메뉴**(02 구현 스펙 §4 · §5 · 스토리 31 · 32 · 35) — 사이드바 맨 아래 사람 줄을 누르면 지금 화면들로 가는 메뉴가 위로 뜬다. 메뉴는
-// 사람 줄과 같은 폭으로 그 위 6에 서고(시안 「사람 메뉴」), 줄은 사이드바 줄과 같은 결이다 — 30 · 둥글기 8(`radius-md`) · 14 `fg-sidebar` ·
-// 글리프 16 `fg-icon`, 구분선은 `separator`, 카드는 둥글기 12 · `shadow-menu`다. **메모리 합계는 메뉴의 `Processes` 줄 끝이다**(S12) — 한때
-// 사람 줄 오른쪽에 늘 섰다(프로세스 결정 11). 사람 줄의 이름은 그대로다(메타가 이름에 안 섞인다). 합계 글자는 화면이 쓰는 표기 함수로
-// 짓는다 — 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다. `●`(손볼 것)는 `processes-nav-meta.spec.ts`가 잰다.
+// **지금 화면들은 위 칸의 줄이다**(restart 02a-3 · 스토리 86 · 시안 Main의 「가는 곳」) — 「새 채팅」 · 「내 차례」 뒤로 Services · Projects ·
+// Terminal · Processes · Archive가 사이드바 줄의 결로 선다: 30 · 둥글기 4(`radius-ctl`) · 13 `fg-sidebar` · 글리프 15 `fg-secondary`, 지나는 면
+// `fill-soft`, 지금 화면의 줄은 고른 면 `fill-hover` · 글자 `fg`(`aria-current="page"`). **메모리 합계는 `Processes` 줄 끝이다**(S12). 합계 글자는
+// 화면이 쓰는 표기 함수로 짓는다 — 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다. `●`(손볼 것)는 `processes-nav-meta.spec.ts`가 잰다.
+// Projects · Services 줄 끝에는 수가 없다(시안 위 칸). **설정은 맨 아래 「설정」 줄 하나다**(시안 `.ra-sr-foot` — 「설정 ⌘,」) — 키는 이름이
+// 아니라 `aria-keyshortcuts`가 말한다.
 //
-// **03 판이 `Service` 줄을 `Projects` 다음에 더했다**(03 구현 스펙 §4 · 스토리 7 · 8 · 9) — `Projects` · `Service` 끝에는 그 수(등록된 Project 수 ·
-// Service 수)가 옅게 서고, 지금 선 화면의 줄은 골라져 보인다(고른 면 `fill-nav-selected` · 글자 `fg` — 포인터가 가리킨 줄과 같은 면이다).
-test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드바 줄의 결이며 — Processes 줄 끝에 앱 전체 메모리 합계, Projects · Service 끝에 수가 서고 지금 화면의 줄이 골라져 있다", async ({
+// 한때(v1 S27 – 02a-2) 다섯과 Settings는 맨 아래 사람 줄(「홍길동 — 사람 메뉴」)이 여는 메뉴의 항목이었다 — 메뉴는 사람 줄 폭으로 그 위 6에
+// 떴고, 줄은 30 · 둥글기 8 · 14였으며 Projects · Service 끝에 수가 섰다. 02a-3이 메뉴를 걷었다.
+test("위 칸에 가는 곳 다섯이 사이드바 줄의 결로 서고 — Processes 줄 끝에 앱 전체 메모리 합계가 서며 지금 화면의 줄이 골라져 있고, 맨 아래에 「설정」이 선다", async ({
   page,
 }) => {
   const summary = 요약({ total: 1_234_567_890 });
@@ -513,58 +520,46 @@ test("사람 메뉴가 사람 줄 폭으로 그 위 6에 뜨고 줄이 사이드
   await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible({ timeout: 20_000 });
   const total = formatMemory(summary.total);
 
-  // 사람 줄 — 이름은 그대로이고 합계가 줄에 서지 않는다.
-  await expect(사람줄(page)).toHaveAccessibleName("홍길동 — 사람 메뉴");
-  await expect(사람줄(page)).not.toContainText(total);
+  // 차례 — 새 채팅 · 내 차례 뒤로 다섯(시안 Main 위 칸의 차례). 사람 줄 · 메뉴는 없다.
+  await expect(위칸(page).getByRole("button")).toHaveText([/^새 채팅/, /^내 차례/, /^Services$/, /^Projects$/, /^Terminal/, /^Processes/, /^Archive$/]);
+  await expect(page.getByRole("button", { name: /— 사람 메뉴$/ })).toHaveCount(0);
+  await expect(위칸줄(page, "Processes")).toContainText(total);
 
-  await 사람줄(page).click();
-  const menu = page.getByRole("menu");
-  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Service/, /^Terminal/, /^Processes/, /^Archive$/, /^Settings/]);
-  await expect(사람메뉴항목(page).filter({ hasText: /^Processes/ })).toContainText(total);
-  // 수 — 등록된 Project 수 · Service 수(픽스처의 둘 · 둘), 옅은 12 `fg-tertiary`.
-  const 끝수 = (label: string) => 사람메뉴항목(page).filter({ hasText: new RegExp(`^${label}`) }).locator("span.tabular-nums");
-  await expect(끝수("Projects")).toHaveText(String(PROJECTS.length));
-  await expect(끝수("Service")).toHaveText(String(SERVICES.length));
-  expect(await 칠한값(끝수("Service"), "font-size", "color"), "끝 수 글자").toEqual(["12px", await 토큰색(page, "--fg-tertiary")]);
-
-  // 자리 — 사람 줄과 같은 폭, 그 위 6.
-  const [foot, card] = [await boxOf(사람줄(page)), await boxOf(menu)];
-  expect([card.x, card.width], "메뉴 — 사람 줄 폭").toEqual([foot.x, foot.width]);
-  expect(foot.y - card.bottom, "사람 줄 위 6").toBe(6);
-  // 카드 — 둥글기 12 · `shadow-menu`.
-  const [radius, shadow] = await 칠한값(menu, "border-top-left-radius", "box-shadow");
-  expect([radius, 그림자(shadow)], "카드").toEqual(["12px", await 토큰값(page, "box-shadow", "--shadow-menu")]);
-  // 줄 — 30 · `radius-md` · 14 `fg-sidebar`, 글리프 16 `fg-icon`. 지금 화면(Projects)의 줄은 글자가 `fg`다 — 아래에서 따로 잰다.
-  const 고른줄 = [await 토큰색(page, "--fill-nav-selected"), await 토큰색(page, "--fg")];
-  const 줄값 = ["30px", await 토큰값(page, "border-top-left-radius", "--radius-md"), "14px"];
-  const 글리프값 = ["16px", "16px", await 토큰색(page, "--fg-icon")];
-  expect(await 토큰색(page, "--fg-icon"), "DS 수 — #5d5f61").toBe("rgb(93, 95, 97)");
-  for (const one of await 사람메뉴항목(page).all()) {
-    const 이름 = await one.textContent();
-    const 지금 = (await one.getAttribute("aria-current")) === "page";
-    expect(await 칠한값(one, "height", "border-top-left-radius", "font-size"), `「${이름}」 줄`).toEqual(줄값);
-    expect((await 칠한값(one, "color"))[0], `「${이름}」 글자`).toBe(지금 ? 고른줄[1] : await 토큰색(page, "--fg-sidebar"));
-    expect(await 칠한값(one.locator("svg").first(), "width", "height", "color"), `「${이름}」 글리프`).toEqual(글리프값);
+  // 줄 — 30 · `radius-ctl` · 13 `fg-sidebar`, 글리프 15 `fg-secondary`. 면은 줄 버튼을 품은 상자가 칠한다. 지금 화면(Projects)의 줄은 따로 잰다.
+  const 고른줄 = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fg")];
+  for (const label of ["Services", "Projects", "Terminal", "Processes", "Archive"] as const) {
+    const one = 위칸줄(page, label);
+    const 지금 = label === "Projects";
+    expect(await 칠한값(one.locator(".."), "height", "border-top-left-radius"), `「${label}」 줄`).toEqual([
+      "30px",
+      await 토큰값(page, "border-top-left-radius", "--radius-ctl"),
+    ]);
+    expect(await 칠한값(one, "font-size"), `「${label}」 글자 크기`).toEqual(["13px"]);
+    expect((await 칠한값(one.locator(".."), "color"))[0], `「${label}」 글자`).toBe(지금 ? 고른줄[1] : await 토큰색(page, "--fg-sidebar"));
+    expect(await 칠한값(one.locator("svg").first(), "width", "height", "color"), `「${label}」 글리프`).toEqual([
+      "15px",
+      "15px",
+      await 토큰색(page, "--fg-secondary"),
+    ]);
   }
-  expect((await 칠한값(menu.getByRole("separator"), "background-color"))[0], "구분선").toBe(await 토큰색(page, "--separator"));
   // 지금 줄 — Projects 화면이라 「Projects」 줄 하나가 고른 면 · `fg` 글자다(포인터가 닿기 전에도).
-  await expect(menu.locator('[aria-current="page"]')).toHaveCount(1);
-  await expect(사람메뉴항목(page).first()).toHaveAttribute("aria-current", "page");
-  expect(await 칠한값(사람메뉴항목(page).first(), "background-color", "color"), "지금 줄 — Projects").toEqual(고른줄);
-  // 켜진 줄 — 포인터가 가리킨 줄도 같은 고른 면 · `fg` 글자다.
-  const service줄 = 사람메뉴항목(page).nth(1);
-  await service줄.hover();
-  await expect.poll(() => 칠한값(service줄, "background-color", "color")).toEqual(고른줄);
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
+  await expect(위칸(page).locator('[aria-current="page"]')).toHaveCount(1);
+  await expect(위칸줄(page, "Projects")).toHaveAttribute("aria-current", "page");
+  expect(await 칠한값(위칸줄(page, "Projects").locator(".."), "background-color", "color"), "지금 줄 — Projects").toEqual(고른줄);
+  // 지나는 줄 — 포인터가 가리킨 줄은 지나는 면 `fill-soft`다(고른 면보다 옅다).
+  const services = 위칸줄(page, "Services").locator("..");
+  await 위칸줄(page, "Services").hover();
+  await expect.poll(async () => (await 칠한값(services, "background-color"))[0]).toBe(await 토큰색(page, "--fill-soft"));
 
-  // Service 화면에서 열면 「Service」 줄이 지금 줄이다(스토리 9).
-  await page.goto("/services");
+  // 맨 아래 「설정」 — 이름은 「설정」이고 키(⌘,)는 `aria-keyshortcuts`다. 사이드바 줄의 결이다.
+  const settings = page.locator("aside[data-sidebar]").getByRole("button", { name: "설정", exact: true });
+  await expect(settings).toHaveAttribute("aria-keyshortcuts", "Meta+,");
+  expect(await 칠한값(settings.locator(".."), "height"), "「설정」 줄").toEqual(["30px"]);
+
+  // Services 화면에서는 「Services」 줄이 지금 줄이다(스토리 9).
+  await 위칸줄(page, "Services").click();
   await expect(page.getByRole("table", { name: "Service 목록", exact: true })).toBeVisible();
-  await 사람줄(page).click();
-  await expect(menu.locator('[aria-current="page"]')).toHaveText(/^Service/);
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
+  await expect(위칸(page).locator('[aria-current="page"]')).toHaveText(/^Services$/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -718,7 +713,9 @@ for (const screen of HEAD_SCREENS) {
     const 글자끝 = Math.max(...words.filter((box) => box.x < 할일앞).map((box) => box.right));
     expect(할일앞 - 글자끝, "앵커: 글자와 할 일 사이에 빈 자리가 있다").toBeGreaterThan(8);
     expect(await 끄는자리(page, (글자끝 + 할일앞) / 2, middle), "화면 자리 안 빈 자리").toBe(true);
-    expect(await 끄는자리(page, slot.x + 4, middle), "화면 자리 왼쪽 안").toBe(true);
+    // 왼쪽 안쪽은 세로선과 첫 글자 사이다 — 첫 글자는 자리 + 10이고, 당김 6을 둔 조작(편집기의 「설정으로 돌아가기」 · Works의 Service)은
+    // 자리 + 4에서 시작한다(02a-7). 그 앞 + 2를 누른다.
+    expect(await 끄는자리(page, slot.x + 2, middle), "화면 자리 왼쪽 안").toBe(true);
 
     // 고를 것이 남지 않은 본문 칸에는 머리가 없다 — 위치와 할 일은 머리 줄이 말한다(목록 칸의 찾기 칸 · 머리는 `main` 밖이다).
     await expect(page.locator('main [data-slot="card-head"]')).toHaveCount(0);
@@ -733,8 +730,8 @@ for (const screen of HEAD_SCREENS) {
 const PLACE_HEADS: { url: string; main: string; words: string[]; crumb?: string }[] = [
   { url: "/projects", main: "Projects", words: ["Projects"] },
   { url: `/projects/${PROJECTS[0].slug}`, main: "Projects 상세", words: ["Projects", "/", PROJECTS[0].name], crumb: "Projects" },
-  { url: "/services", main: "Service", words: ["Service"] },
-  { url: `/services/${encodeURIComponent(SERVICES[0].slug)}`, main: "Service 상세", words: ["Service", "/", SERVICES[0].name], crumb: "Service" },
+  { url: "/services", main: "Services", words: ["Services"] },
+  { url: `/services/${encodeURIComponent(SERVICES[0].slug)}`, main: "Services 상세", words: ["Services", "/", SERVICES[0].name], crumb: "Services" },
 ];
 
 test("Projects · Service 목록과 상세: 머리 줄에 아이콘 없는 이름이 서고, 상세는 목록으로 가는 이름 앞이 서며 할 일이 없다", async ({ page }) => {

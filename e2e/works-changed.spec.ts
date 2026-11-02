@@ -13,7 +13,7 @@ import {
   steadyCount,
   unknownIpcCalls,
   workRow,
-  사람메뉴로간다,
+  가는곳으로간다,
 } from "./harness";
 
 // 티켓 14 — **spec이 바뀌면 work 목록 조회가 한 번만 돈다**(프로세스 결정 18 ① · 프로세스 스펙 판 02 ① · S20).
@@ -50,7 +50,8 @@ async function settle(page: Page): Promise<void> {
 /** 작업 화면에 선다 — 사이드바(목록 둘)와 works 라우트 · 작업 화면이 모두 목록을 쓴다. */
 async function openWork(page: Page): Promise<void> {
   await page.goto(`/works/${plainWork.slug}`);
-  await expect(page.locator('[data-tab="spec"]')).toBeVisible();
+  // 앵커: 작업 화면이 섰다 — 주소 없이 열면 새 채팅 탭이 선다(restart 02a-8 — 한때 spec 칸이 켜진 채 섰다).
+  await expect(page.locator('[data-tab="new-chat"]')).toBeVisible();
   await expect(workRow(page, plainWork.slug)).toBeVisible();
 }
 
@@ -70,14 +71,14 @@ test("작업 화면 · Service 상세 · 아카이브에 차례로 서도 works:
   // StrictMode가 붙였다 뗀 구독의 해제는 늦게 온다 — 수가 멎을 때까지 기다려 잰다(`liveSubscriptions`).
   expect(await liveSubscriptions(page, EVENT), "작업 화면").toBe(1);
 
-  await 사람메뉴로간다(page, "Service");
+  await 가는곳으로간다(page, "Services");
   await page.getByRole("table", { name: "Service 목록", exact: true }).getByRole("link", { name: service.name, exact: true }).click();
   await expect(page).toHaveURL(`/services/${encodeURIComponent(service.slug)}`);
   // 앵커: Service 상세가 목록을 읽어 그렸다. 사이드바 행도 같은 제목이라 「작업공간」 묶음으로 좁힌다.
   await expect(page.getByRole("region", { name: "작업공간", exact: true }).getByRole("link", { name: serviceWork.title })).toBeVisible();
   expect(await liveSubscriptions(page, EVENT), "Service 상세").toBe(1);
 
-  await 사람메뉴로간다(page, "Archive");
+  await 가는곳으로간다(page, "Archive");
   await expect(page).toHaveURL(`/archive/${shipped.slug}`);
   await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
   expect(await liveSubscriptions(page, EVENT), "아카이브").toBe(1);

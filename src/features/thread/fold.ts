@@ -295,6 +295,11 @@ export interface Turn {
   attachments: Attachment[];
   /** 그 말에 붙인 인용(`sent`의 `quote`, v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글이고 말풍선 위에 선다. 없으면 null이다. */
   quote: Quote | null;
+  /**
+   * 대기 줄의 「지금 보내기」로 하던 턴을 끊고 들어간 말인가(`sent`의 `sendNow`, restart 02b-2 · Cards 「대기 중에 끼어든 말」) — 말풍선 아래에
+   * 「하던 일을 멈추고 보냄」이 선다. 차례대로 간 말 · 스스로 이어 간 턴은 칸이 없다.
+   */
+  interjected?: true;
   /** 턴이 선 시각(보낸 말 · 처음 온 줄). */
   startedAt: string;
   /** 답한 첫 줄의 시각. 아직 답이 없으면 null이다. */
@@ -710,9 +715,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     lastAt = line.at;
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
-      case "sent":
-        start(`t${line.seq}`, text(payload.text) ?? "", line.at, attachmentsOf(payload.attachments), quoteOf(payload.quote));
+      case "sent": {
+        const turn = start(`t${line.seq}`, text(payload.text) ?? "", line.at, attachmentsOf(payload.attachments), quoteOf(payload.quote));
+        if (payload.sendNow === true) turn.interjected = true;
         break;
+      }
       // Runtime 경고(01b-8) — 도는 턴의 줄이면 그 턴에, 아니면 턴 사이에 선다. 턴을 열지 않는다 — 턴이 돌면 입력창이 잠긴다.
       case "stderr": {
         const words = text(payload.line);

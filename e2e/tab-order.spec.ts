@@ -15,11 +15,10 @@ import {
 } from "./harness";
 import { fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, squeezedWidth, widenSidebar } from "./tab-row";
 
-// 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
-// 소비자가 나눠 본다** — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」 — 그리고 놓은 곳이
-// 이긴다. 틈 계산 자체(내용 좌표 · `spec` 뒤부터 · 제자리 틈)는 L2(`tab-gap.test.ts`)와
-// 레지스트리의 `moveShell` 표가 들고, 여기서 보는 것은 **이벤트가 있어야 서는 것**이다: 끄는
-// 동안 선이 서는가 · 받침으로 가면 꺼지는가 · 놓으면 화면과 키가 새 순서를 따르는가.
+// 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). 한때 한 눌림을 두 소비자가 나눠 봤다
+// — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」(분할) — restart 02a-13이 분할을 걷어 이제 놓을 곳은 탭 줄의 틈뿐이다. 틈 계산
+// 자체(내용 좌표 · 제자리 틈)는 L2(`tab-gap.test.ts`)와 레지스트리의 `moveShell` 표가 들고, 여기서 보는 것은 **이벤트가 있어야 서는
+// 것**이다: 끄는 동안 선이 서는가 · 줄을 벗어나면 꺼지는가 · 놓으면 화면과 키가 새 순서를 따르는가.
 //
 // 칸을 **이름으로** 가른다. 픽스처 셸은 모두 같은 이름이라, 칸마다 OSC 타이틀을 한 번 쏴
 // 「어느 셸이 어디 섰나」를 화면 글자로 읽는다(`writeShell` — 진짜 xterm 파서를 지난다).
@@ -77,8 +76,8 @@ async function nameShells(page: Page, names: string[]): Promise<void> {
 
 /**
  * 칸 `from`을 눌러 문턱을 넘긴다. 옆으로 12px은 **제 칸 안**이라 틈이 아직 없다 — 제자리
- * 틈에는 선이 안 선다. 문턱은 두 화면 공통인 body의 끄는 중 표시로 확인한다(`/terminal`에는
- * 받침이 없다).
+ * 틈에는 선이 안 선다. 문턱은 두 화면 공통인 body의 끄는 중 표시로 확인한다(한때 work 화면에는 분할 받침도 섰다 — restart 02a-13이
+ * 걷었다).
  */
 async function pressAndCross(page: Page, from: number) {
   const box = await boxOf(page, from);
@@ -92,13 +91,21 @@ async function pressAndCross(page: Page, from: number) {
   return start;
 }
 
+/** 칸 상자 — 이름 버튼이 아니라 칸 전체다(틈은 칸의 가운데로 센다 — `tab-gap.ts`). */
+async function cellOf(page: Page, at: number): Promise<Box> {
+  const box = await bundleTabs(page).nth(at).boundingBox();
+  if (!box) throw new Error(`${at}번째 칸의 상자를 못 읽었다`);
+  return box;
+}
+
 /**
  * 틈 `gap`을 가리키는 자리 — 칸 `gap`의 왼쪽 4분의 1(그 칸 앞), 마지막 틈이면 마지막 칸의
- * 오른쪽 4분의 1. 틈은 「중심이 포인터 왼쪽인 칸의 수」라 두 자리가 그 번호다.
+ * 오른쪽 4분의 1. 틈은 「중심이 포인터 왼쪽인 칸의 수」라 두 자리가 그 번호다. 칸 상자로 잰다 — 칸이 글 폭이 되며(restart 02a-5) 이름
+ * 버튼이 칸의 앞쪽 일부라, 이름 버튼의 오른쪽 4분의 1은 칸 가운데 앞에 설 수 있다.
  */
 async function gapPoint(page: Page, gap: number) {
   const count = await bundleTabs(page).count();
-  const box = gap < count ? await boxOf(page, gap) : await boxOf(page, count - 1);
+  const box = gap < count ? await cellOf(page, gap) : await cellOf(page, count - 1);
   const x = gap < count ? box.x + box.width / 4 : box.x + (box.width * 3) / 4;
   return { x, y: box.y + box.height / 2 };
 }
@@ -119,22 +126,28 @@ async function moveToGap(page: Page, gap: number) {
 }
 
 /**
- * 셸들을 이름 붙여 띄운 채 출발한다 — 마지막으로 연 칸이 켜져 있다. `onSpec`이면 본문을 문서로
- * 돌려 **셸 탭이 꺼진 채** 출발한다 — 끌어 놓은 칸이 켜지는지를 모습으로 보려면.
+ * 셸들을 이름 붙여 띄운 채 출발한다 — 마지막으로 연 칸이 켜져 있다. 한때 `onSpec`이 본문을 문서로 돌려 셸 탭이 꺼진 채 출발했다 —
+ * restart 02a-13이 spec 탭을 걷었다.
  */
-async function openWork(page: Page, names: string[], { onSpec = false } = {}) {
+async function openWork(page: Page, names: string[]) {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await nameShells(page, names);
-  if (onSpec) {
-    await page.locator('[data-tab="spec"]').click();
-    await expect(nameButton(page, 0)).toHaveAttribute("aria-pressed", "false");
-  }
+}
+
+/**
+ * 본문 카드 안의 한 점 — 탭 줄 밖, 한때 분할 받침의 오른쪽 절반이 서던 자리다(restart 02a-13이 분할을 걷었다). 끌던 칸을 여기서 떼면
+ * 아무 일도 없어야 한다.
+ */
+async function bodyPoint(page: Page) {
+  const body = await page.getByRole("main").boundingBox();
+  if (!body) throw new Error("본문 카드의 상자를 못 읽었다");
+  return { x: body.x + body.width * 0.75, y: body.y + body.height / 2 };
 }
 
 test.describe("work 화면", () => {
-  test("탭을 옆 틈에 놓으면 순서가 바뀌고 ⌘2와 ⌃Tab이 새 순서를 따른다", async ({ page }) => {
+  test("탭을 옆 틈에 놓으면 순서가 바뀌고 ⌘1과 ⌃Tab이 새 순서를 따른다", async ({ page }) => {
     await openWork(page, ["하나", "둘", "셋"]);
     // 마지막으로 연 칸이 켜져 있다 — 옮긴 뒤에도 그대로여야 한다.
     expect(await litName(page)).toBe("셋");
@@ -147,10 +160,9 @@ test.describe("work 화면", () => {
     await expect(gapLine(page)).toHaveCount(0);
     // 끌어 놓은 칸은 안 켜진다 — 켜진 칸이 그대로다.
     expect(await litName(page)).toBe("셋");
-    await expect(page).not.toHaveURL(/split=/);
 
-    // ⌘2가 **보이는** 첫 셸이다(⌘1은 spec). 옛 순서면 「하나」다.
-    await page.keyboard.press("Meta+2");
+    // ⌘1이 **보이는** 첫 칸이다(restart 02a-13 — 한때 ⌘1은 spec 칸이었다). 옛 순서면 「하나」다.
+    await page.keyboard.press("Meta+1");
     await expect.poll(() => litName(page)).toBe("둘");
     // ⌃Tab이 보이는 순서의 다음 칸이다 — 새 순서(둘·하나·셋)면 「둘」 다음은 「하나」다. 옛
     // 순서(하나·둘·셋)였다면 「셋」이 켜진다.
@@ -160,62 +172,27 @@ test.describe("work 화면", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("끄는 동안 틈 선이 하나 서고, 받침 위로 가면 사라지며 거기 놓으면 분할만 켜진다", async ({ page }) => {
+  // 한때 본문으로 가면 받침의 절반이 켜졌고 거기 놓으면 분할이 켜졌다(결정 97) — restart 02a-13이 분할을 걷었다. 이제 본문은 놓을 곳이
+  // 아니다: 틈이 꺼지고, 거기 떼면 순서 · 켜진 칸 · 본문이 그대로다. 한때 이 뒤에 「`spec` 앞에는 틈이 없다」가 있었다 — spec 칸도
+  // 걷혀 걷었다.
+  test("끄는 동안 틈 선이 하나 서고, 본문 위로 가면 사라지며 거기 놓으면 아무 일도 안 난다", async ({ page }) => {
     await openWork(page, ["하나", "둘", "셋"]);
+    const body = await bodyPoint(page);
 
     await pressAndCross(page, 0);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
     await moveToGap(page, 3);
 
-    // 받침 위로 간다 — 틈이 꺼지고 절반이 켜진다. **둘이 동시에 안 켜진다.**
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
-    await expect(page.locator('[data-drop-half="right"]')).toHaveAttribute("data-over", "");
+    // 본문 위로 간다 — 틈이 꺼진다.
+    await page.mouse.move(body.x, body.y, { steps: 4 });
     await expect(gapLine(page)).toHaveCount(0);
 
     await page.mouse.up();
+    await settle(page);
 
-    // 놓은 곳이 이긴다 — 분할이 켜지고 순서는 그대로다.
-    await expect(page).toHaveURL(/split=lr/);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
     await expect.poll(() => namesOf(page)).toEqual(["하나", "둘", "셋"]);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test("`spec` 앞에는 틈이 없고, `spec`을 끌어도 틈이 안 선다", async ({ page }) => {
-    await openWork(page, ["하나", "둘", "셋"], { onSpec: true });
-
-    const spec = await page.locator('[data-tab="spec"]').boundingBox();
-    if (!spec) throw new Error("spec 칸의 상자를 못 읽었다");
-    const onSpec = { x: spec.x + spec.width / 2, y: spec.y + spec.height / 2 };
-
-    // 셋째 칸을 `spec` 위로 끈다 — 선이 없다.
-    await pressAndCross(page, 2);
-    await page.mouse.move(onSpec.x, onSpec.y, { steps: 4 });
-    await expect(gapLine(page)).toHaveCount(0);
-    // 첫 셸 칸 앞(틈 0)에는 선다 — 위 0이 「이 화면에선 늘 안 선다」로 통과하지 않는지.
-    await moveToGap(page, 0);
-    await page.mouse.move(onSpec.x, onSpec.y, { steps: 4 });
-    await expect(gapLine(page)).toHaveCount(0);
-    await page.mouse.up();
-
-    await expect.poll(() => namesOf(page)).toEqual(["하나", "둘", "셋"]);
-    // 끌어 놓은 칸이 안 켜진다 — 본문이 문서 그대로다.
-    await expect(nameButton(page, 2)).toHaveAttribute("aria-pressed", "false");
-    await expect(page).not.toHaveURL(/tab=terminal/);
-
-    // `spec` 칸은 순서에 안 낀다 — 끌어 셸 칸 사이를 지나도 선이 안 서고, 거기 놓아도 그대로다.
-    await page.mouse.move(onSpec.x, onSpec.y);
-    await page.mouse.down();
-    await page.mouse.move(onSpec.x + 12, onSpec.y);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-    const between = await gapPoint(page, 2);
-    await page.mouse.move(between.x, between.y, { steps: 4 });
-    await expect(gapLine(page)).toHaveCount(0);
-    await page.mouse.up();
-
-    await expect.poll(() => namesOf(page)).toEqual(["하나", "둘", "셋"]);
-    await expect(page).not.toHaveURL(/split=/);
+    expect(await litName(page)).toBe("셋");
+    await expect(page).toHaveURL(/tab=terminal/);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -296,7 +273,8 @@ test.describe("work 화면", () => {
 
       const row = await rowOf(page);
       expect(row.spill, at).toBeLessThanOrEqual(0);
-      expect(row.height, at).toBe(46);
+      // 탭 줄 40(`--size-tab-row` — restart 02a-5, 한때 46).
+      expect(row.height, at).toBe(40);
       // 선이 칸 상자를 넓히지도, 세로로 넘치게 하지도 않는다.
       expect(row.strip.scrollWidth, at).toBe(before.strip.scrollWidth);
       const vertical = await page
@@ -369,9 +347,9 @@ test("칸 하나 폭 상자에서 두 칸을 끌어 바꾼다 — 줄 가장자�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 같은 배치에서 **본문 절반으로 가려고 곧장 아래로 끄는 손**은 줄을 안 굴린다. 칸 하나 폭 상자는 한가운데
-// 한 픽셀 말고는 전부 가장자리 띠라, 문턱을 넘은 뒤 탭 줄을 벗어나기 전 몇 프레임 동안 줄이 구르면 누른
-// 칸이 옆으로 밀리고, 이미 켜진 칸을 놓으면 되돌리는 스크롤도 안 선다.
+// 같은 배치에서 **곧장 아래로 끄는 손**은 줄을 안 굴린다(한때 본문 절반으로 가려던 손 — 분할은 restart 02a-13이 걷었다). 칸 하나 폭
+// 상자는 한가운데 한 픽셀 말고는 전부 가장자리 띠라, 문턱을 넘은 뒤 탭 줄을 벗어나기 전 몇 프레임 동안 줄이 구르면 누른 칸이 옆으로
+// 밀리고, 이미 켜진 칸을 놓으면 되돌리는 스크롤도 안 선다.
 test("칸 하나 폭 상자에서 칸을 곧장 아래로 끌면 줄이 안 구른다", async ({ page }) => {
   await widenSidebar(page);
   await openWork(page, ["하나", "둘", "셋"]);
@@ -398,7 +376,7 @@ test("칸 하나 폭 상자에서 칸을 곧장 아래로 끌면 줄이 안 구�
   await page.mouse.move(press.x, press.y + 6);
   await page.mouse.move(press.x, press.y + 12);
   await expect(page.locator("body")).toHaveClass(/dragging-row/);
-  // 아직 46px 탭 줄 안이다(칸 가운데에서 23px까지). 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.
+  // 아직 40px 탭 줄 안이다(칸 가운데에서 20px까지 — restart 02a-5). 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.
   await page.waitForTimeout(300);
   expect(await strip.evaluate((el) => el.scrollLeft)).toBe(scrollBefore);
   await page.mouse.up();
@@ -412,9 +390,8 @@ test("`/terminal`에서도 끌어 순서를 바꾸고 ⌘1이 새 순서를 따�
   await nameShells(page, ["하나", "둘", "셋"]);
   expect(await litName(page)).toBe("셋");
 
-  // 이 화면에는 받침이 없다 — 문턱은 body 표시로 확인한다(`pressAndCross`).
+  // 문턱은 body 표시로 확인한다(`pressAndCross`).
   await pressAndCross(page, 2);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
   await moveToGap(page, 0);
   await page.mouse.up();
 
@@ -453,35 +430,30 @@ test("끄는 도중 셸 하나가 끝나 줄이 바뀌어도 틈이 새 줄로 �
 
 // **끄는 셸 자신이 끝난다**(결정 48 · UI개선 스펙 S8). 위 검사는 「남의 칸이 빠졌다」라 끌기가 살 이유가 있지만,
 // 끄는 것이 사라지면 놓을 것이 없다 — 사이드바 행 끌기가 목록이 바뀌면 끌기를 거두듯(UI개선 스펙 S8)
-// 거둬야 한다. 안 거두면 원천에 닫힌 셸의 id가 실린 채 받침이 서 있어, 본문 절반에 놓는 순간 **없는
-// 셸로** 분할이 켜진다. 그래서 둘을 본다: 끝난 순간 끄는 중 모습(받침 · 끄는 커서)이 걷히는가, 그리고
-// 그 뒤 손을 떼도 화면(분할 · 순서 · 켜진 칸)과 셸이 그대로인가.
+// 거둬야 한다. 그래서 둘을 본다: 끝난 순간 끄는 중 모습(끄는 커서)이 걷히는가, 그리고 그 뒤 손을 떼도 화면(순서 · 켜진 칸)과 셸이
+// 그대로인가. 한때 work 화면에서는 본문 절반의 받침에 떼어 「없는 셸로 분할이 안 켜진다」를 쟀다 — restart 02a-13이 분할을 걷어, 이제
+// 그 자리(본문)에 뗀다.
 test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
-  test("work 화면 — 본문 절반에 놓아도 분할이 안 켜진다", async ({ page }) => {
+  test("work 화면 — 본문에 떼어도 아무 일도 안 난다", async ({ page }) => {
     await openWork(page, ["하나", "둘"]);
     expect(await litName(page)).toBe("둘");
     const spawned = await callCount(page, "pty_spawn");
     const written = await callCount(page, "pty_write");
+    const body = await bodyPoint(page);
 
     await pressAndCross(page, 0);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
 
     await exitShell(page, 1);
     await expect.poll(() => namesOf(page)).toEqual(["둘"]);
 
-    // 끝난 순간 끄는 중 모습이 걷힌다 — 받침도, 끄는 커서도.
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+    // 끝난 순간 끄는 중 모습이 걷힌다.
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
 
-    // 받침이 서 있던 오른쪽 절반으로 가서 뗀다 — 아무 일도 안 난다.
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    // 본문으로 가서 뗀다 — 아무 일도 안 난다.
+    await page.mouse.move(body.x, body.y, { steps: 4 });
     await page.mouse.up();
     await settle(page);
 
-    await expect(page.locator("[data-column]")).toHaveCount(0);
-    await expect(page).not.toHaveURL(/split=/);
     await expect.poll(() => namesOf(page)).toEqual(["둘"]);
     expect(await litName(page)).toBe("둘");
     expect(await callCount(page, "pty_spawn")).toBe(spawned);
@@ -523,9 +495,10 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
 
   // **문턱 전에 끝난다.** 누른 채 아직 5px을 안 움직였을 때 셸이 끝나면, 남은 눌림이 다음 이동에서
   // 죽은 id로 끌기를 시작한다 — 위 둘은 문턱을 넘긴 뒤에 끝내서 이 길을 못 본다.
-  test("work 화면 — 문턱 전에 끝나고 그 뒤 끌어 절반에 놓아도 아무 일도 안 난다", async ({ page }) => {
+  test("work 화면 — 문턱 전에 끝나고 그 뒤 끌어 본문에 떼어도 아무 일도 안 난다", async ({ page }) => {
     await openWork(page, ["하나", "둘"]);
     const spawned = await callCount(page, "pty_spawn");
+    const body = await bodyPoint(page);
 
     const box = await boxOf(page, 0);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -533,16 +506,13 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     await exitShell(page, 1);
     await expect.poll(() => namesOf(page)).toEqual(["둘"]);
 
-    // 본문 오른쪽 절반으로 끈다 — 받침이 섰다면 거기 서 있을 자리다.
-    await page.mouse.move(1000, 500, { steps: 8 });
+    // 본문으로 끈다 — 남은 눌림이 죽은 id로 끌기를 시작했다면 끄는 커서가 선다.
+    await page.mouse.move(body.x, body.y, { steps: 8 });
     await settle(page);
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
     await page.mouse.up();
     await settle(page);
 
-    await expect(page.locator("[data-column]")).toHaveCount(0);
-    await expect(page).not.toHaveURL(/split=/);
     expect(await litName(page)).toBe("둘");
     expect(await callCount(page, "pty_spawn")).toBe(spawned);
     expect(await unknownIpcCalls(page)).toEqual([]);
@@ -573,54 +543,48 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // **그 work의 마지막 셸이다.** 셸이 다 빠지면 화면이 분할째로 문서로 걷는데(`shellsEmptied`), 받침이
-  // 남아 있으면 떼는 순간 분할과 터미널 열이 다시 서고 빈 열이 셸을 새로 띄운다.
-  test("work 화면 — 마지막 셸이어도 분할도 새 셸도 안 선다", async ({ page }) => {
+  // **그 work의 마지막 셸이다.** 셸이 다 빠지면 묶음이 비어 새 채팅 탭이 선다(`shellsEmptied` — restart 02a-8, 한때 문서로 걷었다).
+  // 끌기가 남아 있으면 떼는 순간 터미널 본문이 다시 서고 빈 본문이 셸을 새로 띄운다.
+  test("work 화면 — 마지막 셸이어도 떼고 나서 새 셸이 안 선다", async ({ page }) => {
     await openWork(page, ["하나"]);
     const spawned = await callCount(page, "pty_spawn");
+    const body = await bodyPoint(page);
 
     await pressAndCross(page, 0);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
 
     await exitShell(page, 1);
     await expect(shellTabs(page)).toHaveCount(0);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
 
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.move(body.x, body.y, { steps: 4 });
     await page.mouse.up();
     await settle(page);
 
-    await expect(page.locator("[data-column]")).toHaveCount(0);
-    await expect(page).not.toHaveURL(/split=/);
     await expect(page).not.toHaveURL(/tab=terminal/);
+    await expect(page.locator('[data-tab="new-chat"]')).toHaveCount(1);
     await expect(shellTabs(page)).toHaveCount(0);
     expect(await callCount(page, "pty_spawn")).toBe(spawned);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // **켜진 셸이다.** 빠지면 옆 칸이 켜지는데(`removeShell`), 떼는 순간 분할이 켜지면 끈 적 없는 그 칸이
-  // 터미널 열에 선다.
-  test("work 화면 — 켜진 셸이 끝나도 옆 칸으로 분할이 안 켜진다", async ({ page }) => {
+  // **켜진 셸이다.** 빠지면 옆 칸이 켜진다(`removeShell`) — 거둔 끌기의 떼기가 그 칸을 건드리지 않는다. 한때 「옆 칸으로 분할이 안
+  // 켜진다」를 쟀다(restart 02a-13이 분할을 걷었다).
+  test("work 화면 — 켜진 셸이 끝나면 옆 칸이 켜지고 떼어도 그대로다", async ({ page }) => {
     await openWork(page, ["하나", "둘"]);
     expect(await litName(page)).toBe("둘");
+    const body = await bodyPoint(page);
 
     await pressAndCross(page, 1);
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
 
     await exitShell(page, 2);
     await expect.poll(() => namesOf(page)).toEqual(["하나"]);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
 
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.move(body.x, body.y, { steps: 4 });
     await page.mouse.up();
     await settle(page);
 
-    await expect(page.locator("[data-column]")).toHaveCount(0);
-    await expect(page).not.toHaveURL(/split=/);
+    await expect.poll(() => namesOf(page)).toEqual(["하나"]);
     await expect.poll(() => litName(page)).toBe("하나");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -629,10 +593,9 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
   // 종료 프레임 쪽에만 걸려 있으면 이 길이 샌다.
   test("work 화면 — 끄는 도중 ⌘W로 닫아도 거둬진다", async ({ page }) => {
     await openWork(page, ["하나", "둘"]);
+    const body = await bodyPoint(page);
 
     await pressAndCross(page, 1);
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
 
     await page.keyboard.press("Meta+w");
     const ask = page.getByRole("alertdialog");
@@ -640,25 +603,25 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     // 손은 눌린 채라 마우스로 못 누른다 — 키로 확인한다.
     await ask.getByRole("button", { name: "닫기" }).press("Enter");
     await expect.poll(() => namesOf(page)).toEqual(["하나"]);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
 
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.move(body.x, body.y, { steps: 4 });
     await page.mouse.up();
     await settle(page);
 
-    await expect(page).not.toHaveURL(/split=/);
-    await expect(page.locator("[data-column]")).toHaveCount(0);
+    await expect.poll(() => namesOf(page)).toEqual(["하나"]);
     expect(await litName(page)).toBe("하나");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });
 
-// **거두는 것은 끄는 셸이 목록에서 사라졌을 때뿐이다.** 판정을 「종료 프레임이 왔다」로 잡거나 셸 끌기
-// 아닌 것까지 보면 멀쩡한 끌기가 끊긴다 — 아래 둘은 그 넘치는 쪽을 막는다.
+// **거두는 것은 끄는 셸이 목록에서 사라졌을 때뿐이다.** 판정을 「종료 프레임이 왔다」로 잡으면 멀쩡한 끌기가 끊긴다 — 아래는 그
+// 넘치는 쪽을 막는다. 한때 「문서(spec) 칸을 끄는 도중 셸이 끝나도 끌기가 산다」가 곁에 있었다 — restart 02a-13이 spec 칸을 걷었다
+// (파일 탭 쪽은 아래 「셸과 파일 탭이 섞인 묶음」이 잰다).
 test.describe("끌기가 사는 경우", () => {
-  // 0 아닌 코드로 끝난 칸은 줄에 남는다(결정 48 · `markExited`) — 그 셸은 아직 있다.
-  test("끄는 셸이 0 아닌 코드로 끝나 줄에 남으면 끌기가 살고 분할이 켜진다", async ({ page }) => {
+  // 0 아닌 코드로 끝난 칸은 줄에 남는다(결정 48 · `markExited`) — 그 셸은 아직 있다. 한때 받침에 놓아 분할이 켜지는 것으로 끌기가
+  // 살았음을 봤다(restart 02a-13이 분할을 걷었다) — 이제 줄의 틈에 놓아 순서가 바뀌는 것으로 본다.
+  test("끄는 셸이 0 아닌 코드로 끝나 줄에 남으면 끌기가 살고 틈에 놓인다", async ({ page }) => {
     await openWork(page, ["하나", "둘"]);
 
     await pressAndCross(page, 0);
@@ -669,40 +632,12 @@ test.describe("끌기가 사는 경우", () => {
     await settle(page);
     await expect.poll(() => namesOf(page)).toHaveLength(2);
     await expect(page.locator("body")).toHaveClass(/dragging-row/);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
 
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await moveToGap(page, 2);
     await page.mouse.up();
 
-    await expect(page).toHaveURL(/split=lr/);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  // 문서 칸의 원천에는 셸이 없다 — 셸이 하나 끝났다고 문서 끌기가 끊기면 안 된다.
-  test("문서 칸을 끄는 도중 셸이 끝나도 끌기가 살고 분할이 켜진다", async ({ page }) => {
-    await openWork(page, ["하나", "둘"], { onSpec: true });
-
-    const spec = await page.locator('[data-tab="spec"]').boundingBox();
-    if (!spec) throw new Error("spec 칸의 상자를 못 읽었다");
-    await page.mouse.move(spec.x + spec.width / 2, spec.y + spec.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(spec.x + spec.width / 2 + 12, spec.y + spec.height / 2);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-
-    await exitShell(page, 1);
-    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
-    await settle(page);
-    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-
-    const half = await page.locator('[data-drop-half="right"]').boundingBox();
-    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
-    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
-    await page.mouse.up();
-
-    // 문서를 오른쪽에 떨구면 문서가 오른쪽 열이다(`dropSplit`).
-    await expect(page).toHaveURL(/split=rl/);
+    // 끝난 칸은 이름 뒤에 코드 꼬리표(「1」)를 단 채 끝 틈으로 옮겨 갔다.
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "하나1"]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });
@@ -762,8 +697,10 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
 
     // ⌘K의 Work 줄로 옆 work에 갔다 온다(사이드바 Work 줄은 그 Work의 Thread로 간다 — v1 티켓 37) — 앱 안의 이동이라 묶음(메모리)이
     // 산다.
+    // 옆 work에는 셸도 파일 탭도 없다 — 채팅이 없어 새 채팅 탭 하나만 선다(restart 02a-8).
     await 작업화면으로(page, plainWork);
-    await expect(bundleTabs(page)).toHaveCount(0);
+    await expect(bundleTabs(page)).toHaveCount(1);
+    await expect(page.locator('[data-tab-strip] > [data-tab="new-chat"]')).toHaveCount(1);
     await 작업화면으로(page, fileWork);
     await expect(page).toHaveURL(/tab=code&code=billing%2Fgone\.ts/);
     await expect.poll(() => namesOf(page)).toEqual(["main.ts", "둘", "README.md", "하나", "gone.ts"]);
@@ -771,9 +708,10 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // 번호는 **보이는 차례**다(스토리 48) — 셸이든 파일 탭이든 묶음의 n번째가 ⌘(n+1)이다. 끌어서 차례를 바꾸면 번호도 그 차례를
-  // 따른다. 셸에 포커스가 있어도 같다 — 본문을 옮기는 키는 셸이 타이핑하지 않고 창으로 흘린다(`shellHotkey`의 `app`).
-  test("셸 · 파일 · 셸에서 ⌘3이 파일 탭을, ⌘4가 둘째 셸을 고르고, 끌어 차례를 바꾸면 번호가 따라간다", async ({ page }) => {
+  // 번호는 **보이는 차례**다(스토리 48) — 셸이든 파일 탭이든 묶음의 n번째가 ⌘n이다(restart 02a-13 — 한때 ⌘1이 spec 칸이라 ⌘(n+1)이었다).
+  // 끌어서 차례를 바꾸면 번호도 그 차례를 따른다. 셸에 포커스가 있어도 같다 — 본문을 옮기는 키는 셸이 타이핑하지 않고 창으로
+  // 흘린다(`shellHotkey`의 `app`).
+  test("셸 · 파일 · 셸에서 ⌘2가 파일 탭을, ⌘3이 둘째 셸을 고르고, 끌어 차례를 바꾸면 번호가 따라간다", async ({ page }) => {
     await installFixtureBackend(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/works/${fileWork.slug}?tab=terminal`);
@@ -784,12 +722,12 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
     await nameTwoShells(page);
     await expect.poll(() => namesOf(page)).toEqual(["하나", "main.ts", "둘"]);
 
-    await page.keyboard.press("Meta+3");
+    await page.keyboard.press("Meta+2");
     await expect.poll(() => litName(page)).toBe("main.ts");
     await expect(page.getByRole("main", { name: MAIN, exact: true })).toBeVisible();
     await expect(page).toHaveURL(/tab=code&code=billing%2Fsrc%2Fmain\.ts/);
 
-    await page.keyboard.press("Meta+4");
+    await page.keyboard.press("Meta+3");
     await expect.poll(() => litName(page)).toBe("둘");
     await expect(page).toHaveURL(/tab=terminal/);
     await expect(page).not.toHaveURL(/code=/);
@@ -797,9 +735,9 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
     // 셸에 포커스가 든 채로도 같은 칸이다.
     await page.locator(".xterm-screen").click();
     await expect(셸입력(page)).toBeFocused();
-    await page.keyboard.press("Meta+3");
-    await expect.poll(() => litName(page)).toBe("main.ts");
     await page.keyboard.press("Meta+2");
+    await expect.poll(() => litName(page)).toBe("main.ts");
+    await page.keyboard.press("Meta+1");
     await expect.poll(() => litName(page)).toBe("하나");
 
     // 둘째 셸(셋째 칸)을 맨 앞 틈(0)으로 — 차례가 둘 · 하나 · main.ts가 된다.
@@ -808,13 +746,13 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
     await page.mouse.up();
     await expect.poll(() => namesOf(page)).toEqual(["둘", "하나", "main.ts"]);
 
-    // ⌘3이 이제 「하나」, ⌘4가 파일 탭, ⌘2가 「둘」이다. 옛 차례면 각각 파일 탭 · 「둘」 · 「하나」다.
-    await page.keyboard.press("Meta+3");
+    // ⌘2가 이제 「하나」, ⌘3이 파일 탭, ⌘1이 「둘」이다. 옛 차례면 각각 파일 탭 · 「둘」 · 「하나」다.
+    await page.keyboard.press("Meta+2");
     await expect.poll(() => litName(page)).toBe("하나");
-    await page.keyboard.press("Meta+4");
+    await page.keyboard.press("Meta+3");
     await expect.poll(() => litName(page)).toBe("main.ts");
     await expect(page.getByRole("main", { name: MAIN, exact: true })).toBeVisible();
-    await page.keyboard.press("Meta+2");
+    await page.keyboard.press("Meta+1");
     await expect.poll(() => litName(page)).toBe("둘");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });

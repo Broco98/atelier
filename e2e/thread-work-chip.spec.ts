@@ -42,12 +42,16 @@ async function shows(page: Page, placeholder: string) {
   await expect(입력칸(page)).toHaveAttribute("placeholder", placeholder);
 }
 
-/** 첫 말을 보낸다 — 새 Thread가 그 주소에 선다(본문이 그 Thread다). */
+/**
+ * 첫 말을 보낸다 — 새 Thread가 선다. 고정 답의 Thread는 작업공간(`picked`)에 이어 있어 그 작업공간 화면의 채팅 탭으로 선다(`/works/<slug>?tab=chat&thread=<id>`
+ * · 본문 카드 이름 「채팅」 — restart 02a-4, 한때 `/threads/<id>`에 그 Thread 이름의 본문으로 섰다).
+ */
 async function send(page: Page, text: string) {
   await 입력칸(page).fill(text);
   await 입력칸(page).press("Enter");
-  await expect(page).toHaveURL(`/threads/${FIXTURE_THREAD.id}`);
-  await expect(page.getByRole("main", { name: linked.title, exact: true })).toBeVisible();
+  await expect(page).toHaveURL(`/works/${linked.work}?tab=chat&thread=${FIXTURE_THREAD.id}`);
+  await expect(page.getByRole("main", { name: "채팅", exact: true })).toBeVisible();
+  await expect(page.locator('[data-tab="chat"]')).toContainText(linked.title);
 }
 
 const BACKEND = {
@@ -70,7 +74,7 @@ for (const url of ["/", "/?new=thread"]) {
     await expect(정도칩(page, "편집 자동")).toBeVisible();
     await send(page, typed);
     expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-      { text: typed, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null },
+      { text: typed, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null, quote: null },
     ]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -87,7 +91,7 @@ test("`?new=work`에 「새 작업공간」 칩과 빼기 단추가 서고 안�
 
   await send(page, typed);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: typed, attachments: [], link: { kind: "new-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null },
+    { text: typed, attachments: [], link: { kind: "new-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null, quote: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -137,17 +141,19 @@ test("×가 칩을 빼고 주소를 `/?new=thread`로 바꾸며 고른 범위 ·
   // 뺀 뒤의 첫 말은 작업공간 없이, 고른 것과 함께 간다.
   await send(page, typed);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: typed, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "plan", model: null, effort: null, service: { slug: PAYMENTS.slug }, project: null },
+    { text: typed, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "plan", model: null, effort: null, service: { slug: PAYMENTS.slug }, project: null, quote: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("`?work=`에 그 작업공간의 잠긴 칩이 서서 누르면 그리로 가고, 안내가 그 이름을 부르며 정도 칩이 그 작업공간의 값이고, 첫 말이 그 작업공간으로 간다", async ({
+test("`?work=`는 그 작업공간의 새 채팅 탭에 잠긴 칩을 세우고, 안내가 그 이름을 부르며 정도 칩이 그 작업공간의 값이고, 첫 말이 그 작업공간으로 간다", async ({
   page,
 }) => {
   // 기본 정도(「편집 자동」)와 다른 값이라야 칩이 그 작업공간의 값을 읽었는지 갈린다.
   await installFixtureBackend(page, { ...BACKEND, thread_work_mode: answerByArg("work", { [picked.slug]: "plan" }) });
   await open(page, `/?work=${picked.slug}`);
+  // `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — 한때 홈에 그 작업공간의 잠긴 칩을 세웠다). 같은 새 채팅 몸이라 칩 · 안내 · 정도는 같다.
+  await expect(page).toHaveURL(`/works/${picked.slug}?tab=chat`);
 
   await expect(잠긴칩(page)).toHaveAccessibleName(`작업공간으로 가기: ${picked.title}`);
   await expect(잠긴칩(page)).toHaveText(picked.title);
@@ -156,16 +162,12 @@ test("`?work=`에 그 작업공간의 잠긴 칩이 서서 누르면 그리로 �
   await expect.poll(() => ipcArgs(page, "thread_work_mode", "work")).toEqual([{ work: picked.slug }]);
   await expect(정도칩(page, "계획")).toBeVisible();
 
-  await 잠긴칩(page).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${picked.slug}`));
-  await page.goBack();
-  await expect(첫화면(page)).toBeVisible();
-  await expect(잠긴칩(page)).toHaveAccessibleName(`작업공간으로 가기: ${picked.title}`);
+  // 한때 잠긴 칩을 눌러 그 작업공간으로 갔다가 뒤로 와 홈을 다시 봤다 — 이제 그 작업공간 화면 안이라 갈 곳이 그 자리다.
 
   // 고르지 않은 정도는 `null`이다 — 엔진이 그 Work의 정도를 쓴다. 고르지 않은 범위도 `null`이다 — 이은 Work의 Service를 건드리지 않는다.
   await send(page, typed);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: typed, attachments: [], link: { kind: "work", slug: picked.slug }, runtime: "claude-code", mode: null, model: null, effort: null, service: null, project: null },
+    { text: typed, attachments: [], link: { kind: "work", slug: picked.slug }, runtime: "claude-code", mode: null, model: null, effort: null, service: null, project: null, quote: null },
   ]);
   expect(await ipcCallArgs(page, "thread_set_mode", "thread")).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);

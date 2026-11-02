@@ -1,9 +1,9 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SpecLayoutState } from "@/features/spec-layout/types";
-import { askBackend, callCount, installRealBackend, unknownIpcCalls, 사람메뉴로간다 } from "./harness";
+import { askBackend, callCount, installRealBackend, unknownIpcCalls, 가는곳으로간다 } from "./harness";
 import type { Page } from "./evidence";
-import { expect, seedLayout, seedWork, test } from "./l4";
+import { expect, seedLayout, seedWork, test, 패널트리 } from "./l4";
 
 // spec 레이아웃 티켓 08 — **설정의 레이아웃 행이 엔진의 상태를 그린다.**
 //
@@ -101,12 +101,13 @@ test("되돌리면 다리가 레이아웃 폴더를 지우고, 무효화가 다�
   writeFileSync(join(atelier, "메모.md"), "사람이 둔 메모\n");
   await installRealBackend(page, sandbox);
 
+  // 화면은 패널 트리의 차례로 본다 — 작업공간을 열어도 기본 문서를 열지 않는다(restart 02a-13. 한때 본문에 선 기본 문서의 글을 보았다).
   await page.goto("/works/첫째");
-  await expect(page.getByText("계획의 본문이다.")).toBeVisible();
+  await expect.poll(() => 패널트리(page)).toEqual(["plan.md", "overview.md"]);
 
   // 앱 안에서 설정으로 간다 — 새로 읽으면 캐시가 사라져 무효화를 잴 수 없다.
   const aside = page.locator("aside");
-  await 사람메뉴로간다(page, "Settings");
+  await 가는곳으로간다(page, "Settings");
   await aside.getByRole("button", { name: "spec 레이아웃", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout");
   const 행 = page.locator("main li").filter({ has: page.getByText("Atelier", { exact: true }) });
@@ -131,11 +132,10 @@ test("되돌리면 다리가 레이아웃 폴더를 지우고, 무효화가 다�
   // 감시자 없이도 work 목록이 다시 불렸다 — 되돌린 쪽의 무효화다
   await expect.poll(() => callCount(page, "list_works")).toBeGreaterThan(listed);
 
-  // 돌아간 work 화면은 그 목록의 트리를 따른다 — `overview.md`가 다시 기본 문서다.
+  // 돌아간 work 화면은 그 목록의 트리를 따른다 — `overview.md`가 다시 맨 앞(기본 문서)이다. 작업공간 주소는 채팅 탭을 단다(restart 02a-13).
   await aside.getByRole("button", { name: "앱으로 돌아가기", exact: true }).click();
-  await expect(page).toHaveURL(`/works/${encodeURIComponent("첫째")}`);
-  await expect(page.getByText("첫째 작업의 개요다.")).toBeVisible();
-  await expect(page.getByText("계획의 본문이다.")).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/works/${encodeURIComponent("첫째")}`);
+  await expect.poll(() => 패널트리(page)).toEqual(["overview.md", "plan.md"]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

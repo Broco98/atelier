@@ -681,3 +681,33 @@ describe("흐르는 글", () => {
     expect(markup).toContain("생각 중");
   });
 });
+
+// 대기 중에 끼어든 말(restart 02b-2 · Cards 「대기 중에 끼어든 말」 · 스토리 70) — 대기 줄의 「지금 보내기」로 하던 턴을 끊고 들어간 말은 엔진이 `sent` 줄에
+// `sendNow`로 적는다. 흐름은 그 말풍선 아래에 「하던 일을 멈추고 보냄」을 세워 차례대로 간 말과 가른다. 바탕은 축복한 두 턴짜리 기록이다.
+describe("끼어든 말", () => {
+  const twoTurns = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-two-turns.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  /** 둘째 보낸 말을 「지금 보내기」로 보낸 기록. */
+  const interjected = (() => {
+    let sents = 0;
+    return twoTurns.map((line) =>
+      line.kind === "sent" && (sents += 1) === 2 ? { ...line, payload: { ...(line.payload as object), sendNow: true } } : line,
+    );
+  })();
+  const flow = (lines: readonly RecordLine[]) => renderToStaticMarkup(<ThreadFlow thread="끼어든-말" model={foldThread(lines)} runtime="Claude Code" />);
+  const NOTE = "하던 일을 멈추고 보냄";
+  const second = (lines: readonly RecordLine[]) =>
+    (lines.filter((line) => line.kind === "sent")[1].payload as { text: string }).text;
+
+  it("「지금 보내기」로 보낸 말은 말풍선 아래에 그렇게 보낸 말이라고 선다", () => {
+    const markup = flow(interjected);
+    expect(markup.split(NOTE)).toHaveLength(2);
+    expect(markup.indexOf(NOTE)).toBeGreaterThan(markup.indexOf(second(interjected)));
+  });
+
+  it("차례대로 간 말에는 서지 않는다", () => {
+    expect(flow(twoTurns)).not.toContain(NOTE);
+  });
+});

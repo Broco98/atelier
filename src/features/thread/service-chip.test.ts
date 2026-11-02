@@ -88,17 +88,14 @@ const SHOWN_PROJECT = { ...PROJECT, name: "API 서버" };
 // 03 코드 리뷰 P14 — 칩 · 머리 줄의 Service는 읽는 범위가 싣는 Service다(§7 「명령 하나가 화면에 범위를 준다」). 화면이 Work · Service 목록으로
 // 다시 세지 않는다 — 곁의 범위 줄과 늘 같은 값이다.
 describe("범위 칩의 갈래", () => {
-  it("범위가 없으면 흐린 빈 칩이다", () => {
-    expect(scopeChip(null, false)).toEqual({ kind: "ghost" });
+  it("범위가 없으면 흐린 「범위 없음」 칩이다", () => {
+    expect(scopeChip(null)).toEqual({ kind: "ghost" });
   });
 
-  it("고르면 흰 칩에 이름과 × — 빼기다(「Service를 고름」 칸)", () => {
-    expect(scopeChip(SHOWN_SERVICE, false)).toEqual({ kind: "on", of: "service", slug: "결제-서비스", name: "결제 서비스", end: "remove" });
-    expect(scopeChip(SHOWN_PROJECT, false)).toEqual({ kind: "on", of: "project", slug: "api-server", name: "API 서버", end: "remove" });
-  });
-
-  it("바꾸는 것이 Work의 Service면 × 대신 ▾ — 빼기도 메뉴에서만 한다(「최근 작업공간을 고름」 칸)", () => {
-    expect(scopeChip(SHOWN_SERVICE, true)).toEqual({ kind: "on", of: "service", slug: "결제-서비스", name: "결제 서비스", end: "menu" });
+  // Composer 「새 채팅 · 범위 트레이」 — 고른 범위도 같은 칩에 이름과 ▾다. 빼기는 메뉴의 「범위 없음」이고 ×는 「새 작업공간」 칩에만 있다.
+  it("고르면 그 이름과 글리프의 칩이다 — Service는 층, Project는 폴더", () => {
+    expect(scopeChip(SHOWN_SERVICE)).toEqual({ kind: "on", of: "service", slug: "결제-서비스", name: "결제 서비스" });
+    expect(scopeChip(SHOWN_PROJECT)).toEqual({ kind: "on", of: "project", slug: "api-server", name: "API 서버" });
   });
 });
 
