@@ -1254,11 +1254,10 @@ impl ConversationHost {
             Some(slug) => {
                 let work_at = self.open_work(slug)?;
                 let trees: Vec<PathBuf> = work_at.places.worktrees.iter().filter(|tree| tree.is_dir()).cloned().collect();
-                let place = match trees.as_slice() {
-                    [] => SessionPlace { cwd: work_at.places.spec.clone(), additional_directories: Vec::new() },
-                    [tree] => SessionPlace { cwd: tree.clone(), additional_directories: vec![work_at.places.spec.clone()] },
-                    _ => SessionPlace { cwd: work_at.places.trees.clone(), additional_directories: vec![work_at.places.spec.clone()] },
-                };
+                // 작업 폴더의 규칙은 코어 한 자리다(`WorkPlaces::cwd`) — 「@」 언급의 상대 경로가 같은 자리를 기준으로 선다.
+                let cwd = work_at.places.cwd();
+                let spec = if cwd == work_at.places.spec { Vec::new() } else { vec![work_at.places.spec.clone()] };
+                let place = SessionPlace { cwd, additional_directories: spec };
                 (place, Some(work_at.meta), trees)
             }
         };

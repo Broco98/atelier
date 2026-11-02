@@ -94,6 +94,16 @@ const HANDLERS: &[(&str, Handler)] = &[
             maybe_text(a, "project").as_deref(),
         ))
     }),
+    // 「@」 언급이 찾는 파일(restart 02b-3) — 읽기만 하는 core 입구다(`commands.rs`와 같다). 진짜 git이 걸린 파일을 가른다.
+    ("mention_files", |a| {
+        ok(atelier_core::mention_files(
+            &data_root(),
+            maybe_text(a, "thread").as_deref(),
+            maybe_text(a, "work").as_deref(),
+            maybe_text(a, "service").as_deref(),
+            maybe_text(a, "project").as_deref(),
+        ))
+    }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
     // **진짜로** 탄다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
     ("list_works", |_| {
@@ -555,7 +565,7 @@ mod tests {
 
     /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
     /// core 쪽에 서면 이 표를 읽는다. Thread의 파일 모양(`threads.rs` …)이 여기 산다.
-    const CORE_SOURCES: [(&str, &str); 35] = [
+    const CORE_SOURCES: [(&str, &str); 36] = [
         ("aside.rs", include_str!("../../atelier-core/src/aside.rs")),
         ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
         ("attachments.rs", include_str!("../../atelier-core/src/attachments.rs")),
@@ -573,6 +583,7 @@ mod tests {
         ("layout/store.rs", include_str!("../../atelier-core/src/layout/store.rs")),
         ("layout/work_trees.rs", include_str!("../../atelier-core/src/layout/work_trees.rs")),
         ("lib.rs", include_str!("../../atelier-core/src/lib.rs")),
+        ("mention.rs", include_str!("../../atelier-core/src/mention.rs")),
         ("order.rs", include_str!("../../atelier-core/src/order.rs")),
         ("paths.rs", include_str!("../../atelier-core/src/paths.rs")),
         ("policy_file.rs", include_str!("../../atelier-core/src/policy_file.rs")),

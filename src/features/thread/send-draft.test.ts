@@ -7,7 +7,8 @@ import { threadApi } from "./api";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { forgetNewChat, newChatKey } from "./new-chat";
 import { sendDraft } from "./send-draft";
-import { setDraft, setQuote, threadUiStore } from "./thread-store";
+import { insertMention, mentionQuery } from "./mentions";
+import { addMention, setDraft, setQuote, threadUiStore } from "./thread-store";
 import type { Attachment, StartPicks, ThreadLink } from "./types";
 
 // 엔진은 앱 명령으로만 닿는다 — 채팅을 세우는 명령의 답(id · 거절)을 시험이 정한다.
@@ -87,5 +88,41 @@ describe("새 채팅 탭의 첫 말과 인용", () => {
     const screen = read("ThreadScreen.tsx");
     expect(screen).toContain("const start = async (text: string, attachments: readonly Attachment[], quote: Quote | null) => {");
     expect(screen).toContain("threadApi.start(text, attachments, link, { ...picks, mode, ...startScope(link, hold, shown) }, quote)");
+  });
+});
+
+// restart 02b-3 · 구현 스펙 「02b — 대화창」 — 「@」 메뉴로 넣은 언급은 입력칸 글의 한 조각이다. 보낼 때는 글 그대로 간다 — 언급을 첨부나 다른
+// 모양으로 바꾸지 않는다(Runtime이 `@경로`를 읽는다).
+describe("「@」 언급을 넣은 말", () => {
+  const key = newChatKey(9002);
+  const link: ThreadLink = { kind: "work", slug: "refund" };
+  const picks: StartPicks = { runtime: "claude-code", mode: null, model: null, effort: null, service: null, project: null };
+
+  afterEach(() => {
+    forgetNewChat(key);
+    invoke.mockReset();
+  });
+
+  it("넣은 `@상대경로` · `@절대경로`가 쓴 글 그대로 가고 첨부는 붙지 않는다", async () => {
+    let draft = "@wat 재시도 간격이랑 @lib 같이 봐 줘";
+    // 친 낱말 끝에 커서를 두고 메뉴에서 고른다 — 작업 폴더의 파일 하나, 범위의 Project 파일 하나.
+    for (const [typed, path] of [
+      ["@wat", "src-tauri/src/watcher.rs"],
+      ["@lib", "/Users/tester/dev/billing/src/lib.rs"],
+    ] as const) {
+      const next = insertMention(draft, mentionQuery(draft, draft.indexOf(typed) + typed.length)!, path);
+      draft = next.draft;
+      setDraft(key, draft);
+      addMention(key, next.mention);
+    }
+    invoke.mockResolvedValueOnce("20261103-090002");
+    await sendDraft(key, (text, attachments, quote) => threadApi.start(text, attachments, link, picks, quote).then(() => {}));
+    expect(invoke).toHaveBeenCalledWith(
+      "thread_start",
+      expect.objectContaining({
+        text: "@src-tauri/src/watcher.rs 재시도 간격이랑 @/Users/tester/dev/billing/src/lib.rs 같이 봐 줘",
+        attachments: [],
+      }),
+    );
   });
 });

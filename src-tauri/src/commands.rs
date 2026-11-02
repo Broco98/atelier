@@ -190,6 +190,23 @@ pub async fn reading_scope(
     atelier_core::reading_scope_of(&data_root(), thread.as_deref(), work.as_deref(), service.as_deref(), project.as_deref()).map_err(err)
 }
 
+/// 입력창의 「@」 언급이 찾는 파일(restart 02b-3) — 작업 폴더 · spec 폴더 · 읽는 범위의 Project와 그 안의 파일. 인자는 `reading_scope`와 같은
+/// slug들이고 경로를 받지 않는다. 자리마다 `git ls-files`를 기다리거나 폴더를 걷으므로 work 목록처럼 blocking 풀에서 돈다 — 범위 없음은 등록된
+/// Project 전부다.
+#[tauri::command]
+pub async fn mention_files(
+    thread: Option<String>,
+    work: Option<String>,
+    service: Option<String>,
+    project: Option<String>,
+) -> CmdResult<Vec<atelier_core::MentionPlace>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::mention_files(&data_root(), thread.as_deref(), work.as_deref(), service.as_deref(), project.as_deref()).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("언급할 파일을 찾지 못했습니다: {e}"))?
+}
+
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
 // 규칙은 코어의 `with_spec_trees` 한 자리에 있고 여기는 그것을 부르기만 한다 — L4 다리도 같은
 // 입구를 부른다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
@@ -1323,6 +1340,7 @@ mod tests {
     /// - `update_project` · `relocate_project`(03 티켓 10 · 09): 기준 브랜치 검사 · 새 자리의 뿌리를 git에게 묻는다.
     /// - `check_service`(03 티켓 04): 고치기 화면이 칠 때마다 Service 파일 전부와 등록부를 읽는다.
     /// - `service_usage`(03 티켓 07): Work 파일 전부와 Thread 파일 전부를 읽는다.
+    /// - `mention_files`(restart 02b-3): 찾는 자리마다 `git ls-files`를 기다리거나 폴더를 걷는다 — 범위 없음은 등록된 Project 전부다.
     ///
     /// Thread 명령(`thread_work_prs`도 — v1 티켓 36, `gh`를 기다리고 `pr` 줄을 남기는 것이 엔진이다)은 여기 없다 — 어느 엔진 부름이
     /// 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을 blocking 풀에서 기다린다. 길은
@@ -1351,6 +1369,7 @@ mod tests {
             ("relocate_project", "atelier_core::relocate_project(", "relocate_project("),
             ("check_service", "atelier_core::draft_service(", "draft_service("),
             ("service_usage", "atelier_core::service_usage(", "service_usage("),
+            ("mention_files", "atelier_core::mention_files(", "mention_files("),
         ] {
             let body = command_body(command);
             let blocking = body

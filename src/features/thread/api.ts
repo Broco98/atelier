@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Quote } from "@/features/works/QuotePick";
+import type { ScopeOf } from "@/features/services/scope";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { MentionPlace } from "./mentions";
 import {
   THREAD_CHUNK_EVENT,
   THREAD_ENGINE_EVENT,
@@ -40,6 +42,12 @@ import type {
 // **인자 객체가 평평해야 한다** — 객체 인자는 IPC 검사가 칸을 못 잰다. 이어 갈 곳(`link`)처럼 객체를 싣는 날에는 먼저 짓고 이름으로
 // 넘긴다. 이 명령들은 L4 다리로 탈 수 없다(엔진이 앱 프로세스의 상태다) — 다리는 거절한다.
 export const threadApi = {
+  /**
+   * 「@」 언급이 찾는 자리와 파일(restart 02b-3) — 작업 폴더 · spec 폴더 · 읽는 범위의 Project. 채팅이면 그 채팅의 자리, 새 채팅이면 입력창이 쥔
+   * Work · Service · Project의 자리다(읽는 범위와 같은 인자). 경로를 넘기지 않는다 — core가 slug로 푼다. 엔진을 지나지 않는 읽기다.
+   */
+  mentionFiles: ({ thread, work, service, project }: ScopeOf) =>
+    invoke<MentionPlace[]>("mention_files", { thread: thread ?? null, work: work ?? null, service: service ?? null, project: project ?? null }),
   /** 그 Runtime을 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 찾기」 · 「다시 확인」이다(로그인 환경을 새로 읽는다). */
   checkEngine: (runtime: Runtime, reread: boolean) => invoke<EngineCheck>("thread_check_engine", { runtime, reread }),
   /**

@@ -347,6 +347,8 @@ function NewChat({
         }
       }
       commands={[]}
+      // 「@」 언급은 쥔 범위로 센 자리에서 찾는다 — 범위 줄과 같은 인자다(restart 02b-3). 작업공간이 없으면 작업 폴더도 없어 모두 절대 경로다.
+      mentions={{ work, ...scopeArgs(held) }}
       running={false}
       busy={starting !== null}
       checking={engine.checking}
@@ -1089,6 +1091,8 @@ function ThreadBody({
               mode={withActions(chips.mode, pickLevel, pickCodexMode)}
               model={modelChoice}
               commands={lists.commands}
+              // 「@」 언급은 그 채팅의 자리에서 찾는다 — 작업 폴더 · spec 폴더 · 읽는 범위의 Project(restart 02b-3).
+              mentions={{ thread }}
               running={model.running}
               onSend={send}
               onStop={() => threadApi.stop(thread)}

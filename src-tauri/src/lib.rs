@@ -474,6 +474,7 @@ pub fn run() {
             commands::check_service,
             commands::save_service_text,
             commands::reading_scope,
+            commands::mention_files,
             commands::service_usage,
             commands::open_project_folder,
             commands::list_works,

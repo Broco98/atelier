@@ -139,9 +139,23 @@ interface UiState {
   filled: string | null;
   /** Thread마다 입력창에 붙은 인용(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글. 하나만 붙는다 — 새로 고르면 갈아 끼운다. */
   quotes: Readonly<Record<string, Quote>>;
+  /**
+   * Thread마다 「@」 메뉴로 넣은 언급(restart 02b-3) — 입력칸이 이 글들을 언급 칠로 그린다(`paintMentions`). 글에서 지워지거나 고쳐진 것은 칠하지
+   * 않을 뿐 남아 있다 — 새로 넣을 때 글에 없는 것을 걷는다. 보내는 글은 입력칸의 글 그대로다.
+   */
+  mentions: Readonly<Record<string, readonly string[]>>;
 }
 
-export const threadUiStore = new Store<UiState>({ drafts: {}, expanded: {}, filled: null, quotes: {} });
+export const threadUiStore = new Store<UiState>({ drafts: {}, expanded: {}, filled: null, quotes: {}, mentions: {} });
+
+/** 「@」 메뉴로 넣은 언급을 적는다 — 그 입력칸의 글에서 사라진 앞의 언급은 걷는다. 부르기 전에 넣은 글을 먼저 적는다(`setDraft`). */
+export function addMention(thread: string, mention: string): void {
+  threadUiStore.setState((state) => {
+    const draft = state.drafts[thread] ?? "";
+    const kept = (state.mentions[thread] ?? []).filter((one) => one !== mention && draft.includes(one));
+    return { ...state, mentions: { ...state.mentions, [thread]: [...kept, mention] } };
+  });
+}
 
 export function setDraft(thread: string, text: string): void {
   threadUiStore.setState((state) => ({ ...state, drafts: { ...state.drafts, [thread]: text } }));

@@ -3,6 +3,7 @@ import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { ReadingScope } from "@/features/services/scope";
+import type { MentionPlace } from "@/features/thread/mentions";
 import type { DeletedService, RestoredService, Service, ServiceDetail, ServiceDraft, ServiceUsage } from "@/features/services/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
@@ -152,6 +153,16 @@ export const SCOPE_ALL: ReadingScope = {
   kind: "all",
   registered: PROJECTS.length,
 };
+
+/**
+ * 「@」 언급이 찾는 자리와 파일(restart 02b-3 — core `mention_files`가 짓는 모양) — 작업 폴더(상대 경로) · spec 폴더 · 읽는 범위의 Project(절대
+ * 경로). 경로는 꾸민 값이다. 자리마다 다른 답을 재는 검사는 이 답을 갈아 끼운다.
+ */
+export const MENTION_PLACES: MentionPlace[] = [
+  { name: null, root: "", files: ["README.md", "src-tauri/src/watcher.rs", "src/features/works/watcher.test.ts"] },
+  { name: "spec", root: "/Users/tester/.atelier/works/refund/spec/", files: ["overview.md"] },
+  { name: "빌링", root: "/Users/tester/dev/billing/", files: ["src/lib.rs"] },
+];
 
 /** Service 상세의 답 — 그 Service와 함께 쓰는 Service(core `service_detail`이 짓는 모양). */
 export const SERVICE_DETAILS: Record<string, ServiceDetail> = {
@@ -1075,6 +1086,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   save_service_text: SERVICES[0],
   // 읽는 범위(03 §7) — 요약 카드 「소스」가 Thread를 열 때마다 읽는다.
   reading_scope: SCOPE_ALL,
+  // 「@」 언급(restart 02b-3) — 입력칸에 `@` 낱말이 서면 읽는다.
+  mention_files: MENTION_PLACES,
   // Service 지우기 확인 창의 쓰임(03 티켓 07) — 쓰는 곳이 없는 갈래(「Project와 파일은 그대로예요.」)다. 수를 재는 시험은 이 답을 갈아 끼운다.
   service_usage: { works: 0, threads: 0 } satisfies ServiceUsage,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는

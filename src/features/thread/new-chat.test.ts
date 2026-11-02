@@ -9,7 +9,7 @@ import { NEW_THREAD, setDraft, setQuote, threadUiStore } from "./thread-store";
 const file = (path: string) => ({ path, folder: false, size: 1 });
 
 afterEach(() => {
-  threadUiStore.setState(() => ({ drafts: {}, expanded: {}, filled: null, quotes: {} }));
+  threadUiStore.setState(() => ({ drafts: {}, expanded: {}, filled: null, quotes: {}, mentions: {} }));
   attachmentStore.setState(() => ({}));
 });
 
