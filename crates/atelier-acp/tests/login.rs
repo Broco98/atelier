@@ -9,7 +9,7 @@ mod common;
 
 use std::sync::Arc;
 
-use atelier_acp::{Agent, EngineCheck, EngineState, FoundProgram, LoginProgress};
+use atelier_acp::{Agent, EngineCheck, EngineState, FoundProgram, LoginProgress, MissingProgram};
 use common::{assert_all_gone, login_pids, Sandbox, NO_BROWSER};
 use serde_json::json;
 
@@ -33,8 +33,8 @@ fn claude_auth_status가_loggedin_false로_exit_1이면_엔진_확인이_로그�
     assert_eq!(
         events.engine_states(),
         [
-            EngineState { agent: Agent::Claude, found: true, logged_in: Some(false), login: None },
-            EngineState { agent: Agent::Claude, found: true, logged_in: Some(true), login: None },
+            EngineState { agent: Agent::Claude, found: true, logged_in: Some(false), login: None, missing: vec![] },
+            EngineState { agent: Agent::Claude, found: true, logged_in: Some(true), login: None, missing: vec![] },
         ],
         "확인한 엔진 상태가 엔진 상태 이벤트로도 나간다"
     );
@@ -64,18 +64,29 @@ fn 못_찾은_엔진은_로그인을_묻지_않고_엔진_상태가_못_찾음�
     ));
 
     assert!(matches!(host.check_engine(Agent::Claude, false), Ok(EngineCheck::Missing { .. })));
-    assert_eq!(events.engine_states(), [EngineState { agent: Agent::Claude, found: false, logged_in: None, login: None }]);
+    let claude = MissingProgram { name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" };
+    assert_eq!(
+        events.engine_states(),
+        [EngineState { agent: Agent::Claude, found: false, logged_in: None, login: None, missing: vec![claude] }],
+        "빠진 것과 설치 명령도 싣는다 — 세션을 열다 못 찾은 때와 같은 꼴이다(restart 01c-9)"
+    );
 }
 
 const CODEX_URL: &str = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=fake-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=fake-state";
 const CLAUDE_URL: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=fake-client&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=fake-state";
 
 fn running(agent: Agent, url: Option<&str>) -> EngineState {
-    EngineState { agent, found: true, logged_in: None, login: Some(LoginProgress::Running { url: url.map(str::to_owned) }) }
+    EngineState { agent, found: true, logged_in: None, login: Some(LoginProgress::Running { url: url.map(str::to_owned) }), missing: vec![] }
 }
 
 fn ended(agent: Agent, logged_in: bool, cancelled: bool, exit_code: Option<i32>) -> EngineState {
-    EngineState { agent, found: true, logged_in: Some(logged_in), login: Some(LoginProgress::Ended { cancelled, exit_code }) }
+    EngineState {
+        agent,
+        found: true,
+        logged_in: Some(logged_in),
+        login: Some(LoginProgress::Ended { cancelled, exit_code }),
+        missing: vec![],
+    }
 }
 
 fn has_ended(states: &[EngineState]) -> bool {

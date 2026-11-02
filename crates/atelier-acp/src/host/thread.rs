@@ -58,7 +58,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    claude_launch, codex_launch, end_together, find_programs, mark_taken, record_opened, ClaudeChoice, Conv, ConversationHost,
+    claude_launch, codex_launch, end_together, mark_taken, record_opened, ClaudeChoice, Conv, ConversationHost,
     Draft, FlowChunk, HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
 };
 use crate::discovery::{Agent, FoundProgram};
@@ -410,7 +410,7 @@ impl ConversationHost {
             ThreadLink::NoWork | ThreadLink::NewWork => None,
         };
         let env = self.login_env(false)?;
-        find_programs(picks.runtime.into(), &env)?;
+        self.find_programs(picks.runtime.into(), &env)?;
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
         // 고른 Service — Work 없는 Thread는 제 파일에, 이은 Work는 그 Work에 적는다(S4). Work의 것은 Thread를 세우기 전에 바꾼다 — 새 Thread는
@@ -1023,7 +1023,7 @@ impl ConversationHost {
         let file = self.read_thread_file(thread)?;
         let runtime = runtime_of(thread, &file)?;
         let env = self.login_env(false)?;
-        let programs = find_programs(runtime.into(), &env)?;
+        let programs = self.find_programs(runtime.into(), &env)?;
         let conv = match self.threads.take(thread) {
             Some(mut session) => {
                 end_together(vec![(&mut session.agent, &*session.conv)]);

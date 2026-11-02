@@ -78,6 +78,11 @@ export interface ThreadComposerProps {
   stopped?: boolean;
   /** 보내는 중이라 입력을 받지 않는다(새 Thread의 첫 말 — Session이 열릴 때까지). */
   busy?: boolean;
+  /**
+   * 고른 Runtime을 확인하는 중이라 보내기를 잠근다(restart 01c-9 — 새 채팅, 최대 20초). 쓰기와 Runtime 고르기는 그대로다 — 보내면 Runtime이 잠겨
+   * 안내 카드의 바꾸는 단추가 사라지기 때문에 보내기만 잠근다.
+   */
+  checking?: boolean;
   /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창(과 그 안의 칩) 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
   card?: ReactNode;
   /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
@@ -107,6 +112,7 @@ function ThreadComposer({
   running,
   stopped = false,
   busy = false,
+  checking = false,
   card,
   above,
   onSend,
@@ -212,7 +218,7 @@ function ThreadComposer({
 
   const send = () => {
     const text = draft.trim();
-    if (text === "" || busy) return;
+    if (text === "" || busy || checking) return;
     const attached = attachments;
     const quoted = quote;
     setDraft(draftKey, "");
@@ -335,7 +341,7 @@ function ThreadComposer({
               {runtime && <RuntimeChip value={runtime.value} onPick={busy ? undefined : runtime.onPick} />}
               {model && <ModelChip {...model} running={running} open={choosingModel} onOpenChange={setChoosingModel} />}
             </span>
-            <SendButton running={running} empty={empty} busy={busy} onStop={onStop && stop} />
+            <SendButton running={running} empty={empty} busy={busy} locked={checking} onStop={onStop && stop} />
           </div>
         </form>
       ))}
@@ -384,11 +390,14 @@ function SendButton({
   running,
   empty,
   busy,
+  locked,
   onStop,
 }: {
   running: boolean;
   empty: boolean;
   busy: boolean;
+  /** 보내기를 잠근다 — 글리프는 ↑ 그대로고 원이 옅다(빈 칸과 같다). */
+  locked: boolean;
   onStop?: () => void;
 }) {
   const glyph: SendGlyph = busy ? "sending" : running && empty && onStop ? "stop" : "send";
@@ -402,11 +411,11 @@ function SendButton({
       type={stop ? "button" : "submit"}
       aria-label={glyph === "sending" ? "보내는 중" : stop ? "멈추기" : "보내기"}
       onClick={stop ? onStop : undefined}
-      disabled={glyph === "sending" || (glyph === "send" && empty)}
+      disabled={glyph === "sending" || (glyph === "send" && (empty || locked))}
       className={cn(
         "relative flex size-7 shrink-0 items-center justify-center rounded-full text-fg-on-solid transition-[background-color,opacity] duration-morph ease-default focus-ring",
         glyph === "sending" ? "bg-accent-solid-pending" : "bg-accent-solid",
-        glyph === "send" && empty && "opacity-40",
+        glyph === "send" && (empty || locked) && "opacity-40",
       )}
     >
       {shown.before !== null && <SendFace key={`${shown.before}>${shown.now}`} glyph={shown.before} motion="morph-out" />}

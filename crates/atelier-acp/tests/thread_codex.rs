@@ -850,7 +850,7 @@ fn 로그인이_풀린_codex_채팅의_로그인_필요는_codex의_것으로_�
     assert_eq!(record.last().unwrap()["payload"], json!({"state": "login-required"}), "{}", common::lines_text(&record));
     assert_eq!(
         events.engine_states(),
-        [EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), login: None }],
+        [EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), login: None, missing: vec![] }],
         "Claude의 엔진 상태는 건드리지 않는다 — Claude 채팅에 로그인 카드가 서지 않는다"
     );
 
@@ -859,4 +859,49 @@ fn 로그인이_풀린_codex_채팅의_로그인_필요는_codex의_것으로_�
     assert_eq!(common::opened_hows(&sandbox.thread_record(&thread)), ["new"], "Codex를 다시 확인하면 기다리던 채팅이 뜬다");
     assert!(host.thread(&thread).unwrap().live);
     host.shut_down();
+}
+
+// ── Runtime 없음(restart 01c-9) ─────────────────────────────────────────────────────
+//
+// 스펙 「01c — Codex」 Runtime 없음 — 선 채팅은 세션을 열 때 확인한다. 열다 못 찾으면 그 Runtime의 엔진 상태가 빠진 것과 함께 알려져, 화면이
+// 그 채팅의 입력창 자리에 설치 안내 카드를 세운다. Claude 엔진 상태는 건드리지 않는다.
+
+/// Codex를 찾지 못하는 로그인 셸 — PATH에 가짜 claude만 있다.
+fn claude_only_shell(sandbox: &Sandbox) -> atelier_acp::ShellSource {
+    sandbox.claude_login_shell("normal", &[])
+}
+
+/// 그 엔진 상태가 그 Runtime의 「못 찾음」이고 빠진 것에 `codex-acp`가 드나.
+fn codex_missing(states: &[EngineState]) -> bool {
+    matches!(states, [state] if state.agent == Agent::Codex
+        && !state.found
+        && state.logged_in.is_none()
+        && state.missing.iter().any(|program| program.name == "codex-acp"))
+}
+
+#[test]
+fn codex를_찾지_못하면_새_채팅을_열_때_codex의_못_찾음이_빠진_것과_함께_알려진다() {
+    let sandbox = Sandbox::new();
+    let (host, events) = sandbox.host_with_events(claude_only_shell(&sandbox));
+
+    let started = host.start_thread_picking("첫 말", &[], ThreadLink::NoWork, codex());
+    assert!(matches!(started, Err(HostError::EngineMissing { agent: Agent::Codex, .. })), "{started:?}");
+    let states = events.engine_states();
+    assert!(codex_missing(&states), "Codex의 것 하나만 알린다: {states:?}");
+}
+
+#[test]
+fn 선_codex_채팅은_세션을_열_때_찾지_못하면_codex의_못_찾음이_알려진다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[]));
+    let thread = host.start_thread_picking("Reply with exactly one word: ok", &[], ThreadLink::NoWork, codex()).expect("첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    // 앱을 다시 켰는데 codex-acp가 사라졌다 — 다음 말이 세션을 열다 못 찾는다.
+    let (host, events) = sandbox.host_with_events(claude_only_shell(&sandbox));
+    let sent = host.send_to_thread(&thread, "다음 말");
+    assert!(matches!(sent, Err(HostError::EngineMissing { agent: Agent::Codex, .. })), "{sent:?}");
+    let states = events.engine_states();
+    assert!(codex_missing(&states), "Codex의 것 하나만 알린다: {states:?}");
 }

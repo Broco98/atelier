@@ -155,29 +155,48 @@ mod tests {
             found: true,
             logged_in: Some(false),
             login: None,
+            missing: vec![],
         });
-        assert_eq!(wire(&engine), ("thread:engine", json!({"agent": "claude", "found": true, "loggedIn": false, "login": null})));
+        assert_eq!(
+            wire(&engine),
+            ("thread:engine", json!({"agent": "claude", "found": true, "loggedIn": false, "login": null, "missing": []}))
+        );
+        // 못 찾았으면 빠진 것과 설치 명령이 실린다(restart 01c-9) — 세션을 열다 못 찾은 채팅에도 설치 안내 카드가 선다.
+        let missing = HostEvent::Engine(atelier_acp::EngineState {
+            agent: atelier_acp::Agent::Codex,
+            found: false,
+            logged_in: None,
+            login: None,
+            missing: vec![atelier_acp::MissingProgram { name: "node", install: "brew install node" }],
+        });
+        assert_eq!(
+            wire(&missing).1,
+            json!({"agent": "codex", "found": false, "loggedIn": null, "login": null,
+                   "missing": [{"name": "node", "install": "brew install node"}]}),
+        );
         let running = HostEvent::Engine(atelier_acp::EngineState {
             agent: atelier_acp::Agent::Claude,
             found: true,
             logged_in: None,
             login: Some(atelier_acp::LoginProgress::Running { url: Some("https://claude.com/cai/oauth/authorize?x".into()) }),
+            missing: vec![],
         });
         assert_eq!(
             wire(&running).1,
             json!({"agent": "claude", "found": true, "loggedIn": null,
-                   "login": {"state": "running", "url": "https://claude.com/cai/oauth/authorize?x"}}),
+                   "login": {"state": "running", "url": "https://claude.com/cai/oauth/authorize?x"}, "missing": []}),
         );
         let ended = HostEvent::Engine(atelier_acp::EngineState {
             agent: atelier_acp::Agent::Claude,
             found: true,
             logged_in: Some(true),
             login: Some(atelier_acp::LoginProgress::Ended { cancelled: false, exit_code: Some(0) }),
+            missing: vec![],
         });
         assert_eq!(
             wire(&ended).1,
             json!({"agent": "claude", "found": true, "loggedIn": true,
-                   "login": {"state": "ended", "cancelled": false, "exitCode": 0}}),
+                   "login": {"state": "ended", "cancelled": false, "exitCode": 0}, "missing": []}),
         );
     }
 

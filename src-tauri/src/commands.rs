@@ -823,26 +823,34 @@ where
         .map_err(|e| e.to_string())
 }
 
-/// Claude Code를 로그인 셸의 PATH에서 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 확인」이다.
+/// 그 Runtime을 로그인 셸의 PATH에서 찾고 로그인돼 있는지 묻는다(restart 01c-9 — Runtime마다다). `reread`는 안내 카드의 「다시 찾기」 ·
+/// 「다시 확인」이다.
 #[tauri::command]
 pub async fn thread_check_engine(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    runtime: atelier_acp::Runtime,
     reread: bool,
 ) -> CmdResult<atelier_acp::EngineCheck> {
-    to_host(&engine, "Claude Code를 확인하지 못했습니다", move |host| host.check_engine(atelier_acp::Agent::Claude, reread)).await
+    to_host(&engine, "Runtime을 확인하지 못했습니다", move |host| host.check_engine(runtime.into(), reread)).await
 }
 
-/// Claude Code의 로그인 명령을 띄운다. 진행과 끝은 엔진 상태 이벤트(`thread::ENGINE_EVENT`)로 온다.
+/// 그 Runtime의 로그인 명령을 띄운다. 진행과 끝은 엔진 상태 이벤트(`thread::ENGINE_EVENT`)로 온다.
 #[tauri::command]
-pub async fn thread_start_login(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
-    to_host(&engine, "로그인을 시작하지 못했습니다", |host| host.start_login(atelier_acp::Agent::Claude)).await
+pub async fn thread_start_login(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    runtime: atelier_acp::Runtime,
+) -> CmdResult<()> {
+    to_host(&engine, "로그인을 시작하지 못했습니다", move |host| host.start_login(runtime.into())).await
 }
 
-/// 도는 로그인 명령을 거둔다.
+/// 그 Runtime의 도는 로그인 명령을 거둔다.
 #[tauri::command]
-pub async fn thread_cancel_login(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
-    to_host(&engine, "로그인을 취소하지 못했습니다", |host| {
-        host.cancel_login(atelier_acp::Agent::Claude);
+pub async fn thread_cancel_login(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    runtime: atelier_acp::Runtime,
+) -> CmdResult<()> {
+    to_host(&engine, "로그인을 취소하지 못했습니다", move |host| {
+        host.cancel_login(runtime.into());
         Ok::<_, Infallible>(())
     })
     .await

@@ -783,7 +783,7 @@ impl ConversationHost {
     /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
     pub fn start_login(self: Arc<Self>, agent: Agent) -> Result<(), HostError> {
         let env = self.login_env(false)?;
-        let programs = find_programs(agent, &env)?;
+        let programs = self.find_programs(agent, &env)?;
         let host = Arc::downgrade(&self);
         self.logins
             .start(agent, &programs, &env, &login::quiet_place(&env, &self.data_root), move |ended| {
@@ -805,14 +805,14 @@ impl ConversationHost {
     /// 로그인 명령이 끝났다 — 확인을 다시 돌고 「끝남」을 알리고, 됨이면 기다리던 Session을 다시 띄운다. 끝을 지켜보는
     /// 스레드에서 돈다.
     fn login_ended(&self, agent: Agent, ended: LoginProgress) {
-        let (found, logged_in) = match self.login_env(false) {
+        let (found, logged_in, missing) = match self.login_env(false) {
             Ok(env) => match self.engine_check(agent, &env) {
-                EngineCheck::Found { logged_in, .. } => (true, Some(logged_in)),
-                EngineCheck::Missing { .. } => (false, None),
+                EngineCheck::Found { logged_in, .. } => (true, Some(logged_in), Vec::new()),
+                EngineCheck::Missing { missing } => (false, None, missing),
             },
-            Err(_) => (false, None),
+            Err(_) => (false, None, Vec::new()),
         };
-        self.logins.announce(EngineState { agent, found, logged_in, login: Some(ended) });
+        self.logins.announce(EngineState { agent, found, logged_in, login: Some(ended), missing });
         if logged_in == Some(true) {
             self.relaunch_waiting(agent);
         }
@@ -832,6 +832,15 @@ impl ConversationHost {
     fn revival_gate(&self, gate: &str) -> Arc<Mutex<()>> {
         let mut gates = self.revivals.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         Arc::clone(gates.entry(gate.to_owned()).or_default())
+    }
+
+    /// 세션을 열 Runtime의 실행 파일들을 찾는다 — 못 찾으면 그 엔진의 「못 찾음」을 빠진 것과 함께 알린다(restart 01c-9 — 선 채팅은 세션을 열 때
+    /// 확인한다). 화면이 그 Runtime의 채팅에 설치 안내 카드를 세운다. 로그인은 묻지 않는다 — 열 때 Runtime이 로그인 필요로 답한다.
+    fn find_programs(&self, agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundProgram>, HostError> {
+        discovery::look_up(agent, env.path()).map_err(|missing| {
+            self.logins.announce_check(agent, &EngineCheck::Missing { missing: missing.clone() });
+            HostError::EngineMissing { agent, missing }
+        })
     }
 
     /// 찾고, 찾았으면 로그인을 묻는다.
@@ -994,10 +1003,6 @@ fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &Se
     (launch, OpenTerms::default())
 }
 
-/// 그 엔진을 띄우는 데 드는 실행 파일들 — 로그인 셸의 PATH에서 찾는다. 못 찾으면 빠진 것과 설치 명령을 싣고 실패한다.
-fn find_programs(agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundProgram>, HostError> {
-    discovery::look_up(agent, env.path()).map_err(|missing| HostError::EngineMissing { agent, missing })
-}
 
 /// 되살리기를 언제 하나(three-axes 티켓 10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

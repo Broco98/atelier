@@ -5,7 +5,7 @@ import { SCOPE_KEY } from "@/features/services/hooks";
 import type { ProjectPr } from "@/features/works/types";
 import { onThreadChunk, onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
-import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
+import { applyEngineEvent } from "./engine-store";
 import { isObject } from "./json";
 import { prLineOf } from "./pr";
 import {
@@ -175,7 +175,6 @@ export function useThreadFeeds(): void {
 export function receiveRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
   mergeLines(thread, [line]);
   finishFlow(thread, line);
-  if (isLoginRequired(line)) markLoginRequired();
   followRecordLine(queryClient, thread, line);
 }
 

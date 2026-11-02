@@ -3,13 +3,19 @@ import { readFileSync } from "fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fileURLToPath } from "url";
 import { describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "@/components/ui/toast";
 import { scopeKey } from "@/features/services/hooks";
 import type { ReadingScope, ScopeOf } from "@/features/services/scope";
+import { applyEngineEvent, checkEngine } from "./engine-store";
 import { threadQuery } from "./hooks";
 import { fillDraft, mergeLines, NEW_THREAD, setDraft, setQueue, takeFill } from "./thread-store";
 import { seedOf, withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
 import { NewThreadScreen, ThreadScreen } from "./ThreadScreen";
 import type { RecordLine, ThreadView } from "./types";
+
+// 엔진은 앱 명령으로만 닿는다 — 확인을 붙들어 두는 시험이 그 답을 정한다.
+const invoke = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 // 새 채팅 화면은 칩만 재므로 라우터를 띄우지 않는다.
 vi.mock("@tanstack/react-router", async (original) => ({
@@ -64,7 +70,9 @@ function draw(view: ThreadView, lines: RecordLine[] = blessed): string {
   mergeLines(view.id, lines);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <ThreadScreen thread={view.id} />
+      <ToastProvider>
+        <ThreadScreen thread={view.id} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -123,6 +131,34 @@ describe("채팅 화면", () => {
     expect(html).not.toContain("계획만 세우고 멈추기");
   });
 
+  // restart 01c-9 · 스토리 37 — 카드는 입력창 자리에 서고 흐름은 그대로 보인다. 쓰던 말은 입력창의 것이라 카드가 걷히면 다시 선다. Runtime마다라
+  // Codex의 로그인 끊김은 Claude 채팅에 카드를 세우지 않는다. 선 채팅에는 Runtime을 바꾸는 단추가 없다 — 턴이 시작되면 Runtime이 잠긴다.
+  it("Codex의 로그인이 끊기면 Codex 채팅의 입력창 자리에 카드가 서고 흐름과 쓰던 말이 남는다 — Claude 채팅은 그대로다", () => {
+    const view: ThreadView = { ...chat, id: "20261010-100030", runtime: "codex", lastSeq: 23 };
+    const claude = { ...chat, id: "20261010-100031" };
+    setDraft(view.id, "보내려던 말");
+    setDraft(claude.id, "Claude에 쓰던 말");
+    applyEngineEvent({ agent: "codex", found: true, loggedIn: false, login: null, missing: [] });
+    try {
+      const html = draw(view, codexRecord);
+      expect(html).toContain("Codex에 로그인이 안 돼 있어요");
+      expect(html).toContain("Reply with exactly one word: ok");
+      expect(html).not.toContain('aria-label="보낼 말"');
+      expect(html).not.toContain("바꾸기");
+
+      const other = draw(claude);
+      expect(other).not.toContain("로그인이 안 돼 있어요");
+      expect(other).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>Claude에 쓰던 말<\/textarea>/);
+
+      applyEngineEvent({ agent: "codex", found: true, loggedIn: true, login: null, missing: [] });
+      expect(draw(view, codexRecord)).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>보내려던 말<\/textarea>/);
+    } finally {
+      applyEngineEvent({ agent: "codex", found: true, loggedIn: true, login: null, missing: [] });
+      setDraft(view.id, "");
+      setDraft(claude.id, "");
+    }
+  });
+
   it("범위 칩과 범위 줄은 첫 말 뒤에 서지 않는다 — 범위는 대화로 바꾼다", () => {
     const html = draw({ ...chat, id: "20261010-100003" });
     expect(html).not.toContain('aria-label="범위');
@@ -139,7 +175,9 @@ describe("새 채팅 화면", () => {
     if (reading) client.setQueryData(scopeKey(reading[0]), { ...READ, ...reading[1] });
     return renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <NewThreadScreen seed={{ ...SEEDLESS, ...seed }} />
+        <ToastProvider>
+          <NewThreadScreen seed={{ ...SEEDLESS, ...seed }} />
+        </ToastProvider>
       </QueryClientProvider>,
     );
   };
@@ -147,6 +185,50 @@ describe("새 채팅 화면", () => {
   // 스토리 30 — 새 채팅에서 Claude Code와 Codex 중 하나를 고른다. 기본은 Claude Code다.
   it("Runtime 칩은 Claude Code를 고른 채 메뉴로 선다", () => {
     expect(drawNew()).toContain('aria-label="Runtime: Claude Code"');
+  });
+
+  // restart 01c-9 · 스토리 37 · 40 · 스펙 「재는 동작 · 화면」 — 첫 말 전에 고른 Runtime을 쓸 수 없으면 입력창 자리에 카드가 서고, 그 카드에서
+  // 다른 Runtime으로 바꾼다. 쓰던 말은 입력창의 것이라 카드가 걷히면 그대로 선다. 바꾼 Runtime의 카드는 Codex 쪽 시험(`GuideCard.test.tsx`)이 잰다.
+  it("고른 Runtime을 쓸 수 없으면 입력창 자리에 카드가 서고 다른 Runtime으로 바꾸는 단추가 선다 — 쓰던 말은 남는다", () => {
+    setDraft(NEW_THREAD, "보내려던 말");
+    applyEngineEvent({ agent: "claude", found: false, loggedIn: null, login: null, missing: [{ name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" }] });
+    try {
+      const html = drawNew();
+      expect(html).toContain("무엇을 만들까요?");
+      expect(html).toContain("claude를 찾지 못했어요");
+      expect(html).toContain(">Codex로 바꾸기<");
+      expect(html).toContain(">다시 찾기<");
+      expect(html).toContain(">설치 안내<");
+      expect(html).not.toContain('aria-label="보낼 말"');
+
+      applyEngineEvent({ agent: "claude", found: true, loggedIn: true, login: null, missing: [] });
+      expect(drawNew()).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>보내려던 말<\/textarea>/);
+    } finally {
+      applyEngineEvent({ agent: "claude", found: true, loggedIn: true, login: null, missing: [] });
+      setDraft(NEW_THREAD, "");
+    }
+  });
+
+  it("고른 Runtime을 확인하는 동안 보내기가 잠긴다 — 쓰기는 그대로다", async () => {
+    setDraft(NEW_THREAD, "보내려던 말");
+    let answer: () => void = () => {};
+    invoke.mockReturnValueOnce(
+      new Promise((resolve) => (answer = () => resolve({ state: "found", programs: [], loggedIn: true }))),
+    );
+    const checking = checkEngine("claude-code", false);
+    try {
+      const html = drawNew();
+      const send = /<button\b[^>]*aria-label="보내기"[^>]*>/.exec(html)?.[0];
+      expect(send).toContain("disabled");
+      expect(html).toMatch(/<textarea(?![^>]*readOnly)[^>]*aria-label="보낼 말"[^>]*>보내려던 말<\/textarea>/);
+      answer();
+      await checking;
+      expect(/<button\b[^>]*aria-label="보내기"[^>]*>/.exec(drawNew())?.[0]).not.toContain("disabled");
+    } finally {
+      answer();
+      await checking;
+      setDraft(NEW_THREAD, "");
+    }
   });
 
   it("작업공간 없는 새 채팅의 칩은 「편집 자동」이다", () => {
