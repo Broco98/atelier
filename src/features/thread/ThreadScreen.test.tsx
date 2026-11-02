@@ -618,4 +618,38 @@ describe("작업공간 밖 채팅의 대화", () => {
     const linked = drawWith({ ...chat, id: "20261010-140003", work: slug, lastSeq: last }, worked, (id) => <TabBody id={id} work={made} />);
     expect(linked).toContain("data-doc-card");
   });
+
+  // restart 02b-9b · Thread 보드 「2개 파일 변경됨 +41 −4」 — 알약은 코드 파일만 센다. spec 폴더에 새로 쓴 문서는 문서 카드가 연다.
+  it("spec 문서만 쓴 턴에는 알약이 없고 문서 카드만 선다", () => {
+    const last = worked[worked.length - 1].seq;
+    const linked = drawWith({ ...chat, id: "20261010-140004", work: slug, lastSeq: last }, worked, (id) => <TabBody id={id} work={made} />);
+    expect(linked).toContain("data-doc-card");
+    expect(linked).not.toMatch(/aria-label="\d+개 파일 변경됨"/);
+  });
+
+  // restart 02b-9b · Cards 보드 「바뀐 파일 알약 — 턴이 끝나면 chip-in」 · Thread 보드(`end`에서 선다) — 도는 턴의 끝난 편집은 작업 로그가 말한다.
+  it("알약은 마지막 턴이 끝난 뒤에 선다 — 도는 동안에는 없다", () => {
+    const running = blessed.filter((line) => line.seq !== 19);
+    const view = { ...chat, id: "20261010-140005", work: slug, live: true, lastSeq: running[running.length - 1].seq };
+    const drawn = drawWith(view, running, (id) => <TabBody id={id} work={made} />);
+    expect(drawn).toContain("notes.txt");
+    expect(drawn).not.toMatch(/aria-label="\d+개 파일 변경됨"/);
+  });
+
+  // restart 02b-9b · States 14 「사람이 멈춤」 · 15 「연결 끊김」 — 멈춘 턴 · 끊긴 턴은 로그가 펼친 채 남아 바뀐 파일을 그 줄들이 말한다. 알약은 없다.
+  it("멈춘 턴 · 끊긴 턴 뒤에는 알약이 없다 — 펼친 로그가 바뀐 파일을 말한다", () => {
+    const stopped = blessed.map((line) =>
+      line.seq === 19 ? { ...line, payload: { ...(line.payload as object), stopReason: "cancelled", cancelledByUs: true } } : line,
+    );
+    const halted = drawWith({ ...chat, id: "20261010-140006", work: slug }, stopped, (id) => <TabBody id={id} work={made} />);
+    expect(halted).toContain("notes.txt");
+    expect(halted).not.toMatch(/aria-label="\d+개 파일 변경됨"/);
+    const died = [
+      ...blessed.filter((line) => line.seq !== 19),
+      { seq: 19, at: "2026-10-10T10:00:19.000+09:00", kind: "session", payload: { state: "died", reason: "종료 코드 137" } } as RecordLine,
+    ];
+    const cut = drawWith({ ...chat, id: "20261010-140007", work: slug }, died, (id) => <TabBody id={id} work={made} />);
+    expect(cut).toContain("notes.txt");
+    expect(cut).not.toMatch(/aria-label="\d+개 파일 변경됨"/);
+  });
 });
