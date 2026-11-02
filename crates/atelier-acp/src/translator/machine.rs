@@ -4,7 +4,8 @@
 //!
 //! 세션 열기(three-axes 티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
 //! 턴(three-axes 티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
-//! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답).
+//! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답). 답과 생각은 `--include-partial-messages`로 받아 조각으로
+//! 옮긴다(restart 01b).
 //! 제어(three-axes 티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
 //! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
 //! 질문(`AskUserQuestion` → 물음을 실은 요청, v1 티켓 26), 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
@@ -340,6 +341,7 @@ impl Machine {
             "--output-format",
             "stream-json",
             "--verbose",
+            "--include-partial-messages",
             "--permission-prompt-tool",
             "stdio",
             "--settings",
@@ -558,6 +560,7 @@ impl Machine {
         } else {
             let updates = self.stream.updates(&line);
             self.forward(updates);
+            self.out.extend(self.stream.take_warnings().into_iter().map(Output::Stderr));
         }
     }
 

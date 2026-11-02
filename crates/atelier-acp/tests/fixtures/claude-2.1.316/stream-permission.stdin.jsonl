@@ -1,0 +1,5 @@
+{"type": "control_request", "request_id": "req_9b023424", "request": {"subtype": "initialize"}}
+{"type": "user", "message": {"role": "user", "content": "Say one short sentence, then use the Write tool to write the word ok to /tmp/gate/ws/stream-permission/outside/allowed.txt, then reply with one word: done"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "control_response", "response": {"subtype": "success", "request_id": "ee954239-1e50-470e-a507-27d226c5cdb8", "response": {"behavior": "allow", "updatedInput": {"file_path": "/tmp/gate/ws/stream-permission/outside/allowed.txt", "content": "ok"}}}}
+{"type": "user", "message": {"role": "user", "content": "Say one short sentence, then use the Write tool to write the word no to /tmp/gate/ws/stream-permission/outside/denied.txt. If it is denied, reply with one word: stopped"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "control_response", "response": {"subtype": "success", "request_id": "1293fd86-76e8-4867-afac-57ecef3c1c15", "response": {"behavior": "deny", "message": "The user denied this tool call. Do not retry it as is; continue without it or take a different approach."}}}

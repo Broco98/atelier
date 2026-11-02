@@ -4,8 +4,11 @@
 //! - 가짜 claude bin(`src/bin/fake-claude.rs`)은 stdin · stdout · 영수증 · 문(`<세션 id>.go`)을 두르고 L1에 선다.
 //! - 변환기 상태 기계의 시험(`src/translator/machine/tests.rs`)은 프로세스 없이 이것을 상대로 놓는다.
 //!
-//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다. 지금 판은 2.1.309다 — v1 티켓 09가 판 02 ·
-//! 워크플로 실측의 몰이를 같은 프롬프트 · 같은 폴더 모양으로 다시 돌려 녹음했다(몰이와 가리기는 v1 스펙 `구현-노트/녹음-2.1.309/`).
+//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다. 판은 둘이다.
+//! - 2.1.309 — `stream_event`가 없다. v1 티켓 09가 판 02 · 워크플로 실측의 몰이를 같은 프롬프트 · 같은 폴더 모양으로 다시 돌려
+//!   녹음했다(몰이와 가리기는 v1 스펙 `구현-노트/녹음-2.1.309/`). 조각 없는 글의 회귀 시험으로 남긴다.
+//! - 2.1.316 — 앱과 같은 인자(`--include-partial-messages`)로 뜬 조각이 든 녹음이다(restart 티켓 01b-1, 몰이와 가리기는 restart
+//!   스펙 `구현-노트/녹음-2.1.316/`).
 //! - 띄우자마자: 첫 `system/init` 앞의 줄들(SessionStart 훅의 `hook_started` · `hook_response`). [`Replay::new`]가 돌려준다.
 //! - stdin `control_request{subtype:"initialize"}` → `initialize.json`의 응답(요청 id만 바꿔 끼운다). 원문에 든
 //!   `control_response`(잰 쪽이 보낸 제어 요청의 답)는 되감지 않는다 — 제어 요청에는 되감기가 스스로 답한다.
@@ -67,6 +70,11 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 /// - `2.1.309/thread-stop-host` — 「묻지 않음」 Thread의 Host가 40초 도는 `python3` 명령을 앞에서 돌리는 동안 사람이 멈춘 한 턴(v1 티켓
 ///   44 끝 점검). 그 `Bash`가 `can_use_tool`로 묻고 판정이 허락하면 `task_started`, 도는 동안 interrupt가 오면 `task_notification` →
 ///   거부의 실패 `tool_result` → `result/error_during_execution`이다. 녹음의 Thread 폴더는 `/tmp/gate/home/threads/20261024-110553`이다.
+/// - `2.1.316/stream-turns` — 조각이 든 네 턴: 생각과 답 · 글과 도구가 섞인 메시지 여럿 · 서브에이전트 · 조각 없는 내장 `/cost`의
+///   `<synthetic>` 답. 앱의 인자로는 생각 조각의 글이 비어 온다.
+/// - `2.1.316/stream-thinking` — 생각 조각에 글이 실린 한 턴. 이 녹음만 `--thinking-display summarized`를 더해 떴다.
+/// - `2.1.316/stream-permission` — 조각이 든 승인의 두 턴: 작업 자리 밖 `Write`를 허락한 턴과 거부한 턴.
+/// - `2.1.316/stream-interrupt` — 답이 흐르는 도중에 interrupt로 멈춘 턴과 맥락을 이어 답한 턴. 멈춘 턴의 완성 줄은 그때까지 낸 글이다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -86,6 +94,10 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
     ("2.1.309/thread-work-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-work-host.jsonl")),
     ("2.1.309/thread-stop-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-stop-host.jsonl")),
+    ("2.1.316/stream-turns", include_str!("../../tests/fixtures/claude-2.1.316/stream-turns.jsonl")),
+    ("2.1.316/stream-thinking", include_str!("../../tests/fixtures/claude-2.1.316/stream-thinking.jsonl")),
+    ("2.1.316/stream-permission", include_str!("../../tests/fixtures/claude-2.1.316/stream-permission.jsonl")),
+    ("2.1.316/stream-interrupt", include_str!("../../tests/fixtures/claude-2.1.316/stream-interrupt.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");

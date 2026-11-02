@@ -4,9 +4,14 @@
 //! - `assistant`의 블록 — `text` → `agent_message_chunk`, `thinking` → `agent_thought_chunk`, `tool_use` → `tool_call`.
 //!   claude는 도구 줄의 제목을 주지 않으므로 여기서 짓는다. 내장 명령의 `<synthetic>` 답(`local_command_source`)도 같은 길로
 //!   메시지가 된다(실측 함정 33).
+//! - `stream_event`의 글 조각(restart 01b, `--include-partial-messages`) — `text_delta` → `agent_message_chunk`, `thinking_delta` →
+//!   `agent_thought_chunk`. 같은 글이 그 블록의 `assistant` 줄로 다시 오므로, 조각을 낸 메시지와 블록 종류를 기억해 그 완성 글을
+//!   내지 않는다. 조각이 없던 블록(`<synthetic>` · 옛 녹음)은 완성 글을 그대로 낸다. 완성 줄은 그 블록의 조각이 다 지난 뒤 오고
+//!   (2.1.316 실측), 멈춘 턴의 완성 줄은 그때까지 낸 글이다. 합이 어긋나면 변환기의 stderr로 경고 줄을 남긴다 — 호스트가 기록한다.
 //! - `user`의 `tool_result` → `tool_call_update`. `is_error`가 `true`일 때만 실패다 — 키가 없으면 성공이다.
 //! - 옮기지 않는 것: 모델이 `Skill`을 부를 때 생기는 `isSynthetic` 글(사람의 말이 아니다, 실측 함정 34) · `isReplay` 글(사람이
-//!   보낸 말의 메아리 — 호스트가 이미 `sent`로 적었다) · 훅 · `thinking_tokens` · `rate_limit_event`.
+//!   보낸 말의 메아리 — 호스트가 이미 `sent`로 적었다) · 훅 · `thinking_tokens` · `rate_limit_event` · 글 조각이 아닌 `stream_event`
+//!   · 글이 빈 조각 · 서브에이전트의 조각(`parent_tool_use_id`).
 //! - **서브에이전트**(`Agent`, 워크플로 함정 10) — 그 안에서 일어난 일(`parent_tool_use_id`가 붙은 줄)과 `task_*` 이벤트는
 //!   대화의 흐름이 아니라 그 도구 줄의 `_meta`로 싣는다. 서브에이전트의 글이 대화의 답으로 섞이지 않고, 기록에는 평가의
 //!   재료로 남는다(three-axes 결정 18).
@@ -18,6 +23,10 @@ use serde_json::{json, Value};
 /// 사용량 `used`로 더하는 네 칸 — `result.usage.iterations` 마지막 원소의 것(워크플로 함정 1).
 const USED: [&str; 4] = ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"];
 
+/// 글 조각의 ACP 종류 — 답과 생각.
+const MESSAGE: &str = "agent_message_chunk";
+const THOUGHT: &str = "agent_thought_chunk";
+
 /// 한 대화의 stream-json을 옮기는 상태 — 낸 도구 호출을 기억해 그 결과와 서브에이전트 자료를 같은 줄에 잇는다.
 #[derive(Default)]
 pub(super) struct Stream {
@@ -25,12 +34,19 @@ pub(super) struct Stream {
     tools: HashMap<String, Value>,
     /// 대화의 답을 낸 마지막 모델 — 사용량의 `size`(그 모델의 컨텍스트 창)를 고른다.
     model: Option<String>,
+    /// 조각으로 낸 글 — (메시지 id, 조각 종류) → 합친 글. 그 블록의 완성 글이 오면 꺼낸다.
+    sent: HashMap<(String, &'static str), String>,
+    /// 호스트의 기록으로 보낼 경고 줄 — 변환기의 stderr로 낸다. `stderr` 줄은 화면에 서므로 사람이 읽을 글로 쓴다.
+    warnings: Vec<String>,
 }
 
 impl Stream {
     /// claude의 줄 하나 → `session/update`의 몸들. 옮기지 않는 줄이면 비어 있다. `result`는 [`Self::usage`] ·
     /// [`prompt_response`]가 맡는다.
     pub(super) fn updates(&mut self, line: &Value) -> Vec<Value> {
+        if line["type"] == "stream_event" {
+            return self.piece(line).into_iter().collect();
+        }
         if let Some(parent) = line["parent_tool_use_id"].as_str() {
             return self.relay(parent, line).into_iter().collect();
         }
@@ -53,12 +69,51 @@ impl Stream {
         let blocks = message["content"].as_array().into_iter().flatten();
         blocks
             .filter_map(|block| match block["type"].as_str() {
-                Some("text") => Some(chunk("agent_message_chunk", message_id, &block["text"])),
-                Some("thinking") => Some(chunk("agent_thought_chunk", message_id, &block["thinking"])),
+                Some("text") => self.finished(MESSAGE, message_id, &block["text"]),
+                Some("thinking") => self.finished(THOUGHT, message_id, &block["thinking"]),
                 Some("tool_use") => Some(self.tool_call(block)),
                 _ => None,
             })
             .collect()
+    }
+
+    /// `stream_event`의 글 조각 → ACP 조각. 메시지 id는 조각마다 실려 온다(`api_message_id`). 글이 빈 조각은 내지 않는다.
+    /// 서브에이전트의 조각(`parent_tool_use_id`)은 버린다 — 대화의 글이 아니고, 완성 줄이 도구 줄의 `_meta`로 실린다.
+    fn piece(&mut self, line: &Value) -> Option<Value> {
+        if !line["parent_tool_use_id"].is_null() {
+            return None;
+        }
+        let delta = &line["event"]["delta"];
+        let (kind, text) = match delta["type"].as_str()? {
+            "text_delta" => (MESSAGE, &delta["text"]),
+            "thinking_delta" => (THOUGHT, &delta["thinking"]),
+            _ => return None,
+        };
+        let piece = text.as_str().filter(|text| !text.is_empty())?;
+        let message_id = &line["api_message_id"];
+        self.sent.entry((message_id.as_str()?.to_owned(), kind)).or_default().push_str(piece);
+        Some(chunk(kind, message_id, text))
+    }
+
+    /// 완성 블록 — 조각으로 낸 블록이면 다시 내지 않는다. 합이 완성 글과 다르면 경고 줄을 남긴다. 조각이 없던 블록은 완성 글을
+    /// 그대로 낸다.
+    fn finished(&mut self, kind: &'static str, message_id: &Value, text: &Value) -> Option<Value> {
+        let id = message_id.as_str().unwrap_or_default();
+        let Some(sent) = self.sent.remove(&(id.to_owned(), kind)) else {
+            return Some(chunk(kind, message_id, text));
+        };
+        let finished = text.as_str().unwrap_or_default();
+        if sent != finished {
+            let what = if kind == MESSAGE { "답" } else { "생각" };
+            let (sent, finished) = (sent.chars().count(), finished.chars().count());
+            self.warnings.push(format!("받은 {what} 조각을 합친 글({sent}자)이 완성 글({finished}자)과 다릅니다 — 메시지 {id}"));
+        }
+        None
+    }
+
+    /// 지금까지 쌓인 경고 줄을 꺼낸다.
+    pub(super) fn take_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.warnings)
     }
 
     fn user(&mut self, line: &Value) -> Vec<Value> {
