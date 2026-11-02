@@ -1,29 +1,24 @@
-import { signalOf } from "@/features/terminal/shell-attention";
-import { liveOwnerlessOf, type ShellsState } from "@/features/terminal/shell-registry";
 import { NOT_READ, formatCpu, formatHeadCpu, formatMemory } from "./metrics";
 import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 
 // **`Processes` 요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」 · 티켓 30). 순수 함수다.
 //
-// **카드는 새 박자를 걸지 않는다.** 화면이 이미 받는 셋에서 읽는다 — 어느 수를 어디서 읽는지가 이 파일의 결정이다.
+// **카드는 새 박자를 걸지 않는다.** 화면이 이미 받는 둘에서 읽는다 — 어느 수를 어디서 읽는지가 이 파일의 결정이다.
 // - 2초 스냅샷(화면 표본): **머리(합계 CPU) · 그 나눔 · 아틀리에 CPU · 메모리 합계 · 앱 본체 · 「웹뷰 제외」**(restart 03-5 「한 표본」 —
 //   화면을 보는 동안 머리와 줄과 메모리 카드가 같은 2초 표본에서 선다. 한때 10초 요약에서 읽었다. 머리는 맥 전체를 나눈 합계다 — restart
-//   03-6), 셸 수(풀) · 확정 고아 수 · 출처 불명 수.
+//   03-6), 손볼 것(확정 고아 · 출처 불명 — restart 03-11).
 //   같은 화면의 줄 · 묶음(31 · 32)이 이 스냅샷으로 서므로 카드와 줄이 다른 표본을 말하지 않는다.
 // - 10초 요약의 고리(배경 표본): 추이 — 맥 전체 CPU와 아틀리에 CPU의 1시간치(`useProcessTrend`). nav 옆 숫자는 10초 요약이라 화면을 보는
 //   동안 카드의 합계와 한 박자 어긋날 수 있다.
-// - 스토어: 「도는 중」인 셸 수(셸 상태 — 레지스트리의 문 `signalOf`), 주인 잃은 셸 수(`liveOwnerlessOf`). 둘 다 스토어만 아는 사실이다.
+// 한때 셸 타일(셸 수 · 도는 중 · 주인 잃은 셸)이 스토어도 읽었다 — 시안 Processes의 카드는 CPU · 메모리 · 손볼 것 셋이다(restart 03-11).
 
-/** 요약 카드의 수. 스냅샷에서 세는 수는 첫 스냅샷 전에 `null`이다 — 「0」이라 하면 모르는 것을 없다고 한다. */
-export interface CardCounts {
-  /** 풀의 셸 — 화면 밖 셸까지. */
-  shells: number | null;
-  /** 셸 상태가 「도는 중」인 셸(훅 · OSC가 말한 것). 명령이 도는 것과 다르다 — 그것은 셸 상태가 아니다. */
-  working: number;
-  /** 주인 잃은 셸 중 아직 살아 있는 것. */
-  ownerlessShells: number;
-  confirmed: number | null;
-  unknown: number | null;
+/** 「손볼 것」 카드의 수와 말(restart 03-11 · 시안 Processes). */
+export interface StrayFigures {
+  /** 「N개」. 첫 스냅샷 전에는 「—」다 — 「0개」라 하면 모르는 것을 없다고 한다. */
+  count: string;
+  note: string;
+  /** 하나라도 있다 — 카드 이름 줄의 아이콘이 기다림의 잉크다. */
+  any: boolean;
 }
 
 /** 묶음(키 → 행들)의 행 수. */
@@ -31,14 +26,17 @@ function rowsIn(groups: Record<string, ReadonlyArray<ProcessRow>>): number {
   return Object.values(groups).reduce((count, rows) => count + rows.length, 0);
 }
 
-export function cardCounts(state: ShellsState, snapshot: ProcessSnapshot | undefined): CardCounts {
+/**
+ * **손볼 것 카드**(restart 03-11 · 시안 Processes 「손볼 것」) — 주인 없이 남은 프로세스, 곧 판정의 확정 고아와 출처 불명이다(CONTEXT
+ * 「고아」). 화면의 「손볼 것」 구획이 같은 것을 세우고 거기서 끝낸다. 예외 · 다른 인스턴스는 안 든다 — 보기만 하는 묶음이다.
+ */
+export function strayFigures(snapshot: ProcessSnapshot | undefined): StrayFigures {
+  if (snapshot === undefined) return { count: NOT_READ, note: "", any: false };
+  const count = rowsIn(snapshot.verdict.orphans.confirmed) + rowsIn(snapshot.verdict.orphans.unknown);
   return {
-    shells: snapshot ? snapshot.pool.length : null,
-    // 셸 상태는 레지스트리가 내놓는 문으로 읽는다 — 끝난 칸에 남은 도는 중을 가리는 자리가 거기다(소스 스캔이 막는 길).
-    working: state.shells.filter((shell) => signalOf(shell) === "working").length,
-    ownerlessShells: liveOwnerlessOf(state).length,
-    confirmed: snapshot ? rowsIn(snapshot.verdict.orphans.confirmed) : null,
-    unknown: snapshot ? rowsIn(snapshot.verdict.orphans.unknown) : null,
+    count: `${count}개`,
+    note: count > 0 ? "주인 없이 남은 프로세스 · 아래에서 끝낼 수 있어요" : "남은 것이 없어요",
+    any: count > 0,
   };
 }
 
@@ -75,10 +73,16 @@ export function cardFigures(snapshot: ProcessSnapshot | undefined): CardFigures 
     return { cpu: NOT_READ, cpuNote: "첫 표본을 찍는 중이에요", memory: NOT_READ, app: NOT_READ, webviewExcluded: false };
   }
   const { mac, atelier, breakdown } = snapshot;
+  const total = breakdown.total.cpu;
+  // 코어 몇 개만큼인지 — 맥 전체 = 100의 합계에 코어 수를 곱한 것이다(시안 Processes 「코어 10개 중 3.3개만큼」).
   const cpuNote =
-    mac === null ? NOT_MEASURED : mac.cpu === null ? "두 번 재야 알 수 있어요 · 곧 채워져요" : `맥 전체 · 코어 ${mac.cores}개`;
+    mac === null
+      ? NOT_MEASURED
+      : mac.cpu === null || total === null
+        ? "두 번 재야 알 수 있어요 · 곧 채워져요"
+        : `맥 전체 · 코어 ${mac.cores}개 중 ${((total * mac.cores) / 100).toFixed(1)}개만큼`;
   return {
-    cpu: formatHeadCpu(breakdown.total.cpu),
+    cpu: formatHeadCpu(total),
     cpuNote,
     memory: formatMemory(atelier.total),
     app: formatMemory(atelier.app),
@@ -117,6 +121,42 @@ export function cpuLegend(snapshot: ProcessSnapshot | undefined): CpuLegend {
   };
 }
 
+/** CPU 카드의 쌓인 막대 — 조각마다 폭(맥 전체 = 100의 %)과 막대의 이름. */
+export interface CpuStack {
+  atelier: number;
+  others: number;
+  system: number;
+  label: string;
+}
+
+/**
+ * **CPU 카드의 쌓인 막대**(restart 03-11 · 시안 Processes `.pr-stack`) — 아틀리에 · 다른 앱 · 시스템 · 못 읽음을 맥 전체 = 100의 폭으로 잇고,
+ * 남은 홈이 여유다. 폭은 반올림 전 값이다(소수 둘째 자리까지). 읽은 합이 100을 넘는 표본은 앞 조각부터 채우고 넘는 몫을 자른다 — 막대 밖으로
+ * 안 나간다. 이름은 나눔의 정수(`cpuLegend`)로 말한다. 합계를 모르면 빈 막대다.
+ */
+export function cpuStack(snapshot: ProcessSnapshot | undefined): CpuStack {
+  const total = snapshot?.breakdown.total.cpu ?? null;
+  if (snapshot === undefined || total === null) return { atelier: 0, others: 0, system: 0, label: "재는 중" };
+  const parts = [
+    snapshot.atelier.cpu ?? 0,
+    snapshot.breakdown.apps.reduce((sum, app) => sum + (app.cpu ?? 0), 0),
+    snapshot.breakdown.system.cpu ?? 0,
+  ];
+  let room = 100;
+  const [atelier, others, system] = parts.map((part) => {
+    const width = Math.min(Math.max(0, part), room);
+    room -= width;
+    return Math.round(width * 100) / 100;
+  });
+  const legend = cpuLegend(snapshot);
+  return {
+    atelier,
+    others,
+    system,
+    label: `맥 전체 ${formatHeadCpu(total)} 사용 — 아틀리에 ${legend.atelier}, 다른 앱 ${legend.others}, 시스템과 못 읽은 것 ${legend.system}`,
+  };
+}
+
 /** 스파크라인이 보이는 폭 — 1시간(「지난 1시간」). 고리도 1시간치다(360점, 10초마다). */
 export const TREND_SPAN_MS = 60 * 60 * 1000;
 
@@ -127,25 +167,30 @@ export interface SparkBox {
   inset: number;
 }
 
+/** 추이의 두 선 — 맥 전체 CPU와 아틀리에 CPU의 점들(x, y). */
+export interface TrendLines {
+  mac: Array<[number, number]>;
+  atelier: Array<[number, number]>;
+}
+
 /**
- * **지난 1시간 스파크라인의 점들**(x, y) — 맥 전체 CPU의 선이다(restart 03-5 — 점이 메모리 합계에서 CPU 둘로 바뀌었다. 아틀리에 CPU와 두
- * 선을 0~100 고정 축에 그리는 것은 03-11이다). 순수 함수다.
+ * **지난 1시간 CPU 추이의 두 선**(restart 03-11 · 스펙 「추이」 · 시안 ProcessSheet) — 맥 전체 CPU와 아틀리에 CPU다. 순수 함수다.
  * - **가로는 시각이다.** 마지막 점이 오른쪽 끝이고 왼쪽 끝이 그보다 1시간 전이다. 앱을 켠 지 5분이면 오른쪽 12분의 1에만 선다 —
  *   5분치를 폭 전체로 늘리면 「지난 1시간」이 거짓이다. 1시간보다 앞선 점(맥이 잠든 사이 고리가 넓어졌다)은 뺀다.
- * - **세로는 0부터 가장 큰 값까지다.** 가장 작은 값을 바닥에 두지 않는다 — 그러면 작은 흔들림이 절벽처럼 선다. 모두 0이면 바닥에
- *   눕는다.
+ * - **세로는 0~100 고정 축이다.** 두 선이 같은 축이라 견줄 수 있다 — 한때 선마다 제 최댓값으로 늘렸다(그러면 두 선의 높이가 서로 다른
+ *   눈금이다). 100이 위 가장자리이고, 읽은 합이 측정값을 넘은 표본(100을 넘는다)도 그 위로 안 나간다.
  */
-export function sparkline(points: ReadonlyArray<TrendPoint>, { width, height, inset }: SparkBox): Array<[number, number]> {
+export function sparkline(points: ReadonlyArray<TrendPoint>, { width, height, inset }: SparkBox): TrendLines {
   const shown = drawnPoints(points);
   const last = shown[shown.length - 1];
-  if (last === undefined) return [];
+  if (last === undefined) return { mac: [], atelier: [] };
   const start = last.at - TREND_SPAN_MS;
-  const top = Math.max(...shown.map((point) => point.mac));
   const span = height - inset * 2;
-  return shown.map((point) => [
+  const at = (point: TrendPoint, value: number): [number, number] => [
     ((point.at - start) / TREND_SPAN_MS) * width,
-    inset + (top > 0 ? 1 - point.mac / top : 1) * span,
-  ]);
+    inset + (1 - Math.min(100, Math.max(0, value)) / 100) * span,
+  ];
+  return { mac: shown.map((point) => at(point, point.mac)), atelier: shown.map((point) => at(point, point.atelier)) };
 }
 
 /**
@@ -160,16 +205,16 @@ function drawnPoints(points: ReadonlyArray<TrendPoint>): ReadonlyArray<TrendPoin
 }
 
 /**
- * 스파크라인의 접근성 이름 — **그린 점**의 처음과 끝 맥 전체 CPU다(`drawnPoints`). 선의 모양은 눈의 것이고, 귀에는 얼마에서 얼마로
- * 왔는지가 남는다. 1시간보다 오래된 점(맥이 잠든 사이 고리가 넓어졌다)은 선에 없으니 이름에도 없다.
+ * 추이의 접근성 이름 — **그린 점**의 처음과 끝, 두 선 모두다(`drawnPoints`). 선의 모양은 눈의 것이고, 귀에는 얼마에서 얼마로 왔는지가
+ * 남는다. 1시간보다 오래된 점(맥이 잠든 사이 고리가 넓어졌다)은 선에 없으니 이름에도 없다.
  */
 export function trendLabel(points: ReadonlyArray<TrendPoint>): string {
   const shown = drawnPoints(points);
   const first = shown[0];
   const end = shown[shown.length - 1];
   return first && end
-    ? `지난 1시간 맥 전체 CPU 추이, ${formatCpu(first.mac)}에서 ${formatCpu(end.mac)}`
-    : "지난 1시간 맥 전체 CPU 추이, 아직 없음";
+    ? `지난 1시간 CPU 추이, 맥 전체 ${formatCpu(first.mac)}에서 ${formatCpu(end.mac)}, 아틀리에 ${formatCpu(first.atelier)}에서 ${formatCpu(end.atelier)}`
+    : "지난 1시간 CPU 추이, 아직 없음";
 }
 
 /** 앱 본체에 웹뷰를 못 셌을 때 값 옆에 붙는 말(프로세스 스펙 S39). */

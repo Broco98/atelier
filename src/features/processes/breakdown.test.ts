@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityMonitorTip, OTHER_PROCESSES, otherAppRows, systemNote, totalNote } from "./breakdown";
+import { activityMonitorTip, foldApps, OTHER_APPS, OTHER_PROCESSES, otherAppRows, systemNote, totalNote } from "./breakdown";
 import { breakdownOf, macOf, otherAppOf, snapshotFixture } from "./process-fixture";
 
 // restart 03-6 — **줄을 더하면 합계가 된다.** 합이 맞는지는 Rust가 잰다(`processes::breakdown`). 여기서 재는 것은 화면이 받은 나눔을 어떤
@@ -30,6 +30,43 @@ describe("다른 앱의 줄", () => {
       ["Notebook", "프로세스 4개", null],
       [OTHER_PROCESSES, "프로세스 120개", 12.0],
     ]);
+  });
+
+  // **메모리 순 보기에서는 메모리가 큰 앱이 위다**(restart 03-11) — 번들 밖의 줄은 그래도 맨 끝이다.
+  it("메모리 순으로도 선다", () => {
+    const sheet = snapshotFixture({
+      breakdown: breakdownOf({
+        apps: [otherAppOf("Chatter", 5, 620 * MiB, 1.7), otherAppOf("Sketchpad", 41, 2 * GiB, 9.1), otherAppOf("Notebook", 4, 1430 * MiB, null), otherAppOf(null, 120, 3 * GiB, 1.0)],
+      }),
+    });
+    expect(otherAppRows(sheet, "memory").map((row) => row.name)).toEqual(["Sketchpad", "Notebook", "Chatter", OTHER_PROCESSES]);
+  });
+
+  // **앞의 셋만 이름으로 서고 나머지 앱은 「그 밖의 앱」 한 줄이다**(restart 03-11 · 시안 Processes 「그 밖의 앱 14개」) — 이 맥에서 앱
+  // 번들이 70개 가까이라 줄마다 세우면 표가 다른 앱으로 덮인다. 그 줄은 숨긴 앱들의 합이라 줄을 더하면 그대로 합계다. 번들 밖의 줄은 앱이
+  // 아니라 따로 맨 끝이다. 넷 이하면 접지 않는다 — 한 줄을 「그 밖의 앱 1개」로 바꾸면 읽을 것만 늘어난다.
+  it("앞의 셋 뒤의 앱을 「그 밖의 앱」 한 줄로 더한다", () => {
+    const sheet = snapshotFixture({
+      breakdown: breakdownOf({
+        apps: [
+          otherAppOf("A", 2, 400 * MiB, 9.0),
+          otherAppOf("B", 2, 300 * MiB, 4.0),
+          otherAppOf("C", 2, 200 * MiB, 2.0),
+          otherAppOf("D", 3, 100 * MiB, 1.0),
+          otherAppOf("E", 1, 50 * MiB, null),
+          otherAppOf(null, 120, GiB, 0.5),
+        ],
+      }),
+    });
+    const rows = foldApps(otherAppRows(sheet), 3);
+    expect(rows.map((row) => [row.name, row.note, row.metrics.memory, row.metrics.cpu])).toEqual([
+      ["A", "프로세스 2개", 400 * MiB, 9.0],
+      ["B", "프로세스 2개", 300 * MiB, 4.0],
+      ["C", "프로세스 2개", 200 * MiB, 2.0],
+      [OTHER_APPS, "2개", 150 * MiB, 1.0],
+      [OTHER_PROCESSES, "프로세스 120개", GiB, 0.5],
+    ]);
+    expect(foldApps(otherAppRows(sheet).slice(0, 4), 3).map((row) => row.name)).toEqual(["A", "B", "C", "D"]);
   });
 
   // 숫자 칸은 다른 줄과 같은 지표 모양이다 — 포트는 없다(다른 앱은 fd를 안 훑는다).

@@ -1,3 +1,4 @@
+import { sumMetrics } from "./metrics";
 import { processCount } from "./process-tree";
 import { NOT_MEASURED } from "./summary-card";
 import type { ProcessMetrics, ProcessSnapshot } from "./types";
@@ -8,6 +9,12 @@ import type { ProcessMetrics, ProcessSnapshot } from "./types";
 
 /** 번들 밖의 프로세스(데몬 · XPC 서비스 · 명령줄 도구)를 모은 줄의 이름. */
 export const OTHER_PROCESSES = "그 밖의 프로세스";
+
+/** 앞의 몇 앱 뒤를 모은 줄의 이름(restart 03-11 · 시안 Processes 「그 밖의 앱」). */
+export const OTHER_APPS = "그 밖의 앱";
+
+/** 「그 밖의 앱」 줄의 열쇠 — 번들 이름과 안 겹치게 글자로 못 쓰는 문자로 시작한다. 번들 밖의 줄은 빈 글자다. */
+const OTHER_APPS_KEY = "\u0000apps";
 
 /** 다른 앱 한 줄 — 이름, 프로세스 수, 숫자 칸(포트는 없다). */
 export interface OtherAppRow {
@@ -21,10 +28,10 @@ export interface OtherAppRow {
 
 /**
  * **다른 앱의 줄**(시안 Processes 「다른 앱」) — CPU를 많이 쓰는 앱이 위다(「지금 무엇이 내 컴퓨터를 먹나」). 못 잰 줄(첫 표본)은 그
- * 아래이고, 같으면 메모리가 큰 것이 위, 그다음 이름 순이다. 번들 밖의 줄(「그 밖의 프로세스」)은 늘 맨 끝이다 — 앱이 아니라 나머지다.
- * 보기만 한다 — 끝내기가 없다.
+ * 아래이고, 같으면 메모리가 큰 것이 위, 그다음 이름 순이다. 메모리 순 보기(restart 03-11)는 메모리가 큰 것이 위다. 번들 밖의 줄(「그 밖의
+ * 프로세스」)은 늘 맨 끝이다 — 앱이 아니라 나머지다. 보기만 한다 — 끝내기가 없다.
  */
-export function otherAppRows(snapshot: ProcessSnapshot): OtherAppRow[] {
+export function otherAppRows(snapshot: ProcessSnapshot, by: "cpu" | "memory" = "cpu"): OtherAppRow[] {
   const rows = snapshot.breakdown.apps.map((app) => ({
     key: app.name ?? "",
     name: app.name ?? OTHER_PROCESSES,
@@ -33,14 +40,35 @@ export function otherAppRows(snapshot: ProcessSnapshot): OtherAppRow[] {
     bundled: app.name !== null,
   }));
   const cpu = (row: { metrics: ProcessMetrics }) => row.metrics.cpu ?? -1;
+  const memory = (row: { metrics: ProcessMetrics }) => row.metrics.memory ?? 0;
+  const [first, second] = by === "cpu" ? [cpu, memory] : [memory, cpu];
   rows.sort(
     (a, b) =>
       Number(b.bundled) - Number(a.bundled) ||
-      cpu(b) - cpu(a) ||
-      (b.metrics.memory ?? 0) - (a.metrics.memory ?? 0) ||
+      first(b) - first(a) ||
+      second(b) - second(a) ||
       a.name.localeCompare(b.name),
   );
   return rows.map(({ bundled: _bundled, ...row }) => row);
+}
+
+/**
+ * **앞의 `keep`개 앱만 이름으로 세우고 나머지 앱은 「그 밖의 앱 N개」 한 줄로 더한다**(restart 03-11 · 시안 Processes). 이 맥에서 앱 번들이
+ * 70개 가까이라 줄마다 세우면 표가 다른 앱으로 덮인다. 더한 줄은 숨긴 앱의 합이라 줄을 더하면 그대로 합계다(`sumMetrics`). 번들 밖의
+ * 줄은 앱이 아니라 맨 끝에 그대로 선다. 접을 앱이 하나뿐이면 접지 않는다 — 한 줄을 「그 밖의 앱 1개」로 바꾸면 읽을 것만 는다. 받은
+ * 차례를 지킨다 — 멈춘 차례(`useHeldOrder`)를 받으면 멈춘 동안 앞의 셋이 안 바뀐다.
+ */
+export function foldApps(rows: ReadonlyArray<OtherAppRow>, keep: number): OtherAppRow[] {
+  const apps = rows.filter((row) => row.key !== "");
+  const rest = rows.filter((row) => row.key === "");
+  if (apps.length <= keep + 1) return [...apps, ...rest];
+  const folded = apps.slice(keep);
+  const metrics = sumMetrics(folded.map((row) => row.metrics));
+  return [
+    ...apps.slice(0, keep),
+    { key: OTHER_APPS_KEY, name: OTHER_APPS, note: `${folded.length}개`, metrics },
+    ...rest,
+  ];
 }
 
 /** 읽은 합이 맥 전체 측정값을 넘은 칸이 있다 — 그 장의 합계는 읽은 합이 섞였다. */

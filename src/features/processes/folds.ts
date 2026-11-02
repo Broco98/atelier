@@ -14,8 +14,7 @@ export type SectionId =
   | "ownerless"
   | "offscreen"
   | "app"
-  | "confirmed"
-  | "unknown"
+  | "strays"
   | "instances"
   | "exceptions"
   | "others"
@@ -25,7 +24,8 @@ export type SectionId =
  * **ui-refresh 결정 28의 표** — 정리할 것이 있는 구획(작업 · 주인 잃은 셸 · 화면 밖 셸 · 확정 고아)은 펼쳐 열고, 보기 전용이거나 참고용인 구획
  * (출처 불명 · 다른 인스턴스 · 예외 · 정리 기록)은 접어 연다. 올 때마다 할 일이 펼쳐져 있다. restart 03-6이 더한 둘은 시안 Processes를
  * 따른다 — 아틀리에 앱(앱 본체 · 웹뷰)은 펼쳐 열고, 다른 앱은 접어 연다(「다른 앱은 처음에 접혀 있다」 — 시안 ProcessSheet). restart 03-7이 더한
- * 채팅도 시안 Processes를 따라 펼쳐 연다 — 그 안의 dev 서버가 [끝내기]의 자리다.
+ * 채팅도 시안 Processes를 따라 펼쳐 연다 — 그 안의 dev 서버가 [끝내기]의 자리다. restart 03-11이 확정 고아 · 출처 불명을 한 구획 「손볼 것」으로
+ * 묶었다(시안 Processes) — 펼쳐 연다. 한때 출처 불명은 따로 접어 열었다.
  */
 export const OPEN_AT_FIRST: Readonly<Record<SectionId, boolean>> = {
   chats: true,
@@ -33,8 +33,7 @@ export const OPEN_AT_FIRST: Readonly<Record<SectionId, boolean>> = {
   ownerless: true,
   offscreen: true,
   app: true,
-  confirmed: true,
-  unknown: false,
+  strays: true,
   instances: false,
   exceptions: false,
   others: false,
@@ -51,6 +50,8 @@ export const foldKey = {
   shell: (shellKey: string) => `shell:${shellKey}`,
   chat: (thread: string) => `chat:${thread}`,
   run: (generation: string | null) => `run:${generation ?? ""}`,
+  /** 손볼 것의 갈래 줄(확정 고아 · 출처 불명 — restart 03-11). */
+  strays: (kind: "confirmed" | "unknown") => `strays:${kind}`,
   process: (id: ProcessIdentity) => identityKey(id),
 };
 
@@ -76,6 +77,8 @@ export function liveFoldKeys(snapshot: ProcessSnapshot, groups: ReadonlyArray<Gr
     ...rows.map((row) => foldKey.process(row.id)),
     ...snapshot.instances.map((instance) => foldKey.run(instance.generation)),
     foldKey.run(null),
+    foldKey.strays("confirmed"),
+    foldKey.strays("unknown"),
   ]);
 }
 

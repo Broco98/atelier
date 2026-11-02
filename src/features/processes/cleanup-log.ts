@@ -85,3 +85,26 @@ export function eventKeys(events: ReadonlyArray<CleanupEvent>): string[] {
 export function targetLabel(target: CleanupTarget): string {
   return `${target.name}, ${outcomeLabel(target.outcome)}`;
 }
+
+/**
+ * 사건 줄의 대상 칸(restart 03-11 · 시안 Processes 「정리 기록」의 `때 · 까닭 · 대상 · 결과` 한 줄) — 첫 대상의 이름이고, 여럿이면 남은 수를
+ * 붙인다(「node 외 2개」). 이름 전부는 펼친 줄이 보인다.
+ */
+export function eventWhat(event: CleanupEvent): string {
+  const [first, ...rest] = event.targets;
+  if (first === undefined) return "";
+  return rest.length === 0 ? first.name : `${first.name} 외 ${rest.length}개`;
+}
+
+/** 결과의 무게 — 앞선 것이 더 손볼 결과다. */
+const OUTCOME_WEIGHT: ReadonlyArray<CleanupOutcome> = ["survived", "forced", "ended", "gone"];
+
+/**
+ * 사건 줄의 결과 칸 — **가장 손볼 결과**다: 못 끝냄이 하나라도 있으면 못 끝냄(`bad` — 경고 잉크, 시안 `data-bad`), 그다음 강제로 끝남 · 끝남 ·
+ * 이미 없음 차례다. 섞인 사건의 결과마다의 수는 펼친 줄이 보인다. 모르는 결과(뒤 판의 기록)만 있으면 그 글자다.
+ */
+export function eventOutcome(event: CleanupEvent): { text: string; bad: boolean } {
+  const outcomes = event.targets.map((target) => target.outcome);
+  const top = OUTCOME_WEIGHT.find((outcome) => outcomes.includes(outcome)) ?? outcomes[0];
+  return top === undefined ? { text: "", bad: false } : { text: outcomeLabel(top), bad: top === "survived" };
+}

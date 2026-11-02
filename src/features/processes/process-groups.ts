@@ -9,17 +9,23 @@ import type { OtherInstance, ProcessIdentity, ProcessMetrics, ProcessSnapshot } 
 // **묶음을 다시 가르지 않는다.** 무엇이 확정 고아이고 무엇이 출처 불명인지, 어느 셸 키가 다른 인스턴스의 것인지는 판정이
 // 정한다(`verdict.rs`) — 화면이 다시 가르면 판정이 두 벌이 되고, [정리]가 끝내는 것과 화면이 보인 것이 갈린다.
 
-/** 확인 창 하나의 말 — `askDanger`에 넘긴다. */
+/** 끝내기를 묻는 말 — 줄 밑의 묻는 줄(`EndAskRow`)이나 앱 확인 창(`askDanger`)에 넘긴다. */
 export interface Ask {
   title: string;
   body: string;
   confirm: string;
 }
 
-/** 자손 행 [끝내기]의 확인 창. `count`는 넘길 신원의 수(그 프로세스 + 그 밑)다. */
+/** 끝내기가 하는 일(시안 ProcessSheet 「끝내기」) — TERM · 2초 · KILL과 신호 직전 신원 확인(S4). */
+const HOW_IT_ENDS = "TERM을 보내고 2초 뒤에도 남아 있으면 KILL을 보내요. 그사이 다른 프로세스로 바뀌었으면 보내지 않아요.";
+
+/**
+ * 줄 [끝내기]의 묻는 줄(restart 03-11 · 시안 ProcessSheet 「끝내기」의 `.pr-ask`). `count`는 넘길 신원의 수(그 프로세스 + 그 밑)다. 이름 뒤에
+ * 「프로세스」를 붙여 조사를 고른다 — 이름은 대개 영문이라 받침으로 고르면 읽는 소리와 어긋난다(「vite을」).
+ */
 export function endAsk(label: string, count: number): Ask {
-  const body = count <= 1 ? "이 프로세스를 끝내요." : `이 프로세스와 그 밑에서 뜬 프로세스 ${count - 1}개를 끝내요.`;
-  return { title: `'${label}' 끝내기`, body, confirm: "끝내기" };
+  const body = count <= 1 ? HOW_IT_ENDS : `그 밑에서 뜬 프로세스 ${count - 1}개도 함께 끝내요. ${HOW_IT_ENDS}`;
+  return { title: `${label} 프로세스를 끝낼까요?`, body, confirm: "끝내기" };
 }
 
 /** 출처 불명 [정리]의 확인 창(프로세스 결정 6). 확정 고아의 [정리]는 묻지 않는다 — 기록이 그 셸이 없다고 말한다. */

@@ -4,8 +4,8 @@
 //! 번호로 가르기(`split`). 읽는 자리(판정 · 화면 · 훅 상태 파일의 읽기와 쓸기)가 규칙을 따로 적으면 한 자리만 옛 규칙으로
 //! 남는다 — 훅 상태 파일의 읽기가 머리(`<세대>-`)만 보던 것이 그랬다.
 //!
-//! **세대는 이 실행을 가리키는 값이다**(`generation`). 셸 번호는 실행마다 0부터 다시 나므로 세대가 실행끼리 갈라 준다. 인스턴스
-//! 기록의 파일 이름도 이 값이다(`instances`).
+//! **세대는 이 실행을 가리키는 값이다**(`generation` — `<에포크 ms>p<pid>`). 셸 번호는 실행마다 0부터 다시 나므로 세대가 실행끼리
+//! 갈라 준다. 인스턴스 기록의 파일 이름도 이 값이다(`instances`).
 //!
 //! **프런트의 짝은 `src/features/terminal/shell-key.ts`다**(`ptyIdOf` — 키에서 PTY 번호를 되뽑는다). 두 언어는 규칙을 글자로만
 //! 나눈다: 구분자는 하나, 뒤에서 한 번 자르고, 꼬리는 숫자다. 한쪽을 바꾸면 다른 쪽도 함께 바꾼다.
@@ -42,18 +42,25 @@ pub(crate) fn mint(pty_id: u32) -> String {
 /// 기록 이름을 따로 지으면 이 실행의 셸 자손이 제 기록을 못 찾아 「출처 불명」이 된다.
 pub(crate) fn generation() -> &'static str {
     static GENERATION: OnceLock<String> = OnceLock::new();
-    GENERATION.get_or_init(|| generation_at(SystemTime::now()))
+    GENERATION.get_or_init(|| generation_at(SystemTime::now(), std::process::id()))
 }
 
-/// 시각 하나 → 세대 하나 — 그 시각의 에포크 ms(`clock::ms_at`). **시계를 인자로 뺀 것은 검사를 위해서다.** 세대의 값은
-/// 「실행마다 바뀐다」인데, `SystemTime::now()`를 안에서 부르면 그 성질을 헤드리스로 잴 자리가 없어져 고정 문자열로 갈아도
+/// 시각과 pid → 세대 하나 — `<그 시각의 에포크 ms>p<pid>`(`clock::ms_at`). **시계와 pid를 인자로 뺀 것은 검사를 위해서다.** 세대의
+/// 값은 「실행마다 바뀐다」인데, `SystemTime::now()`를 안에서 부르면 그 성질을 헤드리스로 잴 자리가 없어져 고정 문자열로 갈아도
 /// 아무 검사가 안 울린다 — 그러면 지난 실행이 남긴 파일이 새 셸에 그대로 붙는다는, 세대를 둔 이유가 통째로 사라진다.
 ///
-/// 시각을 쓰는 이유는 실행끼리 겹치지 않으면서 **순서가 읽히기** 때문이다 — 남은 파일을 눈으로 볼 때 어느 실행 것인지 안다.
-/// 시계가 뒤로 가는 경우(`UNIX_EPOCH` 이전)는 0으로 눕는다(`clock`). 그때 두 실행이 같은 세대를 가질 수 있지만, 그 상황에서
-/// 할 수 있는 더 나은 일이 없고 대가는 「지난 파일 몇 개가 안 지워진다」뿐이다.
-fn generation_at(t: SystemTime) -> String {
-    clock::ms_at(t).to_string()
+/// 시각을 쓰는 이유는 **순서가 읽히기** 때문이다 — 남은 파일을 눈으로 볼 때 어느 실행 것인지 안다. **pid를 붙이는 이유는 함께 뜬
+/// 실행끼리 안 겹치게 하려는 것이다.** ms만으로는 같은 ms에 세대를 지은 두 실행이 한 세대를 나눈다 — 함께 띄운 프로세스들은 늘
+/// 그랬다(실측, `runs_that_start_together_get_generations_of_their_own`). 그러면 판정이 남의 표식을 이 실행의 것으로 읽어, 한쪽의
+/// 종료 · 셸 닫기가 다른 쪽의 자손을 끝낸다. 떠 있는 두 프로세스는 pid를 나누지 않고, pid를 물려받은 실행은 다른 ms에 세대를 짓는다.
+///
+/// 이음 글자는 `p`다. `-`는 셸 키의 구분자(하나만 둔다), `:`는 Runtime 키의 구분자(`runtime_key`), `.`은 훅 상태 파일 이름에서
+/// 셸 키의 끝이다(`shells::sweep`). 훅 처리기(`atelier-hook.zsh`)는 셸 키로 `[A-Za-z0-9-]`만 받는다 — `_`도 안 된다.
+///
+/// 시계가 뒤로 가는 경우(`UNIX_EPOCH` 이전)는 시각이 0으로 눕는다(`clock`). 그때도 pid가 함께 뜬 실행을 가른다. 지난 실행과는 겹칠
+/// 수 있지만, 그 상황에서 할 수 있는 더 나은 일이 없고 대가는 「지난 파일 몇 개가 안 지워진다」뿐이다.
+fn generation_at(t: SystemTime, pid: u32) -> String {
+    format!("{}p{pid}", clock::ms_at(t))
 }
 
 /// 셸 키를 세대와 PTY 번호로 가른다 — **뒤에서 한 번** 자른다. 세대에도 `-`가 있을 수 있어서다(검사가 짓는
@@ -112,17 +119,65 @@ mod tests {
     /// 초록이므로, 시계를 인자로 뺀 순수 함수 쪽에서 값으로 잰다.
     #[test]
     fn two_different_clocks_give_two_different_generations() {
-        let early = generation_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_000));
-        let late = generation_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_001));
+        let early = generation_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_000), 42);
+        let late = generation_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_001), 42);
 
-        assert_eq!(early, "1700000000000", "세대가 epoch 밀리초가 아니다");
+        assert_eq!(early, "1700000000000p42", "세대가 epoch 밀리초와 pid가 아니다");
         assert_ne!(early, late, "다른 시각이 같은 세대를 냈다 — 실행을 못 가른다");
     }
 
-    /// 시계가 `UNIX_EPOCH` 이전으로 가 있으면 세대는 `0`으로 눕는다 — 셸 띄우기가 무너지지 않는다.
+    /// **함께 뜬 실행들도 세대가 서로 다르다.** 판정은 이 세대의 표식을 문 것을 이 실행의 것으로 읽는다 — 셸 닫기는 그 셸 키를 문 것을,
+    /// 앱 종료는 이 세대의 표식(셸 키 · Runtime 키)을 문 것 전부를 끝낸다. 두 실행이 한 세대를 나누면 한쪽의 ⌘Q와 셸 닫기가 다른 쪽
+    /// (설치본과 dev 앱, 옆 worktree의 dev 앱)의 셸 자손 · 채팅 자손을 끝내고, 인스턴스 기록(`<세대>.json`)과 훅 상태 파일(`<셸 키>.json`)을
+    /// 둘이 한 파일로 덮어쓴다.
+    ///
+    /// 세대가 ms뿐일 때는 함께 띄운 실행들이 같은 ms에 세대를 지었다(실측 — 이 테스트 바이너리 두 벌을 함께 띄우면 40번 모두 같은
+    /// 세대였다. 다른 슬롯의 `cargo test`와 겹친 풀 배선 검사가 「이 검사의 세대를 트리 밖에서 문 프로세스」로 멈춘 까닭이다).
+    ///
+    /// 이 테스트 바이너리를 넷 함께 띄워 각자 지은 세대를 받는다(`testkit`의 역할 `generation`).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn runs_that_start_together_get_generations_of_their_own() {
+        use std::process::{Command, Stdio};
+
+        use crate::processes::testkit::{child_args, exe, CHILD_ROLE};
+
+        let runs: Vec<_> = (0..4)
+            .map(|_| {
+                Command::new(exe())
+                    .args(child_args())
+                    .env(CHILD_ROLE, "generation")
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("테스트 바이너리를 자식으로 띄운다")
+            })
+            .collect();
+        let generations: Vec<String> = runs
+            .into_iter()
+            .map(|run| {
+                let output = run.wait_with_output().expect("자식의 출력을 읽는다");
+                let said = String::from_utf8_lossy(&output.stdout).into_owned();
+                said.split_once("generation=[")
+                    .and_then(|(_, rest)| rest.split_once(']'))
+                    .map(|(generation, _)| generation.to_string())
+                    .unwrap_or_else(|| panic!("자식이 제 세대를 말하지 않았다: {said:?}"))
+            })
+            .collect();
+
+        let distinct: std::collections::BTreeSet<&String> = generations.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            generations.len(),
+            "함께 뜬 실행들이 한 세대를 나눠 가졌다 — 한쪽의 종료가 다른 쪽의 자손을 끝낸다: {generations:?}"
+        );
+    }
+
+    /// 시계가 `UNIX_EPOCH` 이전으로 가 있으면 세대의 시각이 `0`으로 눕는다 — 셸 띄우기가 무너지지 않는다.
     #[test]
     fn a_clock_before_the_epoch_gives_the_generation_zero() {
-        assert_eq!(generation_at(UNIX_EPOCH - Duration::from_secs(1)), "0", "epoch 이전 시각이 0으로 안 눕었다");
+        assert_eq!(generation_at(UNIX_EPOCH - Duration::from_secs(1), 42), "0p42", "epoch 이전 시각이 0으로 안 눕었다");
     }
 
     /// **가르기는 뒤에서 한 번 자른다.** 세대에 `-`가 있어도(검사가 짓는 세대) 번호는 마지막 `-` 뒤다. 모양이 아니면 `None`
