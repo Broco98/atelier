@@ -132,7 +132,7 @@ fn work_없는_thread에_service를_붙이면_다음_말부터_같은_session을
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
     let (args, cwd) = last_launch(&sandbox, &thread);
     assert!(has_pair(&args, "--resume", &session), "같은 Session을 이어 연다 — 앞 맥락을 기억한다: {args:?}");
-    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "작업 폴더는 그대로 Thread 폴더다");
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread).join("work")), "작업 폴더는 그대로 Thread 폴더의 `work/`다");
     assert_eq!(added_dirs(&args), [web.clone(), api.clone()], "다음 말부터 그 Service의 Project만 — 적힌 차례로");
     let file = atelier_core::services_in(&sandbox.data_root()).join("결제-서비스.md");
     assert_eq!(
@@ -283,7 +283,7 @@ fn 빈_service와_문제_있는_service는_읽을_수_있는_project만_함께_�
     );
 }
 
-/// Work 없는 Thread × 빈 Service — Thread 폴더에서 일하고 함께 여는 폴더가 없다. 머리말은 그 Service와 「읽는 Project: 없음」을 알린다.
+/// Work 없는 Thread × 빈 Service — Thread 폴더의 `work/`에서 일하고 함께 여는 폴더가 없다. 머리말은 그 Service와 「읽는 Project: 없음」을 알린다.
 #[test]
 fn work_없는_thread가_빈_service를_고르면_함께_여는_폴더_없이_thread_폴더에서_일한다() {
     let sandbox = Sandbox::new();
@@ -297,7 +297,7 @@ fn work_없는_thread가_빈_service를_고르면_함께_여는_폴더_없이_th
     host.shut_down();
 
     let (args, cwd) = last_launch(&sandbox, &thread);
-    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "Work 없는 Thread는 Thread 폴더에서 일한다");
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread).join("work")), "Work 없는 Thread는 Thread 폴더의 `work/`에서 일한다");
     assert!(added_dirs(&args).is_empty(), "빈 Service는 읽는 Project가 없다 — 등록된 Project 전부로 넓히지 않는다: {args:?}");
     let file = atelier_core::services_in(&sandbox.data_root()).join("빈-것.md");
     assert_eq!(service_preamble(&record, 0), format!("- Service: 빈 것(`{}`) — 읽는 Project: 없음", file.display()));

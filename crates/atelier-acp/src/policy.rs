@@ -8,12 +8,15 @@
 //!
 //! **판정 순서** — 처음 걸린 칸이 답한다.
 //! 1. 앱 경계 — 앱에 온 요청에만 걸리고, 어떤 물어보는 정도에서도 허락이 있어도 같다.
-//!    - 고치는 경로가 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더) 밖이면 거절한다. 그 경로가 등록된 Project 안이면
-//!      Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터 만들라고.
-//!    - Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json`)이면 거절한다(S7 · §19, 코드 리뷰 1차
+//!    - Atelier만 쓰는 Thread 파일(`thread.json` · `events.jsonl` · `.policy.json`)이면 기록이라고 거절한다(S7 · §19, 코드 리뷰 1차
 //!      A2) — 그대로면 Runtime이 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓힌다.
+//!    - 고치는 경로가 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더의 `work/`) 밖이면 거절한다. 그 경로가 등록된 Project
+//!      안이면 Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터
+//!      만들라고. Thread 폴더는 `work/`만 고칠 수 있다(스펙 「01c — Codex」 작업 폴더) — Codex는 작업 폴더 안을 묻지 않고 쓰므로 Work
+//!      없는 Thread의 작업 폴더를 기록 파일과 뗐다.
 //!    - 고치는 경로를 읽을 수 없는 편집은 자리를 볼 수 없어 묻는다.
-//!    - 명령 글에 그 파일이 나오면 묻는다(코드 리뷰 2차 A3 — 글자로만 본다, [`mentions_kept`]).
+//!    - 명령 글에 그 파일이 나오면 묻는다(코드 리뷰 2차 A3 — 글자로만 본다, [`mentions_kept`]). 작업 폴더 `work/`의 부모인 Thread
+//!      폴더도 본다 — `cat ../events.jsonl`이 묻는다.
 //! 2. 쓰기 자리를 다른 Session이 쥐고 있으면 거절한다(§10 · v1 티켓 18).
 //! 3. 「다시 묻지 않기」 허락에 걸리면 허용한다.
 //! 4. 그 밖에는 물어보는 정도의 표([`by_level`])를 따른다.
@@ -167,10 +170,10 @@ pub(crate) struct Case<'a> {
     pub grants: &'a [String],
     /// Work에 이은 Thread인가 — 허락의 까닭과 밖 편집의 글이 갈린다.
     pub in_work: bool,
-    /// 고칠 수 있는 자리 — Work의 worktree들 · spec 폴더, 그리고 Thread 폴더. 절대 경로다.
+    /// 고칠 수 있는 자리 — Work의 worktree들 · spec 폴더, 그리고 Thread 폴더의 `work/`. 절대 경로다.
     pub roots: &'a [PathBuf],
-    /// 고칠 수 있는 자리 안이어도 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더다. 그 안이나 그것을 품은 폴더를
-    /// 고치면 거절하고, 명령 글에 나오면 묻는다.
+    /// 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더다. 그 안이나 그것을 품은 폴더를 고치면 기록이라고 거절하고, 명령
+    /// 글에 나오면 묻는다.
     pub kept: &'a [PathBuf],
     /// 이 Session의 작업 폴더(링크를 푼 꼴) — 명령 글의 맨 이름(`thread.json`)이 어느 폴더의 것인지 가른다.
     pub cwd: &'a Path,
@@ -220,11 +223,13 @@ fn app_boundary(case: &Case) -> Option<Verdict> {
     match case.act {
         Act::Edit(paths) if paths.is_empty() => ask(Card::Edit, "경로를 읽을 수 없는 편집이라 묻기"),
         Act::Edit(paths) => {
-            if let Some(outside) = paths.iter().find(|path| !case.roots.iter().any(|root| path.starts_with(root))) {
-                return Some(Verdict::Refuse { message: outside_message(outside, case) });
-            }
+            // 기록 파일은 고칠 수 있는 자리(`work/`) 밖이지만, 밖이라는 글보다 기록이라는 글이 Runtime에게 맞다.
             let kept = paths.iter().find(|path| case.kept.iter().any(|kept| path.starts_with(kept) || kept.starts_with(path)));
-            kept.map(|kept| Verdict::Refuse { message: kept_message(kept) })
+            if let Some(kept) = kept {
+                return Some(Verdict::Refuse { message: kept_message(kept) });
+            }
+            let outside = paths.iter().find(|path| !case.roots.iter().any(|root| path.starts_with(root)));
+            outside.map(|outside| Verdict::Refuse { message: outside_message(outside, case) })
         }
         Act::Command(text) if mentions_kept(text, case.kept, case.cwd) => ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"),
         _ => None,
@@ -256,9 +261,10 @@ fn by_level(case: &Case) -> Verdict {
 }
 
 /// 밖 편집의 글 — 등록된 Project 안이면 그 Project의 worktree를 세우는(Work에 없으면 붙일지 묻는) Thread 도구를 가리킨다. Work가
-/// 없는 Thread면 붙일 Work가 없으므로 Work 만들기 제안부터다.
+/// 없는 Thread면 붙일 Work가 없으므로 Work 만들기 제안부터다. Work 없는 Thread의 자리는 채팅 폴더가 아니라 그 안 `work/`다(스펙
+/// 「01c — Codex」 작업 폴더).
 fn outside_message(path: &Path, case: &Case) -> String {
-    let place = if case.in_work { "작업공간" } else { "채팅 폴더" };
+    let place = if case.in_work { "작업공간" } else { "`work/`" };
     let head = format!("{place} 밖의 파일이라 고칠 수 없어요: {}", path.display());
     let start = crate::thread_tools::START_EDITING;
     match case.projects.iter().find(|(_, folder)| path.starts_with(folder)) {
@@ -270,7 +276,7 @@ fn outside_message(path: &Path, case: &Case) -> String {
             crate::thread_tools::PROPOSE_WORK
         ),
         None if case.in_work => format!("{head} — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
-        None => format!("{head} — 작업공간이 없는 채팅은 이 채팅 폴더 안에서만 고쳐요"),
+        None => format!("{head} — 작업공간이 없는 채팅은 채팅 폴더의 `work/` 안에서만 고쳐요"),
     }
 }
 
@@ -283,9 +289,11 @@ fn kept_message(path: &Path) -> String {
 }
 
 /// 명령 글에 Atelier만 쓰는 Thread 파일이 나오나(코드 리뷰 2차 A3) — 글자로만 본다. 경로 낱말의 마디에 `<Thread 폴더>/<그 파일>`이
-/// 있거나(절대 경로 · `~/…` · `../threads/…`), 작업 폴더가 그 Thread 폴더이거나 글이 그 폴더를 가리키면(`cd …/<Thread> && …`) 그
-/// 파일 이름으로 시작하는 낱말(`thread.json` · `./.policy.json` · `../events.jsonl`)이다. 변수 · 스크립트 속의 경로는 보지
-/// 못한다(결정.md 「코드 리뷰 2차」 A3의 남은 위험).
+/// 있거나(절대 경로 · `~/…` · `../threads/…`), 작업 폴더가 그 Thread 폴더이거나 그 안 `work/`처럼 Thread 폴더를 부모로 두거나(스펙
+/// 「01c — Codex」 작업 폴더) 글이 그 폴더를 가리키면(`cd …/<Thread> && …`) 그 파일 이름으로 시작하는 낱말(`thread.json` ·
+/// `./.policy.json` · `../events.jsonl`)이다. 부모를 볼 때는 `..`를 가르지 않는다 — `cd .. && cat events.jsonl`도 그 기록이라, `work/`
+/// 안의 같은 이름(`cat events.jsonl`)도 묻는 쪽으로 눕는다. 변수 · 스크립트 속의 경로는 보지 못한다(결정.md 「코드 리뷰 2차」 A3의
+/// 남은 위험).
 fn mentions_kept(text: &str, kept: &[PathBuf], cwd: &Path) -> bool {
     let words: Vec<Vec<&str>> = text
         .split(|c: char| c.is_whitespace() || ";|&<>()'\"=`".contains(c))
@@ -294,7 +302,7 @@ fn mentions_kept(text: &str, kept: &[PathBuf], cwd: &Path) -> bool {
     kept.iter().any(|path| {
         let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|name| name.to_str())) else { return false };
         let Some(folder) = dir.file_name().and_then(|folder| folder.to_str()) else { return false };
-        let inside = dir == cwd || words.iter().flatten().any(|part| *part == folder);
+        let inside = dir == cwd || cwd.parent() == Some(dir) || words.iter().flatten().any(|part| *part == folder);
         words.iter().any(|parts| {
             parts.windows(2).any(|pair| pair == [folder, name])
                 || (inside && parts.iter().find(|part| !matches!(**part, "." | "..")) == Some(&name))
@@ -448,8 +456,8 @@ fn glob(pattern: &str, text: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// 판정의 입력 — 시험마다 한 칸씩 바꾼다. 기본은 Work에 이은 Thread에서 `worktree` · spec · Thread 폴더를 고칠 수 있고, 아무
-    /// 허락도 없이 매번 묻는다.
+    /// 판정의 입력 — 시험마다 한 칸씩 바꾼다. 기본은 Work에 이은 Thread에서 `worktree` · spec · Thread 폴더의 `work/`를 고칠 수
+    /// 있고, 아무 허락도 없이 매번 묻는다.
     struct Given {
         act: Act,
         level: AskLevel,
@@ -469,7 +477,7 @@ mod tests {
                 level: AskLevel::Always,
                 grants: Vec::new(),
                 in_work: true,
-                roots: vec!["/w/cart/trees/fe".into(), "/w/cart/spec".into(), "/t/20261023-101010".into()],
+                roots: vec!["/w/cart/trees/fe".into(), "/w/cart/spec".into(), "/t/20261023-101010/work".into()],
                 kept: ["thread.json", "events.jsonl", ".policy.json"].map(|name| Path::new("/t/20261023-101010").join(name)).to_vec(),
                 cwd: "/w/cart/trees/fe".into(),
                 projects: vec![("fe".to_owned(), "/repos/fe".into())],
@@ -587,7 +595,7 @@ mod tests {
             given.level = level;
             given.grants = names(&["edit", "Bash(cat *)"]);
             given.seat = Some(BUSY.to_owned());
-            given.cwd = "/t/20261023-101010".into();
+            given.cwd = "/t/20261023-101010/work".into();
             given.judged()
         };
         for level in LEVELS {
@@ -600,9 +608,9 @@ mod tests {
                 "{level:?} 경로를 읽을 수 없는 편집 — 허락이 넘기지 못해 「다시 묻지 않기」가 서지 않는다"
             );
             assert_eq!(
-                judged(command("cat events.jsonl"), level),
+                judged(command("cat ../events.jsonl"), level),
                 ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"),
-                "{level:?} 기록 파일을 언급한 명령"
+                "{level:?} 기록 파일을 언급한 명령 — 작업 폴더 `work/`의 부모인 Thread 폴더의 것이다"
             );
         }
     }
@@ -871,29 +879,31 @@ mod tests {
             given.level = AskLevel::Auto;
             given.judged()
         };
-        assert_eq!(judged("/t/20261023-101010/notes.md", true), allow("묻지 않음"), "Thread 폴더도 고칠 수 있는 자리다");
+        assert_eq!(judged("/t/20261023-101010/work/notes.md", true), allow("묻지 않음"), "Thread 폴더의 `work/`도 고칠 수 있는 자리다");
         assert_eq!(judged("/w/cart/trees/fe/a.ts", true), allow("묻지 않음"));
         assert_eq!(
             judged("/w/cart/trees/fe-old/a.ts", true),
             refuse("작업공간 밖의 파일이라 고칠 수 없어요: /w/cart/trees/fe-old/a.ts — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
             "경로는 낱말(폴더) 단위로 견준다 — 경로 하나라도 밖이면 거절이다"
         );
-        assert_eq!(
-            judged("/etc/hosts", false),
-            refuse("채팅 폴더 밖의 파일이라 고칠 수 없어요: /etc/hosts — 작업공간이 없는 채팅은 이 채팅 폴더 안에서만 고쳐요")
-        );
+        // Work 없는 Thread — 고칠 수 있는 자리는 Thread 폴더가 아니라 그 안 `work/`다(스펙 「01c — Codex」 작업 폴더).
+        let no_work = "작업공간이 없는 채팅은 채팅 폴더의 `work/` 안에서만 고쳐요";
+        for path in ["/etc/hosts", "/t/20261023-101010/notes.md", "/t/20261023-101010/work-old/a.md"] {
+            assert_eq!(judged(path, false), refuse(&format!("`work/` 밖의 파일이라 고칠 수 없어요: {path} — {no_work}")), "{path}");
+        }
         assert_eq!(
             judged("/repos/fe/a.ts", false),
             refuse(
-                "채팅 폴더 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 채팅 도구 `propose_work`로 \
+                "`work/` 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 채팅 도구 `propose_work`로 \
                  그 Project를 넣은 작업공간을 만든 뒤 `start_editing`을 부르세요"
             )
         );
     }
 
     #[test]
-    fn thread_폴더의_기록_파일은_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
-        // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 묻지 않음 · 편집 허락이 있어도 거절이다.
+    fn thread_폴더의_기록_파일은_묻지_않고_기록이라고_거절하고_work_안의_같은_이름은_고친다() {
+        // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 묻지 않음 · 편집 허락이 있어도 거절이다. 기록 파일은 고칠 수 있는
+        // 자리(`work/`) 밖이지만 밖이라는 글보다 기록이라는 글이 먼저다.
         let judged = |path: &str| {
             let mut given = Given::act(edit(path));
             given.level = AskLevel::Auto;
@@ -914,9 +924,13 @@ mod tests {
         ] {
             assert_eq!(judged(path), refused(path), "{path}");
         }
-        assert_eq!(judged("/t/20261023-101010/notes.md"), allow("이 Thread에서는 다시 묻지 않기"), "나머지 Thread 폴더는 그대로다");
-        assert_eq!(judged("/t/20261023-101010/thread.json.md"), allow("이 Thread에서는 다시 묻지 않기"), "경로는 마디 단위로 견준다");
-        assert_eq!(judged("/t/20261023-101010/agents/a.md"), allow("이 Thread에서는 다시 묻지 않기"), "`agents/`는 앱의 자리가 아니다");
+        assert!(
+            matches!(judged("/t/20261023-101010/thread.json.md"), Verdict::Refuse { message } if message.starts_with("`work/` 밖의")),
+            "경로는 마디 단위로 견준다"
+        );
+        for path in ["/t/20261023-101010/work/notes.md", "/t/20261023-101010/work/thread.json", "/t/20261023-101010/work/.policy.json"] {
+            assert_eq!(judged(path), allow("이 Thread에서는 다시 묻지 않기"), "{path} — `work/` 안의 같은 이름은 Agent의 파일이다");
+        }
     }
 
     #[test]
@@ -930,16 +944,18 @@ mod tests {
             given.cwd = cwd.into();
             given.judged()
         };
-        let (tree, thread) = ("/w/cart/trees/fe", "/t/20261023-101010");
+        // Work 없는 Thread의 작업 폴더는 Thread 폴더 안 `work/`다(스펙 「01c — Codex」 작업 폴더) — 부모인 Thread 폴더도 본다.
+        let (tree, work) = ("/w/cart/trees/fe", "/t/20261023-101010/work");
         for (text, cwd) in [
             ("echo '{}' > /t/20261023-101010/thread.json", tree),
             ("sed -i '' 's/push//' ~/.atelier/threads/20261023-101010/.policy.json", tree),
             ("rm ../../threads/20261023-101010/events.jsonl", tree),
             ("cd ~/.atelier/threads/20261023-101010 && echo '{}' > .policy.json", tree),
-            ("echo '{}' > thread.json", thread),
-            ("rm -f events.jsonl", thread),
-            ("cp x ./.policy.json", thread),
-            ("python3 x.py --out=../events.jsonl", thread),
+            ("cat ../events.jsonl", work),
+            ("echo '{}' > ../thread.json", work),
+            ("cp x ../.policy.json", work),
+            ("python3 x.py --out=../events.jsonl", work),
+            ("cd .. && rm -f events.jsonl", work),
         ] {
             assert_eq!(judged(text, cwd), ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"), "{text:?} ({cwd})");
         }
@@ -947,9 +963,11 @@ mod tests {
         for (text, cwd) in [
             ("cat src/agents/a.ts", tree),
             ("echo x > thread.json", tree),
-            ("ls src/agents", thread),
-            ("echo x > notes.md", thread),
+            ("ls src/agents", work),
+            ("echo x > notes.md", work),
+            ("cat ../notes.md", work),
             ("cat /t/20261023-101010/notes.md", tree),
+            ("cat /t/20261023-101010/work/notes.md", tree),
         ] {
             assert_eq!(judged(text, cwd), allow("이 Work에서는 다시 묻지 않기"), "{text:?} ({cwd})");
         }

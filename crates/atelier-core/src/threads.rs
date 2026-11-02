@@ -19,6 +19,8 @@ use crate::Result;
 
 const THREAD_FILE: &str = "thread.json";
 const RECORD_FILE: &str = "events.jsonl";
+/// Work 없는 Thread의 작업 폴더 이름 — Thread 폴더 안에 선다([`thread_work_dir`]).
+const WORK_DIR: &str = "work";
 /// 지금 띄우는 Runtime 하나(S3) — 새 Thread가 이 값으로 선다.
 const RUNTIME: &str = "claude-code";
 
@@ -165,7 +167,7 @@ fn claim_id(threads: &Path, at: DateTime<FixedOffset>) -> Result<(String, PathBu
     unreachable!("Thread id 번호가 다 찼다")
 }
 
-/// Thread 하나의 폴더 `threads/<id>`. 있다고 보증하지 않는다. Work 없는 Thread의 작업 폴더다(S11).
+/// Thread 하나의 폴더 `threads/<id>`. 있다고 보증하지 않는다. Work 없는 Thread의 작업 폴더는 이 안 [`thread_work_dir`]이다.
 ///
 /// **경로를 품은 id는 거절한다** — id는 화면에서 명령 인자로 오므로, `..`이 `threads/` 밖을 가리키면 남의 폴더에 기록을 쓴다
 /// (slug와 같은 규칙, `slug.rs`의 `is_safe_slug`).
@@ -176,8 +178,27 @@ pub fn thread_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
     Ok(crate::paths::threads_in(data_root).join(id))
 }
 
+/// Work 없는 Thread의 작업 폴더 `threads/<id>/work`(restart 구현 스펙 「01c — Codex」 작업 폴더). 있다고 보증하지 않는다.
+///
+/// **기록 파일과 뗀다** — Codex는 작업 폴더 안을 묻지 않고 쓴다. 작업 폴더가 Thread 폴더면 `thread.json` · `events.jsonl` ·
+/// `.policy.json`이 그 안이라 Runtime이 묻지 않고 고친다. Claude도 같은 자리에서 일한다.
+pub fn thread_work_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
+    Ok(thread_dir(data_root, id)?.join(WORK_DIR))
+}
+
+/// [`thread_work_dir`]를 세워 돌려준다 — Session을 열 때 부른다. 이미 있으면 그대로다. **Thread 폴더를 만들지 않는다** — 사라진
+/// Thread를 되살리지 않는다(그 폴더가 없으면 `NotFound`).
+pub fn open_thread_work_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
+    let dir = thread_work_dir(data_root, id)?;
+    match std::fs::create_dir(&dir) {
+        Ok(()) => Ok(dir),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(dir),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Thread 폴더 안에서 Atelier만 쓰는 자리(S7 · §19, 코드 리뷰 1차 A2) — `thread.json` · `events.jsonl` · 점 파일 `.policy.json`. 판정이
-/// 이 자리의 편집을 거절한다. 나머지 Thread 폴더는 Work 없는 Thread의 작업 폴더라 Agent가 고친다(S11).
+/// 이 자리의 편집을 거절하고, 명령 글에 나오면 묻는다. Agent가 고치는 자리는 Thread 폴더가 아니라 그 안 [`thread_work_dir`]다.
 pub fn thread_kept(dir: &Path) -> Vec<PathBuf> {
     [THREAD_FILE, RECORD_FILE, crate::policy_file::POLICY_FILE].iter().map(|name| dir.join(name)).collect()
 }
@@ -722,6 +743,27 @@ mod tests {
         let linked_late = update_thread(root.path(), &alone, |thread| thread.work = Some("cart".to_owned())).unwrap();
         index.put(&alone, &linked_late);
         assert_eq!(read_only(&index)[2], (alone, Some(WorkGone::Archived)), "고쳐 쓴 줄도 그때 본다");
+    }
+
+    /// 스펙 「01c — Codex」 작업 폴더 — Work 없는 Thread의 작업 폴더는 Thread 폴더 안 `work/`다. 열 때 서고, 사라진 Thread를 되살리지
+    /// 않는다.
+    #[test]
+    fn work_없는_thread의_작업_폴더는_thread_폴더_안_work이고_사라진_thread는_되살리지_않는다() {
+        let root = tempfile::tempdir().unwrap();
+        let created = create(root.path(), "2026-10-23T21:05:09.417+09:00", new_thread("카트 고치기"), "카트를 고쳐 줘");
+        let work = root.path().join("threads/20261023-210509/work");
+        assert_eq!(thread_work_dir(root.path(), &created.id).unwrap(), work);
+        assert!(!work.exists(), "자리를 셀 때는 만들지 않는다");
+
+        assert_eq!(open_thread_work_dir(root.path(), &created.id).unwrap(), work);
+        assert!(work.is_dir());
+        std::fs::write(work.join("notes.md"), "메모").unwrap();
+        assert_eq!(open_thread_work_dir(root.path(), &created.id).unwrap(), work, "이미 있으면 그대로 쓴다");
+        assert_eq!(std::fs::read_to_string(work.join("notes.md")).unwrap(), "메모");
+
+        assert!(open_thread_work_dir(root.path(), "20261001-090000").is_err(), "없는 Thread");
+        assert!(!root.path().join("threads/20261001-090000").exists(), "사라진 Thread의 폴더를 만들지 않는다");
+        assert!(matches!(thread_work_dir(root.path(), ".."), Err(crate::Error::Validation(_))));
     }
 
     /// **경로를 품은 id는 `threads/` 밖을 가리키지 못한다** — id는 화면에서 명령 인자로 온다.
