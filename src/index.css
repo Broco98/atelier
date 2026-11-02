@@ -1364,7 +1364,10 @@
 }
 
 /* shadcn 바탕 CSS. registry가 모든 요소에 걸던 `outline-ring/50`(브라우저 포커스 테두리의 색)은 걷었다 — 키보드 포커스의 모양은
-   아래 `focus-ring` 하나가 든다. 그 유틸리티를 안 단 요소는 브라우저 기본 테두리를 그대로 입는다. */
+   아래 `focus-ring` 하나가 든다. 그 유틸리티를 안 단 요소는 브라우저 기본 테두리를 그대로 입는다.
+   **글자 다듬기는 뿌리 한 곳이다**(restart 02b-8) — 시안은 앱 틀 · 대화창 · 시트 · Processes · 목록 뿌리에 모두 `-webkit-font-smoothing:
+   antialiased`를 둔다(`restart-chat.css`의 `.ra-app`). 없으면 WebKit(앱 · L3)이 서브픽셀로 그려 다크의 밝은 글자가 한 단 굵다.
+   `type-scale.test.ts`가 이 자리 밖에서 다시 적지 않는지 잰다. */
 @layer base {
   * {
     @apply border-border;
@@ -1373,7 +1376,7 @@
     @apply bg-background text-foreground;
     }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
     }
 }
 

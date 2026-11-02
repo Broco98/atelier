@@ -108,6 +108,16 @@ describe("글자 단계", () => {
     expect(offenders(uses).length).toBeGreaterThan(150);
   });
 
+  // **글자 다듬기는 앱 뿌리 한 곳이다**(restart 02b-8 · 시안 `restart-chat.css`의 `.ra-app` · 대화창 · 시트 · Processes · 목록 뿌리가 모두
+  // `-webkit-font-smoothing: antialiased`). 없으면 WebKit이 서브픽셀로 그려 다크에서 글자가 한 단 굵다. 화면마다 다시 적으면 한 화면만 굵기가
+  // 갈리므로 뿌리(`html`) 밖에서는 적지 않는다.
+  it("글자는 앱 뿌리(html)에서 antialiased로 다듬고, 다른 자리에서 다시 적지 않는다", () => {
+    const html = /@layer base\s*\{[\s\S]*?\bhtml\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(html).toMatch(/@apply\b[^;]*(?<![\w-])antialiased(?![\w-])/);
+    const others = offenders(/(?<![\w-])(?:subpixel-)?antialiased(?![\w-])|font-smoothing/g);
+    expect(others).toEqual([expect.stringMatching(/^src\/index\.css:\d+: antialiased$/)]);
+  });
+
   it("글자 크기를 임의 값으로 적지 않는다", () => {
     // 실패하면 그 자리를 단계로 옮긴다 — 짝은 크기가 아니라 자리다(DS README 「글자」 표의 「쓰는 곳」). 탭 · 트리 ·
     // 메뉴 · 소제목은 chat-meta(13), 행 · 버튼 · 입력은 sm(14), 메타 · 배지 · 툴팁 · 시간은 xs(12), 문서 본문은 chat-body,
