@@ -88,7 +88,7 @@ export const poolShell = (ptyId: number, shellKey: string, lastOutputMs: number,
 export const NO_TOTALS: AtelierTotals = { total: null, cpu: null, app: null, webviewExcluded: true };
 
 /** 아무것도 못 읽은 아틀리에 앱의 줄(macOS 밖의 앱과 같다). */
-export const NO_BODY: BodyRows = { rust: NO_METRICS, webview: NO_METRICS };
+export const NO_BODY: BodyRows = { rust: NO_METRICS, webview: NO_METRICS, webkit: [] };
 
 /** 못 잰 몫 — 「—」. */
 export const NO_SHARE: Share = { cpu: null, memory: null };

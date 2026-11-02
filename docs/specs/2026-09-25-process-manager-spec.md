@@ -83,7 +83,7 @@
   - CPU는 두 표본 사이 CPU 시간 차이를 벽시계로 나눈 것이다. Apple Silicon의 mach 시간 단위를 타임베이스(이 맥 125/3)로 ns로 바꾼다. 눈금은 한 코어 = 100이다.
   - 합계는 10초마다 백그라운드로 모아 메모리에 1시간치. 셸 · 프로세스별 값은 화면이 열려 있을 때만 2초마다.
   - 포트는 우리 트리의 프로세스만 본다(`lsof`를 띄우지 않는다).
-  - 앱 본체 = Rust 본체 + WebView(WebContent) 프로세스다. 구현 뒤: 귀속이 된다 — 비공개 SPI가 WebContent의 pid를 준다(티켓 30). 못 물었거나 못 읽었을 때만 요약에 「웹뷰 제외」가 선다. GPU · Networking 프로세스는 세지 않는다(툴팁에 적는다).
+  - 앱 본체 = Rust 본체 + WebView(WebContent) 프로세스다. 구현 뒤: 귀속이 된다 — 비공개 SPI가 WebContent의 pid를 준다(티켓 30). 못 물었거나 못 읽었을 때만 요약에 「웹뷰 제외」가 선다. GPU · Networking 프로세스는 세지 않는다(툴팁에 적는다). restart 03-8: 앱이 책임지는 WebKit GPU · Networking 프로세스도 웹뷰로 센다 — 책임 프로세스(`responsibility_get_pid_responsible_for_pid`)로 찾고, 앱 번들로 뜬 앱만 찾는다.
 - [끝내기]는 앱 창으로 확인하고, 화면에 보인 표본의 신원을 A-1의 순서로 끝낸다.
 
 ### C. 훅

@@ -172,13 +172,26 @@ export function trendLabel(points: ReadonlyArray<TrendPoint>): string {
 /** 앱 본체에 웹뷰를 못 셌을 때 값 옆에 붙는 말(프로세스 스펙 S39). */
 export const WEBVIEW_EXCLUDED = "웹뷰 제외";
 
+/** WebKit 도우미를 못 찾았을 때 툴팁이 덧붙이는 말 — 활성 상태 보기가 앱에 묶어 보이는 합보다 작은 까닭(S39). */
+const WEBKIT_UNCOUNTED = "WebKit의 GPU · Networking 프로세스는 세지 않아서 활성 상태 보기의 앱 합과 차이가 나요.";
+
 /**
- * 앱 본체의 툴팁(S39) — 무엇을 세고 무엇을 안 세는지. **GPU와 Networking 프로세스는 세지 않는다** — 활성 상태 보기가 앱에 묶어 보이는
- * 합보다 작은 까닭이 이것이다. 웹뷰를 못 셌으면 그것도 말한다.
+ * **웹뷰 줄의 글자**(restart 03-8 · 시안 Processes 「WebContent · GPU · Networking」) — WebContent 뒤에 함께 센 WebKit 도우미의 갈래
+ * (스냅샷의 `body.webkit`)를 잇는다. 앱이 책임지는 WebContent가 더 있어도(WebKit이 미리 띄운 것) 한 번만 적는다.
  */
-export function appBodyNote(webviewExcluded: boolean): string {
+export function webviewParts(webkit: ReadonlyArray<string>): string {
+  return [...new Set(["WebContent", ...webkit])].join(" · ");
+}
+
+/**
+ * 앱 본체의 툴팁(S39) — 무엇을 세고 무엇을 안 세는지. 앱이 책임지는 WebKit 도우미(`webkit` — 스냅샷의 `body.webkit`)를 셌으면 웹뷰가
+ * 그것까지다(restart 03-8). 못 찾았으면(책임 프로세스를 묻는 함수가 없다 · 셸에서 띄운 개발 빌드) **GPU와 Networking 프로세스는 세지
+ * 않는다**고 말한다 — 활성 상태 보기가 앱에 묶어 보이는 합보다 작은 까닭이 이것이다. 웹뷰(WebContent)를 못 셌으면 그것도 말한다.
+ */
+export function appBodyNote(webviewExcluded: boolean, webkit: ReadonlyArray<string>): string {
+  const helpers = webkit.filter((kind) => kind !== "WebContent");
   const counted = webviewExcluded
-    ? "웹뷰(WebContent)를 못 셌어요 — Rust 본체만이에요."
-    : "Rust 본체와 웹뷰(WebContent)를 세요.";
-  return `${counted} WebKit의 GPU · Networking 프로세스는 세지 않아서 활성 상태 보기의 앱 합과 차이가 나요.`;
+    ? `웹뷰(WebContent)를 못 셌어요 — ${helpers.length > 0 ? `Rust 본체와 ${helpers.join(" · ")}만이에요.` : "Rust 본체만이에요."}`
+    : `Rust 본체와 웹뷰(${webviewParts(webkit)})를 세요.`;
+  return webkit.length > 0 ? counted : `${counted} ${WEBKIT_UNCOUNTED}`;
 }

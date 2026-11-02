@@ -34,9 +34,9 @@ use super::breakdown::Breakdown;
 use super::instances::{Build, InstanceFile};
 use super::machine::Machine;
 use super::metrics::Measured;
-use super::summary::{Body, Totals};
+use super::summary::{sum_read, Body, Totals};
 use super::verdict::{InstanceRecord, Verdict};
-use super::{runtime_key, shell_key, Identity, Proc};
+use super::{runtime_key, shell_key, webkit, Identity, Proc};
 
 /// 화면 스냅샷 한 장. 프런트의 `ProcessSnapshot`(`src/features/processes/types.ts`)과 **칸 이름으로만** 이어진다 — 어긋나면
 /// 컴파일도 타입 검사도 통과하고 화면만 조용히 빈다. 그래서 와이어 모양을 아래 검사가 글자로 못박는다.
@@ -65,13 +65,43 @@ pub struct ScreenSnapshot {
     pub breakdown: Breakdown,
 }
 
-/// **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰(WebContent). 아틀리에 합계의 앱 본체가 이
-/// 둘이다(S39). 웹뷰를 못 물었거나 못 읽었으면 그 줄의 숫자가 빈다(「—」 — 요약 카드의 「웹뷰 제외」와 같은 때다).
+/// **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰. 웹뷰 줄은 WebContent와 앱이 책임지는
+/// WebKit 도우미(GPU · Networking — restart 03-8)의 합이다. 아틀리에 합계의 앱 본체가 이 둘이다(S39). 웹뷰를 못 물었거나 못 읽었고
+/// 도우미도 없으면 그 줄의 숫자가 빈다(「—」 — 요약 카드의 「웹뷰 제외」와 같은 때다).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BodyRows {
     pub rust: Metrics,
     pub webview: Metrics,
+    /// 웹뷰 줄에 함께 센 WebKit 도우미의 갈래(`webkit::Helper::kind` — `GPU` · `Networking`) — 이 표본에서 읽은 것만, 갈래 순, 겹침 없음.
+    /// 책임 프로세스를 묻는 함수가 없거나 앱이 제 책임 프로세스가 아니면(셸에서 띄운 개발 빌드) 빈다 — 그 도우미는 「다른 앱」에 있다.
+    pub webkit: Vec<String>,
+}
+
+impl BodyRows {
+    /// 앱 본체의 신원과 이번 표본의 지표로 두 줄을 짓는다. 웹뷰 줄은 WebContent와 WebKit 도우미 중 읽은 것끼리 더한다(CPU는 잰 것끼리 —
+    /// 아틀리에 합계와 같은 규칙).
+    fn of(body: &Body, measured: &Measured) -> Self {
+        let read: Vec<&webkit::Helper> = body.webkit.iter().filter(|helper| measured.readings.contains_key(&helper.id)).collect();
+        let webview = body.web_content.into_iter().chain(read.iter().map(|helper| helper.id));
+        let mut kinds: Vec<String> = read.iter().map(|helper| helper.kind.clone()).collect();
+        kinds.sort();
+        kinds.dedup();
+        BodyRows { rust: metrics_of(measured, body.rust), webview: metrics_summed(measured, webview), webkit: kinds }
+    }
+}
+
+/// 여러 프로세스의 지표를 한 줄로 더한다 — 읽은 것끼리(아무것도 못 읽었으면 없다), 포트는 모아 오름차순 · 겹침 없이.
+fn metrics_summed(measured: &Measured, ids: impl Iterator<Item = Identity>) -> Metrics {
+    let rows: Vec<Metrics> = ids.map(|id| metrics_of(measured, Some(id))).collect();
+    let mut ports: Vec<u16> = rows.iter().flat_map(|row| row.ports.iter().copied()).collect();
+    ports.sort_unstable();
+    ports.dedup();
+    Metrics {
+        memory: sum_read(rows.iter().map(|row| row.memory)),
+        cpu: sum_read(rows.iter().map(|row| row.cpu)),
+        ports,
+    }
 }
 
 /// **다른 인스턴스 하나** — 지금 떠 있는 다른 아틀리에 실행(프로세스 스펙 S54 · 티켓 31). 화면이 이 실행마다 빌드 종류와 버전을
@@ -219,7 +249,7 @@ impl ScreenSnapshot {
             record_head,
             measured_at: measured.measured_at,
             mac: measured.machine,
-            body: BodyRows { rust: metrics_of(measured, body.rust), webview: metrics_of(measured, body.web_content) },
+            body: BodyRows::of(body, measured),
             breakdown: Breakdown::of(&atelier, apps, measured.machine),
             atelier,
         }
@@ -364,7 +394,7 @@ mod tests {
         let reading = |memory: u64, ports: Vec<u16>| Reading { memory, cpu_ns: 0, ports };
         // 앱 본체는 Rust 본체만 읽었다 — 웹뷰를 못 물었다(「웹뷰 제외」).
         let app = Identity { pid: 42, started_us: 4_200 };
-        let body = Body { rust: Some(app), web_content: None };
+        let body = Body { rust: Some(app), web_content: None, ..Body::default() };
         let measured = Measured {
             readings: HashMap::from([
                 (vite.id, reading(335_544_320, vec![5173, 24678])),
@@ -468,10 +498,11 @@ mod tests {
                     "app": 419_430_400u64,
                     "webviewExcluded": true,
                 },
-                // 아틀리에 앱의 줄 — 앱 본체(Rust)는 읽었고, 웹뷰(WebContent)는 못 물어 비었다.
+                // 아틀리에 앱의 줄 — 앱 본체(Rust)는 읽었고, 웹뷰(WebContent)는 못 물어 비었다. 앱이 책임지는 WebKit 도우미도 없다(restart 03-8).
                 "body": {
                     "rust": { "memory": 419_430_400u64, "cpu": 1.25, "ports": [] },
                     "webview": unmeasured,
+                    "webkit": [],
                 },
                 // 나눔 — 읽은 합(아틀리에 14.5 + 다른 앱 9.5 + 0.5 = 24.5%, 1,931,476,992B)을 맥 전체(37.5%, 12GB)에서 뺀 것이 시스템 ·
                 // 못 읽음이고, 합계는 맥 전체다.
@@ -505,7 +536,67 @@ mod tests {
             }),
             "맥 전체를 안 쟀는데 시스템 · 못 읽음이나 합계가 섰다"
         );
-        assert_eq!(blank["body"], serde_json::json!({ "rust": unmeasured, "webview": unmeasured }), "앱 본체를 모르는데 숫자가 섰다");
+        assert_eq!(
+            blank["body"],
+            serde_json::json!({ "rust": unmeasured, "webview": unmeasured, "webkit": [] }),
+            "앱 본체를 모르는데 숫자가 섰다"
+        );
+    }
+
+    /// **웹뷰 줄은 WebContent와 앱이 책임지는 WebKit 도우미의 합이다**(restart 03-8 · 시안 Processes 「웹뷰 — WebContent · GPU · Networking」).
+    /// 읽은 것끼리 더하고(CPU는 잰 것끼리), 이 표본에서 읽은 도우미의 갈래를 갈래 순으로 싣는다 — 화면이 줄의 글자로 쓴다. 그사이 끝나 못
+    /// 읽은 도우미는 숫자에도 갈래에도 없다. WebContent를 못 물었어도 읽은 도우미는 줄에 선다 — 아틀리에 합계가 그것을 세므로 줄을 더하면
+    /// 합계가 돼야 한다. 앱 본체(`atelier.app`)도 같은 것을 센다.
+    #[test]
+    fn the_webview_row_adds_the_webkit_helpers_to_the_web_content() {
+        use crate::processes::webkit::Helper;
+
+        let (app, page) = (Identity { pid: 42, started_us: 4_200 }, Identity { pid: 77, started_us: 7_700 });
+        let helper = |pid: u32, kind: &str| Helper { id: Identity { pid, started_us: u64::from(pid) * 100 }, kind: kind.into() };
+        let (render, relay, gone) = (helper(78, "Render"), helper(79, "Relay"), helper(80, "Paint"));
+        let webkit = vec![relay.clone(), render.clone(), gone];
+        let reading = |memory: u64| Reading { memory, cpu_ns: 0, ports: vec![] };
+        let measured = Measured {
+            readings: HashMap::from([
+                (app, reading(400)),
+                (page, reading(200)),
+                (render.id, reading(60)),
+                (relay.id, Reading { memory: 30, cpu_ns: 0, ports: vec![8080] }),
+            ]),
+            cpu: HashMap::from([(app, 1.0), (page, 1.0), (render.id, 0.5)]),
+            ..Measured::default()
+        };
+        let empty = Verdict {
+            descendants: BTreeMap::new(),
+            exceptions: vec![],
+            helpers: BTreeSet::new(),
+            orphans: Orphans::default(),
+            other_instances: BTreeMap::new(),
+            chats: BTreeMap::new(),
+            runtimes: BTreeSet::new(),
+        };
+
+        let body = Body { rust: Some(app), web_content: Some(page), webkit: webkit.clone() };
+        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &body, &measured, vec![], vec![], None)).unwrap();
+        assert_eq!(
+            sheet["body"],
+            serde_json::json!({
+                "rust": { "memory": 400, "cpu": 1.0, "ports": [] },
+                "webview": { "memory": 290, "cpu": 1.5, "ports": [8080] },
+                "webkit": ["Relay", "Render"],
+            }),
+            "웹뷰 줄이 WebContent와 읽은 WebKit 도우미의 합이 아니다"
+        );
+        assert_eq!(sheet["atelier"]["app"], 690, "앱 본체가 웹뷰 줄과 같은 것을 안 셌다");
+
+        let unasked = Body { rust: Some(app), web_content: None, webkit };
+        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &unasked, &measured, vec![], vec![], None)).unwrap();
+        assert_eq!(
+            sheet["body"]["webview"],
+            serde_json::json!({ "memory": 90, "cpu": 0.5, "ports": [8080] }),
+            "WebContent를 못 물었을 때 웹뷰 줄이 합계가 센 도우미를 빠뜨렸다"
+        );
+        assert_eq!(sheet["atelier"]["webviewExcluded"], true, "WebContent를 못 셌는데 웹뷰를 셌다고 한다");
     }
 
     /// **지표는 우리 트리의 프로세스만 읽는다**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부(자손 · 예외 · 고아 두 갈래 · 다른
@@ -533,7 +624,7 @@ mod tests {
         let pool = [pool_shell(1, "G-1", 0, Some(zsh)), pool_shell(2, "G-2", 0, None)];
 
         let (rust, web) = (Identity { pid: 42, started_us: 4_200 }, Identity { pid: 77, started_us: 7_700 });
-        let body = Body { rust: Some(rust), web_content: Some(web) };
+        let body = Body { rust: Some(rust), web_content: Some(web), ..Body::default() };
 
         assert_eq!(
             targets(&verdict, &pool, &body),

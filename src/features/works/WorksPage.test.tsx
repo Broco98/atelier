@@ -15,9 +15,11 @@ import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 import { threadQuery, threadsQuery } from "@/features/thread/hooks";
+import { scopeKey } from "@/features/services/hooks";
+import type { ReadingScope } from "@/features/services/scope";
 import { bodyTabStore, followTab, moveSeat, rightPlaceStore, workSeat } from "@/features/thread/right-place";
 import { forgetNewChat, newChatKey } from "@/features/thread/new-chat";
-import { addChunk, discardFlow, mergeLines, NEW_THREAD, setDraft } from "@/features/thread/thread-store";
+import { addChunk, discardFlow, mergeLines, NEW_THREAD, setDraft, setQuote } from "@/features/thread/thread-store";
 import type { RecordLine, ThreadSummary, ThreadView } from "@/features/thread/types";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
@@ -1475,10 +1477,12 @@ describe("WorksPage 오른쪽 자리", () => {
     expect(markup).not.toContain("var(--size-thread-beside)");
   });
 
-  it("작업공간 화면이 오른쪽 자리를 쥐고 채팅 탭 몸에 건넨다 — 넓힌 카드는 채팅이 본문에 설 때만이다", () => {
+  // restart 02a-11 — 새 채팅 탭도 카드가 서는 탭이다. 켜진 새 채팅 탭 몸에도 같은 값을 건넨다.
+  it("작업공간 화면이 오른쪽 자리를 쥐고 채팅 탭 · 새 채팅 탭 몸에 건넨다 — 넓힌 카드는 그 탭이 본문에 설 때만이다", () => {
     const page = source("WorksPage.tsx");
-    expect(page).toContain("chat: selected !== null && chatThread !== null,\n    tab: bodyTab,");
+    expect(page).toContain("chat: selected !== null && (chatThread !== null || newChatShown),\n    tab: bodyTab,");
     expect(page).toContain("card={right.card}");
+    expect(page).toContain("card={visibleNewChat?.id === one.id ? right.card : null}");
     expect(countOf(page, "<SummaryToggle")).toBe(1);
   });
 
@@ -1673,10 +1677,11 @@ describe("WorksPage 새 채팅 탭", () => {
   let first = 0;
   let second = 0;
 
-  function drawNewChat(tab: ViewTab, opening = false): string {
+  function drawNewChat(tab: ViewTab, opening = false, seed: (client: QueryClient) => void = () => {}): string {
     const client = new QueryClient();
     client.setQueryData(worksQuery().queryKey, [work]);
     client.setQueryData(threadsQuery().queryKey, []);
+    seed(client);
     return renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ToastProvider>
@@ -1724,9 +1729,82 @@ describe("WorksPage 새 채팅 탭", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     terminalStore.setState(() => NO_SHELLS);
+    rightPlaceStore.setState(() => ({}));
+    bodyTabStore.setState(() => ({}));
     forgetNewChat(newChatKey(first));
     forgetNewChat(newChatKey(second));
     forgetNewChat(NEW_THREAD);
+  });
+
+  // restart 02a-11 · 구현 스펙 「02a — 오른쪽 자리」 — 새 채팅 탭에도 요약 카드와 넓힌 카드가 선다. 오른쪽 자리 값은 작업공간마다 하나라 켜진
+  // 새 채팅 탭이 그 값대로 카드를 그리고, 숨은 새 채팅 탭은 그리지 않는다.
+  describe("오른쪽 자리", () => {
+    const seat = workSeat(work.slug);
+    const hasCard = (markup: string) => /<section[^>]*aria-label="요약"/.test(markup);
+
+    it("오른쪽 자리가 요약 카드면 켜진 새 채팅 탭에 작은 카드가 서고, 숨은 새 채팅 탭에는 없다", () => {
+      moveSeat(seat, "spec", { kind: "toggle", place: "summary" });
+      const markup = drawNewChat("chat");
+      expect(hasCard(bodyOf(markup, second))).toBe(true);
+      expect(bodyOf(markup, second)).not.toContain("data-expanded");
+      expect(hasCard(bodyOf(markup, first))).toBe(false);
+    });
+
+    // 02 §7 · Screen-Live — 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 비켜난다(`Beside` — 몫 `size-summary-room`).
+    // 새 채팅 탭의 대화 열은 물음과 입력창이다 — 둘이 함께 비켜나야 물음이 입력창 가운데 위에 남는다.
+    it("작은 카드가 서면 새 채팅 탭의 물음과 입력창이 카드를 비켜나고, 카드가 없으면 그대로다", () => {
+      const room = "basis-(--size-summary-room)";
+      expect(countOf(bodyOf(drawNewChat("chat"), second), room)).toBe(0);
+      moveSeat(seat, "spec", { kind: "toggle", place: "summary" });
+      const shown = bodyOf(drawNewChat("chat"), second);
+      expect(countOf(shown, room)).toBe(2);
+      // 비키는 몫은 열 오른쪽 빈 칸이다 — 하나는 물음 뒤, 하나는 입력창 뒤에 선다.
+      const [question, field] = [shown.indexOf("무엇을 만들까요?"), shown.indexOf('aria-label="보낼 말"')];
+      expect(shown.indexOf(room)).toBeGreaterThan(question);
+      expect(shown.indexOf(room)).toBeLessThan(field);
+      expect(shown.lastIndexOf(room)).toBeGreaterThan(field);
+    });
+
+    // 아직 채팅이 없어 카드는 작업공간의 것이다 — 소스의 Project는 그 작업공간의 읽는 범위다(채팅 탭은 그 채팅의 범위).
+    it("새 채팅 탭의 카드 소스는 작업공간의 읽는 범위다", () => {
+      const reading: ReadingScope = {
+        service: null,
+        project: null,
+        projects: [{ slug: "web-app", name: "웹 앱", why: "all" }],
+        worked: [],
+        kind: "all",
+        registered: 1,
+      };
+      moveSeat(seat, "spec", { kind: "toggle", place: "summary" });
+      const shown = bodyOf(
+        drawNewChat("chat", false, (client) => client.setQueryData(scopeKey({ work: work.slug }), reading)),
+        second,
+      );
+      const card = shown.slice(shown.search(/<section[^>]*aria-label="요약"/));
+      expect(card).toMatch(/data-project="web-app"[^]*읽기만/);
+    });
+
+    // 넓힌 카드의 문서에서 고른 글은 그 탭의 입력창에 인용으로 붙는다(S41) — 카드가 쓰는 열쇠가 그 탭의 글 열쇠(`newChatKey`)다. 고르는 손짓은
+    // 정적 그림에 없어 카드에서 문서 보기까지의 배선은 리터럴로 못박고, 그 열쇠에 붙은 인용이 그 탭의 입력창에만 서는 것을 그림으로 잰다.
+    it("넓힌 카드의 문서 인용이 그 탭의 입력창으로 간다 — 다른 새 채팅 탭에는 서지 않는다", () => {
+      setQuote(newChatKey(second), { file: "overview.md", start: 1, end: 2, text: "고른 글" });
+      const markup = drawNewChat("chat");
+      expect(bodyOf(markup, second)).toMatch(/<span data-quote[^>]*>[^]*고른 글[^]*overview\.md/);
+      expect(bodyOf(markup, first)).not.toContain("data-quote");
+      const read = (file: string) => readFileSync(fileURLToPath(new URL(`../thread/${file}`, import.meta.url)), "utf8");
+      expect(read("ThreadScreen.tsx")).toContain("<WorkSummaryCard\n            key={draftKey}\n            draftKey={draftKey}\n            slug={work}");
+      expect(read("SummaryCard.tsx")).toContain("<ExpandedViewer\n        draftKey={draftKey}");
+      expect(read("ExpandedViewer.tsx")).toContain("onQuote={(quote) => setQuote(draftKey, quote)}");
+    });
+
+    // 스토리 95 — 채팅이 아직 없어도 문서를 읽는다. 넓힌 카드는 카드가 서는 탭이 본문일 때만인데(`chat`), 새 채팅 탭도 그 탭이다.
+    it("넓혀 둔 값이면 새 채팅 탭의 카드가 넓어져 대화가 왼쪽 480에 남는다", () => {
+      moveSeat(seat, "spec", { kind: "expand", target: { kind: "doc", path: "overview.md" } });
+      const shown = bodyOf(drawNewChat("chat"), second);
+      expect(shown).toMatch(/<section[^>]*aria-label="요약"[^>]*data-expanded=""/);
+      expect(shown).toContain("width:var(--size-thread-beside)");
+      expect(shown).toContain("left:var(--size-thread-beside)");
+    });
   });
 
   it("새 채팅 탭이 `spec` 뒤 묶음에 「새 채팅」으로 서고, 켜진 하나가 켜져 있다", () => {

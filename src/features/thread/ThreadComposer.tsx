@@ -4,7 +4,7 @@ import { ArrowUp, Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useChanged } from "./arrival";
-import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
+import { attachmentStore, attachmentsOf } from "./attachments";
 import { slashCommands, threadCommands, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
 import {
@@ -22,6 +22,7 @@ import {
   type RuntimeChoice,
 } from "./ComposerChips";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
+import { sendDraft } from "./send-draft";
 import { DraftQuoteChip } from "./QuoteChip";
 import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
 import type { Quote } from "@/features/works/QuotePick";
@@ -216,21 +217,11 @@ function ThreadComposer({
     el.setSelectionRange(el.value.length, el.value.length);
   }, [filled]);
 
+  // 거둔 글 · 첨부 · 인용은 거절되면 되돌아온다(`sendDraft`) — 새 채팅의 첫 말도 같다(restart 02a-11).
   const send = () => {
-    const text = draft.trim();
-    if (text === "" || busy || checking) return;
-    const attached = attachments;
-    const quoted = quote;
-    setDraft(draftKey, "");
-    setAttachments(draftKey, []);
-    if (quoted) setQuote(draftKey, null);
+    if (draft.trim() === "" || busy || checking) return;
     setProblem(null);
-    onSend(text, attached, quoted).catch((error: unknown) => {
-      setDraft(draftKey, text);
-      setAttachments(draftKey, attached);
-      if (quoted) setQuote(draftKey, quoted);
-      setProblem(String(error));
-    });
+    sendDraft(draftKey, onSend).catch((error: unknown) => setProblem(String(error)));
   };
   const pick = () => {
     pickFiles()

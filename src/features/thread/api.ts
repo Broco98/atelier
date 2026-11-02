@@ -60,12 +60,13 @@ export const threadApi = {
    * 이어 갈 곳(`link`)은 주소 씨앗이 정한 것이다(새 Work · Work 없이 대화 · 그 Work). 첨부는 경로만 간다(v1 티켓
    * 06 · S30). 나머지는 입력창 칩에서 첫 말 전에 고른 것이고 고르지 않은 칸은 `null`이다 — 물어보는 정도(v1 티켓 23 — 이은 Work면
    * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 Runtime의 기본값), 트레이 범위 칩의
-   * Service(03 §5 — 이은 Work면 그 Work의 Service가 된다, S4)나 Project.
+   * Service(03 §5 — 이은 Work면 그 Work의 Service가 된다, S4)나 Project. 인용(`quote` — 작업공간의 새 채팅 탭이 넓힌 카드의 문서에서 고른 글,
+   * restart 02a-11)은 엔진이 이은 Work의 spec 폴더를 가리키는 인용 블록으로 첫 말 본문 앞에 둔다 — 틀리면 채팅을 세우지 않고 거절한다.
    */
-  start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks) => {
+  start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks, quote: Quote | null = null) => {
     const attachments = pathsOf(attached);
     const { runtime, mode, model, effort, service, project } = picks;
-    return invoke<string>("thread_start", { text, attachments, link, runtime, mode, model, effort, service, project });
+    return invoke<string>("thread_start", { text, attachments, link, runtime, mode, model, effort, service, project, quote });
   },
   /**
    * 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. 인용(v1 티켓 35 ·

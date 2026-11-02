@@ -410,7 +410,7 @@ function WorksPage({
   // **오른쪽 자리**(restart 02a-9 · 구현 스펙 「02a — 오른쪽 자리」 · 보드 SummarySheet) — spec 패널(작업 패널)과 요약 카드가 본문 카드 오른쪽의
   // 한 자리를 나눠 쓰는 값 하나다(`spec` · `summary` · 없음). **작업공간마다 하나이고 이 화면이 쥔다**(`useWorkRightPlace` — 한때 패널 열림은
   // 이 화면의 값 하나(`workPanelOpen`)라 작업을 옮겨도 따라왔고, 요약 카드 열림 · 넓힌 카드는 채팅 화면의 지역 상태였다). 머리 줄의 패널
-  // 토글 · ⌘Enter · 레일 칸이 spec 패널을, 창 머리의 「요약 카드」가 요약 카드를 여닫는다. 넓힌 카드는 채팅이 본문에 서 있을 때만이고(`chat`),
+  // 토글 · ⌘Enter · 레일 칸이 spec 패널을, 창 머리의 「요약 카드」가 요약 카드를 여닫는다. 넓힌 카드는 채팅 탭 · 새 채팅 탭이 본문에 서 있을 때만이고(`chat`),
   // 넓은 동안 사이드바가 접힌다.
   //
   // **처음 값이 분할 여부를 본다**(결정 88). `?split=lr`로 새로 뜨거나 새로고침하면 아래 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면
@@ -424,7 +424,8 @@ function WorksPage({
   );
   const right = useWorkRightPlace(panelWork, {
     split: split !== null,
-    chat: selected !== null && chatThread !== null,
+    // 카드가 서는 탭(채팅 탭 · 새 채팅 탭 — restart 02a-11)이 본문일 때만 넓힌 카드가 선다.
+    chat: selected !== null && (chatThread !== null || newChatShown),
     tab: bodyTab,
   });
   const { move: moveRight, panelOpen } = right;
@@ -900,6 +901,9 @@ function WorksPage({
   // 사라진다 — 채팅 탭처럼 스토어에 쥘 것이 없다. 그래서 그 작업공간의 새 채팅 탭을 **모두** 꽂고 켜진 하나만 보인다. 본문 카드마다 같은
   // 자리(첫 자식)에 꽂는다 — 카드가 하나라(`Card`) 셸 · 파일 · 채팅 · 문서를 오가도 그 자리의 몸이 그대로 산다. 작업공간을 옮기거나
   // 분할을 켜면 내려간다(02a-13이 분할을 걷을 때까지).
+  //
+  // **켜진 새 채팅 탭에 오른쪽 자리를 건넨다**(restart 02a-11) — 채팅 탭 몸과 같은 값(`right.card`)이라 요약 카드 · 넓힌 카드가 선다. 숨은 탭은
+  // 받지 않는다 — 카드가 보이지 않는 곳에서 변경 · PR을 읽지 않게.
   const visibleNewChat = newChatShown && tabOwner !== null ? activeTabOf(shellState, tabOwner) : null;
   const newChats =
     panelWork &&
@@ -910,6 +914,7 @@ function WorksPage({
               <WorkNewChat
                 work={panelWork.slug}
                 draftKey={newChatKey(one.id)}
+                card={visibleNewChat?.id === one.id ? right.card : null}
                 onStarted={(started) => {
                   settleNewChat(one.id, started);
                   forgetNewChat(newChatKey(one.id));

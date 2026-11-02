@@ -13,6 +13,7 @@ import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useReadingScope, useServices } from "@/features/services/hooks";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
+import type { Quote } from "@/features/works/QuotePick";
 import type { WorkView } from "@/features/works/types";
 import { cn } from "@/lib/utils";
 import { withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
@@ -114,6 +115,8 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   화면이 작업공간마다, 이 화면은 채팅마다 쥔다. 처음 열면 닫혀 있다(SummarySheet 표 첫 줄 — 한때 Thread마다 이 컴퓨터에 적었고 처음엔 열려
 //   있었다, S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 왼쪽으로 비켜나고, 열고 닫을 때
 //   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 작업공간에서 새 채팅」은 그 작업공간의 새 채팅 탭이다(restart 02a-8).
+//   작업공간의 새 채팅 탭에도 같은 카드와 넓힌 카드가 선다(restart 02a-11 · `WorkNewChat`) — 소스는 그 작업공간의 읽는 범위이고, 문서 인용은
+//   그 탭의 입력창으로 간다. 홈의 새 채팅에는 카드도 토글도 없다(02 S23).
 // - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드 — 02 §7 「넓힌 카드는 그대로다」) — 요약 카드의 줄 · 대화 속 문서 카드를
 //   누르면 카드가 넓어진다. 대화는 왼쪽 480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그
 //   오른쪽을 작은 카드와 같은 띄움 8까지 채운다. 넓어지면 spec 패널이 접히고(오른쪽 자리), 넓어 있는 동안 사이드바를 접고(적지 않는다 —
@@ -185,13 +188,56 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
  *
  * **숨은 새 채팅 탭은 내리지 않는다** — 고른 Runtime · 모델 · 생각 깊이 · 모드 · 범위와 보내는 중인 상태가 이 안의 지역 상태다. 내리면 Codex를
  * 고른 탭이 Claude로 돌아온 채 보내지고 Runtime이 잠긴다. 작업공간 화면이 숨긴 채 둔다.
+ *
+ * **요약 카드와 넓힌 카드가 선다**(restart 02a-11 · 구현 스펙 「02a — 오른쪽 자리」) — 작업공간 화면이 쥔 오른쪽 자리(`card`)를 채팅 탭 몸처럼
+ * 받아 그린다. 숨은 탭은 받지 않는다(`null`). 아직 채팅이 없어 카드는 작업공간의 것이다 — 읽는 범위는 작업공간으로 읽고, 넓힌 카드의 문서
+ * 인용은 이 탭의 글 열쇠(`draftKey`)로 붙는다. 터미널에서 만들어 채팅이 없는 작업공간도 첫 말 전에 문서를 읽는다.
  */
-export function WorkNewChat({ work, draftKey, onStarted }: { work: string; draftKey: string; onStarted: (id: string) => void }) {
+export function WorkNewChat({
+  work,
+  draftKey,
+  card,
+  onStarted,
+}: {
+  work: string;
+  draftKey: string;
+  card: ChatCard | null;
+  onStarted: (id: string) => void;
+}) {
+  const navigate = useNavigate();
   const link = useMemo<ThreadLink>(() => ({ kind: "work", slug: work }), [work]);
+  const open = card?.open === true;
+  const opened = open ? card.opened : null;
   return (
-    <ArrivalScope>
-      <NewChat link={link} hold={holdOf({ link, service: null, project: null })} draftKey={draftKey} onStarted={onStarted} />
-    </ArrivalScope>
+    <CardRoom
+      open={open}
+      expanded={opened !== null}
+      card={
+        card && (
+          <WorkSummaryCard
+            key={draftKey}
+            draftKey={draftKey}
+            slug={work}
+            // 「이 작업공간에서 새 채팅」 — 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8).
+            onNewThread={() => void navigate(newChatDoor(work))}
+            opened={opened}
+            onOpen={card.onOpen}
+            onClose={card.onClose}
+          />
+        )
+      }
+    >
+      <ArrivalScope>
+        <NewChat
+          link={link}
+          hold={holdOf({ link, service: null, project: null })}
+          draftKey={draftKey}
+          onStarted={onStarted}
+          beside={open}
+          toasts={opened === null}
+        />
+      </ArrivalScope>
+    </CardRoom>
   );
 }
 
@@ -206,6 +252,8 @@ function NewChat({
   draftKey,
   onStarted,
   onDropNewWork,
+  beside = false,
+  toasts = true,
 }: {
   link: ThreadLink;
   /** 범위 칩이 처음 쥔 것 — 주소 씨앗(`?service=` · `?project=`)이다. */
@@ -215,6 +263,10 @@ function NewChat({
   onStarted: (id: string) => void;
   /** 「새 작업공간」 칩의 × — `?new=work`로 연 홈만 준다. */
   onDropNewWork?: () => void;
+  /** 요약 카드가 열려 있나 — 물음 · 보낸 말 · 입력창의 열이 카드를 비켜난다(`Beside`). 카드는 작업공간의 새 채팅 탭에만 선다(restart 02a-11). */
+  beside?: boolean;
+  /** 안내 카드의 토스트가 이 몸 아래에 서나 — 넓힌 카드가 서 있으면 그 보기의 토스트 자리가 받는다(`ThreadBody`와 같다). */
+  toasts?: boolean;
 }) {
   const openWork = useOpenWork();
   const work = link.kind === "work" ? link.slug : null;
@@ -235,7 +287,7 @@ function NewChat({
     onPick: (pick) => setHold((now) => holdPick(link, now, pick)),
     reading,
   };
-  const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
+  const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[]; quote: Quote | null } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「편집 자동」, 작업공간의 새 채팅이면
   // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다. Runtime(스토리 30)은 새 채팅에서만 고르고 첫 말과 함께 간다 —
   // 첫 말을 보내면 입력창이 칩을 잠근다(스토리 31). Runtime을 바꾸면 고른 모델과 생각 깊이를 비운다(`pickRuntime`).
@@ -252,11 +304,13 @@ function NewChat({
   const guide = guideKind(engine, false);
   const pick = (next: Runtime) => setPicks((now) => pickRuntime(now, next));
 
-  const start = async (text: string, attachments: readonly Attachment[]) => {
-    setStarting({ text, attachments });
+  // 인용(`quote`)은 작업공간의 새 채팅 탭이 넓힌 카드의 문서에서 붙인 것이다(restart 02a-11) — 첫 말과 함께 간다. 틀리면 엔진이 채팅을 세우지
+  // 않고 거절하고, 입력창이 쓰던 글 · 칩을 되돌린다(`sendDraft`).
+  const start = async (text: string, attachments: readonly Attachment[], quote: Quote | null) => {
+    setStarting({ text, attachments, quote });
     let id: string;
     try {
-      id = await threadApi.start(text, attachments, link, { ...picks, mode, ...startScope(link, hold, shown) });
+      id = await threadApi.start(text, attachments, link, { ...picks, mode, ...startScope(link, hold, shown) }, quote);
     } catch (error) {
       setStarting(null);
       throw error;
@@ -309,6 +363,7 @@ function NewChat({
     //   16px 88px}`)에 짓지 않은 Service 제안 줄의 자리 122(위 22 + 줄 32 × 3 + 사이 2 × 2)를 더한 것이다 — 물음과 입력창이 시안의 그
     //   자리에 선다.
     // - 첫 말을 보낸 뒤: Session이 열려 그 채팅으로 갈아 서기까지 보낸 말과 「생각 중」이 서고, 입력창은 바닥으로 내려간다.
+    // 열은 채팅 본문과 같은 칸(`Beside`)이다 — 요약 카드가 열려 있으면(새 채팅 탭) 물음 · 보낸 말 · 입력창이 함께 카드를 비켜난다.
     <div
       className={cn(
         "relative flex min-h-0 flex-1 flex-col",
@@ -316,20 +371,26 @@ function NewChat({
       )}
     >
       {starting === null ? (
-        <h1 className="mb-7 text-center text-home">무엇을 만들까요?</h1>
+        <div className="mb-7 w-full">
+          <Beside open={beside}>
+            <h1 className="text-center text-home">무엇을 만들까요?</h1>
+          </Beside>
+        </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-          <div className={`${COLUMN} ${TURN_GAP} text-chat-body`}>
-            <UserMessage text={starting.text} attachments={starting.attachments} />
-            <p className="think-shimmer text-sm">생각 중</p>
-          </div>
+          <Beside open={beside}>
+            <div className={`flex flex-col ${TURN_GAP} text-chat-body`}>
+              <UserMessage text={starting.text} attachments={starting.attachments} quote={starting.quote} />
+              <p className="think-shimmer text-sm">생각 중</p>
+            </div>
+          </Beside>
         </div>
       )}
       <div className={starting === null ? "w-full" : "px-5 pb-4"}>
-        <div className={COLUMN}>{composer}</div>
+        <Beside open={beside}>{composer}</Beside>
       </div>
       {/* 안내 카드의 「설치 안내」 · 「터미널에서 로그인」(셸 상한)이 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
-      {guide && <Toaster />}
+      {guide && toasts && <Toaster />}
     </div>
   );
 }
@@ -456,12 +517,12 @@ function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
 /**
  * **작업공간 화면의 오른쪽 자리**(restart 02a-9 · 구현 스펙 「02a — 오른쪽 자리」) — 그 작업공간의 값(`workSeat`)과 그것을 읽는 것 한 묶음이다:
  * spec 패널 열림 · 요약 카드 열림 · 넓힌 카드 · 넓은 동안 사이드바 접기, 그리고 채팅 탭 몸에 건넬 것(`card` — 대화의 문서 카드와 PR의 「변경
- * 사항 보기」가 넓히는 길). 작업공간 화면이 부르고 채팅 탭 몸(`WorkChat`)은 받은 대로 그린다. 한때 이 묶음이 채팅 화면의 지역 상태였다 —
- * spec 패널이 작업공간 화면에 있어 그 화면이 쥐어야 둘이 한 자리를 나눈다.
+ * 사항 보기」가 넓히는 길). 작업공간 화면이 부르고 채팅 탭 몸(`WorkChat`) · 켜진 새 채팅 탭 몸(`WorkNewChat` — restart 02a-11)은 받은 대로
+ * 그린다. 한때 이 묶음이 채팅 화면의 지역 상태였다 — spec 패널이 작업공간 화면에 있어 그 화면이 쥐어야 둘이 한 자리를 나눈다.
  *
  * - **처음 값은 spec 패널이다**(SummarySheet 표 첫 줄) — 분할인 채 들어오면 패널이 접혀 있다(`split` — 결정 88).
- * - **넓힌 카드는 채팅이 본문에 서 있을 때만이다**(`chat`) — 셸 · 파일 탭 · 문서가 본문이면 카드가 없어 넓힌 것도 없고, 접었던 사이드바가
- *   돌아온다.
+ * - **넓힌 카드는 카드가 서는 탭(채팅 탭 · 새 채팅 탭)이 본문에 서 있을 때만이다**(`chat`) — 셸 · 파일 탭 · 문서가 본문이면 카드가 없어 넓힌
+ *   것도 없고, 접었던 사이드바가 돌아온다.
  * - **본문 탭이 바뀌면 표의 탭 줄대로 값을 바꾼다**(`tab` — restart 02a-10 · `followTab`) — 셸 · 파일 탭 · 문서가 켜지면 요약 카드가 닫히고, 다른
  *   채팅 탭이 켜지면 넓힌 카드가 작은 카드로 돌아온다. 모르는 한 틱(`undefined`)은 세지 않는다.
  */
@@ -572,30 +633,79 @@ function ThreadPane({
     );
   }
   return (
+    <CardRoom
+      open={cardOpen}
+      expanded={expanded}
+      card={
+        cardWork === null ? (
+          <LooseSummaryCard key={thread} thread={thread} />
+        ) : gone === "archived" ? (
+          <ArchivedSummaryCard key={thread} slug={cardWork} />
+        ) : (
+          <WorkSummaryCard
+            key={thread}
+            thread={thread}
+            draftKey={thread}
+            slug={cardWork}
+            // 「이 작업공간에서 새 채팅」 — 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8).
+            onNewThread={() => void navigate(newChatDoor(cardWork))}
+            opened={expanded ? card.opened : null}
+            onOpen={card.onOpen}
+            onClose={card.onClose}
+          />
+        )
+      }
+    >
+      <DocPlace.Provider value={card.docPlace}>
+        <ThreadBody
+          key={thread}
+          view={view}
+          problem={problem}
+          beside={cardOpen}
+          toasts={!expanded}
+          onShowChanges={card.onShowChanges}
+          place={place}
+          onLeave={onLeave}
+        />
+      </DocPlace.Provider>
+    </CardRoom>
+  );
+}
+
+/**
+ * **대화와 오른쪽 자리의 카드**(restart 02a-9 · 02a-11) — 채팅 본문(`ThreadPane`)과 작업공간의 새 채팅 탭(`WorkNewChat`)이 함께 쓰는 자리다.
+ * 대화(`children`)는 판 폭 그대로이고 열 · 입력창이 카드를 비켜난다(`Beside` — 대화 쪽이 그린다). 카드가 넓으면 대화는 왼쪽 480
+ * (`THREAD_BESIDE`)에 남고 카드가 그 오른쪽을 채운다.
+ *
+ * 대화는 늘 같은 자리(첫 자식)에 선다 — 카드가 서고 걷혀도 대화가 새로 서지 않는다(새 채팅 탭의 고른 Runtime · 보내는 중 상태가 대화 쪽의
+ * 지역 상태다).
+ */
+function CardRoom({
+  open,
+  expanded,
+  card,
+  children,
+}: {
+  /** 요약 카드가 섰나. */
+  open: boolean;
+  /** 카드가 넓어져 있나 — 넓힐 수 있는 자리에서 연 것이 있을 때만이다. */
+  expanded: boolean;
+  card: ReactNode;
+  children: ReactNode;
+}) {
+  return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {/* 대화는 판 폭 그대로이고 열 · 입력창이 카드를 비켜난다(`Beside`). 카드가 넓으면 대화는 왼쪽 480에 남는다 — 폭은 두 갈래 모두
-          적어 둔다. 폭이 늘 길이라야 넓어지고 접히는 동안 패널 박자로 옮겨 간다. */}
+      {/* 폭은 두 갈래 모두 적어 둔다. 폭이 늘 길이라야 넓어지고 접히는 동안 패널 박자로 옮겨 간다. */}
       <div
         className={cn("flex min-h-0 flex-1 flex-col", PANEL_MOTION, "transition-[width] motion-reduce:transition-none")}
         style={{ width: expanded ? THREAD_BESIDE : "100%" }}
       >
-        <DocPlace.Provider value={card.docPlace}>
-          <ThreadBody
-            key={thread}
-            view={view}
-            problem={problem}
-            beside={cardOpen}
-            toasts={!expanded}
-            onShowChanges={card.onShowChanges}
-            place={place}
-            onLeave={onLeave}
-          />
-        </DocPlace.Provider>
+        {children}
       </div>
       {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
           넓어지면 자리가 왼쪽 480까지 자라 카드가 그것을 채운다. 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이 굴러야
           한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). */}
-      {cardOpen && (
+      {open && (
         <div
           className={cn(
             "pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end",
@@ -604,22 +714,7 @@ function ThreadPane({
           )}
           style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
         >
-          {cardWork === null ? (
-            <LooseSummaryCard key={thread} thread={thread} />
-          ) : gone === "archived" ? (
-            <ArchivedSummaryCard key={thread} slug={cardWork} />
-          ) : (
-            <WorkSummaryCard
-              key={thread}
-              thread={thread}
-              slug={cardWork}
-              // 「이 작업공간에서 새 채팅」 — 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8).
-              onNewThread={() => void navigate(newChatDoor(cardWork))}
-              opened={expanded ? card.opened : null}
-              onOpen={card.onOpen}
-              onClose={card.onClose}
-            />
-          )}
+          {card}
         </div>
       )}
     </div>

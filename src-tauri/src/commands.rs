@@ -891,7 +891,8 @@ pub async fn thread_read_record(
 /// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 범위 칩에서
 /// 고른 Service(`service` — `{slug}`, 「Service 없음」이면 `{slug: null}`)와 Project(`project`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Service가
 /// 된다, S4). 고르지 않은 칸은 `null`이다. Runtime(`runtime` — `claude-code` · `codex`)은 새 채팅에서만 고르는 채팅의 값이다(restart 01c-3) — Codex
-/// 채팅은 모델 · 생각 깊이를 받지 않는다.
+/// 채팅은 모델 · 생각 깊이를 받지 않는다. 인용(`quote` — 작업공간의 새 채팅 탭이 넓힌 카드의 문서에서 고른 글, restart 02a-11)은 이은 Work의
+/// spec 폴더를 가리키는 인용 블록으로 첫 말 본문 앞에 간다 — 올바르지 않으면 아무것도 세우지 않는다.
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -904,9 +905,13 @@ pub async fn thread_start(
     effort: Option<String>,
     service: Option<atelier_acp::ServicePick>,
     project: Option<String>,
+    quote: Option<atelier_acp::Quote>,
 ) -> CmdResult<String> {
     let picks = atelier_acp::StartPicks { runtime, mode, model, effort, service, project };
-    to_host(&engine, "채팅을 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
+    to_host(&engine, "채팅을 시작하지 못했습니다", move |host| {
+        host.start_thread_quoting(&text, &attachments, link, picks, quote.as_ref())
+    })
+    .await
 }
 
 /// 있는 Thread에 말한다. 턴을 기다리지 않는다. 다시 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 없는 첨부면 아무것도 적지 않고

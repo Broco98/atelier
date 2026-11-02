@@ -105,8 +105,13 @@ function SmallCard({ children }: { children: ReactNode }) {
 }
 
 interface WorkSummaryProps {
-  /** 지금 Thread — 넓힌 카드의 인용이 이 입력창으로 간다. */
-  thread: string;
+  /**
+   * 지금 Thread — 소스의 Project는 이 Thread의 읽는 범위다. 없으면(작업공간의 새 채팅 탭 — 아직 채팅이 없다, restart 02a-11) 그 작업공간의
+   * 읽는 범위다.
+   */
+  thread?: string;
+  /** 넓힌 카드의 문서 인용이 가는 입력창의 글 열쇠 — 채팅은 그 채팅 id, 새 채팅 탭은 그 탭의 열쇠(`newChatKey`)다. */
+  draftKey: string;
   slug: string;
   /** 「이 작업공간에서 새 채팅」(머리 「…」). */
   onNewThread: () => void;
@@ -122,7 +127,7 @@ interface WorkSummaryProps {
  * Work에 이은 Thread의 요약 카드 — 그 Work를 목록에서 찾지 못하면(보관 · 지움 · 아직 읽는 중) 서지 않는다. 넓으면(`opened`) 몸이 왼쪽
  * 목록(`size-list` 264 · 오른쪽 0.5 선)이 되고 오른쪽에 그 파일의 보기가 선다.
  */
-export function WorkSummaryCard({ thread, slug, onNewThread, opened, onOpen, onClose }: WorkSummaryProps) {
+export function WorkSummaryCard({ thread, draftKey, slug, onNewThread, opened, onOpen, onClose }: WorkSummaryProps) {
   const { data: works } = useWorks();
   const work = works?.find((one) => one.slug === slug) ?? null;
   const changes = useChanges(slug);
@@ -136,7 +141,7 @@ export function WorkSummaryCard({ thread, slug, onNewThread, opened, onOpen, onC
   });
   const writing = useStore(workWritingStore, (state) => writingOf(state, slug));
   const written = useWritten(writing, slug);
-  const { data: scope } = useReadingScope({ thread });
+  const { data: scope } = useReadingScope(thread === undefined ? { work: slug } : { thread });
   const [unfolded, setUnfolded] = useState(false);
   if (!work) return null;
   const target = changesTarget(changes.summary, work.projects);
@@ -171,7 +176,7 @@ export function WorkSummaryCard({ thread, slug, onNewThread, opened, onOpen, onC
         {body}
       </div>
       <ExpandedViewer
-        thread={thread}
+        draftKey={draftKey}
         work={work}
         opened={opened}
         changes={changes.summary}

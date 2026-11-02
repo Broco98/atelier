@@ -384,7 +384,22 @@ impl ConversationHost {
         text: &str,
         attachments: &[String],
         link: ThreadLink,
+        picks: StartPicks,
+    ) -> Result<String, HostError> {
+        self.start_thread_quoting(text, attachments, link, picks, None)
+    }
+
+    /// 인용한 첫 말로 새 Thread — [`Self::start_thread_picking`]과 같고, 넓힌 카드의 문서에서 고른 글(`quote`)이 인용 블록으로 첫 말 본문
+    /// 앞(머리말 뒤)에 가고 `sent` 줄에 남는다(restart 02a-11 — 작업공간의 새 채팅 탭은 첫 말 전에 문서를 읽고 인용한다). 인용은 채팅을
+    /// 세우기 **전에** 잰다 — spec 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면, 또 Work에 잇지 않는 채팅이면 아무것도 세우지
+    /// 않고 거절한다([`Self::send_to_thread_quoting`]과 같은 규칙).
+    pub fn start_thread_quoting(
+        &self,
+        text: &str,
+        attachments: &[String],
+        link: ThreadLink,
         mut picks: StartPicks,
+        quote: Option<&Quote>,
     ) -> Result<String, HostError> {
         // Codex 채팅은 claude의 모델 · 생각 깊이를 받지 않고(첫 말 전에는 Codex의 목록이 없다), 작업공간이 함께 쓰는 물어보는 정도도 보내지 않는다 —
         // 보내면 같은 작업공간의 Claude 채팅이 쓰는 값이 바뀐다. 모드는 채팅 파일의 Codex 모드이고 기본은 Workspace access다.
@@ -410,6 +425,10 @@ impl ConversationHost {
                 Some(slug)
             }
             ThreadLink::NoWork | ThreadLink::NewWork => None,
+        };
+        let quote = match quote {
+            Some(quote) => Some(self.quote_in(work.as_deref(), quote)?),
+            None => None,
         };
         let env = self.login_env(false)?;
         self.find_programs(picks.runtime.into(), &env)?;
@@ -446,7 +465,7 @@ impl ConversationHost {
                 self.set_thread_mode(&created.id, mode)?;
             }
         }
-        self.say_noting(&created.id, text, None, attachments, note.as_deref())?;
+        self.say_noting(&created.id, text, quote, attachments, note.as_deref())?;
         drop(log);
         Ok(created.id)
     }
