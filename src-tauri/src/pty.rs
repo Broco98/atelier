@@ -30,7 +30,7 @@ use crate::processes::screen::PoolShell;
 use crate::processes::service::{pool_shells, ShellListing};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
-use crate::processes::{procargs, shell_key, Identity, Proc, Snapshot, ThisRun, SHELL_KEY_ENV};
+use crate::processes::{procargs, shell_key, Identity, Proc, Snapshot, ThisRun, RUNTIME_KEY_ENV, SHELL_KEY_ENV};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1237,6 +1237,9 @@ fn shell_builder(dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
     // 물고 있어, 셸을 닫을 때 트리가 끊긴 자손을 이것으로 찾는다. 읽는 쪽(`processes`의 수집)과는
     // 이름 상수 하나로 이어진다.
     cmd.env(SHELL_KEY_ENV, shell_id);
+    // **앱이 물려받은 Runtime 표식은 셸에 안 간다**(restart 03-7). 앱을 다른 실행의 채팅이 띄웠으면 앱의 env가 그 채팅의 표식을 문다 —
+    // 셸이 물려주면 이 앱의 판정이 셸의 자손을 「물려받은 키를 문 것」으로 판정 밖에 두고, 그 실행은 그것을 제 채팅의 것으로 끝낸다.
+    cmd.env_remove(RUNTIME_KEY_ENV);
     Ok(cmd)
 }
 
@@ -1477,6 +1480,7 @@ mod tests {
             command: None,
             path: None,
             shell_key: key.map(str::to_string),
+            runtime_key: None,
         };
         let procs = vec![
             row(50, 1, 50, 1_000, None),
@@ -1504,7 +1508,7 @@ mod tests {
         let live = [a.clone(), b.clone(), c.clone()];
         let input = Inputs {
             snapshot: &snapshot,
-            run: ThisRun { generation: "G", app_pid: 50, inherited_key: None },
+            run: ThisRun { generation: "G", app_pid: 50, inherited_key: None, inherited_runtime: None },
             shells: &live,
             ending: &[],
             instances: &[],
@@ -1785,6 +1789,7 @@ mod tests {
             command: None,
             path: None,
             shell_key: None,
+            runtime_key: None,
         };
         let attempts = settled.map(|kid_id| {
             let by_hand = pool.endings.claim().start_by_hand(&[kid_id]);
@@ -2070,6 +2075,38 @@ mod tests {
         assert_ne!(first, second, "두 셸이 같은 ID를 받았다 — 상태 파일이 하나로 겹친다");
         assert!(first.ends_with(&format!("-{first_id}")), "셸 ID의 꼬리가 그 셸의 번호가 아니다");
         assert!(second.ends_with(&format!("-{second_id}")));
+    }
+
+    /// 안쪽 검사의 표지 — 앱 env에 Runtime 표식이 든 프로세스에서 셸 빌더를 짓는다.
+    const INHERITS_A_CHAT: &str = "ATELIER_PTY_TEST_INHERITS_A_CHAT";
+
+    /// **셸은 앱이 물려받은 Runtime 표식을 안 물려준다**(restart 03-7). 앱을 다른 실행의 채팅이 띄웠으면(설치본의 채팅이 Bash로 `pnpm tauri
+    /// dev`) 앱의 env가 그 채팅의 Runtime 키를 문다. 셸이 그것을 물려주면 이 앱의 판정은 셸의 자손을 「앱이 물려받은 키를 문 것」으로 막아
+    /// 판정 밖에 두고(셸을 닫아도 안 끝난다), 그 실행은 이 앱의 셸 자손을 제 채팅의 것으로 끝낸다.
+    ///
+    /// 셸 빌더는 이 프로세스의 env를 바탕으로 짓는다(`CommandBuilder::new_default_prog`). 검사가 제 env를 고칠 수는 없어 테스트 바이너리를
+    /// 표식을 실은 env로 다시 띄워 안쪽에서 짓는다. 앵커: 안쪽에 표식이 있고, 앱의 다른 env(PATH)는 셸에 간다.
+    #[test]
+    fn a_shell_does_not_pass_on_the_runtime_marker_the_app_inherited() {
+        use crate::processes::RUNTIME_KEY_ENV;
+        if std::env::var_os(INHERITS_A_CHAT).is_some() {
+            assert!(std::env::var_os(RUNTIME_KEY_ENV).is_some(), "안쪽에 표식이 없다 — 아래 단언이 아무것도 안 잰다");
+            let cmd = super::shell_builder(&std::env::temp_dir(), "test-pty-1").expect("빌더가 선다");
+            assert_eq!(cmd.get_env(RUNTIME_KEY_ENV), None, "셸이 앱이 물려받은 Runtime 표식을 물려준다");
+            assert!(cmd.get_env("PATH").is_some(), "앱의 env가 셸에 안 간다 — 위 단언이 아무것도 안 잰다");
+            return;
+        }
+        let (_crate, path) = module_path!().split_once("::").expect("모듈 경로에 크레이트가 있다");
+        let name = format!("{path}::a_shell_does_not_pass_on_the_runtime_marker_the_app_inherited");
+        let output = std::process::Command::new(std::env::current_exe().expect("테스트 바이너리의 경로"))
+            .args(["--exact", &name, "--nocapture", "--test-threads", "1"])
+            .env(INHERITS_A_CHAT, "1")
+            .env(RUNTIME_KEY_ENV, "test-pty:20261010-100000")
+            .output()
+            .expect("검사 프로세스를 하나 더 띄운다");
+        let told = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "안쪽 검사가 실패했다:\n{told}{}", String::from_utf8_lossy(&output.stderr));
+        assert!(told.contains("1 passed"), "안쪽 검사가 돌지 않았다:\n{told}");
     }
 
     /// **값으로** 단언한다. 「`ATELIER_SHELL`이라는 리터럴이 소스에 있는가」만 보는 검사는

@@ -68,18 +68,20 @@ fn take_from(pids: Vec<i32>, scope: EnvScope) -> Snapshot {
             continue;
         }
         let id = mac::identity(&info);
-        let (argv0, command, path, shell_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
+        let (argv0, command, path, shell_key, runtime_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
             // 못 읽으면(그사이 끝남 등) 행은 그대로 세우고 env만 비운다. 행을 빼면 그 밑의 자손이
-            // 트리에서 떨어진다. 명령줄(티켓 11)과 실행 파일 경로(restart 03-6)는 같은 버퍼라 따로 읽는 것이 없다.
+            // 트리에서 떨어진다. 명령줄(티켓 11)과 실행 파일 경로(restart 03-6), Runtime의 표식(restart 03-7)은 같은 버퍼라 따로 읽는
+            // 것이 없다.
             procargs::read(pid, &mut buf)
                 .and_then(|len| ProcArgs::parse(&buf[..len]))
-                .map_or((None, None, None, None), |args| {
+                .map_or((None, None, None, None, None), |args| {
                     let argv0 = args.argv().next().map(|a| String::from_utf8_lossy(a).into_owned());
                     let path = args.exec_path().map(str::to_string);
-                    (argv0, Some(args.command()), path, args.shell_key().map(str::to_string))
+                    let shell_key = args.shell_key().map(str::to_string);
+                    (argv0, Some(args.command()), path, shell_key, args.runtime_key().map(str::to_string))
                 })
         } else {
-            (None, None, None, None)
+            (None, None, None, None, None)
         };
         procs.push(Proc {
             id,
@@ -91,6 +93,7 @@ fn take_from(pids: Vec<i32>, scope: EnvScope) -> Snapshot {
             command,
             path,
             shell_key,
+            runtime_key,
         });
     }
     Snapshot { uid, procs, skipped }
@@ -220,6 +223,23 @@ mod tests {
         );
         let after_birth = after_birth.expect("가지치기는 env만 건너뛴다 — 행은 선다");
         assert_eq!(after_birth.shell_key, None, "자식보다 늦게 태어난 것만 읽으라 했는데 읽었다");
+    }
+
+    /// **스냅샷이 Runtime의 표식을 읽는다**(restart 03-7) — 채팅의 Runtime이 물려준 그 값 그대로다. 셸의 표식과 따로 읽어, 셸의 표식이
+    /// 없는 Runtime의 자손은 셸의 표식이 없다. 기다리는 조건은 「자식이 제 세션을 열었다」다(위 검사와 같은 까닭).
+    #[test]
+    fn the_snapshot_reads_the_runtime_marker_a_child_was_given() {
+        let key = format!("{}:20261010-100000", key(9));
+        let kid = Kid::in_chat("sleep", &key);
+        let pid = kid.pid();
+
+        let settled = kid.settle();
+        let row = take(EnvScope::All).procs.into_iter().find(|p| p.id.pid == pid);
+        drop(kid);
+
+        assert!(settled.is_some(), "자식이 5초 안에 제 세션을 열지 못했다");
+        let row = row.expect("스냅샷에 자식이 없다");
+        assert_eq!((row.runtime_key.as_deref(), row.shell_key), (Some(key.as_str()), None), "준 Runtime 표식을 못 읽었다");
     }
 
     /// **좀비를 하나 둔 채로도 스냅샷이 성공한다.** 좀비는 행으로 서지 않고 건너뛴 수에 든다.

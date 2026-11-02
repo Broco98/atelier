@@ -138,6 +138,7 @@ function render(
           selectedSlug={work.slug}
           currentFile={null}
           onSelectFile={() => {}}
+          onOpenDoc={() => {}}
           tab={tab}
           onSelectTab={() => {}}
           code={null}
@@ -1090,6 +1091,7 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
             selectedSlug={null}
             currentFile={null}
             onSelectFile={() => {}}
+            onOpenDoc={() => {}}
             tab="spec"
             onSelectTab={() => {}}
             code={null}
@@ -1283,6 +1285,7 @@ describe("WorksPage 채팅 탭", () => {
               selectedSlug={work.slug}
               currentFile={null}
               onSelectFile={() => {}}
+              onOpenDoc={() => {}}
               tab={tab}
               onSelectTab={() => {}}
               code={null}
@@ -1492,9 +1495,49 @@ describe("WorksPage 오른쪽 자리", () => {
     const page = source("WorksPage.tsx");
     expect(page).toContain("<SummaryToggle open={right.summaryOpen} onToggle={pressSummary} />");
     expect(page).toContain(
-      "const landing = cardTabOf(workSeat(selected.slug), bundleOf(terminalStore.state, ownerOf(selected.slug)), latest);",
+      "return cardTabOf(workSeat(slug), bundleOf(terminalStore.state, ownerOf(slug)), latest);",
     );
     expect(page).toContain('if (landing.kind === "thread") onOpenChat(landing.id);\n    else onOpenNewChat();\n    moveRight({ kind: "show", place: "summary" });');
+  });
+});
+
+// restart 02a-12 · 스토리 95 · 102 · SummarySheet 표의 문서 줄 · 「넓힌 카드」 표의 Project 줄 — 문서와 파일을 넓힌 카드에서 연다. 누름 · 주소에 닿는
+// 것 · 카드가 바뀌는 것은 정적 그림에 없다(이펙트 · 핸들러). 무엇을 고르는지는 순수 함수가 잰다 — 켤 탭(`cardTabOf`)과 값(`nextSeat`)은
+// `right-place.test.ts`의 「문서 줄」, 주소와 카드의 짝(`docArrival` · `cardDocFile`)은 「주소의 문서와 넓힌 카드」, 주소의 모양(`cardDocSearch` ·
+// `fileSearch`)은 `-work-search.test.ts`의 「넓힌 카드의 문서 주소」, 트리의 갈래(`treePick`)는 `expanded.test.ts`. 배선은 리터럴로 못박는다.
+describe("WorksPage 문서와 파일을 넓힌 카드에서 연다", () => {
+  const page = source("WorksPage.tsx");
+  const thread = (file: string) => readFileSync(fileURLToPath(new URL(`../thread/${file}`, import.meta.url)), "utf8");
+
+  // 「요약 카드」와 같은 길이다(02a-10) — 카드가 서는 탭이 본문이면 그 자리에서 넓히고, 아니면 켤 탭으로 옮기며 문서를 주소에 얹는다(한 번에).
+  it("spec 패널의 문서 줄은 넓힌 카드로 연다 — 카드가 서는 탭이 아니면 「요약 카드」처럼 켤 탭을 먼저 고른다", () => {
+    expect(page).toContain("onSelectFile={openDoc}");
+    expect(page).toContain(
+      'moveRight({ kind: "expand", target: { kind: "doc", path } });\n    if (!cardBody) onOpenDoc(path, cardTabNow(selected.slug));',
+    );
+    expect(page).toContain("const landing = cardTabNow(selected.slug);");
+    expect(countOf(page, "cardTabOf(")).toBe(1);
+  });
+
+  // 주소의 `file`은 넓힌 카드의 문서다 — 닿으면 열고(없는 문서면 걷고), 카드가 다른 것을 열거나 닫히면 주소가 따라간다. 둘 다 카드가 서는 탭이
+  // 본문인 단일 뷰에서만이다(분할의 `file`은 문서 열의 것 — 02a-13이 분할을 걷을 때까지).
+  it("주소에 닿은 문서가 넓힌 카드를 열고, 카드가 바뀌면 주소가 따라간다", () => {
+    expect(page).toContain("const cardBody = selected !== null && split === null && (chatThread !== null || newChatShown);");
+    expect(page).toContain("const move = docArrival(currentFile, selected.specFiles, right.card.opened);");
+    expect(page).toContain('if (move === "clear") onOpenDoc(null, null);');
+    expect(page).toContain("const next = cardDocFile(right.card.opened, currentFile);");
+    expect(page).toContain("if (next !== undefined) onOpenDoc(next, null);");
+  });
+
+  // 넓힌 카드 안의 코드 보기를 걷었다 — 바뀐 파일은 변경 보기, 그 밖의 파일은 파일 탭(트리를 훑는 손짓이라 replace)이다. 파일 탭이 켜지면 탭 줄
+  // 규칙이 카드를 닫는다(02a-10).
+  it("넓힌 카드의 Project 트리에서 바뀐 파일은 변경으로, 그 밖의 파일은 파일 탭으로 연다", () => {
+    const viewer = thread("ExpandedViewer.tsx");
+    expect(viewer).toContain("const pick = treePick(project, target.path, changed);");
+    expect(viewer).toContain('if (pick.kind === "change") onOpen(pick);\n          else onOpenFile(pick);');
+    expect(viewer).not.toContain("CodeView =");
+    expect(page).toContain("openFile: (target) => onOpenCode(target.project, target.path, false),");
+    expect(thread("ThreadScreen.tsx")).toContain("onOpenFile={card.onOpenFile}");
   });
 });
 
@@ -1690,6 +1733,7 @@ describe("WorksPage 새 채팅 탭", () => {
             selectedSlug={work.slug}
             currentFile={null}
             onSelectFile={() => {}}
+            onOpenDoc={() => {}}
             tab={tab}
             onSelectTab={() => {}}
             code={null}
@@ -2143,6 +2187,7 @@ function renderEmpty(projects: ProjectView[] = []): string {
           selectedSlug={null}
           currentFile={null}
           onSelectFile={() => {}}
+          onOpenDoc={() => {}}
           tab="spec"
           onSelectTab={() => {}}
           code={null}

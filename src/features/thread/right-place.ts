@@ -165,6 +165,27 @@ export function cardTabOf(key: string, bundle: ReadonlyArray<BundleTab>, landing
 }
 
 /**
+ * **주소에 넓힌 카드의 문서가 닿았다**(restart 02a-12 · 구현 스펙 「02a — `spec` 탭과 분할을 지운다」) — 카드가 서는 탭이 본문일 때 주소의 `file`이
+ * 넓힌 카드를 연다(검색 결과 · 화면 기억 · spec 패널의 문서 줄이 이 값을 적는다). 이미 그 문서를 보고 있으면 아무 일도 없다(`null`). **없는 문서면
+ * 열지 않고 주소에서 걷는다**(`clear`) — 지운 문서 · 잘못된 링크다. 있는지는 그 작업공간의 spec 문서 목록(`specFiles`)으로 잰다.
+ */
+export function docArrival(file: string, specFiles: readonly string[], opened: Opened | null): RightMove | "clear" | null {
+  if (!specFiles.includes(file)) return "clear";
+  if (opened?.kind === "doc" && opened.path === file) return null;
+  return { kind: "expand", target: { kind: "doc", path: file } };
+}
+
+/**
+ * **넓힌 카드가 바뀐 뒤 주소의 문서**(restart 02a-12) — 넓힌 카드가 문서를 보면 그 경로, 닫히거나(× · 요약 단추 · 레일의 spec · 다른 채팅 탭) 문서가
+ * 아닌 것(변경 · Project)을 열면 없음(`null`)이다. 주소가 이미 그 값이면 `undefined` — 고칠 것이 없다. 그래서 주소의 `file`은 늘 넓힌 카드가 연 문서다
+ * — 화면 기억이 그 문서로 돌아오고, 카드를 닫으면 값이 지워진다.
+ */
+export function cardDocFile(opened: Opened | null, file: string | null): string | null | undefined {
+  const doc = opened?.kind === "doc" ? opened.path : null;
+  return doc === file ? undefined : doc;
+}
+
+/**
  * 그 열쇠의 값과 바꾸는 길. 열쇠가 없으면(고른 작업공간이 없다) 처음 값이고 바꾸는 길은 아무 일도 안 한다.
  *
  * **처음 읽은 값을 적어 둔다** — 작업공간의 처음 값은 분할 여부를 탄다(분할인 채 들어오면 spec 패널이 접혀 있다 — 결정 88). 적지 않으면 분할을 끄는

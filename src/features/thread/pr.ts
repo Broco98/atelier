@@ -133,5 +133,5 @@ export function mergedWhen(at: string, now: number): string {
 export function changesOf(project: string, changes: ProjectChanges[] | undefined): Opened {
   const mine = changes?.find((one) => one.project === project);
   const first = mine?.kind === "listed" ? mine.files[0] : undefined;
-  return first ? { kind: "change", project, path: first.path } : { kind: "project", project, file: null };
+  return first ? { kind: "change", project, path: first.path } : { kind: "project", project };
 }

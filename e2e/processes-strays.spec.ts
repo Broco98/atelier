@@ -102,8 +102,8 @@ function 스냅샷(): ProcessSnapshot {
     },
     pool: [poolShell(1, shellKeyOf(1), Date.now(), metricsOf(4 * MiB))],
     instances: [
-      { generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-2"] },
-      { generation: "R", build: "release", version: "0.14.1", shellKeys: ["R-1"] },
+      { generation: "H", build: "dev", version: "0.15.0", keys: ["H-2"] },
+      { generation: "R", build: "release", version: "0.14.1", keys: ["R-1"] },
     ],
   });
 }

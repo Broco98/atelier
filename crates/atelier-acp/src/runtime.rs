@@ -36,6 +36,13 @@ use crate::redact;
 /// 끄기에서 stdin을 닫은 뒤 스스로 끝나기를 기다리는 시간(워크플로 §7). 넘으면 그룹째 SIGKILL이다.
 pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 
+/// **Runtime의 표식** — 채팅의 Runtime을 띄울 때 env에 심는 변수의 이름(restart 스펙 「03 — Processes」 Runtime · 티켓 03-7). 값은 앱이 그
+/// 채팅으로 지은 것이다(`HostBuilder::mark_runtimes`). Runtime의 자손은 이 env를 물려받아, 부모가 먼저 죽어도 앱의 `Processes` 수집이
+/// 이 값으로 그 채팅에 묶는다 — 셸의 표식(`ATELIER_SHELL`)과 같은 수법이다.
+///
+/// 심는 자리(엔진)와 읽는 자리(앱의 수집)가 이 상수 하나로 이어진다. 양쪽에 글자를 박으면 한쪽 오타가 「표식 없음」으로 조용히 눕는다.
+pub const RUNTIME_KEY_ENV: &str = "ATELIER_RUNTIME";
+
 /// 띄울 것 — 명령 + 인자 + 통째로 줄 env + cwd.
 pub(crate) struct Launch {
     pub program: PathBuf,

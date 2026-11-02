@@ -113,7 +113,12 @@ pub struct HostBuilder {
     open_limit: Option<Duration>,
     card_limit: Duration,
     thread_tools: Option<TranslatorCommand>,
+    runtime_mark: Option<Arc<MintMark>>,
 }
+
+/// 채팅 id → 그 채팅의 Runtime에 심을 표식의 값([`crate::RUNTIME_KEY_ENV`]). 앱이 준다 — 값의 모양(이 실행의 세대와 채팅 id)은 그것을 읽는
+/// 앱의 수집이 정한다(`processes::runtime_key`). 엔진은 변수 이름만 안다.
+pub(crate) type MintMark = dyn Fn(&str) -> String + Send + Sync;
 
 impl HostBuilder {
     /// Thread 도구 중계 서버 명령(v1 티켓 15 · S12) — 앱에서는 `current_exe` + `thread-tools`, 검사에서는 중계 서버 시험 bin이다.
@@ -121,6 +126,14 @@ impl HostBuilder {
     /// Session에 Thread 도구가 없다.
     pub fn thread_tools(mut self, relay: TranslatorCommand) -> Self {
         self.thread_tools = Some(relay);
+        self
+    }
+
+    /// **Runtime에 표식을 심는다**(restart 03-7) — 채팅의 Runtime을 띄울 때마다 env에 [`crate::RUNTIME_KEY_ENV`] = `mint(채팅 id)`를
+    /// 심는다. Runtime의 자손이 물려받아 앱의 `Processes`가 그 채팅으로 묶고, 앱을 끌 때 · 다음 실행의 시작 정리가 그것으로 끝낸다. 주지
+    /// 않으면 심지 않는다(검사의 호스트). 어느 쪽이든 로그인 env의 남의 표식은 넘기지 않는다(`login_env::AgentEnv`).
+    pub fn mark_runtimes(mut self, mint: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
+        self.runtime_mark = Some(Arc::new(mint));
         self
     }
 
@@ -156,6 +169,7 @@ impl HostBuilder {
             revivals: Mutex::new(HashMap::new()),
             threads: thread::Threads::default(),
             thread_tools: self.thread_tools,
+            runtime_mark: self.runtime_mark,
         }))
     }
 }
@@ -211,6 +225,8 @@ pub struct HostCore {
     threads: thread::Threads,
     /// Thread 도구 중계 서버 명령(v1 티켓 15) — 없으면 Thread의 Session에 Thread 도구를 싣지 않는다.
     thread_tools: Option<TranslatorCommand>,
+    /// Runtime에 심을 표식을 짓는 것(restart 03-7 · [`HostBuilder::mark_runtimes`]) — 없으면 표식을 심지 않는다.
+    runtime_mark: Option<Arc<MintMark>>,
 }
 
 /// Session 하나의 기록과 턴의 상태. 런타임의 sink가 함께 쥔다 — 받은 것은 sink가 곧바로 적는다.
@@ -755,6 +771,7 @@ impl ConversationHost {
             open_limit: None,
             card_limit: CODEX_CARD_LIMIT,
             thread_tools: None,
+            runtime_mark: None,
         }
     }
 

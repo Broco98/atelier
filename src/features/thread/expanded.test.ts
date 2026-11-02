@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolEntry, Turn } from "./fold";
-import { createdDocs, freshLines, isOpened, viewerPath, type Opened } from "./expanded";
+import { createdDocs, freshLines, isOpened, treePick, viewerPath, type Opened } from "./expanded";
 
 // 넓힌 카드(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand · Messages · Motion 보드) — 카드가 무엇을 열었나(`Opened`)와 그 보기의
 // 경로 줄, 다시 읽은 문서에서 칠할 줄, 대화 속 문서 카드를 짓는 순수 함수다. 그리는 쪽(`SummaryCard.tsx` · `ExpandedViewer.tsx` ·
@@ -9,22 +9,42 @@ import { createdDocs, freshLines, isOpened, viewerPath, type Opened } from "./ex
 describe("넓힌 카드가 연 것", () => {
   const doc: Opened = { kind: "doc", path: "drafts/design.md" };
   const change: Opened = { kind: "change", project: "api-server", path: "src/refunds/refund.service.ts" };
-  const tree: Opened = { kind: "project", project: "api-server", file: null };
+  const tree: Opened = { kind: "project", project: "api-server" };
 
-  it("경로 줄은 보드의 앞머리를 단다 — 문서는 「문서」, 변경은 그 Project, Project는 「Project」 뒤 이름이고 연 파일이 있으면 그 경로다", () => {
+  // restart 02a-12 — Project는 늘 트리다. 트리의 파일은 넓힌 카드 안에서 열지 않는다(아래 「Project 트리에서 누른 파일」).
+  it("경로 줄은 보드의 앞머리를 단다 — 문서는 「문서」, 변경은 그 Project, Project는 「Project」 뒤 이름이다", () => {
     expect(viewerPath(doc)).toEqual(["문서", "drafts", "design.md"]);
     expect(viewerPath(change)).toEqual(["api-server", "src", "refunds", "refund.service.ts"]);
     expect(viewerPath(tree)).toEqual(["Project", "api-server"]);
-    expect(viewerPath({ ...tree, file: "prisma/schema.prisma" })).toEqual(["api-server", "prisma", "schema.prisma"]);
   });
 
-  it("카드 줄이 연 것인가 — 같은 칸 · 같은 Project · 같은 경로일 때만이다. Project 줄은 트리에서 파일을 열어도 켜져 있다", () => {
+  it("카드 줄이 연 것인가 — 같은 칸 · 같은 Project · 같은 경로일 때만이다", () => {
     expect(isOpened(doc, { kind: "doc", path: "drafts/design.md" })).toBe(true);
     expect(isOpened(doc, { kind: "doc", path: "design.md" })).toBe(false);
     expect(isOpened(change, { kind: "change", project: "web-client", path: "src/refunds/refund.service.ts" })).toBe(false);
     expect(isOpened(change, { kind: "doc", path: "src/refunds/refund.service.ts" })).toBe(false);
-    expect(isOpened({ ...tree, file: "package.json" }, { kind: "project", project: "api-server" })).toBe(true);
+    expect(isOpened(tree, { kind: "project", project: "api-server" })).toBe(true);
     expect(isOpened(null, { kind: "project", project: "api-server" })).toBe(false);
+  });
+});
+
+// restart 02a-12 · 스토리 102 · SummarySheet 「넓힌 카드」 표의 Project 줄 — 「바뀐 파일은 파란 글자로 변경을 열고, 그 밖의 파일은 파일 탭을 연다 · 파일 탭이
+// 켜지면 이 카드는 닫힌다」. 넓힌 카드 안의 코드 보기는 걷혔다.
+describe("Project 트리에서 누른 파일", () => {
+  it("바뀐 파일은 넓힌 카드의 변경 보기로 간다", () => {
+    expect(treePick("api-server", "prisma/schema.prisma", ["prisma/schema.prisma"])).toEqual({
+      kind: "change",
+      project: "api-server",
+      path: "prisma/schema.prisma",
+    });
+  });
+
+  it("그 밖의 파일은 파일 탭으로 간다", () => {
+    expect(treePick("api-server", "package.json", ["prisma/schema.prisma"])).toEqual({
+      kind: "file",
+      project: "api-server",
+      path: "package.json",
+    });
   });
 });
 

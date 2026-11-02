@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
   bundleSearch,
+  cardDocSearch,
   chatHome,
   chatSearch,
   codeSearch,
@@ -138,24 +139,16 @@ describe("주소를 고치는 짝", () => {
     });
   });
 
-  // restart 02a-4 — 채팅에서 문서를 골라도 spec이 켜진다. `thread`는 채팅 탭이 서 있을 때만 뜻이 있어 함께 걷힌다.
-  it("채팅에서 문서를 고르면 spec이 켜지고 채팅은 주소에서 걷힌다", () => {
-    expect(fileSearch({ tab: "chat" as const, thread: "20261010-100000" }, "b.md")).toEqual({
-      file: "b.md",
-      tab: "spec",
-      code: undefined,
-      thread: undefined,
-    });
-  });
 });
 
 // restart 02a-4 — 채팅 탭의 축. `thread`는 `code`와 같은 성질이다: 본문(`tab=chat`)이나 분할의 묶음 열에 채팅이 설 때만 주소에 있다.
 describe("채팅 탭의 주소", () => {
   const X = "20261010-100000";
 
-  it("채팅으로 가면 `chat`과 그 채팅이 적히고 보던 파일 탭은 걷힌다 — 문서는 남는다", () => {
+  // restart 02a-12 — 한때 「문서는 남는다」였다. `file`은 이제 넓힌 카드의 문서라 파일 탭에서 온 주소에는 뜻이 없어 걷힌다(아래 「넓힌 카드의 문서 주소」).
+  it("채팅으로 가면 `chat`과 그 채팅이 적히고 보던 파일 탭은 걷힌다", () => {
     expect(chatSearch({ file: "a.md", tab: "code" as const, code: "billing/src/a.ts" }, X)).toEqual({
-      file: "a.md",
+      file: undefined,
       tab: "chat",
       code: undefined,
       thread: X,
@@ -233,9 +226,10 @@ describe("채팅 탭의 주소", () => {
 describe("새 채팅 탭의 주소", () => {
   const X = "20261010-100000";
 
-  it("새 채팅 탭으로 가면 `chat`만 적히고 채팅 · 파일 탭은 걷힌다 — 문서는 남는다", () => {
+  // restart 02a-12 — 한때 「문서는 남는다」였다. 채팅 탭의 넓힌 카드의 문서는 새 채팅 탭으로 따라가지 않는다(아래 「넓힌 카드의 문서 주소」).
+  it("새 채팅 탭으로 가면 `chat`만 적히고 채팅 · 파일 탭은 걷힌다", () => {
     expect(newChatSearch({ file: "a.md", tab: "chat" as const, thread: X })).toEqual({
-      file: "a.md",
+      file: undefined,
       tab: "chat",
       code: undefined,
       thread: undefined,
@@ -284,6 +278,110 @@ describe("새 채팅 탭의 주소", () => {
     expect(opensWork({ thread: X })).toBe(false);
     expect(opensWork({ tab: "terminal" })).toBe(false);
     expect(opensWork({ tab: "spec" })).toBe(false);
+  });
+});
+
+// restart 02a-12 · 구현 스펙 「02a — `spec` 탭과 분할을 지운다」 — **`file`은 넓힌 카드의 문서다.** `tab`이 비었거나 `chat`일 때만 뜻이 있다. 셸 ·
+// 파일 탭으로 가는 주소에는 남지 않는다 — 남으면 셸로 가는 주소가 채팅 탭과 넓힌 카드로 떨어진다. 분할의 `file`은 문서 열의 것이라 남는다(02a-13이
+// 분할을 걷을 때까지).
+describe("넓힌 카드의 문서 주소", () => {
+  const X = "20261010-100000";
+  const Y = "20261011-090000";
+
+  it("셸 · 파일 탭으로 가면 `file`이 걷힌다 — 분할이면 문서 열의 것이라 남는다", () => {
+    const here = { tab: "chat" as const, thread: X, file: "a.md" };
+    expect(tabSearch(here, "terminal").file).toBeUndefined();
+    expect(tabSearch(here, "code").file).toBeUndefined();
+    expect(codeSearch(here, "billing/src/a.ts").file).toBeUndefined();
+    const split = { ...here, split: "lr" as const };
+    expect(tabSearch(split, "terminal").file).toBe("a.md");
+    expect(codeSearch(split, "billing/src/a.ts").file).toBe("a.md");
+  });
+
+  // 문서를 적는 길(`fileSearch` — 검색 결과)은 채팅 탭 · 새 채팅 탭이면 그 탭에 문서를 얹는다.
+  it("채팅 탭 · 새 채팅 탭에서 문서를 적으면 그 탭에 넓힌 카드의 문서가 얹힌다", () => {
+    expect(fileSearch({ tab: "chat" as const, thread: X }, "b.md")).toEqual({ tab: "chat", thread: X, code: undefined, file: "b.md" });
+    expect(fileSearch({ tab: "chat" as const }, "b.md")).toEqual({ tab: "chat", code: undefined, file: "b.md" });
+  });
+
+  // 셸 · 파일 탭 · 문서 탭이나 처음 여는 주소에서 적으면 `tab`을 비운다 — 처음 여는 규칙이 02a-10의 켤 탭 규칙(가장 최근에 켠 채팅 탭 → 가장
+  // 최근 채팅 → 새 채팅 탭)으로 채팅 탭을 고르고 거기 넓힌 카드가 선다. `tab=chat`만 적으면 새 채팅 탭이라는 다른 뜻이다.
+  it("셸 · 파일 탭 · 문서 탭에서 문서를 적으면 탭을 비워 처음 여는 규칙이 채팅 탭을 고른다", () => {
+    for (const prev of [{ tab: "terminal" as const }, { tab: "code" as const, code: "billing/src/a.ts" }, { tab: "spec" as const }, {}]) {
+      const next = fileSearch(prev, "b.md");
+      expect(next, JSON.stringify(prev)).toEqual({ tab: undefined, code: undefined, thread: undefined, file: "b.md" });
+      expect(opensWork(next)).toBe(true);
+    }
+  });
+
+  // SummarySheet 표 「다른 채팅 탭을 켠다 → 넓힌 카드는 작은 카드로」 — 넓힌 카드의 문서는 그 탭의 것이라 다른 채팅 탭 · 새 채팅 탭으로 따라가지
+  // 않는다. 따라가면 다른 작업공간에서 그 채팅으로 돌아올 때 넓힌 카드가 다시 선다. 같은 채팅 탭이면 그대로다.
+  it("다른 채팅 탭 · 새 채팅 탭으로 가면 `file`이 걷히고, 같은 채팅 탭이면 남는다", () => {
+    const onX = { tab: "chat" as const, thread: X, file: "a.md" };
+    expect(chatSearch(onX, Y).file).toBeUndefined();
+    expect(chatSearch(onX, X).file).toBe("a.md");
+    expect(newChatSearch(onX).file).toBeUndefined();
+    // 새 채팅 탭에서 채팅 탭으로 가는 것도 다른 탭이다. 새 채팅 탭에서 새 채팅 탭으로 가는 것은 주소로 못 가른다 — 남기고, 다른 탭이었으면
+    // 화면의 탭 줄 규칙이 카드를 접어 주소에서 걷는다.
+    const onNew = { tab: "chat" as const, file: "a.md" };
+    expect(chatSearch(onNew, X).file).toBeUndefined();
+    expect(newChatSearch(onNew).file).toBe("a.md");
+    // 문서 탭(임시)의 문서는 넓힌 카드의 것이 아니다.
+    expect(chatSearch({ tab: "spec" as const, file: "a.md" }, X).file).toBeUndefined();
+    expect(newChatSearch({ tab: "spec" as const, file: "a.md" }).file).toBeUndefined();
+  });
+
+  // 처음 여는 주소에 닿은 문서는 고른 탭으로 따라간다 — 그 탭에 넓힌 카드가 선다(`?file=`).
+  it("처음 여는 주소의 `file`은 처음 여는 규칙이 고른 탭으로 따라간다", () => {
+    expect(openingSearch({ file: "a.md" }, { kind: "thread", id: X }).file).toBe("a.md");
+    expect(openingSearch({ file: "a.md" }, { kind: "new", work: "가" }).file).toBe("a.md");
+    expect(chatSearch({ file: "a.md" }, X).file).toBe("a.md");
+  });
+
+  // 묶음 쪽에서 지금 탭이 바뀌어 본문이 따라갈 때도 같다 — 셸 · 파일 탭 · 다른 채팅 탭이면 걷힌다. 새 채팅 탭이 첫 말로 채팅 탭이 된 것은 같은
+  // 칸이라 남는다.
+  it("묶음 쪽에서 셸 · 파일 탭 · 다른 채팅 탭이 켜지면 `file`이 걷히고, 새 채팅 탭이 채팅 탭이 된 것은 남는다", () => {
+    const onX = { tab: "chat" as const, thread: X, file: "a.md" };
+    expect(bundleSearch(onX, { kind: "shell" }).file).toBeUndefined();
+    expect(bundleSearch(onX, { kind: "code", code: "billing/src/a.ts" }).file).toBeUndefined();
+    expect(bundleSearch(onX, { kind: "chat", thread: Y }).file).toBeUndefined();
+    expect(bundleSearch(onX, { kind: "new-chat" }).file).toBeUndefined();
+    expect(bundleSearch({ tab: "chat" as const, file: "a.md" }, { kind: "chat", thread: X }).file).toBe("a.md");
+    // 분할의 `file`은 문서 열의 것이다.
+    expect(bundleSearch({ ...onX, split: "lr" as const }, { kind: "shell" }).file).toBe("a.md");
+  });
+
+  // 분할을 끄고 묶음 열이 남으면 문서 열의 `file`이 걷힌다 — 남으면 채팅 열이 남을 때 그 문서가 넓힌 카드로 떨어진다. 문서 열이 남으면 그대로다.
+  it("분할을 끄고 묶음 열이 남으면 `file`이 걷히고, 문서 열이 남으면 그대로다", () => {
+    const split = { tab: "chat" as const, thread: X, split: "lr" as const, file: "a.md" };
+    expect(columnSearch(split, null, "terminal", { kind: "chat", thread: X }).file).toBeUndefined();
+    expect(columnSearch(split, null, "spec", { kind: "chat", thread: X }).file).toBe("a.md");
+    expect(columnSearch(split, "rl", "terminal", { kind: "chat", thread: X }).file).toBe("a.md");
+  });
+
+  // spec 패널의 문서 줄(작업공간 화면) — 켤 카드 탭을 화면이 골라(02a-10의 규칙) 한 번에 옮긴다. 카드 탭이 이미 본문이면(`null`) 그 탭에 얹거나
+  // 걷는다 — 넓힌 카드가 다른 것을 보거나 닫히면 주소에서 걷힌다.
+  it("문서 줄은 고른 채팅 탭 · 새 채팅 탭으로 옮기며 문서를 얹고, 본문이 카드 탭이면 그 탭에 얹거나 걷는다", () => {
+    const shell = { tab: "terminal" as const };
+    expect(cardDocSearch(shell, "b.md", { kind: "thread", id: X })).toMatchObject({ tab: "chat", thread: X, file: "b.md" });
+    const fresh = cardDocSearch(shell, "b.md", { kind: "new", work: "가" });
+    expect(fresh).toMatchObject({ tab: "chat", file: "b.md" });
+    expect(fresh.thread).toBeUndefined();
+    const onX = { tab: "chat" as const, thread: X, file: "a.md" };
+    expect(cardDocSearch(onX, "b.md", null)).toEqual({ tab: "chat", thread: X, code: undefined, file: "b.md" });
+    expect(cardDocSearch(onX, null, null)).toEqual({ tab: "chat", thread: X, file: undefined });
+  });
+
+  // 화면 기억도 같다 — 셸 · 파일 탭을 보다 떠난 작업공간의 씨앗에는 `file`이 없다. 분할이면 문서 열의 것이라 남는다.
+  it("셸 · 파일 탭을 보다 떠난 기억에는 `file`이 실리지 않는다", () => {
+    rememberView("넓힌-카드-셸", { tab: "terminal", split: null, file: "a.md", code: null, thread: null });
+    rememberView("넓힌-카드-파일", { tab: "code", split: null, file: "a.md", code: "billing/src/a.ts", thread: null });
+    rememberView("넓힌-카드-분할", { tab: "terminal", split: "lr", file: "a.md", code: null, thread: null });
+    rememberView("넓힌-카드-채팅", { tab: "chat", split: null, file: "a.md", code: null, thread: X });
+    expect(recallSearch("넓힌-카드-셸").file).toBeUndefined();
+    expect(recallSearch("넓힌-카드-파일").file).toBeUndefined();
+    expect(recallSearch("넓힌-카드-분할").file).toBe("a.md");
+    expect(recallSearch("넓힌-카드-채팅").file).toBe("a.md");
   });
 });
 
@@ -433,14 +531,17 @@ describe("Link로 work을 여는 문", () => {
   });
 
   // restart 02a-8 — **그 작업공간의 새 채팅 탭으로 가는 문.** 요약 카드 ⋯의 「이 작업공간에서 새 채팅」 · 채팅이 없는 작업공간 줄 · `?work=` 씨앗이
-  // 지난다. 기억(분할 빼고 보던 문서)을 씨앗으로 삼고 `tab=chat`만 적는다 — 어느 새 채팅 탭인지는 묶음이 쥔다.
+  // 지난다. 기억(분할 빼고)을 씨앗으로 삼고 `tab=chat`만 적는다 — 어느 새 채팅 탭인지는 묶음이 쥔다. 채팅 탭의 넓힌 카드의 문서 · 분할의 문서 열은
+  // 따라오지 않는다(restart 02a-12), 새 채팅 탭을 보다 떠난 기억의 문서는 따라온다.
   it("새 채팅 탭으로 가는 문은 그 work의 기억 위에 `tab=chat`만 적는다", () => {
     rememberView("하나", { tab: "chat", split: "lr", file: "02-판/spec.md", code: null, thread: "20261010-100000" });
     expect(newChatDoor("하나")).toEqual({
       to: "/works/$slug",
       params: { slug: "하나" },
-      search: { tab: "chat", split: undefined, file: "02-판/spec.md", code: undefined, thread: undefined },
+      search: { tab: "chat", split: undefined, file: undefined, code: undefined, thread: undefined },
     });
+    rememberView("하나둘", { tab: "chat", split: null, file: "02-판/spec.md", code: null, thread: null });
+    expect(newChatDoor("하나둘").search.file).toBe("02-판/spec.md");
     expect(newChatDoor("처음-여는-곳").search).toEqual({
       tab: "chat",
       split: undefined,
@@ -491,6 +592,20 @@ describe("두 view의 배선", () => {
     expect(home).toContain(`const tab = showNewChatTab(ownerOf(slug));
       if (tab !== null) fillDraft(newChatKey(tab), say);`);
     expect(home).toContain("void navigate({ ...newChatDoor(slug), replace: true });");
+  });
+
+  // restart 02a-12 — `?file=`에 닿은 처음 여는 주소(검색 결과 · 셸 · 파일 탭에서 적은 문서)는 02a-10의 켤 탭 규칙으로 채팅 탭을 고른다 — 가장
+  // 최근에 켠 채팅 탭부터다(`cardTabOf`). 문서가 없는 처음 여는 주소는 그대로 가장 최근 채팅이다. 문서는 고른 탭으로 따라간다(`openingSearch`).
+  // 문서 줄 · 넓힌 카드가 주소를 고치는 길은 `cardDocSearch` 하나다.
+  it("`?file=`에 닿은 처음 여는 주소는 켤 탭 규칙으로 채팅 탭을 고르고, 넓힌 카드가 주소를 고치는 길은 하나다", () => {
+    const view = read("./-works-view.tsx");
+    expect(view).toContain(
+      "const landing = file === null ? latest : cardTabOf(workSeat(slug), bundleOf(terminalStore.state, ownerOf(slug)), latest);",
+    );
+    expect(view).toContain("search: (prev: object) => openingSearch(prev, landing),");
+    expect(view).toContain("search: (prev: object) => cardDocSearch(prev, path, landing),");
+    // 문서 탭 · 분할의 문서 열(임시 — 02a-13이 걷는다)은 그 자리에서 문서를 바꾼다.
+    expect(view).toContain("search: (prev: object) => specTabSearch(prev, path),");
   });
 
   // **「열었다」를 적는 자리도 하나다**(결정 14) — 그리고 위와 **다른 effect**여야 한다.

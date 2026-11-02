@@ -362,7 +362,16 @@ describe("새 채팅 화면", () => {
 
 /** 작업공간 화면이 채팅 탭 몸에 건네는 오른쪽 자리 — 시험은 값만 바꿔 건넨다. */
 function cardOf(over: Partial<ChatCard> = {}): ChatCard {
-  return { open: false, opened: null, docPlace: null, onShowChanges: () => {}, onOpen: () => {}, onClose: () => {}, ...over };
+  return {
+    open: false,
+    opened: null,
+    docPlace: null,
+    onShowChanges: () => {},
+    onOpen: () => {},
+    onOpenFile: () => {},
+    onClose: () => {},
+    ...over,
+  };
 }
 
 // restart 02a-4 — 작업공간의 채팅은 작업공간 화면의 채팅 탭에 선다. 머리 줄은 작업공간의 것이라 채팅은 머리 없이 본문만 꽂힌다(`PlainFrame`의
@@ -533,7 +542,7 @@ describe("작업공간 밖 채팅의 대화", () => {
 
   /** 작업공간 화면이 하듯 그 작업공간의 오른쪽 자리를 쥐어 채팅 탭 몸에 건넨다 — 문서 카드의 자리(spec 폴더)도 거기서 온다. */
   function TabBody({ id, work }: { id: string; work: WorkView }) {
-    const right = useWorkRightPlace(work, { split: false, chat: true, tab: 1 });
+    const right = useWorkRightPlace(work, { split: false, chat: true, tab: 1, openFile: () => {} });
     return <WorkChat thread={id} card={right.card} />;
   }
 

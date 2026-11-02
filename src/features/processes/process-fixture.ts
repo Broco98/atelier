@@ -138,6 +138,8 @@ export function snapshotFixture({ verdict = {}, ...over }: SnapshotOver = {}): P
       helpers: [],
       orphans: { confirmed: {}, unknown: {} },
       otherInstances: {},
+      chats: {},
+      runtimes: [],
       ...verdict,
     },
     pool: [],

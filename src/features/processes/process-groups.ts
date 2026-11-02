@@ -56,7 +56,7 @@ export function buildLabel({ build, version }: Pick<OtherInstance, "build" | "ve
 }
 
 /**
- * **다른 인스턴스를 실행마다** — 백엔드가 준 차례(세대 순)로 서고, 실행마다 그 셸 키들이 낸 행을 한 트리로 편다. 어느 실행에도 안
+ * **다른 인스턴스를 실행마다** — 백엔드가 준 차례(세대 순)로 서고, 실행마다 그 키(셸 키 · Runtime 키)들이 낸 행을 한 트리로 편다. 어느 실행에도 안
  * 묶인 키(판정 뒤에 그 실행의 기록이 지워졌다)의 행도 숨기지 않는다 — 「빌드 모름」 하나로 끝에 선다.
  */
 export function instanceGroups(snapshot: ProcessSnapshot): InstanceGroup[] {
@@ -68,7 +68,7 @@ export function instanceGroups(snapshot: ProcessSnapshot): InstanceGroup[] {
     return { generation, label, nodes: processTree(rows), totals: sumMetrics(rows.map((row) => row.metrics)) };
   };
   const groups = snapshot.instances
-    .map((instance) => group(instance.generation, buildLabel(instance), instance.shellKeys))
+    .map((instance) => group(instance.generation, buildLabel(instance), instance.keys))
     .filter((one) => one.nodes.length > 0);
   const unclaimed = Object.keys(byKey).filter((key) => !claimed.has(key));
   const rest = group(null, buildLabel({ build: null, version: null }), unclaimed);

@@ -112,6 +112,7 @@ mod tests {
             command: None,
             path: None,
             shell_key: None,
+            runtime_key: None,
         }
     }
 

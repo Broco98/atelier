@@ -1,5 +1,6 @@
 //! 판정 — 스냅샷 값만 받아 「무엇이 어느 셸에서 나왔는가」를 가르는 순수 함수(프로세스 결정 2 · 3 ·
-//! 프로세스 스펙 S6).
+//! 프로세스 스펙 S6). restart 03-7부터 「어느 채팅의 Runtime에서 나왔는가」도 같은 규칙으로 가른다 — Runtime 키(`runtime_key`)는
+//! 셸 키와 같은 표식이고, 가까운 자리를 찾을 때 셸이 먼저다.
 //!
 //! **값만 받는 것이 요점이다.** 살아 있는 프로세스로는 「pid가 재사용된 셸」, 「앱을 띄운 사슬」 같은
 //! 갈래를 재현할 수 없다. 스냅샷 행 몇 개와 기대 묶음을 한 줄에 두면 모든 갈래를 표로 잰다.
@@ -10,7 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::{exceptions, shell_key, Identity, Proc, Snapshot, ThisRun};
+use super::{exceptions, runtime_key, shell_key, Identity, Proc, Snapshot, ThisRun};
 
 /// 셸 하나 — 셸 목록과 끝낼 셸이 같은 모양이다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,8 +71,8 @@ pub struct Inputs<'a> {
     pub occasion: Occasion,
 }
 
-/// 판정의 결과 — 셸별 자손, 고아(확정 고아 · 출처 불명), 다른 인스턴스, 예외. 셸별 자손 중 셸 도우미를 따로
-/// 표시한다. 어느 묶음에도 없는 것(판정 밖)은 싣지 않는다. 묶음끼리 겹치지 않는다.
+/// 판정의 결과 — 셸별 자손, 채팅별 Runtime과 그 자손(restart 03-7), 고아(확정 고아 · 출처 불명), 다른 인스턴스, 예외. 셸별
+/// 자손 중 셸 도우미를, 채팅별 묶음 중 엔진의 몫을 따로 표시한다. 어느 묶음에도 없는 것(판정 밖)은 싣지 않는다. 묶음끼리 겹치지 않는다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict<'a> {
     /// 셸 키마다 그 셸의 자손 — 셸 목록과 끝낼 셸 모두 선다. 자손이 없으면 빈 목록이다. pid 순.
@@ -99,6 +100,18 @@ pub struct Verdict<'a> {
     pub helpers: BTreeSet<Identity>,
     /// 고아 — 셸 키를 물었는데 그 셸이 없는 것(프로세스 결정 6).
     pub orphans: Orphans<'a>,
+    /// 채팅 — 이 실행의 Runtime 키(`<세대>:<채팅 id>`)마다 그 채팅의 Runtime과 그것이 띄운 것(restart 03-7 · 스토리 126 · 127). 엔진이
+    /// Runtime을 띄울 때 env에 심은 표식을 자손이 물려받아, 부모가 먼저 죽은 dev 서버도 표식으로 여기 선다. 셸별 자손과 같은 걷기(가장
+    /// 가까운 자리)로 가른다. **셸과 달리 Runtime 자신도 든다** — 화면이 Runtime 줄을 보인다. pid 순.
+    ///
+    /// 이 실행의 채팅은 실행이 사는 동안 늘 이 실행의 것이다 — 인스턴스 기록의 목록에 오르지 않고, 확정 고아 (나)가 없다. Session이 꺼져도
+    /// (되살리기 · 지운 채팅) 남은 자손은 이 채팅에 선다. 앱 종료가 끝낸다(`at_exit`).
+    pub chats: BTreeMap<&'a str, Vec<&'a Proc>>,
+    /// **Runtime 몫** — 채팅의 행 중 앱이 띄운 Runtime(앱의 자식)과 그 프로세스 그룹(restart 03-7). 엔진이 Runtime을 새 세션으로 띄우고
+    /// 끌 때 그룹째 끈다(`atelier_acp::ConversationHost::shut_down`) — claude와 MCP 서버가 여기 든다. **묶음이 아니라 표시다**(셸 도우미처럼):
+    /// 채팅에 그대로 있고, 앱 종료가 엔진에 맡기며(셸 자신을 그룹 신호로 끄는 것과 같다), 화면이 [끝내기]를 안 세운다. Runtime이 먼저 죽은
+    /// 그룹은 엔진이 끌 것이 없어 여기 안 든다.
+    pub runtimes: BTreeSet<Identity>,
     /// 다른 인스턴스 — 살아 있는 다른 실행의 셸 목록에 있는 키를 문 것과 그 트리. 그 실행의 기록이 갱신된 **뒤에**
     /// 태어난 것(확정 고아 (나)의 시각 조건에 안 걸린 것)도 여기 둔다. 셸 키마다, pid 순. 판정이 부작용을 모르므로
     /// 아무도 끝내지 않는다 — 그 실행이 제 셸을 닫을 때 끝낸다.
@@ -106,7 +119,7 @@ pub struct Verdict<'a> {
 }
 
 /// 고아 — 셸 키를 물었는데 그 셸이 없는 프로세스(프로세스 결정 6). 두 갈래다. 셸 키마다 그 키를 문 것과 그 트리(표식이
-/// 안 읽히는 시스템 바이너리 자손)가 선다. pid 순.
+/// 안 읽히는 시스템 바이너리 자손)가 선다. pid 순. 다른 실행의 채팅이 남긴 것(Runtime 키, restart 03-7)도 같은 칸에 그 키로 선다.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Orphans<'a> {
     /// 확정 고아 — 그 셸이 없는 것이 **기록으로 확실한** 것. (가) 그 키를 낸 실행이 죽었다(기록의 앱 pid가 없거나 시작
@@ -180,13 +193,16 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         first_input.entry(shell.key.as_str()).or_insert(shell.first_input_us);
     }
 
-    // 행이 없어도 앱 자신은 막는다.
+    // 행이 없어도 앱 자신은 막는다. 물려받은 Runtime 키(restart 03-7 — 앱을 다른 실행의 채팅이 띄웠다)도 물려받은 셸 키와 같다.
     let mut blocked: HashSet<u32> = table.lineage(input.run.app_pid).collect();
     blocked.insert(input.run.app_pid);
     if let Some(inherited) = input.run.inherited_key {
         blocked.extend(
             procs.iter().filter(|p| p.shell_key.as_deref() == Some(inherited)).map(|p| p.id.pid),
         );
+    }
+    if let Some(inherited) = input.run.inherited_runtime {
+        blocked.extend(procs.iter().filter(|p| p.runtime_key.as_deref() == Some(inherited)).map(|p| p.id.pid));
     }
 
     // **우리 트리 안에서는 예외가 먼저다**(프로세스 결정 5). 자기부터 부모를 따라 올라가는 길 위 어디에든 예외 이름이 있으면
@@ -198,20 +214,29 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     // tmux 밑이라, 멈추지 않으면 셸을 닫아도 아무것도 안 끝난다.
     let excepted = |proc: &'a Proc| table.up_until(proc, &blocked).any(|node| exceptions::caught(input.exceptions, node));
 
-    // 자기부터 부모를 따라 올라가다 처음 만나는 자리가 그 행의 셸이다. 막힌 행을 만나거나 끝까지
-    // 올라가면 판정 밖이다.
-    let owner_of = |proc: &'a Proc| -> Option<&'a str> {
+    // 자기부터 부모를 따라 올라가다 처음 만나는 자리가 그 행의 자리다 — 셸(셸 프로세스나 이 실행의 셸 키)이나 채팅(이 세대의 Runtime
+    // 키, restart 03-7). 한 행에서는 셸이 먼저다. 막힌 행을 만나거나 끝까지 올라가면 판정 밖이다.
+    let owner_of = |proc: &'a Proc| -> Option<Place<'a>> {
         table.up_until(proc, &blocked).find_map(|node| {
-            shell_at.get(&node.id.pid).copied().or_else(|| node.shell_key.as_deref().filter(|&key| ours(key)))
+            let shell = shell_at.get(&node.id.pid).copied().or_else(|| node.shell_key.as_deref().filter(|&key| ours(key)));
+            let chat = || node.runtime_key.as_deref().filter(|&key| runtime_key::of_generation(key, input.run.generation));
+            shell.map(Place::Shell).or_else(|| chat().map(Place::Chat))
         })
     };
 
     // 셸별 자손이 아닌 표식 행이 어느 묶음에 드나 — 그 행부터 올라가다 **처음 만나는 표식**이 정한다. 그 표식이 어느 묶음에도
     // 안 들면(이 실행의 세대인데 기록 갱신 뒤에 태어났다) 더 올라가지 않는다. 막힌 행을 만나거나 끝까지 표식이 없으면 판정 밖이다.
+    //
+    // Runtime의 표식도 표식이다(restart 03-7) — 이 세대의 것은 위 자리(채팅)가 이미 가져갔으니, 여기 오는 것은 다른 실행의 채팅 것이다. 한
+    // 행에서는 셸의 표식이 먼저다.
     let stray_of = |proc: &'a Proc| -> Option<(Stray, &'a str)> {
-        let carrier = table.up_until(proc, &blocked).find(|node| node.shell_key.is_some())?;
-        let key = carrier.shell_key.as_deref()?;
-        stray(key, carrier, own, input, &table).map(|bundle| (bundle, key))
+        let carrier =
+            table.up_until(proc, &blocked).find(|node| node.shell_key.is_some() || node.runtime_key.is_some())?;
+        if let Some(key) = carrier.shell_key.as_deref() {
+            return stray(key, carrier, own, input, &table).map(|bundle| (bundle, key));
+        }
+        let key = carrier.runtime_key.as_deref()?;
+        Some((chat_stray(key, input, &table), key))
     };
 
     let mut descendants: BTreeMap<&'a str, Vec<&'a Proc>> =
@@ -220,6 +245,7 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     let mut helpers = BTreeSet::new();
     let mut orphans = Orphans::default();
     let mut other_instances: BTreeMap<&'a str, Vec<&'a Proc>> = BTreeMap::new();
+    let mut chats: BTreeMap<&'a str, Vec<&'a Proc>> = BTreeMap::new();
     // **행을 pid 순으로 돈다** — 묶음마다 행이 pid 순으로 쌓여, 결과의 묶음을 하나씩 짚어 줄 세우는 자리가 없다(묶음이 늘어도
     // 여기는 안 바뀐다).
     let mut rows: Vec<&'a Proc> = procs.iter().collect();
@@ -252,7 +278,9 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         }
         if excepted(proc) {
             excepted_rows.push(proc);
-        } else if let Some(key) = owner {
+        } else if let Some(Place::Chat(key)) = owner {
+            chats.entry(key).or_default().push(proc);
+        } else if let Some(Place::Shell(key)) = owner {
             // 입력이 아직 없으면 그 셸의 자손은 모두 도우미다. 입력과 같은 순간에 태어난 것은 도우미가 아니다 —
             // 입력 시각은 프런트가 사람 입력을 **본** 순간(ms를 µs로 옮겨 내림)이라, 사람이 띄운 것은 늘 그 뒤다.
             if first_input.get(key).copied().flatten().is_none_or(|input| proc.id.started_us < input) {
@@ -268,7 +296,36 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
             bundle.entry(key).or_default().push(proc);
         }
     }
-    Verdict { descendants, exceptions: excepted_rows, helpers, orphans, other_instances }
+    let runtimes = engine_share(&chats, input.run.app_pid);
+    Verdict { descendants, chats, runtimes, exceptions: excepted_rows, helpers, orphans, other_instances }
+}
+
+/// 한 행의 자리 — 셸 키마다 그 셸의 자손이거나, Runtime 키마다 그 채팅의 것(restart 03-7).
+#[derive(Debug, Clone, Copy)]
+enum Place<'a> {
+    Shell(&'a str),
+    Chat(&'a str),
+}
+
+/// **Runtime 몫**(`Verdict::runtimes`) — 채팅의 행 중 앱의 자식(엔진이 띄운 Runtime)과, 그 Runtime이 이끄는 프로세스 그룹의 행. 엔진은
+/// Runtime을 새 세션으로 띄워(그 pid가 그룹이다) 끌 때 그룹째 끈다.
+fn engine_share<'a>(chats: &BTreeMap<&'a str, Vec<&'a Proc>>, app_pid: u32) -> BTreeSet<Identity> {
+    let members = || chats.values().flatten();
+    let leaders: HashSet<u32> = members().filter(|proc| proc.ppid == app_pid).map(|proc| proc.id.pid).collect();
+    members().filter(|proc| leaders.contains(&proc.id.pid) || leaders.contains(&proc.pgid)).map(|proc| proc.id).collect()
+}
+
+/// 다른 실행의 채팅이 남긴 Runtime 표식의 묶음(restart 03-7). **셸의 표식과 같은 규칙**(`stray`)이되, Runtime 키는 인스턴스 기록의 목록에
+/// 오르지 않는다 — 채팅은 그 실행이 사는 동안 늘 그 실행의 것이다. 그래서 살아 있는 실행의 것은 늘 다른 인스턴스이고(확정 고아 (나)가 없다),
+/// 죽은 실행의 것은 확정 고아 (가), 기록이 없는 세대와 모양이 아닌 키는 출처 불명이다.
+fn chat_stray(key: &str, input: &Inputs, table: &Table) -> Stray {
+    let record = runtime_key::split(key)
+        .and_then(|(generation, _)| input.instances.iter().find(|record| record.generation == generation));
+    match record {
+        None => Stray::Unknown,
+        Some(record) if table.alive(record) => Stray::OtherInstance,
+        Some(_) => Stray::Confirmed,
+    }
 }
 
 impl<'a> Verdict<'a> {
@@ -276,7 +333,7 @@ impl<'a> Verdict<'a> {
     /// 이 한 곳이다 — 묶음을 하나 더하면 여기 더한다. 읽는 쪽(`rows` → `screen::targets`)이 따로 나열하면 하나를 빠뜨려도 컴파일되고,
     /// 그 묶음의 숫자 칸만 조용히 빈다.
     pub fn grouped(&self) -> impl Iterator<Item = &'a Proc> + '_ {
-        [&self.descendants, &self.orphans.confirmed, &self.orphans.unknown, &self.other_instances]
+        [&self.descendants, &self.chats, &self.orphans.confirmed, &self.orphans.unknown, &self.other_instances]
             .into_iter()
             .flat_map(|bundle| bundle.values().flatten().copied())
     }
@@ -373,10 +430,10 @@ pub fn at_exit(input: &Inputs) -> Exit {
         first_input_us: Some(0),
     }));
     let verdict = judge(&Inputs { ending: &ending, ..*input });
-    Exit {
-        targets: verdict.descendants.into_values().flatten().map(|proc| proc.id).collect(),
-        helpers: verdict.helpers,
-    }
+    // 이 세대의 Runtime 자손(restart 03-7) — Runtime과 그 그룹(Runtime 몫)은 엔진이 함께 끈다(`ConversationHost::shut_down`). 셸 자신을 그룹
+    // 신호로 끄는 것과 같다 — 여기서 SIGTERM을 보내면 엔진이 stdin을 닫고 기다리는 claude의 마무리를 끊는다.
+    let chats = verdict.chats.into_values().flatten().map(|proc| proc.id).filter(|id| !verdict.runtimes.contains(id));
+    Exit { targets: verdict.descendants.into_values().flatten().map(|proc| proc.id).chain(chats).collect(), helpers: verdict.helpers }
 }
 
 /// 앱 종료가 끝낼 것(`at_exit`) — 신원과, 그중 셸 도우미.
@@ -410,6 +467,7 @@ pub fn dead_instances<'a>(input: &Inputs<'a>) -> Vec<&'a InstanceRecord> {
     let table = Table::of(&input.snapshot.procs);
     let inherited = |record: &InstanceRecord| {
         input.run.inherited_key.is_some_and(|key| shell_key::of_generation(key, &record.generation))
+            || input.run.inherited_runtime.is_some_and(|key| runtime_key::of_generation(key, &record.generation))
     };
     input
         .instances
@@ -476,7 +534,7 @@ mod tests {
     /// 이 실행 — 세대 `generation`, 앱 `APP`, 물려받은 키 없음. 물려받은 키를 재는 줄은 그 칸만 바꿔 짓는다
     /// (`ThisRun { inherited_key: …, ..run("G") }`).
     fn run(generation: &str) -> ThisRun<'_> {
-        ThisRun { generation, app_pid: APP, inherited_key: None }
+        ThisRun { generation, app_pid: APP, inherited_key: None, inherited_runtime: None }
     }
 
     /// 스냅샷 한 행. 시작 시각은 따로 안 주면 pid를 따른다 — 부모가 자식보다 먼저 태어나게.
@@ -491,11 +549,14 @@ mod tests {
             command: None,
             path: None,
             shell_key: None,
+            runtime_key: None,
         }
     }
 
     trait Row {
         fn key(self, key: &str) -> Proc;
+        /// Runtime의 표식(Runtime 키 — restart 03-7).
+        fn chat(self, key: &str) -> Proc;
         fn uid(self, uid: u32) -> Proc;
         fn born(self, started_us: u64) -> Proc;
         /// 커널 이름.
@@ -509,6 +570,10 @@ mod tests {
     impl Row for Proc {
         fn key(mut self, key: &str) -> Proc {
             self.shell_key = Some(key.to_string());
+            self
+        }
+        fn chat(mut self, key: &str) -> Proc {
+            self.runtime_key = Some(key.to_string());
             self
         }
         fn uid(mut self, uid: u32) -> Proc {
@@ -567,6 +632,8 @@ mod tests {
         /// 세상에 더하는 행. 같은 pid가 세상에 있으면 이 행이 그것을 갈아 끼운다.
         rows: Vec<Proc>,
         inherited: Option<&'static str>,
+        /// 앱이 물려받은 Runtime 키. 따로 안 주면 없다.
+        inherited_runtime: Option<&'static str>,
         /// 셸 키마다 기대 자손(pid). 적지 않은 셸은 빈 목록이다.
         expect: Vec<(&'static str, Vec<u32>)>,
         /// 기대 예외 묶음(pid). 적지 않으면 비어 있다.
@@ -575,6 +642,10 @@ mod tests {
         confirmed: Vec<(&'static str, Vec<u32>)>,
         unknown: Vec<(&'static str, Vec<u32>)>,
         others: Vec<(&'static str, Vec<u32>)>,
+        /// 기대 채팅 — Runtime 키마다 pid. 적지 않으면 비어 있다.
+        chats: Vec<(&'static str, Vec<u32>)>,
+        /// 기대 Runtime 몫(pid). 적지 않으면 비어 있다.
+        runtimes: Vec<u32>,
         /// 판정을 부르는 때. 따로 안 주면 보통이다.
         occasion: Occasion,
     }
@@ -584,11 +655,14 @@ mod tests {
             what,
             rows,
             inherited: Some("I-3"),
+            inherited_runtime: None,
             expect: listed(expect),
             excepted: Vec::new(),
             confirmed: Vec::new(),
             unknown: Vec::new(),
             others: Vec::new(),
+            chats: Vec::new(),
+            runtimes: Vec::new(),
             occasion: Occasion::Normal,
         }
     }
@@ -621,6 +695,21 @@ mod tests {
             self.others = listed(bundle);
             self
         }
+        /// 채팅 — Runtime 키마다 그 채팅의 행(restart 03-7).
+        fn in_chats(mut self, bundle: &[(&'static str, &[u32])]) -> Case {
+            self.chats = listed(bundle);
+            self
+        }
+        /// Runtime 몫 — 앱이 띄운 Runtime과 그 프로세스 그룹(restart 03-7).
+        fn engine_ends(mut self, pids: &[u32]) -> Case {
+            self.runtimes = pids.to_vec();
+            self
+        }
+        /// 앱이 물려받은 Runtime 키(restart 03-7).
+        fn inheriting_a_chat(mut self, key: &'static str) -> Case {
+            self.inherited_runtime = Some(key);
+            self
+        }
         /// 시작 정리 모드로 판정한다(티켓 10).
         fn at_startup(mut self) -> Case {
             self.occasion = Occasion::StartupCleanup;
@@ -637,6 +726,8 @@ mod tests {
         confirmed: BTreeMap<String, Vec<u32>>,
         unknown: BTreeMap<String, Vec<u32>>,
         others: BTreeMap<String, Vec<u32>>,
+        chats: BTreeMap<String, Vec<u32>>,
+        runtimes: Vec<u32>,
     }
 
     fn pids_of(bundle: &BTreeMap<&str, Vec<&Proc>>) -> BTreeMap<String, Vec<u32>> {
@@ -665,7 +756,7 @@ mod tests {
         let exceptions = exceptions();
         let verdict = judge(&Inputs {
             snapshot: &snapshot,
-            run: ThisRun { inherited_key: case.inherited, ..run("G") },
+            run: ThisRun { inherited_key: case.inherited, inherited_runtime: case.inherited_runtime, ..run("G") },
             shells,
             ending,
             instances,
@@ -678,6 +769,8 @@ mod tests {
             confirmed: pids_of(&verdict.orphans.confirmed),
             unknown: pids_of(&verdict.orphans.unknown),
             others: pids_of(&verdict.other_instances),
+            chats: pids_of(&verdict.chats),
+            runtimes: verdict.runtimes.iter().map(|id| id.pid).collect(),
         };
         let mut descendants: BTreeMap<String, Vec<u32>> =
             shell_keys.iter().map(|key| (key.to_string(), Vec::new())).collect();
@@ -688,6 +781,8 @@ mod tests {
             confirmed: wanted(&case.confirmed),
             unknown: wanted(&case.unknown),
             others: wanted(&case.others),
+            chats: wanted(&case.chats),
+            runtimes: case.runtimes.clone(),
         };
         (got != want).then(|| format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what))
     }
@@ -1194,7 +1289,7 @@ mod tests {
     /// 넘기게 무너지면 앵커가 빠진다.
     #[test]
     fn the_startup_cleanup_hands_only_confirmed_orphans_to_the_ending() {
-        let cases: [(&str, Vec<Proc>, &[u32]); 9] = [
+        let cases: [(&str, Vec<Proc>, &[u32]); 13] = [
             (
                 "확정 고아 (가) 죽은 실행 — 그 트리의 시스템 바이너리까지",
                 vec![row(311, 1).key("X-1"), row(323, 311), row(324, 323)],
@@ -1237,6 +1332,27 @@ mod tests {
                 vec![row(1, 0).key("X-1"), row(318, 1).uid(0).key("X-1"), row(311, 1).key("X-1")],
                 &[311],
             ),
+            // ── 채팅의 Runtime 표식(restart 03-7) — 셸의 표식과 같은 규칙이다.
+            (
+                "죽은 실행의 채팅이 남긴 것과 그 밑은 넘긴다 — 지난 실행의 확정 고아",
+                vec![row(430, 1).chat("X:t9"), row(431, 430)],
+                &[430, 431],
+            ),
+            (
+                "살아 있는 실행의 채팅, 기록이 없는 세대의 채팅은 안 넘긴다",
+                vec![row(433, 1).chat("D:t1").born(3_000), row(435, 1).chat("OLD:t1"), row(311, 1).key("X-1")],
+                &[311],
+            ),
+            (
+                "이 실행의 채팅은 안 넘긴다 — Runtime도, 부모가 먼저 죽은 dev 서버도",
+                vec![row(400, APP).chat("G:t1"), row(405, 1).chat("G:t1"), row(311, 1).key("X-1")],
+                &[311],
+            ),
+            (
+                "앱이 물려받은 Runtime 키를 문 형제 가지(vite)는 그 키를 낸 실행이 죽었어도 안 넘긴다",
+                vec![row(10, 1).born(9_000), row(60, 30).chat("I:t7"), row(61, 60), row(311, 1).key("X-1")],
+                &[311],
+            ),
         ];
 
         let shells = [shell("G-1", Some(Identity { pid: 100, started_us: 1_100 }))];
@@ -1254,7 +1370,7 @@ mod tests {
             // 부르는 쪽이 모드를 무엇으로 주든 시작 정리로 판정한다 — 이 표는 보통으로 준다.
             let mut got: Vec<u32> = at_startup(&Inputs {
                 snapshot: &snapshot,
-                run: ThisRun { inherited_key: Some("I-3"), ..run("G") },
+                run: ThisRun { inherited_key: Some("I-3"), inherited_runtime: Some("I:t7"), ..run("G") },
                 shells: &shells,
                 ending: &[],
                 instances: &records,
@@ -1280,7 +1396,7 @@ mod tests {
     /// 읽혀, 살아남은 dev 앱과 vite가 확정 고아로 정리되지 않는다. 앵커: 같은 세상에서 물려받은 키가 없으면 그 실행을 고른다.
     #[test]
     fn dead_instances_are_the_records_whose_app_is_gone() {
-        let dead_inheriting = |rows: Vec<Proc>, inherited_key: Option<&str>| -> Vec<String> {
+        let dead_inheriting = |rows: Vec<Proc>, inherited_key: Option<&str>, inherited_runtime: Option<&str>| -> Vec<String> {
             let mut procs = world();
             procs.extend([row(70, 1), row(80, 1)]);
             for added in rows {
@@ -1291,7 +1407,7 @@ mod tests {
             let records = records();
             let mut got: Vec<String> = dead_instances(&Inputs {
                 snapshot: &snapshot,
-                run: ThisRun { inherited_key, ..run("G") },
+                run: ThisRun { inherited_key, inherited_runtime, ..run("G") },
                 shells: &[],
                 ending: &[],
                 instances: &records,
@@ -1304,11 +1420,11 @@ mod tests {
             got.sort();
             got
         };
-        let dead = |rows: Vec<Proc>| dead_inheriting(rows, Some("I-3"));
+        let dead = |rows: Vec<Proc>| dead_inheriting(rows, Some("I-3"), None);
         assert_eq!(dead(vec![]), ["R", "X"], "앱 pid가 없는 실행(X)과 그 pid를 남이 받은 실행(R)만 죽었다");
         let installed_gone = || vec![row(10, 1).born(9_000), row(APP, 40).born(9_000)];
         assert_eq!(
-            dead_inheriting(installed_gone(), None),
+            dead_inheriting(installed_gone(), None, None),
             ["I", "R", "X"],
             "설치본(I)의 pid를 남이 받았으면 죽었다 — 이 실행(G)의 행이 달라도 이 실행은 죽은 것으로 안 친다"
         );
@@ -1317,6 +1433,161 @@ mod tests {
             ["R", "X"],
             "앱이 물려받은 키의 실행(I)을 죽은 기록으로 골랐다 — 설치본이 다시 뜨면 그 키가 출처 불명이 되어 dev 앱과 vite가 안 정리된다"
         );
+        // 앱을 그 실행의 채팅이 띄웠어도 같다(restart 03-7) — 물려받은 것이 Runtime 키다.
+        assert_eq!(
+            dead_inheriting(installed_gone(), None, Some("I:t7")),
+            ["R", "X"],
+            "앱이 물려받은 Runtime 키의 실행(I)을 죽은 기록으로 골랐다"
+        );
+    }
+
+    /// **채팅의 Runtime과 그것이 띄운 것**(restart 스펙 「03 — Processes」 Runtime · 티켓 03-7 · 스토리 126 · 127). 엔진이 Runtime을 띄울 때
+    /// env에 이 실행의 Runtime 키(`<세대>:<채팅 id>`)를 심고, 자손이 그것을 물려받는다. 셸별 자손과 같은 걷기다 — 자기부터 올라가다 처음
+    /// 만나는 자리(셸 프로세스 · 이 실행의 셸 키 · **이 세대의 Runtime 키**)가 그 행의 자리다. 그래서 부모가 먼저 죽어 launchd 밑으로 간 dev
+    /// 서버도 표식으로 그 채팅에 선다. 셸과 달리 Runtime 자신도 그 채팅에 선다 — 화면이 Runtime 줄을 보인다.
+    ///
+    /// **Runtime 몫**(`Verdict::runtimes`) — 앱이 띄운 Runtime(앱의 자식)과 그 프로세스 그룹이다. 엔진이 새 세션으로 띄워 그룹째 끄는
+    /// 것들이다(claude와 MCP 서버). 묶음이 아니라 표시다.
+    ///
+    /// 세상: 채팅 t1(Claude) — 변환기 400(앱의 자식, 그룹 400) → claude 401(그룹 400) → MCP 402(그룹 400) · vitest 403(제 그룹) → esbuild 404,
+    /// 부모가 먼저 죽은 dev 서버 405 → 406. 채팅 t2(Codex) — codex-acp 410 → codex 411(그룹 410) → 샌드박스의 셸 412(표식이 안 읽힌다) → 413.
+    fn chat_world() -> Vec<Proc> {
+        vec![
+            row(400, APP).chat("G:t1"),
+            row(401, 400).chat("G:t1").group(400),
+            row(402, 401).chat("G:t1").group(400),
+            row(403, 401).chat("G:t1"),
+            row(404, 403),
+            row(405, 1).chat("G:t1"),
+            row(406, 405),
+            row(410, APP).chat("G:t2"),
+            row(411, 410).chat("G:t2").group(410),
+            row(412, 411),
+            row(413, 412),
+        ]
+    }
+
+    /// 채팅 표의 기대 — 위 세상의 두 채팅 그대로.
+    const T1: (&str, &[u32]) = ("G:t1", &[400, 401, 402, 403, 404, 405, 406]);
+    const T2: (&str, &[u32]) = ("G:t2", &[410, 411, 412, 413]);
+    const ENGINE: &[u32] = &[400, 401, 402, 410, 411];
+
+    #[test]
+    fn each_chat_gets_its_runtime_and_what_it_spawned() {
+        let cases = [
+            case("채팅마다 묶인다 — Runtime과 자식, 그것이 띄운 dev 서버, 부모가 먼저 죽은 것, Codex의 트리 전체", chat_world(), &[])
+                .in_chats(&[T1, T2])
+                .engine_ends(ENGINE),
+            case(
+                "채팅 트리 안에서는 다른 실행의 셸 표식을 물어도 그 채팅의 것 — 채팅이 띄운 dev 앱의 셸",
+                [chat_world(), vec![row(407, 401).key("D-1"), row(408, 407).key("D-1")]].concat(),
+                &[],
+            )
+            .in_chats(&[("G:t1", &[400, 401, 402, 403, 404, 405, 406, 407, 408]), T2])
+            .engine_ends(ENGINE),
+            case(
+                "한 행이 두 표식을 다 물면 이 실행의 셸 표식이 먼저다 — 같은 자리에서는 셸, 그다음 채팅",
+                [chat_world(), vec![row(420, 1).key("G-1").chat("G:t1"), row(421, 100).chat("G:t1")]].concat(),
+                &[("G-1", &[420])],
+            )
+            .in_chats(&[("G:t1", &[400, 401, 402, 403, 404, 405, 406, 421]), T2])
+            .engine_ends(ENGINE),
+            case(
+                "채팅 트리 안의 예외 이름과 그 밑은 예외다 — 채팅이 띄운 tmux",
+                [chat_world(), vec![row(409, 401).named("tmux").chat("G:t1"), row(419, 409).chat("G:t1")]].concat(),
+                &[],
+            )
+            .in_chats(&[T1, T2])
+            .engine_ends(ENGINE)
+            .excepting(&[409, 419]),
+            case(
+                "Runtime이 먼저 죽었으면 그 그룹에 남은 것은 Runtime 몫이 아니다 — 엔진이 끌 그룹이 없다",
+                vec![row(441, 1).chat("G:t3").group(440), row(442, 441).group(440)],
+                &[],
+            )
+            .in_chats(&[("G:t3", &[441, 442])]),
+            case(
+                "앱이 물려받은 Runtime 키를 문 것은 판정 밖이다 — 앱을 띄운 채팅의 사슬과 함께 뜬 vite",
+                [
+                    chat_world(),
+                    vec![
+                        row(30, 20).chat("I:t7"),
+                        row(40, 30).chat("I:t7"),
+                        row(APP, 40).chat("I:t7"),
+                        row(60, 30).chat("I:t7"),
+                        row(61, 60),
+                    ],
+                ]
+                .concat(),
+                &[],
+            )
+            .inheriting_a_chat("I:t7")
+            .in_chats(&[T1, T2])
+            .engine_ends(ENGINE),
+            case(
+                "다른 uid와 pid ≤ 1은 이 세대의 Runtime 키를 물어도 안 든다",
+                [chat_world(), vec![row(1, 0).chat("G:t1"), row(430, 1).uid(0).chat("G:t1")]].concat(),
+                &[],
+            )
+            .in_chats(&[T1, T2])
+            .engine_ends(ENGINE),
+        ];
+
+        let wrong = misjudged_on_the_records(&cases);
+        assert!(wrong.is_empty(), "채팅의 판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **채팅이 아닌 Runtime 표식은 셸의 표식과 같은 규칙으로 고아 · 다른 인스턴스로 간다**(restart 03-7). 다만 Runtime 키는 인스턴스 기록의
+    /// 목록에 오르지 않는다 — 채팅은 실행이 사는 동안 그 실행의 것이다. 그래서 살아 있는 실행의 Runtime 키는 늘 다른 인스턴스다(확정 고아 (나)가
+    /// 없다). 죽은 실행의 것은 확정 고아 (가), 기록이 없는 세대와 모양이 아닌 키는 출처 불명이다.
+    ///
+    /// 「채팅이 아니다」를 재는 줄마다 이 실행의 채팅 t1의 Runtime 하나를 앵커로 세운다.
+    #[test]
+    fn strays_of_other_runs_chats_split_like_the_shells() {
+        let anchor = || row(400, APP).chat("G:t1");
+        let cases = [
+            case(
+                "죽은 실행의 채팅이 남긴 것과 그 밑 → 확정 고아 — 앱 pid가 없는 실행, 그 pid를 남이 받은 실행",
+                vec![anchor(), row(430, 1).chat("X:t9"), row(431, 430), row(432, 1).chat("R:t1")],
+                &[],
+            )
+            .in_chats(&[("G:t1", &[400])])
+            .engine_ends(&[400])
+            .orphaned(&[("X:t9", &[430, 431]), ("R:t1", &[432])]),
+            case(
+                "살아 있는 실행의 채팅 → 다른 인스턴스 — 기록 갱신 전에 태어났어도",
+                vec![anchor(), row(433, 1).chat("D:t1").born(3_000), row(434, 433).born(3_100)],
+                &[],
+            )
+            .in_chats(&[("G:t1", &[400])])
+            .engine_ends(&[400])
+            .of_other_instance(&[("D:t1", &[433, 434])]),
+            case(
+                "기록이 없는 세대의 채팅, 모양이 아닌 Runtime 키 → 출처 불명",
+                vec![anchor(), row(435, 1).chat("OLD:t1"), row(436, 1).chat("garbage")],
+                &[],
+            )
+            .in_chats(&[("G:t1", &[400])])
+            .engine_ends(&[400])
+            .of_unknown_origin(&[("OLD:t1", &[435]), ("garbage", &[436])]),
+            case(
+                "가장 가까운 표식이 정한다 — 죽은 실행의 셸이 남긴 고아 밑에서 뜬 이 실행의 채팅 표식은 채팅",
+                vec![row(311, 1).key("X-1"), row(437, 311).chat("G:t1"), row(438, 437)],
+                &[],
+            )
+            .in_chats(&[("G:t1", &[437, 438])])
+            .orphaned(&[("X-1", &[311])]),
+            case(
+                "시작 정리는 이 실행의 채팅을 안 본다 — 죽은 실행의 채팅은 확정 고아",
+                vec![anchor(), row(401, 400).chat("G:t1"), row(405, 1).chat("G:t1"), row(430, 1).chat("X:t9")],
+                &[],
+            )
+            .orphaned(&[("X:t9", &[430])])
+            .at_startup(),
+        ];
+
+        let wrong = misjudged_on_the_records(&cases);
+        assert!(wrong.is_empty(), "채팅 밖 Runtime 표식의 판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 
     /// 셸 도우미 · 확인 창의 수 표의 한 줄.
@@ -1570,6 +1841,23 @@ mod tests {
                 "pid ≤ 1과 다른 uid — 이 세대의 표식을 물어도",
                 vec![row(1, 0).key("G-5"), row(228, 1).uid(0).key("G-5"), row(229, 1).key("G-5")],
                 &[("", &[229])],
+            ),
+            // ── 채팅의 Runtime 표식(restart 03-7). Runtime과 그 그룹은 엔진이 끈다(`ConversationHost::shut_down`) — 셸 자신을 그룹 신호로
+            // 끄는 것과 같다. 종료가 끝내는 것은 그 밖의 Runtime 자손이다.
+            case(
+                "이 세대의 Runtime 자손 — 제 그룹의 dev 서버와 그 밑, 부모가 먼저 죽은 것, Codex가 띄운 것. Runtime과 그 그룹은 안 든다",
+                chat_world(),
+                &[("", &[403, 404, 405, 406, 412, 413])],
+            ),
+            case(
+                "Runtime이 먼저 죽은 그룹에 남은 것도 끝낸다 — 엔진이 끌 그룹이 없다",
+                vec![row(441, 1).chat("G:t3").group(440)],
+                &[("", &[441])],
+            ),
+            case(
+                "다른 세대의 채팅 표식과 예외는 안 든다",
+                vec![row(450, 1).chat("X:t9"), row(451, 1).named("tmux").chat("G:t5"), row(405, 1).chat("G:t1")],
+                &[("", &[405])],
             ),
             case(
                 "예외와 그 밑은 앱이 닫혀도 산다 — 이 세대의 표식을 물어도, 풀 셸의 트리 안이어도",

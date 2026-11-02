@@ -36,6 +36,7 @@ import { useWorks } from "@/features/works/hooks";
 import { CopySubmenu, FinderSubmenu } from "@/features/works/WorkMenuItems";
 import { useWorkMenuFlows } from "@/features/works/work-menu-actions";
 import type { ProjectChanges, WorkView } from "@/features/works/types";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { workWritingStore, writingOf } from "./thread-store";
 import type { DocWriting } from "./types";
 import {
@@ -119,6 +120,8 @@ interface WorkSummaryProps {
   opened: Opened | null;
   /** 줄 · 트리 · 문서 링크가 파일을 열었다 — 카드가 넓어져(이미 넓으면 그대로) 그것을 본다. */
   onOpen: (next: Opened) => void;
+  /** Project 트리에서 바뀌지 않은 파일을 눌렀다 — 파일 탭으로 연다(restart 02a-12). */
+  onOpenFile: (target: CodeTarget) => void;
   /** 보기의 ×(「카드로 접기」) — 작은 카드로 돌아온다. */
   onClose: () => void;
 }
@@ -127,7 +130,7 @@ interface WorkSummaryProps {
  * Work에 이은 Thread의 요약 카드 — 그 Work를 목록에서 찾지 못하면(보관 · 지움 · 아직 읽는 중) 서지 않는다. 넓으면(`opened`) 몸이 왼쪽
  * 목록(`size-list` 264 · 오른쪽 0.5 선)이 되고 오른쪽에 그 파일의 보기가 선다.
  */
-export function WorkSummaryCard({ thread, draftKey, slug, onNewThread, opened, onOpen, onClose }: WorkSummaryProps) {
+export function WorkSummaryCard({ thread, draftKey, slug, onNewThread, opened, onOpen, onOpenFile, onClose }: WorkSummaryProps) {
   const { data: works } = useWorks();
   const work = works?.find((one) => one.slug === slug) ?? null;
   const changes = useChanges(slug);
@@ -164,8 +167,8 @@ export function WorkSummaryCard({ thread, draftKey, slug, onNewThread, opened, o
       onUnfold={() => setUnfolded(true)}
       opened={opened}
       onChanges={target ? () => onOpen(target) : undefined}
-      // Project 줄은 그 트리를 연다 — 트리에서 연 파일이 있어도 줄을 다시 누르면 트리로 돌아온다.
-      onOpen={(row) => onOpen(row.kind === "project" ? { ...row, file: null } : row)}
+      // Project 줄은 그 트리를 연다.
+      onOpen={onOpen}
       onOpenPr={(row) => void openUrl(row.url)}
     />
   );
@@ -182,6 +185,7 @@ export function WorkSummaryCard({ thread, draftKey, slug, onNewThread, opened, o
         changes={changes.summary}
         writing={writing}
         onOpen={onOpen}
+        onOpenFile={onOpenFile}
         onClose={onClose}
       />
     </section>

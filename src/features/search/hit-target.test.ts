@@ -26,18 +26,25 @@ const workHit = (over: Partial<Extract<SearchHit, { kind: "work" }>> = {}): Sear
 });
 
 describe("문서 줄이 가는 곳", () => {
-  // 문서 탭은 **임시로** 주소에 `tab=spec`이라 적힌다(restart 02a-4 — 값이 없는 주소는 이제 채팅이다. 02a-13이 걷는다).
-  it("활성 문서는 그 work의 spec 화면에서 열린다", () => {
+  // restart 02a-12 — **채팅 탭의 넓힌 카드로 열린다**(한때 문서 탭이었다). 채팅 탭을 보다 떠난 work이면 그 채팅 탭에 문서를 얹고, 셸 · 파일 탭을
+  // 보다 떠났거나 아직 안 본 work이면 탭을 비운다 — 처음 여는 규칙이 02a-10의 켤 탭 규칙으로 채팅 탭을 고르고(채팅이 없으면 새 채팅 탭) 거기
+  // 넓힌 카드가 선다. 기억에 다른 문서가 적혀 있어도 **고른 문서**가 이긴다 — 문서 줄은 문서를 골랐다.
+  it("활성 문서는 그 work의 채팅 탭에서 넓힌 카드로 열린다", () => {
     expect(hitTarget(doc())).toEqual({
       to: "/works/$slug",
       params: { slug: "가" },
-      search: { file: "overview.md", tab: "spec", split: undefined },
+      search: { file: "overview.md", tab: undefined, split: undefined, code: undefined, thread: undefined },
     });
+    rememberView("채팅을-보던것", { tab: "chat", split: null, file: "기억에적힌것.md", code: null, thread: "20261010-100000" });
+    expect(hitTarget(doc({ slug: "채팅을-보던것" }))).toMatchObject({
+      search: { file: "overview.md", tab: "chat", thread: "20261010-100000" },
+    });
+    rememberView("셸을-보던것", { tab: "terminal", split: null, file: null, code: null, thread: null });
+    expect(hitTarget(doc({ slug: "셸을-보던것" }))).toMatchObject({ search: { file: "overview.md", tab: undefined } });
   });
 
-  // 결정 16·77. **「그 work의 기억 위에 문서를 얹어」 간다** — 분할해 둔 채로 문서를 골라도
-  // 분할이 안 무너지고, 터미널을 보고 있었어도 문서를 골랐으면 spec으로 돌아온다.
-  // 기억에 다른 문서가 적혀 있어도 **고른 문서**가 이긴다 — 문서 줄은 문서를 골랐다.
+  // 결정 16·77. **「그 work의 기억 위에 문서를 얹어」 간다** — 분할해 둔 채로 문서를 골라도 분할이 안 무너지고 문서 열에 선다(분할은 02a-13이
+  // 걷는다 — 그때까지 문서 열이 옛 입구다).
   it("분할은 그 work의 기억에서 살아남고 탭은 spec으로 돌아온다", () => {
     rememberView("갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md", code: null, thread: null });
     expect(hitTarget(doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
