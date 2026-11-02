@@ -70,7 +70,76 @@ describe("서브에이전트 줄", () => {
 
   it("펼친 안에는 안쪽 도구가 제 도구 줄로 선다", () => {
     const markup = renderToStaticMarkup(<InnerTools tools={agentThrough(26).inner} />);
-    expect(markup).toContain('aria-label="note.md 읽음"');
+    expect(markup).toContain('aria-label="읽음 note.md"');
     expect(markup).toMatch(/border-l/);
+  });
+});
+
+// 도구 줄의 모양(restart 02b-4 · Tools 보드 「도구 줄 — 종류 × 상태」 · 「명령 출력」 · 「파일 변경」) — 문구는 `tool-view.test.ts`가 재고, 여기는 그 값이
+// 줄의 무엇으로 서는지 정적 마크업으로 잰다: 멈춘 줄의 ■, 도는 줄의 반짝임, 명령 출력이 처음부터 펼쳐 있는지, 새 파일 점.
+describe("도구 줄의 모양", () => {
+  const line = (call: Record<string, unknown>, over: Partial<ToolEntry> = {}): ToolEntry => ({
+    kind: "tool",
+    key: "k",
+    toolCallId: "t",
+    call: { toolCallId: "t", ...call },
+    output: "",
+    inner: [],
+    stop: null,
+    cut: false,
+    denied: false,
+    allowed: null,
+    asking: false,
+    startedAt: "2026-11-03T10:00:00.000Z",
+    endedAt: null,
+    ...over,
+  });
+  const markup = (tool: ToolEntry) => renderToStaticMarkup(<ToolRows tools={[tool]} />);
+  const command = (status: string, rawOutput: Record<string, unknown> = {}) => ({
+    kind: "execute",
+    title: "pnpm test",
+    status,
+    rawInput: { command: "pnpm test" },
+    rawOutput,
+    content: [{ type: "content", content: { type: "text", text: "ok" } }],
+  });
+
+  it("멈춘 줄 · 끊긴 줄 · 거부한 줄은 글리프 자리에 ■가 서고, 반짝이지 않는다", () => {
+    const read = { kind: "read", title: "Read /w/a.rs", locations: [{ path: "/w/a.rs" }] };
+    for (const tool of [
+      line({ ...read, status: "in_progress" }, { stop: "stopped" }),
+      line({ ...read, status: "in_progress" }, { cut: true }),
+      line({ ...read, status: "failed" }, { denied: true }),
+    ]) {
+      const html = markup(tool);
+      expect(html).toContain('data-glyph="stopped"');
+      expect(html).not.toContain('data-glyph="read"');
+      expect(html).not.toContain("chat-shimmer");
+    }
+  });
+
+  it("도는 줄은 「대상 동사」가 한 글로 반짝이고, 선 줄은 동사 뒤에 대상이 고정폭으로 선다", () => {
+    const read = { kind: "read", title: "Read /w/a.rs", locations: [{ path: "/w/a.rs" }] };
+    expect(markup(line({ ...read, status: "in_progress" }))).toMatch(/chat-shimmer[^"]*">a\.rs 읽는 중</);
+    expect(markup(line({ ...read, status: "completed" }))).toMatch(/>읽음<\/span><span class="[^"]*font-mono[^"]*">a\.rs</);
+  });
+
+  it("명령 출력은 도는 동안 · 실패하면 펼쳐 서고, 성공한 채 처음 그린 줄은 접혀 선다", () => {
+    expect(markup(line(command("in_progress")))).toContain('aria-expanded="true"');
+    const failed = markup(line(command("failed", { exit_code: 1 }), { endedAt: "2026-11-03T10:00:02.000Z" }));
+    expect(failed).toContain('aria-expanded="true"');
+    expect(failed).toContain("코드 종료 1");
+    expect(markup(line(command("completed", { exit_code: 0 }), { endedAt: "2026-11-03T10:00:02.000Z" }))).toContain('aria-expanded="false"');
+  });
+
+  it("옛 글 없이 쓴 파일은 「생성됨」 뒤에 새 파일 점이 선다", () => {
+    const html = markup(
+      line(
+        { kind: "edit", title: "Write /w/b.ts", status: "completed", content: [{ type: "diff", path: "/w/b.ts", oldText: null, newText: "b\n" }] },
+        { endedAt: "2026-11-03T10:00:01.000Z" },
+      ),
+    );
+    expect(html).toContain('aria-label="생성됨 b.ts"');
+    expect(html).toContain('data-dot="created"');
   });
 });

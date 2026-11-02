@@ -67,6 +67,8 @@ export interface TurnEnd {
   stopReason: string | null;
   /** 말을 보낸 때부터 끝날 때까지. */
   durationMs: number;
+  /** 그 가운데 사람의 답을 기다린 시간(`Turn.waitedMs`) — 머리의 시간은 이것을 뺀다(restart 02b-4). */
+  waitedMs: number;
   /** 우리가 멈췄나 — `cancelled`가 사람의 멈춤인지 Runtime의 거부인지를 가른다. */
   cancelledByUs: boolean;
   /**
@@ -307,6 +309,13 @@ export interface Turn {
   end: TurnEnd | null;
   /** 마지막으로 받은 사용량 — 답 아래 줄에 선다. 모델을 부르지 않은 턴(내장 명령)은 null이다. */
   usage: Usage | null;
+  /**
+   * 사람의 답을 기다린 시간(restart 02b-4 · Tools 보드 「승인 대기 — 사람을 기다리는 동안 시계는 멈춘다」) — 이 턴에서 물음(승인 · 질문 · Thread 도구
+   * 카드)이 하나라도 걸려 있던 동안의 합이다. 머리의 시간이 이것을 뺀다(`runningHeadline` · `headline`).
+   */
+  waitedMs: number;
+  /** 지금 걸린 물음이 걸리기 시작한 때 — 걸린 물음이 없으면 null이다. 그동안 도는 턴의 시계가 이 때에 멈춰 있다. */
+  waitingSince: string | null;
 }
 
 /**
@@ -593,9 +602,20 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const questions = new Map<string, QuestionEntry>();
   const questionTools = new Set<string>();
   let settled = 0;
-  const dropAsk = (key: string) => {
+  // 사람을 기다리는 시계(restart 02b-4) — 열린 턴에 물음이 걸리면 그 턴의 시계가 그때에 멈추고, 걸린 물음이 다 닫히거나 턴이 끝나면 기다린 만큼을
+  // 더한다. 턴보다 오래 선 카드(Codex — report 「사람을 기다리는 카드가 턴보다 오래 설 수 있다」)는 그 턴이 끝날 때까지만 센다.
+  const holdClock = (at: string) => {
+    if (open && open.waitingSince === null) open.waitingSince = at;
+  };
+  const freeClock = (turn: Turn | null, at: string) => {
+    if (!turn || turn.waitingSince === null) return;
+    turn.waitedMs += Math.max(0, Date.parse(at) - Date.parse(turn.waitingSince)) || 0;
+    turn.waitingSince = null;
+  };
+  const dropAsk = (key: string, at: string) => {
     if (!pending.delete(key)) return;
     settled = pending.size === 0 ? 0 : settled + 1;
+    if (pending.size === 0) freeClock(open, at);
   };
   // 카드의 요청 id → 그 카드를 낸 도구 줄 id(짝을 찾았으면) — Work 만들기 · Work 밖 Project.
   const proposedBy = new Map<string, string | null>();
@@ -622,6 +642,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       entries: [],
       end: null,
       usage: null,
+      waitedMs: 0,
+      waitingSince: null,
     };
     turns.push(turn);
     open = turn;
@@ -660,15 +682,17 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     });
   // 세션의 프로세스가 사라졌다 — 열린 턴은 끝났고, 걸린 권한 요청에는 답할 곳이 없고, 끝을 받지 못한 도구 줄은 끊겼다.
   const vanish = (at: string, cut: string, cutReason: string | null = null) => {
-    for (const id of pending.keys()) dropAsk(id);
+    for (const id of pending.keys()) dropAsk(id, at);
     connecting = false;
     for (const turn of turns) {
       for (const entry of turn.entries) if (entry.kind === "tool" && !toolDone(entry)) entry.cut = true;
     }
     if (!open) return;
+    freeClock(open, at);
     open.end = {
       stopReason: null,
       durationMs: Math.max(0, Date.parse(at) - Date.parse(open.startedAt)) || 0,
+      waitedMs: open.waitedMs,
       cancelledByUs: false,
       appRefusal: null,
       error: null,
@@ -815,9 +839,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         const turn = open ?? (payload.outOfTurn === true ? start(`o${line.seq}`, null, line.at) : null);
         if (!turn) break;
         const error = isObject(payload.error) ? text(payload.error.message) : null;
+        freeClock(turn, line.at);
         turn.end = {
           stopReason: text(payload.stopReason),
           durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
+          waitedMs: turn.waitedMs,
           cancelledByUs: payload.cancelledByUs === true,
           appRefusal: text(payload.appRefusal),
           error,
@@ -839,6 +865,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           const request = askedOf(requestId, payload);
           askedFor.set(requestId, { tool: id, request });
           pending.set(requestId, request);
+          holdClock(line.at);
           if (request.planReview && id) {
             planReviews.add(id);
             const home = toolHome(turns, id);
@@ -852,7 +879,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           }
           break;
         }
-        dropAsk(requestId);
+        dropAsk(requestId, line.at);
         const asked = askedFor.get(requestId);
         const chosen = asked?.request.options.find((option) => option.optionId === payload.optionId);
         if (payload.state === "answered" && asked?.tool) {
@@ -877,9 +904,10 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             if (tool) tool.allowed = reason;
           }
         }
-        // 사람이 고른 것은 열린 턴에 결정 줄로 남는다.
+        // 사람이 고른 것은 열린 턴에 결정 줄로 남는다 — 그 도구 줄이 이 턴에 있으면 바로 위다(restart 02b-4 · Thread 보드 「한 번만 허용함」 뒤 「편집함」).
         if (payload.state === "answered" && asked && open) {
-          open.entries.push({
+          const asker = asked.tool ? open.entries.findIndex((entry) => entry.kind === "tool" && entry.toolCallId === asked.tool) : -1;
+          open.entries.splice(asker >= 0 ? asker : open.entries.length, 0, {
             kind: "decision",
             key: `d${line.seq}`,
             allowed: chosen?.kind.startsWith("allow") ?? false,
@@ -905,6 +933,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           if (payload.state === "asked") {
             const toolCall = isObject(payload.toolCall) ? payload.toolCall : {};
             pending.set(requestId, { card: "question", requestId, toolCall, questions: questionsOf(payload.questions) });
+            holdClock(line.at);
             const entry: QuestionEntry = { kind: "question", key: `q${line.seq}`, choice: null, answers: [] };
             questions.set(requestId, entry);
             // 그 질문을 낸 도구 줄 자리에 선다 — 같은 일이 두 줄로 서지 않게. 도구 줄이 아직 없으면 턴 끝이다.
@@ -915,7 +944,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             else (open ?? start(`o${line.seq}`, null, line.at)).entries.push(entry);
             break;
           }
-          dropAsk(requestId);
+          dropAsk(requestId, line.at);
           const entry = questions.get(requestId);
           if (!entry) break;
           if (payload.state === "answered") {
@@ -933,6 +962,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (!card) break;
         if (payload.state === "asked") {
           pending.set(requestId, toolCardRow(card).ask(requestId, payload));
+          holdClock(line.at);
           const tool = [...(open?.entries ?? [])]
             .reverse()
             .find(
@@ -943,7 +973,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           break;
         }
         const asked = pending.get(requestId);
-        dropAsk(requestId);
+        dropAsk(requestId, line.at);
         if (asked === undefined || !isToolCardAsk(asked) || asked.card !== card) break;
         const toolCallId = proposedBy.get(requestId) ?? null;
         const at = { key: `w${line.seq}`, toolCallId };
@@ -1536,7 +1566,8 @@ const plainEnd = (end: TurnEnd): boolean => end.stopReason === "end_turn" || END
  * 우리가 멈추지 않은 `cancelled`는 앱이 거절했으면 「앱이 막아서 멈췄어요」(Tools 보드 「앱이 막아서 멈춤」 — 아래 안내가 까닭을 보인다), 아니면 사람의 거부다.
  */
 export function headline(end: TurnEnd): string {
-  const took = spoken(end.durationMs);
+  // 사람을 기다린 시간은 일한 시간이 아니다 — 도는 동안의 시계와 같은 셈이라 끝나는 순간 시간이 뛰지 않는다(restart 02b-4).
+  const took = spoken(Math.max(0, end.durationMs - end.waitedMs));
   if (end.error !== null) return `${took} 후에 실패했습니다`;
   if (plainEnd(end)) return `${took} 동안 작업함`;
   if (end.stopReason === "cancelled") {
@@ -1601,7 +1632,11 @@ function roughCount(count: number): string {
   return thousands < 1000 ? `${thousands.toFixed(1)}k` : `${(count / 1_000_000).toFixed(1)}M`;
 }
 
-/** 도는 턴의 머리줄 — 보낸 때부터 지금까지. */
-export function runningHeadline(turn: Turn, now: number): string {
-  return `${spoken(now - Date.parse(turn.startedAt))} 동안 작업 중입니다`;
+/**
+ * 도는 턴의 머리줄 — 보낸 때부터 지금까지에서 사람의 답을 기다린 시간을 뺀다. 물음이 걸려 있으면 그 물음이 걸린 때에 멈춰 있다(restart 02b-4 · Tools 보드
+ * 「승인 대기」).
+ */
+export function runningHeadline(turn: Pick<Turn, "startedAt" | "waitedMs" | "waitingSince">, now: number): string {
+  const until = turn.waitingSince === null ? now : Date.parse(turn.waitingSince);
+  return `${spoken(until - Date.parse(turn.startedAt) - turn.waitedMs)} 동안 작업 중입니다`;
 }

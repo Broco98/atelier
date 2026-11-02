@@ -3,44 +3,53 @@ import { folderName } from "@/features/projects/project-add";
 import { isObject, nonEmpty, type Json } from "./json";
 import { toolFields } from "./tool-fields";
 
-// 도구 줄의 화면 값(v1 티켓 05 · 캔버스 WorkLog 보드) — 접은 도구 호출(`ToolEntry`)을 문구 · 안의 것(명령 출력 · diff · MCP 보낸 값과
-// 받은 값)으로 옮기는 **순수 함수**다. 그리는 것은 `WorkLog.tsx`다.
+// 도구 줄의 화면 값(v1 티켓 05 · restart 02b-4 · Tools 보드 「도구 줄 — 종류 × 상태」) — 접은 도구 호출(`ToolEntry`)을 문구 · 안의 것(명령 출력 ·
+// diff · MCP 보낸 값과 받은 값)으로 옮기는 **순수 함수**다. 그리는 것은 `WorkLog.tsx`다.
 //
 // three-axes 도구 줄(`chat/tool-view.ts`)을 옮겨 왔다 — ACP 모양으로 가르는 규칙(MCP를 kind보다 먼저 · 서브에이전트 · 스킬 · 제목이 빈
-// 줄)은 그대로다. 달라진 것은 보드의 말이다:
-// - **문구는 「대상 + 동사」다** — 대상(파일 이름 · 명령 · MCP 도구)이 앞에 고정폭으로 서고 동사가 뒤에 선다(「refund.service.ts 읽음」 ·
-//   「pnpm test refunds 실행함」). 하는 중에는 현재형(「읽는 중」 · 「고치는 중」 · 「실행 중」 · 「부르는 중」), 끝나면 과거형이다.
-// - **줄 앞에 종류 글리프가 선다**(02 구현 스펙 §8 · 스토리 50 — Codex 결). 갈래는 일곱이다(`ToolGlyph`): 읽기 · 편집 · 명령 · 검색 · 웹 ·
-//   MCP · 그 밖. 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말로 서니(「작업공간 읽음」 · 「api-server 고치기 시작함」) MCP
-//   플러그가 아니라 그 말의 갈래다. 그 밖의 MCP 도구만 플러그다. 그림은 `WorkLog.tsx`가 고른다.
-// - **실패 · 중단 · 거절은 색이 아니라 문장이다** — 「실행하지 못함 · 코드 종료 1」(동사만 진하게), 「중단함 · 12초」, 「실행하지 않음 ·
-//   내가 거절함」.
-// - **명령 출력의 끝 줄은 종료 코드와 걸린 시간이다**(「코드 종료 0 · 4.2초」). Claude Code는 종료 코드를 주지 않아 그때는 「끝남」 ·
-//   「실패」다.
+// 줄)은 그대로다. 말은 Tools 보드의 칸 글이다:
+// - **도는 줄은 「대상 동사」 한 글이다** — 「watcher.rs 읽는 중」 · 「pnpm test 실행 중」 · 「웹 검색 중」이 통째로 반짝인다. MCP는 서버와 도구 이름을
+//   문장으로 쓴다(「Atelier list projects」).
+// - **선 줄은 「동사 대상」이다** — 동사(「읽음」 · 「편집함」 · 「실행 완료」 · 「사용함」)가 앞에 서고 대상(파일 이름 · 무늬 · 명령 · 도구 이름)이 고정폭으로
+//   뒤에 선다(`target`). 한때 「watcher.rs 읽음」처럼 대상이 앞이었다.
+// - **줄 앞에 종류 글리프가 선다**(02 구현 스펙 §8 · 스토리 50 — Codex 결). 갈래는 아홉이다(`ToolGlyph`): 읽기 · 편집 · 명령 · 검색 · 웹 · MCP ·
+//   스킬 · 서브에이전트 · 그 밖. 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말로 서니(「작업공간 읽음」 · 「api-server 고치기 시작함」) MCP
+//   글리프가 아니라 그 말의 갈래다. 그 밖의 MCP 도구만 MCP다. 그림은 `WorkLog.tsx`가 고른다.
+// - **실패 · 멈춤 · 거부는 색이 아니라 문장이다** — 실패는 「읽지 못함 watcher.rs」 · 「코드 종료 1 pnpm test」(동사만 진하게), 멈추거나 끊긴 줄은
+//   종류를 가리지 않고 ■ 「중지됨 watcher.rs」, 거부한 줄은 ■ 「편집하지 않음 watcher.rs」다(`stopped`). 한때 「실행하지 못함 · 코드 종료 1」 ·
+//   「중단함 · 12초」 · 「실행하지 않음 · 내가 거절함」이었다.
+// - **승인을 기다리는 줄은 「승인을 기다립니다 watcher.rs」다**(Thread 보드 「승인 대기」) — 반짝이지 않고 글리프가 옅지 않다.
+// - **파일 변경**(Tools 보드 「파일 변경」) — 고친 파일 「편집함」, 옛 글 없이 쓴 파일 「생성됨」과 새 파일 점, 지운 파일 「삭제됨」과 지운 파일 점(`dot`).
+// - **명령 출력의 끝 줄은 「성공」 · 「코드 종료 N」 · 「중지됨」이다**(Tools 보드 「명령 출력」). Claude Code는 종료 코드를 주지 않아 실패는 「실패」다.
+//   한때 「코드 종료 0 · 4.2초」였다 — 걸린 시간은 줄에 마우스를 올리면 선다.
 // - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「작업공간 읽음」 · 「작업공간 만들기를 묻는 중」.
 //   「Project 고치기 시작」(v1 티켓 32)은 「api-server 고치기 시작함」이다 — Work 밖 Project 카드가 서면 그동안 「web-app 고치기 시작하는
-//   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다.
+//   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다. 사람의 말은 대상이 따로 서지 않고 한 문장이다(`human`).
 // - **Service를 붙이는 Thread 도구 둘**(03 티켓 08) — 「Service 목록 확인함」 · 「Service 고름」(질문 카드가 선 동안은 「Service 고르는 중」).
 // - **대화로 하는 설정 넷**(03 티켓 12) — 「landing-page 추가함」 · 「web-app 고침」 · 「정산 Service 만듦」 · 「결제-서비스 Service 고침」. 해낸 것은 그 턴 안
 //   이 줄 뒤의 결과 카드가 말하고, 이 줄은 작업 로그에 남는다. Project 추가 카드가 서면 그동안 「notes 추가하는 중」이고, 고르면 접힌 줄이 이 줄의 자리를
 //   대신한다.
 
-/** 도구 줄 앞의 종류 글리프 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · 명령 · 검색 · 웹(검색 · 가져오기) · MCP · 그 밖. */
-export type ToolGlyph = "read" | "edit" | "execute" | "search" | "web" | "mcp" | "other";
+/** 도구 줄 앞의 종류 글리프 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · 명령 · 검색 · 웹(검색 · 가져오기) · MCP · 스킬 · 서브에이전트 · 그 밖. */
+export type ToolGlyph = "read" | "edit" | "execute" | "search" | "web" | "mcp" | "skill" | "agent" | "other";
 
 /** 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김(끝을 받기 전에 그 Session이 사라졌다). */
 export type ToolState = "running" | "done" | "failed" | "cut";
 
 /**
- * 도구 줄의 문구 — 「앞 글 · 대상 · 동사 · 꼬리」. 대상은 고정폭이면(`mono`) 파일 · 명령 · MCP 도구이고, 아니면 사람의 말(웹 검색어 ·
- * Agent 이름)이다. 실패한 줄은 동사가 진하다(`failed`).
+ * 도구 줄의 문구. 도는 줄은 「watcher.rs 읽는 중」 한 글(`verb`)이 통째로 반짝이고 `target`이 없다. 선 줄은 동사(`verb` — 「읽음」 · 「중지됨」)와 그 뒤의
+ * 대상(`target` — 고정폭)이다. 사람의 말로 서는 줄(Thread 도구 · 서브에이전트)은 늘 한 문장이다(「Project 3개 목록 확인함」).
  */
 export interface ToolPhrase {
-  before: string;
+  /** 무엇을 다루나 — 파일 이름 · 무늬 · 명령 · MCP 도구, 또는 사람의 말(Thread 도구의 대상 · Agent 이름). 없으면 null. 승인 카드 · 사이드바가 쓴다. */
   subject: string | null;
+  /** `subject`가 고정폭(파일 · 무늬 · 명령 · 도구 이름)인가 — 사람의 말이면 false다. */
   mono: boolean;
+  /** 줄의 첫 글 — 도는 줄은 문장 전체, 선 줄은 동사, 사람의 말은 문장 전체다. */
   verb: string;
-  tail: string;
+  /** 동사 뒤에 고정폭으로 서는 대상 — 도는 줄 · 사람의 말 · 대상이 없는 줄은 null이다. */
+  target: string | null;
+  /** 실패한 줄 — 색은 다른 줄과 같고 동사(「읽지 못함」 · 「코드 종료 1」)가 말한다(Tools 보드 「실패는 색으로 알리지 않고 문구로 알린다」). */
   failed: boolean;
 }
 
@@ -59,14 +68,21 @@ export interface DiffPiece {
 
 export interface ToolView {
   state: ToolState;
-  /** 물은 권한이 답을 기다리나 — 문구가 「승인을 기다리는 중」이고 반짝이지 않는다(v1 티켓 24 · 캔버스 Approval 보드). */
+  /** 물은 권한이 답을 기다리나 — 문구가 「승인을 기다립니다」이고 반짝이지 않는다(v1 티켓 24 · Thread 보드 「승인 대기」). */
   waiting: boolean;
+  /**
+   * 줄 앞이 글리프 대신 ■인가(Tools 보드 「멈춤」) — 우리가 멈춘 턴에서 끝을 받지 못했거나 멈춤과 함께 닫힌 줄, 끊긴 줄, 사람이 거부한 줄이다. 반짝이지
+   * 않는다.
+   */
+  stopped: boolean;
   /** 묶음 줄에 드는 갈래 — 읽기 · 찾기만 이어지면 묶인다(`log.ts`). */
   group: "read" | "search" | null;
   /** 줄 앞의 종류 글리프(머리말). */
   glyph: ToolGlyph;
   phrase: ToolPhrase;
-  /** 명령 출력 상자 — 명령이 아니면 null. `status`는 끝 줄(「코드 종료 0 · 4.2초」)이고 도는 동안은 null이다. */
+  /** 파일 변경 줄 끝의 점 — 새 파일 · 지운 파일. 아니면 null(Tools 보드 「파일 변경」). */
+  dot: "created" | "deleted" | null;
+  /** 명령 출력 상자 — 명령이 아니면 null. `status`는 끝 줄(「성공」 · 「코드 종료 101」 · 「중지됨」)이고 도는 동안은 null이다. */
   shell: { command: string | null; output: string; status: string | null; bad: boolean } | null;
   /** 편집 도구의 diff들. */
   diffs: DiffPiece[];
@@ -79,28 +95,36 @@ export interface ToolView {
   text: string | null;
 }
 
-/** 동사 셋 — 하는 중 · 끝남 · 실패. 거절된 줄은 「~하지 않음」이다(`refused`). */
+/**
+ * 동사 넷 — 하는 중 · 끝남 · 실패 · 거부. 하는 중은 대상 뒤에 붙는 말이다(「읽는 중」 → 「watcher.rs 읽는 중」). 비었으면 대상만으로 문장이다(MCP — 「Atelier list
+ * projects」).
+ */
 interface Verbs {
   running: string;
   done: string;
   failed: string;
   refused: string;
 }
-const EXECUTE: Verbs = { running: "실행 중", done: "실행함", failed: "실행하지 못함", refused: "실행하지 않음" };
+const EXECUTE: Verbs = { running: "실행 중", done: "실행 완료", failed: "실패함", refused: "실행하지 않음" };
 const READ: Verbs = { running: "읽는 중", done: "읽음", failed: "읽지 못함", refused: "읽지 않음" };
-const EDIT: Verbs = { running: "고치는 중", done: "수정함", failed: "수정하지 못함", refused: "수정하지 않음" };
-const WRITE: Verbs = { running: "쓰는 중", done: "작성함", failed: "작성하지 못함", refused: "작성하지 않음" };
-const DELETE: Verbs = { running: "지우는 중", done: "지움", failed: "지우지 못함", refused: "지우지 않음" };
+const EDIT: Verbs = { running: "편집 중", done: "편집함", failed: "편집하지 못함", refused: "편집하지 않음" };
+const CREATE: Verbs = { running: "만드는 중", done: "생성됨", failed: "만들지 못함", refused: "만들지 않음" };
+const DELETE: Verbs = { running: "지우는 중", done: "삭제됨", failed: "지우지 못함", refused: "지우지 않음" };
 const MOVE: Verbs = { running: "옮기는 중", done: "옮김", failed: "옮기지 못함", refused: "옮기지 않음" };
-const SEARCH: Verbs = { running: "찾는 중", done: "찾음", failed: "찾지 못함", refused: "찾지 않음" };
-const WEB: Verbs = { running: "찾는 중", done: "찾아봄", failed: "찾아보지 못함", refused: "찾아보지 않음" };
+const SEARCH: Verbs = { running: "검색 중", done: "검색함", failed: "검색하지 못함", refused: "검색하지 않음" };
+const WEB: Verbs = { running: "웹 검색 중", done: "웹 검색함", failed: "웹 검색하지 못함", refused: "웹 검색하지 않음" };
 const FETCH: Verbs = { running: "가져오는 중", done: "가져옴", failed: "가져오지 못함", refused: "가져오지 않음" };
-const MCP: Verbs = { running: "부르는 중", done: "불러옴", failed: "부르지 못함", refused: "부르지 않음" };
-const SKILL: Verbs = { running: "스킬 읽는 중", done: "스킬 읽음", failed: "스킬 읽지 못함", refused: "스킬 읽지 않음" };
+const MCP: Verbs = { running: "", done: "사용함", failed: "실패함", refused: "사용하지 않음" };
+const SKILL: Verbs = { running: "읽는 중", done: "스킬 읽음", failed: "읽지 못함", refused: "읽지 않음" };
 const SUBAGENT: Verbs = { running: "에게 맡기는 중", done: "에게 맡김", failed: "에게 맡기지 못함", refused: "에게 맡기지 않음" };
 const THINK: Verbs = { running: "생각하는 중", done: "생각함", failed: "생각하지 못함", refused: "생각하지 않음" };
 const MODE: Verbs = { running: "모드 바꾸는 중", done: "모드 바꿈", failed: "모드 바꾸지 못함", refused: "모드 바꾸지 않음" };
-const OTHER: Verbs = { running: "쓰는 중", done: "씀", failed: "쓰지 못함", refused: "쓰지 않음" };
+const OTHER: Verbs = { running: "실행 중", done: "실행 완료", failed: "실패함", refused: "실행하지 않음" };
+
+/** 멈추거나 끊긴 줄의 동사 — 종류를 가리지 않는다(Tools 보드 「멈춤」 칸). */
+const STOPPED = "중지됨";
+/** 승인을 기다리는 줄의 동사(Thread 보드 「승인 대기」 · 머리줄과 같은 말). */
+const WAITING = "승인을 기다립니다";
 
 /** Work와 이어지는 Thread 도구 셋(v1 티켓 30)의 `서버.도구` 이름 — 사람의 말로 선다(캔버스 화면 2 「Project 3개 목록 확인함」). */
 const LIST_PROJECTS = "atelier-thread.list_projects";
@@ -129,6 +153,10 @@ const START: Verbs = {
 const CHECK: Verbs = { running: "확인하는 중", done: "확인함", failed: "확인하지 못함", refused: "확인하지 않음" };
 const ASK: Verbs = { running: "묻는 중", done: "물음", failed: "묻지 못함", refused: "묻지 않음" };
 
+/** 사람의 말 한 문장 — 대상과 동사를 띄어 잇는다. `에게`로 시작하는 동사는 대상에 붙는다(「리뷰어에게 맡김」). 대상이 없으면 동사만이다. */
+const sentence = (subject: string | null, verb: string): string =>
+  subject === null ? verb : verb === "" ? subject : `${subject}${verb.startsWith("에게") ? "" : " "}${verb}`;
+
 export function describeTool(tool: ToolEntry): ToolView {
   const call = tool.call;
   const state: ToolState =
@@ -139,19 +167,32 @@ export function describeTool(tool: ToolEntry): ToolView {
     .map((item) => (item.type === "content" && isObject(item.content) && item.content.type === "text" ? item.content.text : null))
     .filter((one): one is string => typeof one === "string")
     .join("\n");
-  const took = elapsed(tool);
   const exitCode = exitOf(call, meta);
-  // 줄의 끝 — 멈춤 · 거절 · 실패의 꼬리와 동사를 여기서 정한다(머리말).
-  const say = (verbs: Verbs, subject: string | null, mono: boolean, before = ""): ToolPhrase => {
-    const phrase = (verb: string, tail = "", failed = false): ToolPhrase => ({ before, subject, mono, verb, tail, failed });
-    if (tool.denied) return phrase(verbs.refused, " · 내가 거절함");
-    if (tool.asking) return phrase("승인을 기다리는 중");
-    if (tool.stop === "stopped") return phrase("중단함", took ? ` · ${took}` : "");
-    if (state === "running") return phrase(verbs.running);
-    if (state === "done") return phrase(verbs.done);
-    return phrase(verbs.failed, exitCode !== null && exitCode !== 0 ? ` · 코드 종료 ${exitCode}` : "", true);
+  // 멈춘 턴에서 끝을 받지 못했거나 멈춤과 함께 닫힌 줄, 끊긴 줄 — 종류를 가리지 않고 ■ 「중지됨」이다. 멈춘 뒤에 끝난 줄(`ran-on` · 끝)은 끝난 줄이다.
+  const halted = tool.stop === "stopped" || state === "cut" || (tool.stop === "ran-on" && state === "running");
+  const stopped = tool.denied || halted;
+  // 줄의 문구 — 거부 · 기다림 · 멈춤 · 도는 중 · 끝 · 실패를 여기서 가른다(머리말). `human`이면 대상을 따로 세우지 않고 한 문장이다.
+  // `runningSubject`는 도는 줄의 대상이다 — 웹 검색은 검색어가 오기 전이라 없다(「웹 검색 중」), MCP는 서버와 도구의 문장이다.
+  const say = (
+    verbs: Verbs,
+    subject: string | null,
+    { mono, human = false, runningSubject = subject, failedVerb = verbs.failed }: {
+      mono: boolean;
+      human?: boolean;
+      runningSubject?: string | null;
+      failedVerb?: string;
+    },
+  ): ToolPhrase => {
+    const settled = (verb: string, failed = false): ToolPhrase =>
+      human ? { subject, mono, verb: sentence(subject, verb), target: null, failed } : { subject, mono, verb, target: subject, failed };
+    if (tool.denied) return settled(verbs.refused);
+    if (tool.asking) return settled(WAITING);
+    if (halted) return settled(STOPPED);
+    if (state === "running") return { subject, mono, verb: sentence(human ? subject : runningSubject, verbs.running), target: null, failed: false };
+    if (state === "done") return settled(verbs.done);
+    return settled(failedVerb, true);
   };
-  const base = { state, waiting: tool.asking, group: null, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null };
+  const base = { state, waiting: tool.asking && !stopped, stopped, group: null, dot: null, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null };
 
   if (mcp) {
     const { input } = mcp;
@@ -159,43 +200,47 @@ export function describeTool(tool: ToolEntry): ToolView {
     const sent = Object.keys(input).length > 0 ? pretty(input) : "";
     const received = mcpOutput(call, contentText);
     const box = { name, sent, received, receivedCode: /^[[{]/.test(received.trim()) };
+    const human = { mono: false, human: true };
     if (name === LIST_PROJECTS) {
       const count = state === "done" ? listedCount(received) : null;
-      return { ...base, glyph: "read", phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, false), mcp: box };
+      return { ...base, glyph: "read", phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, human), mcp: box };
     }
-    if (name === GET_WORK) return { ...base, glyph: "read", phrase: say(READ, "작업공간", false), mcp: box };
+    if (name === GET_WORK) return { ...base, glyph: "read", phrase: say(READ, "작업공간", human), mcp: box };
     // 카드가 선 동안 서는 줄이다 — 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다(`fold.ts`). 거절된 제안만 이 줄로 남는다.
-    if (name === PROPOSE_WORK) return { ...base, glyph: "other", phrase: say(ASK, "작업공간 만들기를", false), mcp: box };
+    if (name === PROPOSE_WORK) return { ...base, glyph: "other", phrase: say(ASK, "작업공간 만들기를", human), mcp: box };
     if (name === START_EDITING) {
-      return { ...base, glyph: "edit", phrase: say(START, nonEmpty(input.project) ?? "Project", false), mcp: box };
+      return { ...base, glyph: "edit", phrase: say(START, nonEmpty(input.project) ?? "Project", human), mcp: box };
     }
-    if (name === LIST_SERVICES) return { ...base, glyph: "read", phrase: say(CHECK, "Service 목록", false), mcp: box };
+    if (name === LIST_SERVICES) return { ...base, glyph: "read", phrase: say(CHECK, "Service 목록", human), mcp: box };
     // 묻지 않고 붙이면 곧 「Service 고름」이고, 질문 카드가 서면 그동안 「Service 고르는 중」이다 — 사람이 고르면 접힌 줄이 이 줄의 자리를 대신한다.
-    if (name === SET_SERVICE) return { ...base, glyph: "other", phrase: say(PICK, "Service", false), mcp: box };
+    if (name === SET_SERVICE) return { ...base, glyph: "other", phrase: say(PICK, "Service", human), mcp: box };
     if (name === ADD_PROJECT) {
       const path = nonEmpty(input.path);
       const folder = path === null ? null : nonEmpty(folderName(path));
-      return { ...base, glyph: "other", phrase: say(ADD, nonEmpty(input.name) ?? folder ?? "Project", false), mcp: box };
+      return { ...base, glyph: "other", phrase: say(ADD, nonEmpty(input.name) ?? folder ?? "Project", human), mcp: box };
     }
-    if (name === EDIT_PROJECT) return { ...base, glyph: "other", phrase: say(FIX, nonEmpty(input.project) ?? "Project", false), mcp: box };
-    if (name === CREATE_SERVICE) return { ...base, glyph: "other", phrase: say(MAKE, serviceSubject(input.name), false), mcp: box };
-    if (name === EDIT_SERVICE) return { ...base, glyph: "other", phrase: say(FIX, serviceSubject(input.service), false), mcp: box };
-    return { ...base, glyph: "mcp", phrase: say(MCP, name, true), mcp: box };
+    if (name === EDIT_PROJECT) return { ...base, glyph: "other", phrase: say(FIX, nonEmpty(input.project) ?? "Project", human), mcp: box };
+    if (name === CREATE_SERVICE) return { ...base, glyph: "other", phrase: say(MAKE, serviceSubject(input.name), human), mcp: box };
+    if (name === EDIT_SERVICE) return { ...base, glyph: "other", phrase: say(FIX, serviceSubject(input.service), human), mcp: box };
+    // 그 밖의 MCP 도구 — 도는 동안은 서버와 도구 이름의 문장(Tools 보드 「MCP 호출 — 서버 · 도구 이름을 문장으로」), 선 줄은 「사용함 list_projects」다.
+    return { ...base, glyph: "mcp", phrase: say(MCP, mcp.tool, { mono: true, runningSubject: mcpSentence(mcp.server, mcp.tool) }), mcp: box };
   }
 
   const fallbackText = state === "failed" && contentText !== "" ? contentText : null;
   if (subagent) {
-    return { ...base, glyph: "other", phrase: say(SUBAGENT, subagent.type ?? "서브에이전트", false), text: contentText || null };
+    return {
+      ...base,
+      glyph: "agent",
+      phrase: say(SUBAGENT, subagent.type ?? "서브에이전트", { mono: false, human: true }),
+      text: contentText || null,
+    };
   }
   if (toolName === "Skill" && nonEmpty(rawInput.skill)) {
-    return { ...base, glyph: "read", phrase: say(SKILL, nonEmpty(rawInput.skill), true), text: fallbackText };
+    return { ...base, glyph: "skill", phrase: say(SKILL, nonEmpty(rawInput.skill), { mono: true }), text: fallbackText };
   }
   if (toolName === "WebSearch") {
     const query = nonEmpty(rawInput.query) ?? title;
-    if (state === "running" && !tool.denied && tool.stop === null) {
-      return { ...base, glyph: "web", phrase: say(WEB, null, false, "웹에서 "), text: fallbackText };
-    }
-    return { ...base, glyph: "web", phrase: say(WEB, query, false, "웹에서 "), text: fallbackText };
+    return { ...base, glyph: "web", phrase: say(WEB, query, { mono: true, runningSubject: null }), text: fallbackText };
   }
 
   const diffs = diffsOf(call);
@@ -203,52 +248,62 @@ export function describeTool(tool: ToolEntry): ToolView {
   const terminal = content.some((item) => item.type === "terminal");
   if (kind === "execute" || terminal || tool.output !== "") {
     const command = title ?? commandOf(rawInput.command);
+    const failedVerb = exitCode !== null && exitCode !== 0 ? `코드 종료 ${exitCode}` : EXECUTE.failed;
     return {
       ...base,
       glyph: "execute",
-      phrase: say(EXECUTE, command ?? "명령", true),
-      shell: shellOf(state, command, output, exitCode, took),
+      phrase: say(EXECUTE, command ?? "명령", { mono: true, failedVerb }),
+      shell: shellOf(state, halted, command, output, exitCode),
     };
   }
 
   const files = [...new Set([...locationsOf(call), ...diffs.map((piece) => piece.path)])];
   const onlyFile = files.length === 1 ? files[0] : null;
   const fileSubject = onlyFile ? baseName(onlyFile) : files.length > 1 ? `파일 ${files.length}개` : null;
+  const fileSay = (verbs: Verbs) => say(verbs, fileSubject ?? title ?? "파일", { mono: fileSubject !== null });
   switch (kind) {
     case "read":
-      return { ...base, group: "read", glyph: "read", phrase: say(READ, fileSubject ?? title ?? "파일", fileSubject !== null), text: fallbackText };
+      return { ...base, group: "read", glyph: "read", phrase: fileSay(READ), text: fallbackText };
     case "edit":
     case "delete": {
-      const removed = kind === "delete";
+      // 지운 파일 · 옛 글 없이 쓴 파일(Claude Write · Codex add)은 점을 단다(Tools 보드 「파일 변경」). Codex는 지우기도 diff의 `_meta.kind`로 알린다.
+      const removed = kind === "delete" || (diffs.length > 0 && content.every((item) => item.type !== "diff" || diffKind(item) === "delete"));
       const written = !removed && diffs.length > 0 && diffs.every((piece) => piece.written);
-      const verbs = removed ? DELETE : written ? WRITE : EDIT;
+      const verbs = removed ? DELETE : written ? CREATE : EDIT;
       return {
         ...base,
         glyph: "edit",
-        phrase: say(verbs, fileSubject ?? title ?? "파일", fileSubject !== null),
+        phrase: fileSay(verbs),
+        dot: removed ? "deleted" : written ? "created" : null,
         diffs,
         text: diffs.length > 0 ? null : fallbackText,
       };
     }
     case "move":
-      return { ...base, glyph: "edit", phrase: say(MOVE, fileSubject ?? title ?? "파일", fileSubject !== null), text: fallbackText };
+      return { ...base, glyph: "edit", phrase: fileSay(MOVE), text: fallbackText };
     case "search":
-      // 변환기의 제목은 「Search <무늬>」 · 「Find <무늬>」다(`translator/stream.rs`) — 보드는 무늬만 든다(「RefundService 찾음」).
-      return { ...base, group: "search", glyph: "search", phrase: say(SEARCH, nonEmpty(rawInput.pattern) ?? title, true), text: fallbackText };
+      // 변환기의 제목은 「Search <무늬>」 · 「Find <무늬>」다(`translator/stream.rs`) — 보드는 무늬만 든다(「검색함 watcher」).
+      return {
+        ...base,
+        group: "search",
+        glyph: "search",
+        phrase: say(SEARCH, nonEmpty(rawInput.pattern) ?? title, { mono: true }),
+        text: fallbackText,
+      };
     case "fetch":
-      return { ...base, glyph: "web", phrase: say(FETCH, nonEmpty(rawInput.url) ?? title, true), text: fallbackText };
+      return { ...base, glyph: "web", phrase: say(FETCH, nonEmpty(rawInput.url) ?? title, { mono: true }), text: fallbackText };
     case "think":
-      return { ...base, glyph: "other", phrase: say(THINK, title, false), text: fallbackText };
+      return { ...base, glyph: "other", phrase: say(THINK, title, { mono: false, human: true }), text: fallbackText };
     case "switch_mode":
-      return { ...base, glyph: "other", phrase: say(MODE, null, false), text: fallbackText };
+      return { ...base, glyph: "other", phrase: say(MODE, null, { mono: false, human: true }), text: fallbackText };
     default:
-      return { ...base, glyph: "other", phrase: say(OTHER, title ?? toolName ?? "도구", true), text: fallbackText };
+      return { ...base, glyph: "other", phrase: say(OTHER, title ?? toolName ?? "도구", { mono: true }), text: fallbackText };
   }
 }
 
 /**
- * 도구 줄이 걸린 시간 — 시작한 줄과 끝난 줄의 시각 사이다(마우스를 올린 줄의 오른쪽 · 명령 출력의 끝 줄 · 「중단함 · 12초」). 10초
- * 아래는 소수 한 자리(「4.2초」), 그 위는 말로(「1분 12초」)다. 끝나지 않았으면 null이다.
+ * 도구 줄이 걸린 시간 — 시작한 줄과 끝난 줄의 시각 사이다(마우스를 올린 줄의 오른쪽). 10초 아래는 소수 한 자리(「4.2초」), 그 위는 말로(「1분 12초」)다.
+ * 끝나지 않았으면 null이다.
  */
 export function elapsed(tool: ToolEntry): string | null {
   if (tool.endedAt === null) return null;
@@ -257,10 +312,21 @@ export function elapsed(tool: ToolEntry): string | null {
   return ms < 10_000 ? `${(Math.round(ms / 100) / 10).toFixed(1)}초` : spoken(ms);
 }
 
-/** 문구 한 줄 — 도구 줄의 이름이고 보조 기술이 읽는 글이다. `에게`로 시작하는 동사는 대상에 붙는다(「리뷰어에게 맡김」). */
+/** 문구 한 줄 — 도구 줄의 이름이고 보조 기술이 읽는 글이다. 도는 줄은 그 문장, 선 줄은 「동사 대상」이다. */
 export function phraseText(phrase: ToolPhrase): string {
-  const gap = phrase.subject !== null && !phrase.verb.startsWith("에게") ? " " : "";
-  return `${phrase.before}${phrase.subject ?? ""}${gap}${phrase.verb}${phrase.tail}`;
+  return phrase.target === null ? phrase.verb : `${phrase.verb} ${phrase.target}`;
+}
+
+/** MCP 도구를 부르는 문장 — 서버 이름의 첫 글자를 크게, 이름 속 `_` · `-`를 띄어 쓴다(Tools 보드 「Atelier list projects」). */
+function mcpSentence(server: string, toolName: string): string {
+  const words = (name: string) => name.replace(/[_-]+/g, " ").trim();
+  const head = words(server);
+  return `${head.charAt(0).toUpperCase()}${head.slice(1)} ${words(toolName)}`;
+}
+
+/** diff 내용의 갈래 — codex-acp가 `_meta.kind`(`add` · `delete` · `update`)로 싣는다. Claude는 싣지 않는다. */
+function diffKind(item: Json): string | null {
+  return isObject(item._meta) && typeof item._meta.kind === "string" ? item._meta.kind : null;
 }
 
 /** 설정 도구가 다루는 Service — 「정산 Service」. 이름 · slug가 없으면 「Service」다. */
@@ -324,19 +390,23 @@ function exitOf(call: Json, meta: Json): number | null {
   return typeof exit === "number" ? exit : null;
 }
 
-/** 명령 출력 상자의 값 — 끝 줄은 끝난 뒤에만 선다(머리말). 0이 아닌 종료 코드와 실패는 진하다(`bad`). */
+/**
+ * 명령 출력 상자의 값 — 끝 줄은 끝난 뒤에만 선다(Tools 보드 「명령 출력」): 「성공」 · 0이 아닌 종료 코드면 「코드 종료 N」 · 코드를 모르는 실패면 「실패」 ·
+ * 멈추거나 끊겼으면 「중지됨」이다. 실패와 0이 아닌 종료 코드는 진하다(`bad`).
+ */
 function shellOf(
   state: ToolState,
+  halted: boolean,
   command: string | null,
   output: string,
   code: number | null,
-  took: string | null,
 ): NonNullable<ToolView["shell"]> {
-  let head: string | null = null;
-  if (state === "cut") head = "끊김";
-  else if (state !== "running") head = code !== null ? `코드 종료 ${code}` : state === "failed" ? "실패" : "끝남";
-  const status = head === null ? null : took && state !== "cut" ? `${head} · ${took}` : head;
-  const bad = state === "failed" || state === "cut" || (code !== null && code !== 0);
+  let status: string | null = null;
+  if (halted) status = STOPPED;
+  else if (code !== null && code !== 0 && state !== "running") status = `코드 종료 ${code}`;
+  else if (state === "done") status = "성공";
+  else if (state === "failed") status = "실패";
+  const bad = !halted && (state === "failed" || (code !== null && code !== 0));
   return { command, output: output.replace(/\n+$/, ""), status, bad };
 }
 
