@@ -13,6 +13,7 @@ import { viewAction } from "@/components/shell/processes-view";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { windowFocused } from "@/lib/window-focus";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
+import type { ReadingPlace } from "@/features/thread/reading-place";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import {
@@ -44,6 +45,7 @@ import {
   firstInputOfId,
   hasBundleTab,
   isLiveShellOf,
+  keepChatPlace,
   liveOwnerlessOf,
   markExited,
   markFailed,
@@ -345,6 +347,14 @@ export function showCodeTab(owner: ShellOwner, target: CodeTarget): void {
  */
 export function showChatTab(owner: ShellOwner, thread: string): void {
   terminalStore.setState((state) => openChatTab(state, owner, thread));
+}
+
+/**
+ * 그 화면의 채팅 탭에 **읽던 자리**를 쥔다(`keepChatPlace`, restart 02a-6) — 채팅 탭의 몸이 내려갈 때 work 화면이 부른다. 그 채팅의
+ * 탭이 이미 빠졌으면 아무 일도 없다.
+ */
+export function keepChatTabPlace(owner: ShellOwner, thread: string, place: ReadingPlace): void {
+  terminalStore.setState((state) => keepChatPlace(state, owner, thread, place));
 }
 
 /** 파일 탭을 **확인 없이** 닫는다(스토리 37 · 50). 셸 칸이면 아무 일도 없다 — 셸은 `requestCloseShell`로 닫는다. */

@@ -14,6 +14,7 @@ import { workFixture } from "@/features/works/work-fixture";
 import { fillDraft, mergeLines, NEW_THREAD, setDraft, setQueue, takeFill } from "./thread-store";
 import { seedOf, withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
 import { NewThreadScreen, ThreadScreen, WorkChat } from "./ThreadScreen";
+import type { ReadingPlace } from "./reading-place";
 import type { RecordLine, ThreadView } from "./types";
 
 // 엔진은 앱 명령으로만 닿는다 — 확인을 붙들어 두는 시험이 그 답을 정한다.
@@ -363,7 +364,7 @@ describe("작업공간의 채팅 탭", () => {
   const work = workFixture();
   const linked: ThreadView = { ...chat, id: "20261010-120000", work: work.slug };
 
-  function drawTab(view: ThreadView): string {
+  function drawTab(view: ThreadView, place: ReadingPlace | null = null): string {
     const client = new QueryClient();
     client.setQueryData(worksQuery().queryKey, [work]);
     client.setQueryData(threadQuery(view.id).queryKey, view);
@@ -371,11 +372,22 @@ describe("작업공간의 채팅 탭", () => {
     return renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ToastProvider>
-          <WorkChat thread={view.id} />
+          <WorkChat thread={view.id} place={place} onLeave={() => {}} />
         </ToastProvider>
       </QueryClientProvider>,
     );
   }
+
+  // restart 02a-6 — 숨은 채팅 탭은 내려간다. 돌아온 탭은 탭이 쥔 읽던 자리에서 선다 — 위로 올려 읽던 탭은 바닥을 따라가지 않아 「맨 아래로」가
+  // 서고, 바닥을 따라가던 탭과 처음 여는 탭은 바닥이라 서지 않는다. 굴림 거리 자체는 정적 마크업에 없어 L3(02a-16)가 잰다.
+  it("위로 올려 읽던 탭은 그 자리로 돌아와 「맨 아래로」가 선다", () => {
+    expect(drawTab(linked, { kind: "at", top: 480 })).toContain('aria-label="맨 아래로"');
+  });
+
+  it("바닥을 따라가던 탭과 처음 여는 탭은 바닥이라 「맨 아래로」가 없다", () => {
+    expect(drawTab(linked, { kind: "bottom" })).not.toContain('aria-label="맨 아래로"');
+    expect(drawTab(linked)).not.toContain('aria-label="맨 아래로"');
+  });
 
   it("제 카드 없이 흐름과 입력창만 선다", () => {
     const html = drawTab(linked);
