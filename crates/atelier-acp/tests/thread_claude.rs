@@ -288,6 +288,30 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
     host.shut_down();
 }
 
+/// 녹음의 `system/init`에서 앱의 서버 상태를 `failed`로 바꿔 내는 가짜 claude의 글 바꾸기(`FAKE_CLAUDE_REROOT`).
+const APP_SERVER_FAILS: &str = r#""name":"atelier-thread","status":"connected"="name":"atelier-thread","status":"failed""#;
+
+#[test]
+fn 앱_서버에_연결하지_못하면_기록에_경고_줄이_서고_턴은_그대로_끝난다() {
+    let sandbox = Sandbox::new();
+    let (_host, thread, _session) =
+        thread_on(&sandbox, "2.1.309/thread-rename-host", &[("FAKE_CLAUDE_REROOT", APP_SERVER_FAILS)], "이름을 바꿔 줘");
+
+    // stderr와 stdout은 다른 파이프라 턴 끝 줄보다 늦을 수 있다.
+    let record = sandbox.wait_thread_record(&thread, |record| !of_kind(record, "stderr").is_empty() && !of_kind(record, "turn-end").is_empty());
+    assert_eq!(payloads_of(&record, "stderr"), [json!({"line": "앱 기능 도구에 연결하지 못했어요"})], "{}", common::lines_text(&record));
+    assert!(payloads_of(&record, "turn-end")[0]["error"].is_null(), "경고가 턴을 실패시키지 않는다");
+}
+
+#[test]
+fn 사용자_서버만_실패한_턴은_기록에_경고_줄이_없다() {
+    let sandbox = Sandbox::new();
+    let (_host, thread, _session) = thread_on(&sandbox, "2.1.309/thread-rename-host", &[], "이름을 바꿔 줘");
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    assert_eq!(payloads_of(&record, "stderr"), Vec::<Value>::new(), "{}", common::lines_text(&record));
+}
+
 #[test]
 fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남고_남은_프로세스가_없다() {
     let sandbox = Sandbox::new();

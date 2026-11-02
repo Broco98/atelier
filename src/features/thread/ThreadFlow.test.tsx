@@ -206,3 +206,78 @@ describe("체크리스트의 자리", () => {
     expect(flow(lines.filter((line) => line.seq !== 3))).not.toContain(LIST);
   });
 });
+
+// Runtime 경고(01b-8 · Cards 보드 「Runtime 경고」) — 안내 글은 첫 줄이고 「자세히」가 묶인 줄을 안내 안에서 모두 펼친다. 펼침은 `expanded`에 있어
+// 턴이 끝나 자리를 옮겨도 남는다. 모양은 02b-5가 맞춘다.
+describe("Runtime 경고의 자리", () => {
+  const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "말" } };
+  const warned = (seq: number, line: string): RecordLine => ({ seq, at: at(seq), kind: "stderr", payload: { line } });
+  const said: RecordLine = {
+    seq: 4,
+    at: at(4),
+    kind: "update",
+    payload: { sessionId: "s", update: { sessionUpdate: "agent_message_chunk", messageId: "m", content: { type: "text", text: "끝났어요" } } },
+  };
+  const ended: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 4000 } };
+  const inTurn = [sent, warned(2, "앱 기능 도구에 연결하지 못했어요"), warned(3, "둘째 줄")];
+  const flow = (rows: readonly RecordLine[]) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" onRetry={() => {}} />);
+  const opened = (key: string, rows: readonly RecordLine[]) => {
+    threadUiStore.setState((state) => ({ ...state, expanded: { [turnKey("t", key)]: true } }));
+    try {
+      return flow(rows);
+    } finally {
+      threadUiStore.setState((state) => ({ ...state, expanded: {} }));
+    }
+  };
+
+  it("안내 글은 첫 줄이고 나머지는 「자세히」 안에 있다", () => {
+    const markup = flow(inTurn);
+    expect(markup).toContain("앱 기능 도구에 연결하지 못했어요");
+    expect(markup).toContain(">자세히<");
+    expect(markup).not.toContain("둘째 줄");
+  });
+
+  it("「자세히」는 묶인 줄을 안내 안에서 모두 펼친다", () => {
+    const markup = opened("e2", inTurn);
+    const details = markup.match(/<pre[^>]*>([\s\S]*?)<\/pre>/)?.[1];
+    expect(details).toBe("앱 기능 도구에 연결하지 못했어요\n둘째 줄");
+    expect(markup).toContain('aria-expanded="true"');
+  });
+
+  it("턴 사이의 안내도 같다", () => {
+    const rows = [sent, ended, warned(6, "첫 줄"), warned(7, "둘째 줄")];
+    expect(flow(rows)).toContain("첫 줄");
+    expect(flow(rows)).not.toContain("둘째 줄");
+    expect(opened("n6", rows)).toContain("둘째 줄");
+  });
+
+  it("경고만 온 도는 턴은 안내와 「답하는 중」이 서고 작업 머리줄은 서지 않는다", () => {
+    const markup = flow(inTurn);
+    expect(markup).toContain("data-answering");
+    expect(markup).not.toContain("동안 작업 중입니다");
+  });
+
+  it("생각하는 중에 온 경고가 「생각 중」을 지우지 않는다", () => {
+    const thought: RecordLine = {
+      seq: 2,
+      at: at(2),
+      kind: "update",
+      payload: { sessionId: "s", update: { sessionUpdate: "agent_thought_chunk", messageId: "m", content: { type: "text", text: "" } } },
+    };
+    expect(flow([sent, thought, warned(3, "경고")])).toContain("생각 중");
+  });
+
+  it("끝나 접힌 턴에도 서고, 턴이 끝나도 펼침이 남는다", () => {
+    const rows = [...inTurn, said, ended];
+    expect(flow(rows)).toContain("앱 기능 도구에 연결하지 못했어요");
+    expect(opened("e2", rows)).toContain("둘째 줄");
+  });
+
+  it("경고 뒤에도 입력창을 막을 물음이 서지 않고 답은 그대로 흐른다", () => {
+    const model = foldThread([...inTurn, said]);
+    expect(model.asks).toEqual([]);
+    expect(renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" onRetry={() => {}} />)).toContain("끝났어요");
+  });
+});

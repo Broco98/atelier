@@ -855,7 +855,7 @@ impl ConversationHost {
                 Some((bridge, server))
             }
             Err(error) => {
-                if let Err(error) = conv.recorder.stderr(format!("Thread 도구의 소켓을 열지 못했습니다: {error}")) {
+                if let Err(error) = conv.recorder.stderr(format!("{} — {error}", thread_tools::APP_TOOLS_FAILED)) {
                     eprintln!("{error}");
                 }
                 None

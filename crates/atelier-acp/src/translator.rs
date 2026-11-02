@@ -226,7 +226,7 @@ fn read_acp(events: Sender<Event>) {
                 Ok(message) => {
                     let _ = events.send(Event::Acp(message));
                 }
-                Err(error) => eprintln!("변환기: 읽을 수 없는 ACP 줄을 건너뜁니다 — {error}"),
+                Err(error) => eprintln!("앱이 보낸 줄을 읽지 못해 건너뛰었어요 — {error}"),
             }
         });
         let _ = events.send(Event::AcpEnded);
