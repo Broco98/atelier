@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils";
 // **상세 화면의 머리 crumb · 뒤로 알약 · 묶음 · 설명 칸**(03 구현 스펙 §14 · §16 · 시안 F1-ProjectDetail · F1-SpaceDetail) — Project 상세와
 // Service 상세는 같은 짜임이라(03 결정 10 「머리 줄은 Projects / web-app」) 함께 쓴다(03 코드 리뷰 D1). 두 화면이 옮겨 적던 동안 설명 칸의
 // Esc가 이미 갈렸다 — Project 쪽만 그만두기였다.
+//
+// restart 03-2부터 Project 상세는 공용 상세 틀(`PlaceDetail`)에 선다 — 판 · 묶음 · 설명 칸(`DetailPanel` · `Section` · `DescriptionSection`)은
+// Service 상세만 쓴다. Service 상세가 그 틀로 옮기면(03-3) 머리 crumb(`HeadCrumb` · `CrumbSlash`)만 남는다.
 
 /** 머리 줄 이름 앞 흐린 자리와 「/」(시안 `.tb-c .muted`) — `onOpen`이 있으면 누르는 글(목록으로), 없으면 누르지 않는 글이다. */
 export function HeadCrumb({ label, onOpen }: { label: string; onOpen?: () => void }) {

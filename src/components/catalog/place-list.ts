@@ -60,3 +60,13 @@ export function placeWhen(at: string | null, now: number): string {
   const day = `${date.getMonth() + 1}월 ${date.getDate()}일`;
   return date.getFullYear() === new Date(now).getFullYear() ? day : `${date.getFullYear()}년 ${day}`;
 }
+
+/**
+ * 상세 위 카드의 날(보드 Places 「추가한 날 — 2026년 3월 2일」) — 저장된 날(`YYYY-MM-DD` — 시각 없는 날이라 시간대를 타지 않게 글에서 읽는다)을 해까지
+ * 적는다. 거리가 아니라 그날이다 — 카드는 견주어 고르는 자리가 아니다. 읽지 못한 날은 「—」다.
+ */
+export function placeDay(day: string): string {
+  const hit = /^(\d{4})-(\d{2})-(\d{2})/.exec(day);
+  if (!hit) return "—";
+  return `${Number(hit[1])}년 ${Number(hit[2])}월 ${Number(hit[3])}일`;
+}

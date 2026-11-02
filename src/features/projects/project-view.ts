@@ -64,12 +64,24 @@ export function renameHint(project: ProjectView): string {
   return `↵ 저장 · esc 취소 — 파일 이름(${project.slug}.md)과 경로는 그대로예요`;
 }
 
-/** 폴더를 찾을 수 없는 Project의 상세 위 안내(스토리 124). */
-export function missingNotice(project: ProjectView): { title: string; body: string } {
-  return {
-    title: "Project를 찾을 수 없어요",
-    body: `${project.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 작업공간은 고칠 수 없어요.`,
-  };
+/**
+ * 폴더를 찾을 수 없는 Project의 상세 경고(restart 03-2 · 스토리 119 · 보드 PlaceSheet 「폴더를 찾을 수 없는 Project」) — 한 줄이고 끝에 「재설정」이
+ * 선다. 경로는 바로 아래 카드가 든다. 한때(03) 「Project를 찾을 수 없어요」 머리와 경로 · 「이 Project를 쓰는 작업공간은 고칠 수 없어요」 두 줄 상자였다.
+ */
+export function missingNotice(): string {
+  return "폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요.";
+}
+
+/** 상세 ⋯의 항목이 하는 일 — 목록 줄의 셋에 상세에서만 고치는 둘(이름 · 설명)을 더한다. */
+export type DetailAct = "rename" | "describe" | RowAct;
+
+/**
+ * 상세 머리의 ⋯(restart 03-2 · 보드 Places 상세 머리의 `.ra-tbtn` — 항목은 그려지지 않았다) — 「이름 바꾸기 · 설명 고치기」 뒤에 목록 줄의 ⋯
+ * (`rowMenu`)가 그대로 선다. 보드 상세에는 이름 · 설명을 고치는 자리가 없다 — 고치기는 그대로 두고(제목을 눌러도 이름을 고친다) 들어가는 문을
+ * 여기에 모았다. 폴더를 찾을 수 없어도 이름과 설명은 고친다(파일은 등록부에 있다).
+ */
+export function detailMenu(project: ProjectView): { act: DetailAct; label: string }[] {
+  return [{ act: "rename", label: "이름 바꾸기" }, { act: "describe", label: "설명 고치기" }, ...rowMenu(project)];
 }
 
 /**

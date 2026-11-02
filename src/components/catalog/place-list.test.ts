@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIRST_SORT, nextSort, placeWhen, sortPlaces, type PlaceSort } from "./place-list";
+import { FIRST_SORT, nextSort, placeDay, placeWhen, sortPlaces, type PlaceSort } from "./place-list";
 
 // 공용 목록 틀의 갈래(restart 03-1 · 보드 PlaceSheet 「규격」 · 「움직임과 조작」 · Places) — 줄의 차례, 열 머리를 누른 뒤의 정렬, 시각 칸의 글.
 // Projects · Services · Archive가 함께 쓴다. 기대 글은 보드의 글자 그대로다(「12분」 · 「3일」 · 「2주」 · 「4주」).
@@ -73,5 +73,17 @@ describe("최근 활동 칸의 글", () => {
 
   it("앞으로의 시각(시계가 어긋난 기록)은 방금이다", () => {
     expect(placeWhen(at(new Date(2026, 10, 3, 9, 5, 0)), now)).toBe("방금");
+  });
+});
+
+describe("상세 위 카드의 날짜", () => {
+  it("저장된 날(`YYYY-MM-DD`)을 해까지 적은 날로 말한다(보드 「2026년 3월 2일」)", () => {
+    expect(placeDay("2026-03-02")).toBe("2026년 3월 2일");
+    expect(placeDay("2025-12-31")).toBe("2025년 12월 31일");
+  });
+
+  it("읽지 못한 날은 「—」다", () => {
+    expect(placeDay("")).toBe("—");
+    expect(placeDay("어제")).toBe("—");
   });
 });

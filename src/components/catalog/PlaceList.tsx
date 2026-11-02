@@ -191,7 +191,8 @@ function SortHead({ label, sort, by, onSort }: { label: string; sort: PlaceSort;
  * 누름은 줄이 받는다(링크 안에 단추를 둘 수 없다). 오른쪽 단추 · 메뉴는 제 일만 한다(포털로 뜬 메뉴도 React 나무로는 줄 안이라 누름이 올라온다
  * — 줄 안 DOM에서 온 누름만 받고 단추 · 링크는 거른다). Tab은 이름 링크에 서고 Enter로 연다 — 링크가 키보드로 서면 줄이 지날 때와 같은 면이다
  * (보드 `.pl-row:focus-visible`). 이름 옆 글(`desc` — 경로 · 수)은 흐리게 잘린다. 폴더를 찾을 수 없는 줄(`missing`)은 이름이 흐리고 옆 글이
- * 주황이다. `anchor`는 줄을 감싼 상자다(보드 `.pl-rowwrap` — 옆으로 나간 면 없이 열의 폭) — ⋯ 메뉴가 그 아래 오른쪽 끝에 선다.
+ * 주황이다. `anchor`는 줄을 감싼 상자다(보드 `.pl-rowwrap` — 옆으로 나간 면 없이 열의 폭) — ⋯ 메뉴가 그 아래 오른쪽 끝에 선다. 상세 묶음의 줄은
+ * `sub`다(보드 `.pl-row.sm` — 46 · 아이콘 14, 격자와 면은 같다 — PlaceSheet 「상세 줄」).
  */
 export function PlaceRow({
   icon,
@@ -203,6 +204,7 @@ export function PlaceRow({
   onOpen,
   actions,
   anchor,
+  size = "list",
 }: {
   icon: ReactNode;
   name: string;
@@ -214,6 +216,7 @@ export function PlaceRow({
   onOpen: () => void;
   actions: ReactNode;
   anchor?: Ref<HTMLDivElement>;
+  size?: "list" | "sub";
 }) {
   const fromRow = (event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as Element;
@@ -228,11 +231,12 @@ export function PlaceRow({
         onClick={fromRow}
         className={cn(
           PLACE_COLUMNS,
-          "group/row relative -mx-2 min-h-16 cursor-pointer rounded-ctl border-b-[0.5px] border-border px-2 transition-colors hover:bg-fill-soft has-[[data-row-link]:focus-visible]:bg-fill-soft",
+          "group/row relative -mx-2 cursor-pointer rounded-ctl border-b-[0.5px] border-border px-2 transition-colors hover:bg-fill-soft has-[[data-row-link]:focus-visible]:bg-fill-soft",
+          size === "sub" ? "min-h-11.5" : "min-h-16",
         )}
       >
         <span role="cell" className="flex min-w-0 items-center gap-3">
-          <span aria-hidden className="flex shrink-0 text-fg-secondary [&_svg]:size-3.75">
+          <span aria-hidden className={cn("flex shrink-0 text-fg-secondary", size === "sub" ? "[&_svg]:size-3.5" : "[&_svg]:size-3.75")}>
             {icon}
           </span>
           {/* `tabIndex`를 명시한다 — WebKit의 Tab은 맨 링크에 서지 않는다(`@/lib/roving` 머리말). */}

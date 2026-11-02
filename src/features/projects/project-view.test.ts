@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseNote, branchGroups, missingNotice, relocateProblem, renameHint, rowMenu, shownProjects } from "./project-view";
+import { baseNote, branchGroups, detailMenu, missingNotice, relocateProblem, renameHint, rowMenu, shownProjects } from "./project-view";
 import type { GitInfo, ProjectView } from "./types";
 
 // Projects 목록 · 상세의 갈래(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjMissing · F4-ProjDetailMissing · F4-ProjBranch ·
@@ -86,11 +86,19 @@ describe("상세 조각의 글", () => {
     expect(renameHint(project({ name: "웹 앱 (고객용)" }))).toBe("↵ 저장 · esc 취소 — 파일 이름(web-app.md)과 경로는 그대로예요");
   });
 
-  it("폴더를 찾을 수 없음 — 그 경로와 재설정 · 이 Project를 쓰는 Work", () => {
-    expect(missingNotice(PLAYGROUND)).toEqual({
-      title: "Project를 찾을 수 없어요",
-      body: "~/MyProjects/playground에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 작업공간은 고칠 수 없어요.",
-    });
+  it("폴더를 찾을 수 없음 — 상세 경고의 한 줄이다(보드 PlaceSheet 「폴더를 찾을 수 없는 Project」)", () => {
+    expect(missingNotice()).toBe("폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요.");
+  });
+});
+
+describe("상세의 ⋯", () => {
+  // 보드 상세 머리의 ⋯ — 칸이 그려지지 않았다. 목록 줄의 세 줄 앞에 상세에서만 고치는 둘(이름 · 설명)이 선다. 보드 상세에는 고치는 자리가 없다.
+  it("이름 바꾸기 · 설명 고치기 뒤에 목록 줄의 ⋯가 그대로 선다", () => {
+    expect(detailMenu(project()).map((item) => item.label)).toEqual(["이름 바꾸기", "설명 고치기", "Finder에서 열기", "경로 복사", "제거…"]);
+  });
+
+  it("폴더를 찾을 수 없어도 이름과 설명은 고친다 — Finder · 경로 복사는 줄과 같이 빠진다", () => {
+    expect(detailMenu(PLAYGROUND).map((item) => item.act)).toEqual(["rename", "describe", "remove"]);
   });
 });
 

@@ -408,9 +408,9 @@ export function viewSearch<T extends object>(
  * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 여럿이기 때문이다** — 주소
  * 정규화(`-works-view`), 「앱으로 돌아가기」(`appReturnTarget`), 셸로 가는 길(`useGoToShell` — 알림 띠의
  * 줄과 ⌘J 방금 부른 셸로), 팔레트의 work 줄과 문서·본문 줄(`hit-target`), 그리고
- * `<Link>`로 여는 문(아래 `workDoor` — Service 상세의 「작업공간」 묶음 줄 · Project 제거 창의 Work 줄). 사이드바의 Work 행은 한때 여기 들었는데
- * 이제 그 Work의 대화(가장 최근 Thread)로 간다(v1 티켓 37). Projects 상세의 「이 프로젝트에서 시작된 작업」 행도 한때 여기 들었는데, 상세가
- * 기준 브랜치 · 경로 · 설명만 들게 되며 걷혔다(03 S21). 입력창 트레이의 잠긴 Work 칩도 한때 여기 들었는데 restart 02b-2가 그 칩을 걷었다.
+ * `<Link>`로 여는 문(아래 `workDoor` — Service 상세의 「작업공간」 묶음 줄 · Project 상세의 「작업공간」 묶음 줄 · Project 제거 창의 Work 줄).
+ * 사이드바의 Work 행은 한때 여기 들었는데 이제 그 Work의 대화(가장 최근 Thread)로 간다(v1 티켓 37). Projects 상세의 Work 줄은 03 S21이 걷었다가
+ * restart 03-2가 「작업공간」 묶음으로 되살렸다. 입력창 트레이의 잠긴 Work 칩도 한때 여기 들었는데 restart 02b-2가 그 칩을 걷었다.
  * 합성을 자리마다 손으로 다시 적으면 **빠뜨린 문 하나가 조용하다**: 그 문으로 들어온 work은
  * 기본 화면으로 열리고, 도착한 주소를 적어 두는 effect(`-works-view`의 `rememberView`)가
  * 그 기본값으로 **기억을 덮어써** 다음에 다른 문으로 돌아와도 마지막 화면이 안 선다.
