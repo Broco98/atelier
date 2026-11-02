@@ -21,6 +21,7 @@ import { withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search"
 import { newChatDoor } from "@/routes/-work-search";
 import ApprovalCard from "./ApprovalCard";
 import { ArrivalScope, Arriving } from "./arrival";
+import { useBottomFollow } from "./bottom-follow";
 import QuestionCard from "./QuestionCard";
 import { threadApi } from "./api";
 import { askTurn, nextOf } from "./asks";
@@ -45,18 +46,17 @@ import {
   type ChipChange,
 } from "./hooks";
 import { changedFiles } from "./log";
-import { reducedMotion } from "./motion";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
 import { DEFAULT_RUNTIME, isRuntime, runtimeNameOf } from "./runtime";
-import { atBottom, leavingPlace, type ReadingPlace } from "./reading-place";
+import { atBottom, leavingPlace, stuckAfter, type ReadingPlace } from "./reading-place";
 import { chatSeat, followTab, rightShown, useRightSeat, workSeat, type BodyTab, type RightMove } from "./right-place";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, FollowTail, PendingTurn, type FlowActions, type SentWords } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, PendingTurn, type FlowActions, type SentWords } from "./ThreadFlow";
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
@@ -792,11 +792,11 @@ function GuidePlace({ children }: { children: ReactNode }) {
 }
 
 /**
- * 입력창 위 가운데의 원(02 §10 · Screen-Live · Motion 보드 `.cx-dots`) — 32 · 흰 면 · 1px `border-faint`. 「맨 아래로」와 작업 중 점이 같은
- * 원이다.
+ * 입력창 위 가운데의 원(Thread 보드 `.ra-jump` · States 11) — 32 · 판 면 · 바깥 1px `border-heavy` 고리 · 글자 `fg-secondary`. 「맨 아래로」와
+ * 작업 중 점이 같은 원이다. 한때 안쪽 1px `border-faint`(Screen-Live `.cx-dots`)였다(restart 02b-7).
  */
 const SLOT_CIRCLE =
-  "col-start-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border-faint bg-surface text-fg-secondary";
+  "col-start-2 flex size-8 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary ring-1 ring-border-heavy";
 
 /**
  * 작업 중 점 셋 — 그림이라 숨고, 원이 말한다(「작업 중」 · 「맨 아래로」). 움직임은 `typing-dots`다 — Codex 파도(1s `steps(3)` · +1.2 / −2px ·
@@ -908,38 +908,44 @@ function ThreadBody({
   const working = model.running && asking === null;
 
   const scroller = useRef<HTMLDivElement>(null);
-  // 바닥에 붙어 있나 · 위에서 굴린 거리. 돌아온 채팅 탭은 쥐었던 자리에서 선다(restart 02a-6) — 위로 올려 읽던 탭은 바닥을 따라가지
-  // 않고 「맨 아래로」가 선 채로 그 자리에 서고, 바닥을 따라가던 탭과 처음 여는 채팅은 바닥이다(그사이 쌓인 줄의 끝).
+  // 바닥에 붙어 있나 · 위에서 굴린 거리(사람이 굴렸든 따라가기가 내렸든 마지막으로 잰 값). 돌아온 채팅 탭은 쥐었던 자리에서 선다(restart 02a-6) —
+  // 위로 올려 읽던 탭은 바닥을 따라가지 않고 「맨 아래로」가 선 채로 그 자리에 서고, 바닥을 따라가던 탭과 처음 여는 채팅은 바닥이다(그사이 쌓인 줄의 끝).
   const stuck = useRef(place?.kind !== "at");
   const scrolled = useRef(place?.kind === "at" ? place.top : 0);
   const [away, setAway] = useState(place?.kind === "at");
-  // 처음 설 때 한 번 그 자리로 굴리고, 내려갈 때(숨은 탭 · 다른 채팅 · 화면을 떠남) 그 자리를 쥔다. 아래 끝 따라가기보다 먼저 돈다 —
-  // 위에서 읽던 자리를 바닥으로 끌어 내리지 않게. 줄어든 창에서 그 자리가 바닥에 닿았으면 바닥으로 읽는다. 쥘 자리는 굴릴 때마다 적은
-  // 값이다 — 내려가는 순간의 상자를 읽지 않는다.
+  // 처음 설 때 한 번 그 자리로 곧바로 굴리고, 내려갈 때(숨은 탭 · 다른 채팅 · 화면을 떠남) 그 자리를 쥔다. 처음 그린 흐름은 미끄러지지 않는다 —
+  // 바닥은 바닥에, 읽던 자리는 그 자리에 곧바로 선다(Motion 머리말 「처음 그릴 때 이미 있던 것은 움직이지 않는다」 · 02a-6). 줄어든 창에서 읽던
+  // 자리가 바닥에 닿았으면 바닥으로 읽는다. 쥘 자리는 굴릴 때마다 적은 값이다 — 내려가는 순간의 상자를 읽지 않는다.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && place?.kind === "at") {
-      el.scrollTop = place.top;
-      const bottom = atBottom(el);
-      stuck.current = bottom;
-      setAway(!bottom);
+    if (el) {
+      el.scrollTop = place?.kind === "at" ? place.top : el.scrollHeight;
+      scrolled.current = el.scrollTop;
+      if (place?.kind === "at") {
+        const bottom = atBottom(el);
+        stuck.current = bottom;
+        setAway(!bottom);
+      }
     }
     return () => onLeave?.(leavingPlace(stuck.current, scrolled.current));
     // 돌아온 순간의 자리만 읽는다 — 선 뒤에 쥔 자리가 바뀌어도 다시 굴리지 않는다. 쥐는 길(`onLeave`)도 처음 받은 것이다 — 이 본문은
     // 채팅마다 새로 서고(`key`) 쥐는 길은 그 채팅의 탭을 그때 찾는다.
   }, []);
-  // 맨 아래를 보던 흐름은 끝을 따라간다 — 기록 줄이 늘 때와 흐르는 글이 늘 때(`FollowTail`).
-  const follow = useCallback(() => {
-    const el = scroller.current;
-    if (el && stuck.current) el.scrollTop = el.scrollHeight;
-  }, []);
+  // 바닥에 붙은 흐름은 글이 늘면 프레임마다 남은 거리의 18%씩 끝을 따라간다(restart 02b-7 · `useBottomFollow`).
+  const follow = useBottomFollow(scroller, stuck, scrolled);
+  // 바닥에 다시 붙인다 — 보낸 말 · 「맨 아래로」(Thread 보드 `begin` · `toBottom`). 위로 올려 읽던 자리에서도 바닥까지 같은 걸음으로 내려간다.
+  const attach = () => {
+    stuck.current = true;
+    setAway(false);
+    follow();
+  };
   // 보냈지만 기록에 아직 서지 않은 말(States 보드 02 · 03) — Session이 내려가 있던 채팅은 Session이 열린 뒤에야 보낸 말이 기록에 선다. 그 턴이
   // 기록에 서면 걷히고, 보내지 못했으면 곧바로 걷힌다(쓰던 글은 입력창이 되돌린다). 받았는데 턴이 서지 않으면(그사이 턴이 돌아 대기 줄로 갔다)
   // 잠시 뒤 걷힌다. 도는 동안 보낸 말은 대기 줄이 말한다.
   const [pending, setPending] = useState<(SentWords & { turns: number }) | null>(null);
   const shownPending = pending !== null && pending.turns === model.turns.length ? pending : null;
   const send = (text: string, attachments: readonly Attachment[], quote: Quote | null) => {
-    stuck.current = true;
+    attach();
     const sending = threadApi.send(thread, text, attachments, quote);
     if (model.running) return sending;
     const mine = { text, attachments, quote, turns: model.turns.length };
@@ -953,7 +959,6 @@ function ThreadBody({
       },
     );
   };
-  useLayoutEffect(follow, [follow, lines, shownPending]);
 
   // 읽은 자리(S38) — 요약이 정본이고(Thread 화면 밖에서도 요약 이벤트가 고친다), 방금 적으러 보낸 자리는 답이 오기 전에도 다시 보내지
   // 않는다. 안내 카드는 입력창 자리에 서므로 흐름은 그대로 보인다.
@@ -969,15 +974,6 @@ function ThreadBody({
     markRead({ thread, seq }, { onError: () => (marked.current = 0) });
   }, [lines, lastRead, markRead, thread]);
   useEffect(read, [read]);
-
-  // 흐름이 부드럽게 내려간다 — 동작 줄이기면 곧바로다(부드러운 굴림은 CSS의 동작 줄이기 갈래가 끄지 못한다).
-  const toBottom = () => {
-    const el = scroller.current;
-    if (!el) return;
-    stuck.current = true;
-    setAway(false);
-    el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
-  };
 
   // PR 카드의 동작(v1 티켓 36) — 「고쳐 달라고 하기」는 이 Thread의 입력창에 맡기는 말을 채운다. 보내는 것은 사람이다.
   const prActions = useMemo<PrActions>(
@@ -1050,29 +1046,25 @@ function ThreadBody({
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={scroller}
+          // 위로 굴려 바닥에서 24 넘게 멀어지면 끊기고 「맨 아래로」가 선다. 바닥 24 안으로 돌아오면 다시 붙어 바닥까지 따라간다(Motion 「바닥
+          // 따라가기」 · `stuckAfter`). 따라가는 동안 글이 늘어 바닥이 잠깐 멀어진 것은 끊지 않는다 — 위로 굴린 것만 끊는다.
           onScroll={(event) => {
             const el = event.currentTarget;
-            const bottom = atBottom(el);
-            stuck.current = bottom;
+            const now = stuckAfter(stuck.current, scrolled.current, el);
+            stuck.current = now;
             scrolled.current = el.scrollTop;
-            setAway(!bottom);
-            if (bottom) read();
+            setAway(!now);
+            if (!now) return;
+            read();
+            follow();
           }}
-          className="min-h-0 flex-1 overflow-y-auto px-4 pt-8 pb-7 scroll-quiet"
+          className="min-h-0 flex-1 overflow-y-auto px-4 pt-8 pb-7 scroll-quiet [overflow-anchor:none]"
         >
           <Beside open={beside}>
             <LogPlace.Provider value={view.cwd}>
               <PrPlace.Provider value={prActions}>
                 <ResultPlace.Provider value={resultActions}>
-                  <FollowTail.Provider value={follow}>
-                    <ThreadFlow
-                      thread={thread}
-                      model={model}
-                      runtime={runtime}
-                      actions={flowActions}
-                      pending={shownPending}
-                    />
-                  </FollowTail.Provider>
+                  <ThreadFlow thread={thread} model={model} runtime={runtime} actions={flowActions} pending={shownPending} />
                 </ResultPlace.Provider>
               </PrPlace.Provider>
             </LogPlace.Provider>
@@ -1132,46 +1124,44 @@ function ThreadBody({
                   </Arriving>
                 ) : null
               }
-              above={
-                (changes || away || queue.length > 0) && (
+              // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」는 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽 끝이었다. 작업 중 점은
+              // Codex처럼 그 원 안에 선다 — 02 §10). 입력창 자리 위에 떠서 대화 칸을 줄이지 않는다(Thread 보드 `.ra-float` — restart 02b-7).
+              floating={
+                (changes || away) && (
                   <>
-                    {(changes || away) && (
-                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」는 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽 끝이었다.
-                      // 작업 중 점은 Codex처럼 그 원 안에 선다 — 02 §10).
-                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                        {changes && last ? (
-                          <ChangesPill
-                            changes={changes}
-                            onReview={() => {
-                              toggleTurn(turnKey(thread, last.key), true);
-                              stuck.current = false;
-                            }}
-                          />
-                        ) : (
-                          <span />
-                        )}
-                        {away && (
-                          // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
-                          // 서고, 올려 두거나 포커스가 오면 ↓로 바뀐다(Motion 보드 「작업 중 점」 — Codex).
-                          <button
-                            type="button"
-                            aria-label="맨 아래로"
-                            onClick={toBottom}
-                            className={cn(SLOT_CIRCLE, "group text-fg-secondary transition-colors jump-in hover:text-fg focus-ring")}
-                          >
-                            {working && <WorkingDots className="group-hover:hidden group-focus-visible:hidden" />}
-                            <ArrowDown
-                              className={cn("size-4", working && "hidden group-hover:block group-focus-visible:block")}
-                              aria-hidden
-                            />
-                          </button>
-                        )}
-                      </div>
+                    {changes && last ? (
+                      <ChangesPill
+                        changes={changes}
+                        arrival={last.key}
+                        onReview={() => {
+                          toggleTurn(turnKey(thread, last.key), true);
+                          stuck.current = false;
+                        }}
+                      />
+                    ) : (
+                      <span />
                     )}
-                    <QueuedMessages thread={thread} queue={queue} />
+                    {away && (
+                      // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
+                      // 서고, 올려 두거나 포커스가 오면 같은 자리의 ↓ 15로 옅음을 바꾼다(Thread 보드 `.ra-jump` — 150ms, 원의 글자색은 그대로).
+                      // 누르면 바닥까지 따라가기 걸음으로 내려간다.
+                      <button type="button" aria-label="맨 아래로" onClick={attach} className={cn(SLOT_CIRCLE, "group relative jump-in focus-ring")}>
+                        {working && (
+                          <WorkingDots className="absolute transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0" />
+                        )}
+                        <ArrowDown
+                          className={cn(
+                            "absolute size-3.75 transition-opacity",
+                            working && "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+                          )}
+                          aria-hidden
+                        />
+                      </button>
+                    )}
                   </>
                 )
               }
+              above={queue.length > 0 && <QueuedMessages thread={thread} queue={queue} />}
             />
           </Beside>
         </div>

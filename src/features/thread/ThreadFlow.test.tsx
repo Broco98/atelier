@@ -601,6 +601,35 @@ describe("멈춘 턴", () => {
     expect(markup.indexOf("data-log-run")).toBeGreaterThan(markup.indexOf("후에 중단했습니다"));
   });
 
+  // restart 02b-7 — 멈추는 순간 그려 둔 줄을 펼친 로그 상자(`unfold`)로 옮기면 앞선 긴 글을 통째로 다시 그려 그 프레임이 300ms 멎는다(L3 fixture에서
+  // 앞선 글 4만 자 · 도구 60쌍). 사람이 접기 전까지는 도는 턴의 칸 그대로다 — 같은 칸 · 같은 열쇠라 다시 그리지 않는다.
+  describe("사람이 접기 전까지는 도는 턴과 같은 칸이다", () => {
+    const end = lines.find((line) => line.kind === "turn-end")!;
+    const running = lines.filter((line) => line.seq < end.seq);
+    /** 턴 본문 칸(`data-turn`의 둘째 상자)에서 첫 로그 묶음까지 거치는 여는 꼬리표들 — 머리(구분선 · 도는 머리)는 뺀다. */
+    const pathToLog = (markup: string) => {
+      const body = markup.lastIndexOf("<div data-turn=", markup.indexOf("data-log-run"));
+      const between = markup.slice(body, markup.indexOf("data-log-run")).replace(/<div data-turn-head[\s\S]*?<\/div><\/div>/, "");
+      return [...between.matchAll(/<(div|span)\b([^>]*?)(?: class="([^"]*)")?>/g)].map((m) => `${m[1]} ${m[3] ?? ""}`.trim());
+    };
+
+    it("로그 묶음이 도는 턴과 같은 자리에 선다 — 펼친 로그 상자가 없다", () => {
+      const stopped = flow(lines);
+      // 펼친 로그 상자(`OpenedLog`)는 머리 아래 8을 당겨 선다 — 명령 출력의 펼침 상자와 그것으로 갈린다.
+      expect(stopped).not.toContain('class="unfold -mt-2');
+      expect(pathToLog(stopped)).toEqual(pathToLog(flow(running)));
+    });
+
+    it("머리에서 첫 줄까지 12, 로그 끝에서 멈추기 전 답까지 16이다 — 펼친 로그와 같다", () => {
+      const markup = withoutMeta(flow([...running.filter((line) => line.seq !== 12), said, end]));
+      expect(/<div data-turn-head[^>]*class="([^"]*)"/.exec(markup)?.[1].split(" ")).toContain("mb-1");
+      // 턴 안 줄 사이 8에 빈칸 하나의 8을 더한다.
+      const logEnd = markup.indexOf("data-log-end");
+      expect(logEnd).toBeGreaterThan(markup.lastIndexOf("data-log-run"));
+      expect(logEnd).toBeLessThan(markup.indexOf("멈추기 전 글"));
+    });
+  });
+
   it("머리를 눌러 접으면 한 일이 숨는다", () => {
     const [turn] = foldThread(lines).turns;
     threadUiStore.setState((state) => ({ ...state, expanded: { [turnKey("t", turn.key)]: false } }));
@@ -850,5 +879,54 @@ describe("끼어든 말", () => {
 
   it("차례대로 간 말에는 서지 않는다", () => {
     expect(flow(twoTurns)).not.toContain(NOTE);
+  });
+});
+
+// 보낸 말이 선다(restart 02b-7 · Motion 「보낸 말이 선다」 — 아래 12 · .985배에서 제자리, `duration-rise` 320ms · `ease-enter-snappy`). 화면이 선 뒤에
+// 새로 선 말만 오르고, 처음 그린 말은 그대로 선다(Motion 머리말). 기록에 서기 전의 대기 말풍선이 먼저 올랐으면 그 말이 기록의 턴으로 옮겨 서도
+// 다시 오르지 않는다 — 같은 것이 자리를 옮겨 다시 선 것이다.
+describe("보낸 말이 선다", () => {
+  const twoTurns = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-two-turns.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  /** 첫 턴이 끝난 데까지 — 둘째 보낸 말 앞이다. */
+  const firstTurn = twoTurns.slice(0, twoTurns.findIndex((line) => line.kind === "sent" && line.seq > 4));
+  const pending = { text: "이어서 고쳐 줘", attachments: [], quote: null };
+  /** 말 묶음(`data-user-message`)마다 그 클래스. */
+  const messages = (markup: string) => [...markup.matchAll(/<div data-user-message[^>]*class="([^"]*)"/g)].map((m) => m[1].split(" "));
+  const draw = (lines: readonly RecordLine[], place?: ReturnType<typeof settledPlace>, sent: typeof pending | null = null) => {
+    const flow = <ThreadFlow thread="보낸-말" model={foldThread(lines)} runtime="Claude Code" pending={sent} />;
+    return renderToStaticMarkup(place ? <Arrival.Provider value={place}>{flow}</Arrival.Provider> : flow);
+  };
+
+  it("처음 그린 말은 오르지 않는다", () => {
+    const shown = messages(draw(twoTurns));
+    expect(shown).toHaveLength(2);
+    for (const one of shown) expect(one).not.toContain("msg-rise");
+  });
+
+  it("화면이 선 뒤에 새로 선 말은 오른다", () => {
+    expect(messages(draw(twoTurns, settledPlace()))[1]).toContain("msg-rise");
+  });
+
+  it("기록에 서기 전의 대기 말풍선도 오른다", () => {
+    const shown = messages(draw(firstTurn, settledPlace(), pending));
+    expect(shown).toHaveLength(2);
+    expect(shown[1]).toContain("msg-rise");
+  });
+
+  it("대기 말풍선으로 오른 말이 기록의 턴으로 옮겨 서면 다시 오르지 않는다", () => {
+    // 대기 말풍선을 그린 그림이 자리에 묻는 이름들을 엿듣는다 — 이름은 커밋 뒤에 적히는데 정적 그림에는 커밋이 없다. 그 이름들이 적힌 자리에
+    // 기록의 둘째 턴(같은 말)이 선다.
+    const asked: string[] = [];
+    class Listening extends Set<string> {
+      has(name: string) {
+        asked.push(name);
+        return super.has(name);
+      }
+    }
+    expect(messages(draw(firstTurn, { settled: true, seen: new Listening() }, pending))[1]).toContain("msg-rise");
+    expect(messages(draw(twoTurns, { settled: true, seen: new Set(asked) }))[1]).not.toContain("msg-rise");
   });
 });

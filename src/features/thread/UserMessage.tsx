@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Quote } from "@/features/works/QuotePick";
+import { useArrival } from "./arrival";
 import { SentAttachments } from "./ComposerAttachments";
 import { CopyButton } from "./CopyButton";
 import { motionMs, reducedMotion } from "./motion";
@@ -36,6 +37,7 @@ export function UserMessage({
   quote = null,
   at = null,
   interjected = false,
+  arrival,
 }: {
   text: string;
   attachments?: readonly Attachment[];
@@ -43,9 +45,13 @@ export function UserMessage({
   /** 보낸 시각(기록의 `sent` 줄) — 기록에 서기 전의 말은 없다. */
   at?: string | null;
   interjected?: boolean;
+  /** 들어서는 이름(`useArrival`) — 대기 말풍선과 그 말이 선 기록의 턴이 같은 이름이라 옮겨 서도 다시 오르지 않는다. */
+  arrival?: string;
 }) {
+  // 화면이 선 뒤에 새로 선 말은 아래 12 · .985배에서 제자리로 오른다(Motion 「보낸 말이 선다」 · 보드 `.ra-msg.rise` — restart 02b-7). 말 묶음 전체다.
+  const rise = useArrival("msg-rise", arrival);
   return (
-    <div data-user-message className="group/message flex flex-col items-end gap-1">
+    <div data-user-message className={cn("group/message flex flex-col items-end gap-1", rise)}>
       {quote && <SentQuoteChip quote={quote} />}
       {attachments.length > 0 && <SentAttachments attachments={attachments} />}
       <MessageBubble text={text} />

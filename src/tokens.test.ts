@@ -497,6 +497,8 @@ describe("모션 토큰", () => {
     "spin-thread": byName["회전"],
     // 넓힌 카드의 보기는 카드가 넓어지는 박자로 옅음에서 선다(보드 `.ra-vw` · restart 02b-8 — 한때 220ms).
     "view-in": { 토큰: "panel-open", 곡선: "var(--ease-panel)" },
+    // 보낸 말이 선다(Motion 「보낸 말이 선다」 · 보드 `.ra-msg.rise` — restart 02b-7) — 아래 12 · .985배에서 320ms `ease-enter-snappy`.
+    "msg-rise": { 토큰: "rise", 곡선: "var(--ease-enter-snappy)" },
   };
 
   it("Thread의 움직임 유틸리티가 그 시간 · 곡선 토큰을 읽는다", async () => {

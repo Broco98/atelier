@@ -943,7 +943,8 @@
          border-panel          흰 판의 0.5 테두리(02). 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
          border-summary        한때 요약 카드의 0.5 테두리(07) — restart 02b-8이 카드 겉을 0.5 링 그림자(`shadow-sheet`)로 옮겨 앱이 읽지 않는다
          border-slot           입력창 자리 카드의 1px 테두리(11)
-         border-faint          작업 중 점의 흰 원(32) 1px 테두리(11)
+         border-faint          한때 작업 중 점의 흰 원(32) 1px 테두리(11) — restart 02b-7이 원을 바깥 1px `border-heavy` 고리(Thread 보드
+                               `.ra-jump`)로 옮겨 앱이 읽지 않는다
          separator             머리 줄 가운데 앞 세로선(02) · 한때 사람 메뉴의 구분선(04 — restart 02a-3이 메뉴를 걷었다)
          separator-soft        답한 질문 카드의 테두리(11) · 한때 요약 카드의 칸 구분선(07 — restart 02b-8 뒤로 `border-heavy`) · 한때 작업 구분선
                                아래 선(09 — restart 02b-1이 턴 머리 아래 0.5 `border-heavy`로 옮겼다)
@@ -1994,6 +1995,7 @@ body[data-palette-open] [data-scrollbar] {
                                                                                  목록 줄의 상태 칸
      보내기 모핑   morph-in · morph-out           morph · default · .6배         보내기 원의 글리프 ↑ · 스피너 · ■(면 색 · 옅음은 `duration-morph ease-default`)
      아래로 버튼   jump-in                        jump · settle · 아래 6에서     「맨 아래로」
+     보낸 말       msg-rise                       rise · enter-snappy · 아래 12 .985  화면이 선 뒤에 새로 선 내 말 · 대기 말풍선(restart 02b-7)
      문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    요약 카드의 새로 바뀐 줄 · 막 쓴 문서 줄 · 넓힌 카드 문서의 바뀐 줄
      요약 카드     summary-in                     panel · enter-snappy · (4,−4) .98  요약 카드가 열린다(Motion · 02b-8) — 카드 자리(`CardSlot`)
      넓힌 카드 보기 view-in                       panel-open · panel · 옅음에서   카드가 넓어지거나 다른 파일을 열면 선다(보드 `.ra-vw` · 02b-8)
@@ -2285,8 +2287,8 @@ body[data-palette-open] [data-scrollbar] {
 }
 
 /* **아래로 버튼**(보드 「아래로 버튼」 180ms · 감속 · 아래에서 6px) — 위로 올려 읽는 중이면 입력창 위에 「맨 아래로」가 아래 6에서 떠오른다.
-   보드의 「목록 320ms」(누르면 흐름이 내려가는 길이)는 브라우저의 부드러운 굴림이 정한다 — 동작 줄이기면 곧바로 내려간다
-   (`ThreadScreen`의 `toBottom`). */
+   누르면 흐름이 내려가는 길은 바닥 따라가기다 — 프레임마다 남은 거리의 18%(최소 1px), 동작 줄이기면 그 프레임에 바닥이다(restart 02b-7 ·
+   `reading-place.ts`의 `followStep`). 한때 브라우저의 부드러운 굴림이었다. */
 @keyframes jump-in {
     from {
         opacity: 0;
@@ -2295,6 +2297,19 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility jump-in {
     animation: jump-in var(--duration-jump) var(--ease-settle) both;
+}
+
+/* **보낸 말이 선다**(restart 02b-7 · Motion 「보낸 말이 선다」 · 보드 `.ra-msg.rise`) — 화면이 선 뒤에 새로 선 내 말(말풍선 · 말 머리 묶음)이 아래
+   12 · .985배에서 옅음과 함께 제자리로 오른다. 320ms(`duration-rise`) `ease-enter-snappy`. 입력창 글자는 같은 순간 비운다(`sendDraft`). 채움은
+   두지 않는다 — 늦음이 없어 보이는 값이 같고, 끝난 움직임이 남으면 WebKit이 프레임마다 훑는다(`word-in` 머리말 · 01b-9). */
+@keyframes msg-rise {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.985);
+    }
+}
+@utility msg-rise {
+    animation: msg-rise var(--duration-rise) var(--ease-enter-snappy);
 }
 
 /* **문서 강조**(보드 「문서 실시간 편집」 1.6s · 가감속 · 30%까지 유지 — 「Host가 문서를 고치면 바뀐 줄만 잠깐 칠해집니다」). 옅은
@@ -2493,6 +2508,7 @@ body[data-palette-open] [data-scrollbar] {
     .morph-in,
     .morph-out,
     .jump-in,
+    .msg-rise,
     .row-flash,
     [data-doc-flash],
     .writing-pulse,

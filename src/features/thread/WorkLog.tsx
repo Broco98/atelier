@@ -165,11 +165,24 @@ function RowChevron({ open, always = false }: { open: boolean; always?: boolean 
  * 펼침 · 접힘(02 구현 스펙 §12) — 높이 0 → auto와 투명도가 함께 .3s로 움직인다(`index.css`의 `unfold`). 펼칠 때 그 안을 그리고, 접으면 다
  * 접힌 뒤에 걷는다 — 접힌 줄들이 DOM에 남지 않는다. 처음부터 펼친 채 선 것(다시 연 Thread)은 움직이지 않는다. 동작
  * 줄이기에서는 곧바로 펴고 걷는다.
+ *
+ * `from`은 처음 설 때의 모양이다(기본은 `open`). 펼친 모양으로 서서 곧바로 접히면 그 안을 그린 채 접히며 걷힌다 — 다른 칸에 펼친 채 서
+ * 있던 줄들이 이 상자로 옮겨 오며 접히는 때다(멈춘 턴을 처음 접음 — `ThreadFlow`의 `TurnView`, restart 02b-7).
  */
-export function Unfold({ open, className, children }: { open: boolean; className?: string; children: ReactNode }) {
-  const [mounted, setMounted] = useState(open);
-  const [shown, setShown] = useState(open);
-  const [settled, setSettled] = useState(open);
+export function Unfold({
+  open,
+  from = open,
+  className,
+  children,
+}: {
+  open: boolean;
+  from?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [mounted, setMounted] = useState(from);
+  const [shown, setShown] = useState(from);
+  const [settled, setSettled] = useState(from);
   const box = useRef<HTMLDivElement>(null);
   if (open && !mounted) setMounted(true);
   useLayoutEffect(() => {
@@ -179,6 +192,8 @@ export function Unfold({ open, className, children }: { open: boolean; className
       setShown(true);
       return;
     }
+    // 접을 때도 지금 모양을 한 번 재 둔다 — 펼친 모양으로 막 선 상자(`from`)는 재지 않으면 처음 그림부터 접힌 모양이라 전이가 걸리지 않는다.
+    box.current?.getBoundingClientRect();
     setShown(false);
     setSettled(false);
   }, [open]);
@@ -491,27 +506,27 @@ const HEAD_LABEL = "flex min-h-5.5 w-fit max-w-full items-center gap-1 text-left
  * 단추이고 셰브런이 펼치면 ∨로 돈다. 펼칠 것 없이 끝 까닭만 있는 턴(거부 …)도 셰브런 없는 같은 줄이다. 턴이 끝나 도는 줄이 이 줄로 바뀌면 글이 같은
  * 자리에서 떠오른다(v1 티켓 43 · 줄 바뀜 — `arrival`은 그 턴의 열쇠다). 선은 움직이지 않는다.
  *
- * 다음 줄까지는 끝난 턴이 16, 도는 턴이 12다(턴 안 줄 사이 8 + `mb`) — 시안의 턴 칸 사이 16과 작업 로그의 위 12다. 끝난 턴의 펼친 로그는 그 안에서 4를 당겨
- * 12에 선다(`ThreadFlow`의 `OpenedLog`).
+ * 다음 줄까지는 끝난 턴이 16, 바로 아래에 작업 로그가 선 머리(도는 턴 · 사람이 접기 전의 멈춘 턴)가 12다(턴 안 줄 사이 8 + `mb`) — 시안의 턴 칸
+ * 사이 16과 작업 로그의 위 12다. 끝난 턴의 펼친 로그는 그 안에서 4를 당겨 12에 선다(`ThreadFlow`의 `OpenedLog`).
  */
 export function WorkDivider({
   open = false,
   onToggle,
   arrival,
-  running = false,
+  logged = false,
   children,
 }: {
   open?: boolean;
   onToggle?: () => void;
   arrival?: string;
-  /** 도는 턴의 머리 — 다음 줄(작업 로그의 첫 줄)까지 12다. */
-  running?: boolean;
+  /** 바로 아래에 작업 로그의 줄들이 선다(도는 턴 · 사람이 접기 전의 멈춘 턴) — 다음 줄(작업 로그의 첫 줄)까지 12다. */
+  logged?: boolean;
   children: ReactNode;
 }) {
   const moving = useArrival("row-in", arrival);
   const rising = arrival === undefined ? undefined : moving;
   return (
-    <div data-turn-head className={cn("flex w-full flex-col gap-2.25", running ? "mb-1" : "mb-2")}>
+    <div data-turn-head className={cn("flex w-full flex-col gap-2.25", logged ? "mb-1" : "mb-2")}>
       {onToggle ? (
         <button
           type="button"
