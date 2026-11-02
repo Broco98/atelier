@@ -386,8 +386,8 @@ describe("눈금의 사분 단", () => {
     },
     {
       file: "src/features/thread/SlashMenu.tsx",
-      className: "gap-y-px",
-      why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
+      className: "gap-px",
+      why: "「/」 메뉴 — 머리와 줄 사이 1(restart 시안 Composer `.ra-menu`의 `gap: 1px`)",
     },
     // 사이드바 줄의 글리프와 글자 사이 9 — 시안 `.ra-sr-row`의 `gap: 9px`(restart 02a-3). nav 줄 · Work 줄 · Thread 줄이 한 벌이라 한 파일
     // (`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C). 한때(v1 티켓 46 – 02a-2) Codex 사이드바를 잰 줄 사이 1 · 소제목 아래 3 · 앞 묶음 뒤
@@ -432,7 +432,17 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/features/thread/ComposerChips.tsx",
       className: "gap-1.25",
-      why: "입력창 트레이 칩 — 글리프와 글자 사이 5(03 시안 v52 `.tray .tc{gap:5px}`)",
+      why: "입력창 칩 — 글리프 · 글자 · 꺾쇠 사이 5(restart 시안 Composer `.ra-cc`의 `gap: 5px`)",
+    },
+    {
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "gap-px",
+      why: "입력창 칩 메뉴 — 머리와 줄 사이 1(restart 시안 Composer `.ra-menu`의 `gap: 1px`)",
+    },
+    {
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "py-1.25",
+      why: "입력창 칩 메뉴의 줄 — 위아래 5(restart 시안 Composer `.ra-mi`의 `padding: 5px 8px`)",
     },
     // 셈에서 나오는 홀수 px
     {

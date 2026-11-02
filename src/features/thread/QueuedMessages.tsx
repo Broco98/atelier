@@ -9,9 +9,10 @@ import type { QueuedMessage } from "./types";
 // (`chat/QueuedMessages.tsx`)의 규칙 그대로 대기 줄은 엔진의 것이다: 이 화면은 이벤트가 준 대로 그리고, 고치기 · 지우기 · 지금 보내기는
 // 대기 id를 실어 보낸다.
 //
-// 모양은 Components의 대기 줄이다 — 줄마다 `surface-tray` 면 · 둥글기 12 · 안쪽 6 / 8 / 6 / 12 · 13 2단계 글자에 「대기」 라벨(12 3단계) ·
-// 말 · 오른쪽 끝 「지금 보내기」(고스트 24) · ×(22, 지우기). 말을 누르면 그 자리에서 고친다(보드에 고치기 단추는 없다 — v1의 고치기를
-// 잃지 않는다). 새로 쌓인 줄은 칩으로 나타난다(v1 티켓 43 · 02 티켓 10 `chip-in`).
+// 모양은 시안 Composer 「대기 줄」 · Thread 보드의 `.ra-queue`다(restart 02b-2) — 줄마다 `surface-tray` 면 · 최소 36 · 둥글기 12 · 안쪽 6 / 6 / 6 / 12 ·
+// 13 `fg-secondary` 글자에 「대기」 라벨(12 `fg-tertiary`) · 사이 8 · 말(한 줄 말줄임) · 오른쪽 끝 「지금 보내기」(24 · 좌우 8 · 둥글기 10 · 12) ·
+// ×(22, 지우기 — 글리프 12 `fg-tertiary`). 줄 사이와 입력창까지는 8이다. 말을 누르면 그 자리에서 고친다(보드에 고치기 단추는 없다 — v1의 고치기를
+// 잃지 않는다). 새로 쌓인 줄은 칩으로 나타난다(v1 티켓 43 · Motion 「칩이 들어선다」 `chip-in`).
 
 interface QueuedMessagesProps {
   thread: string;
@@ -40,7 +41,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <ul role="list" aria-label="기다리는 말" className="flex flex-col gap-1">
+      <ul role="list" aria-label="기다리는 말" className="flex flex-col gap-2">
         {queue.map((message) => (
           <Arriving
             as="li"
@@ -48,7 +49,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
             arrival={`queued:${message.id}`}
             key={message.id}
             data-queued={message.id}
-            className="flex min-h-9 items-center gap-2 rounded-xl bg-surface-tray py-1.5 pr-2 pl-3 text-chat-meta text-fg-secondary"
+            className="flex min-h-9 items-center gap-2 rounded-xl bg-surface-tray py-1.5 pr-1.5 pl-3 text-chat-meta text-fg-secondary"
           >
             <span className="shrink-0 text-xs text-fg-tertiary">대기</span>
             {editing?.id === message.id ? (
@@ -91,7 +92,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
               <button
                 type="button"
                 onClick={() => run(threadApi.sendNow(thread, message.id))}
-                className="h-6 shrink-0 rounded-full px-2 text-chat-meta text-fg-secondary transition-colors quiet-hover focus-ring"
+                className="h-6 shrink-0 rounded-lg px-2 text-xs text-fg-secondary transition-colors quiet-hover focus-ring"
               >
                 지금 보내기
               </button>
@@ -100,7 +101,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
               type="button"
               aria-label="기다리는 말 지우기"
               onClick={() => run(threadApi.deleteQueued(thread, message.id))}
-              className="flex size-5.5 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors quiet-hover focus-ring"
+              className="flex size-5.5 shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors quiet-hover focus-ring"
             >
               <X className="size-3" aria-hidden />
             </button>

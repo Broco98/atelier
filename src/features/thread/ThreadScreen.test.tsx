@@ -177,6 +177,16 @@ describe("채팅 화면", () => {
     expect(html).not.toContain('aria-label="Service');
     expect(html).not.toContain('data-slot="scope-line"');
   });
+
+  // Thread 보드의 입력창 · 02b-2 — 첫 말 뒤의 입력창에는 트레이가 없다. 어디서 일하는지는 탭 줄 · 창 머리가 말한다.
+  it("첫 말 뒤의 입력창에는 트레이도 Work 칩도 없다", () => {
+    for (const view of [{ ...chat, id: "20261010-100004" }, { ...chat, id: "20261010-100005", newWork: true }]) {
+      const html = draw(view);
+      expect(html).not.toContain('data-slot="composer-tray"');
+      expect(html).not.toContain("작업공간 없이 대화");
+      expect(html).not.toContain("새 작업공간");
+    }
+  });
 });
 
 describe("새 채팅 화면", () => {
@@ -299,11 +309,12 @@ describe("새 채팅 화면", () => {
     expect(html).toContain('aria-label="물어보는 정도 편집 자동"');
   });
 
-  it("`?work=`로 연 새 채팅의 칩은 그 작업공간을 보이기만 한다 — 메뉴도 ×도 없다", () => {
+  it("`?work=`로 연 새 채팅은 트레이에 Work 칩 없이 범위 칩만 선다 — 어디서 일하는지는 안내 글이 말한다", () => {
     const html = drawNew({ link: { kind: "work", slug: "refund-api" } });
-    expect(html).toContain('aria-label="작업공간으로 가기: refund-api"');
+    expect(html).not.toContain("작업공간으로 가기");
     expect(html).not.toContain("어디서 일할지");
     expect(html).not.toContain("빼기");
+    expect(html).toContain('aria-label="범위 없음"');
     expect(html).toContain('placeholder="refund-api에서 무엇을 할까요?"');
   });
 
@@ -338,7 +349,9 @@ describe("새 채팅 화면", () => {
       [{ service: "결제-서비스" }, { service: { slug: "결제-서비스", name: "결제 서비스", troubled: false }, kind: "service" }],
     );
     expect(html).toContain('aria-label="범위: 결제 서비스"');
-    expect(html).toContain('aria-label="범위 빼기"');
+    // 고른 범위도 ▾로 메뉴를 연다 — 빼기는 메뉴의 「범위 없음」이다(Composer 「새 채팅 · 범위 트레이」).
+    expect(html).not.toContain('aria-label="범위 빼기"');
+    expect(html).toMatch(/aria-label="범위: 결제 서비스"[^>]*aria-haspopup|aria-haspopup[^>]*aria-label="범위: 결제 서비스"/);
   });
 
   it("`?project=`로 연 새 채팅의 칩에 그 Project가 골라져 있다", () => {

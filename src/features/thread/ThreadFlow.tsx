@@ -350,6 +350,8 @@ const TurnView = memo(function TurnView({ turn, runtime, open, waiting, compacti
         // 말풍선 앞은 흐름의 줄 사이(`TURN_GAP`)보다 2를 더 띄운다 — 답 끝 → 다음 말풍선 52(`TURN_GAP` 머리말).
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col not-first:mt-0.5">
           <UserMessage text={turn.sent} attachments={turn.attachments} quote={turn.quote} />
+          {/* 대기 줄의 「지금 보내기」로 하던 턴을 끊고 들어간 말 — 말풍선 아래 4에 옅은 한 줄이 선다(Cards 「대기 중에 끼어든 말」). */}
+          {turn.interjected && <span className="mt-1 self-end text-xs text-fg-tertiary">하던 일을 멈추고 보냄</span>}
         </div>
       )}
       {lead.map((line) => (

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
-import { File, Folder, Image, X, type LucideIcon } from "lucide-react";
+import { File, FileText, Folder, Image, X, type LucideIcon } from "lucide-react";
 import { threadApi } from "./api";
 import { Arriving } from "./arrival";
 import { addAttachments, attachmentKind, attachmentName, attachmentSize, removeAttachment, type AttachmentKind } from "./attachments";
 import type { Attachment } from "./types";
 
-// 첨부의 부품(v1 티켓 06 · 구현 스펙 §14 S30 · 캔버스 Composer 보드 「파일을 끌어다 놓는 중」 · Messages 보드 「첨부」 · 「컴포저에 붙인
-// 첨부」) — 입력창의 칩, 끌어다 놓는 동안 입력창 자리에 서는 「놓으면 첨부합니다」, 내 말풍선 위의 칩.
+// 첨부의 부품(v1 티켓 06 · 구현 스펙 §14 S30 · restart 02b-2 · 시안 Composer 「첨부 · 언급」 · 「끌어다 놓는 중」 · 캔버스 Messages 보드 「첨부」)
+// — 입력창의 칩, 끌어다 놓는 동안을 알리는 상태(입력창이 표시를 두른다 — `ThreadComposer`), 내 말풍선 위의 칩.
 //
 // - **경로는 Tauri가 준다.** 웹뷰의 HTML5 drop은 파일의 경로를 주지 않는다 — 창의 끌어다 놓기 이벤트(`onDragDropEvent`)의 `paths`를
 //   쓴다. `+`는 OS 파일 고르기 창이다(파일 여럿). 폴더는 끌어다 놓아 붙인다.
@@ -16,6 +16,8 @@ import type { Attachment } from "./types";
 // - 내용은 읽지 않는다 — 그림도 칩(그림 아이콘 · 이름 · 크기)으로만 선다.
 
 const ICONS: Record<AttachmentKind, LucideIcon> = { file: File, image: Image, folder: Folder };
+/** 입력창 칩의 글리프 — 파일은 글 줄이 그어진 문서다(시안 Composer `ic-file-text`). */
+const COMPOSER_ICONS: Record<AttachmentKind, LucideIcon> = { ...ICONS, file: FileText };
 
 /** 받은 경로를 재서 그 입력창(`key`)의 칩으로 더한다. 거절되면 그 글로 실패한다(칩은 그대로다). */
 export async function attachPaths(key: string, paths: readonly string[]): Promise<void> {
@@ -65,46 +67,37 @@ export function useAttachmentDrop(enabled: boolean, onDrop: (paths: string[]) =>
   return enabled && dragging;
 }
 
-/** 끌어다 놓는 동안 입력창 자리(보드 `.drop` — 옅은 파랑 · 1.5 안쪽 테두리 · 104 높이). 둥글기는 그 자리의 입력창과 같은 22다(02 티켓 10 · `rounded-prompt`). */
-export function DropZone() {
-  return (
-    <div
-      role="status"
-      className="flex h-26 flex-col items-center justify-center gap-1 rounded-prompt bg-accent-soft text-sm font-medium text-link inset-ring-[1.5px] inset-ring-accent-solid"
-    >
-      놓으면 첨부합니다
-      <span className="text-xs font-normal text-fg-secondary">파일 · 이미지 · 폴더</span>
-    </div>
-  );
-}
-
-/** 입력창 안의 칩 줄(보드 `.achip` — 30 높이 · 10 반경 · 옅은 면 · 이름 · 크기 · 빼기). 붙인 칩은 칩으로 나타난다(v1 티켓 43 · Motion 보드 「칩 나타남」). */
+/**
+ * 입력창 안의 칩 줄(시안 Composer 「첨부 · 언급」 `.ra-att`) — 28 높이 · 10 반경 · 옅은 면(`fill-soft`) · 12 `fg-secondary`의 글리프 14 · 이름 · ×12다.
+ * 줄은 좌우 4 들어서고 칩 사이는 6이다. 크기는 칩에 서지 않고 가리키면 경로와 함께 보인다. 붙인 칩은 칩으로 나타난다(v1 티켓 43 · Motion 「칩이
+ * 들어선다」).
+ */
 export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: string; attachments: readonly Attachment[] }) {
   return (
-    <ul aria-label="첨부" className="flex flex-wrap gap-1.5 pr-2.5">
+    <ul aria-label="첨부" className="flex flex-wrap gap-1.5 px-1">
       {attachments.map((attached) => {
         const name = attachmentName(attached);
         const size = attachmentSize(attached);
-        const Icon = ICONS[attachmentKind(attached)];
+        const Icon = COMPOSER_ICONS[attachmentKind(attached)];
         return (
           <Arriving
             as="li"
             motion="chip-in"
             arrival={`attach:${attached.path}`}
             key={attached.path}
-            title={attached.path}
-            className="inline-flex h-7.5 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-1 pl-2.5 text-chat-meta"
+            title={size ? `${attached.path} · ${size}` : attached.path}
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-0.5 pl-2 text-xs text-fg-secondary"
           >
-            <Icon className="size-3.5 shrink-0 text-fg-secondary" aria-hidden />
+            <Icon className="size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0 truncate">{name}</span>
-            {size && <span className="shrink-0 text-xs text-fg-tertiary">{size}</span>}
+            {/* × — 이름 끝 6에 선 12 글리프다. 누를 자리는 글리프보다 크다(20). */}
             <button
               type="button"
               aria-label={`${name} 빼기`}
               onClick={() => removeAttachment(draftKey, attached.path)}
-              className="flex size-5.5 shrink-0 items-center justify-center rounded-sm text-fg-tertiary transition-colors quiet-hover focus-ring"
+              className="-ml-1 flex size-5 shrink-0 items-center justify-center rounded-md transition-colors hover:text-fg focus-ring"
             >
-              <X className="size-3.5" aria-hidden />
+              <X className="size-3" aria-hidden />
             </button>
           </Arriving>
         );

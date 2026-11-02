@@ -60,13 +60,17 @@ const CARD_WIDTH = {
   // `note`의 바닥(300) · 끝(창 안)은 그대로 두고 폭만 박는다.
   "note-fold": "w-77 min-w-75 max-w-(--available-width)",
   "note-wide": "w-85",
+  // 입력창 칩의 메뉴(restart 02b-2 · 시안 Composer `.ra-menu`) — 모드 · 모델은 280, Runtime · 범위는 320이다. 두 줄 줄의 설명이 이 폭에서
+  // 낱말 단위로 접혀 다 선다(Codex가 보낸 모드 설명).
+  prompt: "w-70",
+  "prompt-wide": "w-80",
 } as const
 
 /** ⋯ 메뉴 · 고르기 메뉴가 고르는 폭 — 우클릭 메뉴(`menu-ctx`)와 하위 메뉴(`sub`)의 폭은 그 부품이 정한다. */
 type ContentWidth = Exclude<keyof typeof CARD_WIDTH, "menu-ctx" | "sub">;
 
 type MenuCardProps = MenuPrimitive.Popup.Props &
-  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">
+  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset" | "anchor">
 
 /**
  * **떠 있는 메뉴 카드 하나** — ⋯ 메뉴(`DropdownMenuContent`) · 하위 메뉴(`DropdownMenuSubContent`) · 우클릭 메뉴(`ContextMenuContent`)가
@@ -79,6 +83,7 @@ function MenuCard({
   alignOffset,
   side,
   sideOffset,
+  anchor,
   grows = false,
   className,
   ...props
@@ -94,13 +99,14 @@ function MenuCard({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        anchor={anchor}
       >
         <MenuPrimitive.Popup
           data-slot={dataSlot}
           // 떠 있는 **카드**의 표식이다 — 검사가 이것으로 카드를 하나로 센다(툴팁에는 안 단다).
           data-popover=""
           // **움직이지 않는다** — 한 프레임에 서고 곧바로 걷힌다(02 구현 스펙 §12 · Diff-Tokens 「메뉴 · 팝오버 열림」 — Codex). 움직이며 뜨는
-          // 메뉴는 모델 피커 하나다(`grows`): .32s(`duration-dropdown`) · `ease-enter-snappy` · 30ms 늦게 · scale 0.98 → 1. 늦는 동안은 첫
+          // 메뉴는 모델 피커 하나다(`grows`): .32s(`duration-dropdown`) · `ease-enter-snappy` · 30ms 늦게 · scale 0.98 → 1 · 아래 2에서. 늦는 동안은 첫
           // 장면(투명 · 0.98)에 머문다(`backwards` — 안 주면 30ms 동안 다 그려진 카드가 먼저 비쳤다가 사라진다). 닫힐 때는 그것도 곧바로
           // 걷힌다 — 걸린 움직임이 없으면 Base UI가 곧바로 내린다. 움직임은 index.css의 `animate-menu-enter`다(tw-animate의 `animate-in`은
           // 블러까지 움직여 이 곡선과 만나면 리눅스 WebKit이 죽는다).

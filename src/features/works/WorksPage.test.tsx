@@ -1750,8 +1750,10 @@ describe("WorksPage 새 채팅 탭", () => {
     const shown = bodyOf(markup, second);
     expect(shown).toMatch(/^<div[^>]*class="contents"/);
     expect(shown).toContain('aria-label="보낼 말"');
-    // 작업공간은 탭이 선 묶음의 것이다 — 잠긴 Work 칩이 이 작업공간을 말한다.
-    expect(shown).toContain(`aria-label="작업공간으로 가기: ${work.title}"`);
+    // 작업공간은 탭이 선 묶음의 것이다 — 빈 칸의 말이 이 작업공간을 말한다. 잠긴 Work 칩은 없다(restart 02b-2 — 시안 Composer의
+    // 트레이에 Work 칩이 없다).
+    expect(shown).toContain(`${work.title}에서 무엇을 할까요?`);
+    expect(shown).not.toContain("작업공간으로 가기");
     expect(pathBarOf(markup)).toBe("");
   });
 

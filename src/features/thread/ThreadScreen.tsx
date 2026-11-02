@@ -18,7 +18,7 @@ import type { Quote } from "@/features/works/QuotePick";
 import type { WorkView } from "@/features/works/types";
 import { cn } from "@/lib/utils";
 import { withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
-import { newChatDoor, recallSearch } from "@/routes/-work-search";
+import { newChatDoor } from "@/routes/-work-search";
 import ApprovalCard from "./ApprovalCard";
 import { ArrivalScope, Arriving } from "./arrival";
 import QuestionCard from "./QuestionCard";
@@ -67,7 +67,7 @@ import type { ComposerTray, ModeChoice, ModelChoice, ScopeChoice } from "./Compo
 import { ArchivedSummaryCard, LooseSummaryCard, WorkSummaryCard } from "./SummaryCard";
 import { HeadWork, ServiceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { headService, heldScope, holdOf, holdPick, scopeArgs, shownScope, startScope, type ScopeHold } from "./service-chip";
-import { lockedWork, startLink, startPlaceholder } from "./work-chip";
+import { startLink, startPlaceholder } from "./work-chip";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -85,14 +85,13 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   P3). 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과 생각 깊이를, 상자 아래 트레이에서 범위를
 //   고른다(03 §5). 고른 범위는 입력창이 쥐었다가 첫 말과 함께 간다(`service-chip.ts` — 씨앗 `?service=` · `?project=`가 처음 쥔다). 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을
 //   이미 말한다). 어디서 일할지는 주소 씨앗이 정한다(`startLink`) — 씨앗이 없으면 작업공간 없는 채팅이고, `?new=work`는 ×로 뺄 수 있는 「새 작업공간」
-//   칩을 세운다. `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — 그 탭이 그 Work의 잠긴 칩을 세운다, `WorkNewChat`). 입력 글
+//   칩을 세운다. `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — `WorkNewChat`). 입력 글
 //   씨앗(`?say=`)은 입력창에 넣기만 하고 보내는 것은 사람이다. 시작할 곳을 입력창
 //   안내가 따른다(`startPlaceholder`). 첫 말을 보내면 엔진이 고른 것대로
 //   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
-// - **트레이**(03 §5) — Thread 화면에도 선다. 입력창이 화면 아래에 붙으므로 상자 위다. Work 칩은 잠겨 보이기만 한다(`lockedWork`
-//   — 이은 Work 이름은 누르면 그 Work 화면, 「작업공간 없이 대화」, 아직 Work가 서지 않은 흐린 「새 작업공간」). 첫 말을 보내 Session이 열리기를
-//   기다리는 동안도 같은 잠긴 트레이가 바닥 입력창 위에 선다. 범위 칩과 범위 줄은 첫 말 뒤에 서지 않는다 — 범위는 대화로 바꾼다(Service 도구).
+// - **트레이**(03 §5 · restart 02b-2) — 첫 말 전의 새 채팅에만 상자 아래에 선다. 첫 말 뒤 입력창(Thread 화면 · 첫 말을 보내 Session이 열리기를
+//   기다리는 동안)에는 트레이가 없다(시안 Thread 보드) — 어디서 일하는지는 탭 줄 · 창 머리가 말하고, 범위는 대화로 바꾼다(Service 도구).
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
 //   §10). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
@@ -135,12 +134,6 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
  * 폭이다. 문서 · 설정이 읽는 `size-thread`(768)는 그대로다(02 결정 「01 · 공유 토큰은 새 이름으로」).
  */
 const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
-
-/** 이은 Work의 화면으로 가는 길 — 잠긴 Work 칩이 누른다. 사이드바 · ⌘K가 그 Work를 여는 주소와 같다(`recallSearch`). */
-function useOpenWork(): (slug: string) => void {
-  const navigate = useNavigate();
-  return useCallback((slug: string) => void navigate({ to: "/works/$slug", params: { slug }, search: recallSearch(slug) }), [navigate]);
-}
 
 /**
  * 새 Thread(`/`). `seed`는 주소가 말하는 처음 것이다 — 시작할 곳(작업공간 만들기 `/?new=work`는 「새 작업공간」, `/?new=thread`와 씨앗 없음은
@@ -270,7 +263,6 @@ function NewChat({
   /** 안내 카드의 토스트가 이 몸 아래에 서나 — 넓힌 카드가 서 있으면 그 보기의 토스트 자리가 받는다(`ThreadBody`와 같다). */
   toasts?: boolean;
 }) {
-  const openWork = useOpenWork();
   const work = link.kind === "work" ? link.slug : null;
   // 주소로 받은 Work는 제목을 쥐지 않고 왔다 — 목록에서 읽는다(없으면 slug).
   const { data: works } = useWorks();
@@ -320,10 +312,9 @@ function NewChat({
     onStarted(id);
   };
 
-  // 첫 말 전의 Work 칩은 시작할 곳이 세운다 — 작업공간 없는 채팅이면 없다. 보낸 뒤에는 잠긴 칩이다.
-  const locked: ComposerTray["work"] = { kind: "locked", locked: lockedWork(work, title, link.kind === "new-work"), onOpen: openWork };
-  const seeded: ComposerTray["work"] =
-    link.kind === "new-work" && onDropNewWork ? { kind: "new-work", onDrop: onDropNewWork } : link.kind === "work" ? locked : undefined;
+  // 첫 말 전의 트레이 앞 칩은 작업공간 만들기로 연 새 채팅의 「새 작업공간」 하나다(Composer 「새 채팅 · 범위 트레이」) — 작업공간의 새 채팅
+  // 탭은 그 탭 줄이, 작업공간 없는 채팅은 안내 글이 어디서 일하는지 말한다.
+  const seeded: ComposerTray["work"] = link.kind === "new-work" && onDropNewWork ? { kind: "new-work", onDrop: onDropNewWork } : undefined;
   const composer = (
     <ThreadComposer
       draftKey={draftKey}
@@ -352,9 +343,9 @@ function NewChat({
           </Arriving>
         )
       }
-      // 트레이는 첫 말 전에 상자 아래에서 범위를 고르고, 씨앗이 있으면 그 앞에 Work 칩이 선다. 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의
-      // 입력창처럼 상자 위에서 잠긴다. 범위 칩은 첫 말 뒤에 서지 않는다.
-      tray={starting === null ? { at: "below", work: seeded, scope } : { at: "above", work: locked }}
+      // 트레이는 첫 말 전에 상자 아래에서 범위를 고르고, 작업공간 만들기로 열었으면 그 앞에 「새 작업공간」 칩이 선다. 보낸 뒤 입력창이 바닥으로
+      // 내려가면 트레이는 걷힌다 — 범위는 대화로 바꾼다.
+      tray={starting === null ? { work: seeded, scope } : undefined}
       placeholder={startPlaceholder(link, title)}
     />
   );
@@ -853,12 +844,6 @@ function ThreadBody({
   const guide = view.readOnly ? null : guideKind(engine, awaitingLogin(lines));
   const { data: works } = useWorks();
   const linked = view.work ? (works?.find((one) => one.slug === view.work) ?? null) : null;
-  // 트레이(03 §5) — 상자 위에 서고 Work 칩은 잠겨 있다. 이은 Work의 제목은 목록에서 읽는다(아직 없으면 slug). 범위는 대화로 바꾼다(스토리 14).
-  const openWork = useOpenWork();
-  const tray: ComposerTray = {
-    at: "above",
-    work: { kind: "locked", locked: lockedWork(view.work, linked?.title ?? null, view.newWork === true), onOpen: openWork },
-  };
 
   const last = model.turns[model.turns.length - 1];
   // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」). 작업공간 밖
@@ -871,7 +856,6 @@ function ThreadBody({
   // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
   // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
   const working = model.running && asking === null;
-  const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
   const scroller = useRef<HTMLDivElement>(null);
   // 바닥에 붙어 있나 · 위에서 굴린 거리. 돌아온 채팅 탭은 쥐었던 자리에서 선다(restart 02a-6) — 위로 올려 읽던 탭은 바닥을 따라가지
@@ -1032,7 +1016,6 @@ function ThreadBody({
               model={modelChoice}
               commands={lists.commands}
               running={model.running}
-              stopped={stopped}
               onSend={(text, attachments, quote) => {
                 stuck.current = true;
                 return threadApi.send(thread, text, attachments, quote);
@@ -1040,7 +1023,6 @@ function ThreadBody({
               onStop={() => threadApi.stop(thread)}
               onNewThread={() => void navigate({ to: "/" })}
               problem={problem ?? chipProblem}
-              tray={tray}
               // 턴이 시작된 채팅의 Runtime은 잠겨 있다(스토리 31) — 이름만 선다.
               runtime={{ value: view.runtime }}
               card={

@@ -3,8 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CODEX_DEFAULT_MODE, EFFORTS, type ChoiceOption } from "./chips";
 import ThreadComposer, { type ThreadComposerProps } from "./ThreadComposer";
+import type { Attachment } from "./types";
+import { setAttachments } from "./attachments";
 import { setDraft } from "./thread-store";
-import { lockedWork } from "./work-chip";
 
 // 입력창(02 티켓 10 · 03 구현 스펙 §5 · §6 · 캔버스 v52 F4-KitComposer · v35 Diff-Chat · Screen-Live) — 정적 마크업으로 사람이 보는 것을 잰다:
 // 트레이가 어디에 서는지(첫 화면은 상자 아래, Thread 화면은 상자 위)와 그 Work 칩(첫 말 전은 고르는 칩, 뒤는 잠긴 칩), 입력창 안의 것(`+` ·
@@ -16,9 +17,10 @@ const quiet = async () => {};
 
 let drafts = 0;
 /** 입력창의 정적 마크업 — `draft`는 입력칸에 이미 쓴 글이다. */
-const composer = (over: Partial<ThreadComposerProps> = {}, draft = "") => {
+const composer = (over: Partial<ThreadComposerProps> = {}, draft = "", attached: Attachment[] = []) => {
   const draftKey = `composer-test-${(drafts += 1)}`;
   setDraft(draftKey, draft);
+  setAttachments(draftKey, attached);
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
       <ThreadComposer
@@ -48,65 +50,31 @@ const claudeModel = (models: readonly ChoiceOption[] | null = null, model: strin
 
 /** 트레이의 마크업 — 입력창(`form`)에 붙어 서는 회색 띠다. */
 const trayOf = (markup: string) => /<div data-slot="composer-tray"[^>]*>.*?<\/div>/s.exec(markup)?.[0] ?? null;
-/** 트레이가 입력창 상자의 어느 쪽에 섰나 — 마크업의 차례로 읽는다. */
-const sideOf = (markup: string) => (markup.indexOf('data-slot="composer-tray"') < markup.indexOf("<form") ? "above" : "below");
 const formOf = (markup: string) => /<form[^>]*>.*<\/form>/s.exec(markup)?.[0] ?? "";
 
-describe("트레이의 자리", () => {
+// Composer 「새 채팅 · 범위 트레이」 — 트레이는 첫 말 전의 새 채팅에만 상자 아래에 선다. 첫 말 뒤 입력창(Thread 보드)에는 트레이가 없다 — 부르는
+// 쪽이 주지 않는다(`ThreadScreen.test.tsx`). 앞에 서는 칩은 작업공간 만들기로 연 「새 작업공간」 하나다.
+describe("트레이", () => {
   it("트레이를 주지 않으면 서지 않는다", () => {
     const markup = composer();
     expect(markup).not.toContain("새 작업공간");
     expect(trayOf(markup)).toBeNull();
   });
 
-  it("첫 화면(입력창이 가운데)에서는 상자 아래에 서고, 「새 작업공간」 칩이 든다 — 입력창 안에는 없다", () => {
-    const markup = composer({ tray: { at: "below", work: { kind: "new-work", onDrop: none } } });
+  it("상자 아래에 서고 「새 작업공간」 칩이 든다 — 입력창 안에는 없고 ×로 뺀다", () => {
+    const markup = composer({ tray: { work: { kind: "new-work", onDrop: none } } });
     expect(trayOf(markup)).toContain("새 작업공간");
     expect(trayOf(markup)).toContain('aria-label="새 작업공간 빼기"');
     expect(formOf(markup)).not.toContain("새 작업공간");
-    expect(sideOf(markup)).toBe("below");
+    expect(markup.indexOf('data-slot="composer-tray"')).toBeGreaterThan(markup.indexOf("</form>"));
   });
 
   it("칩이 없는 트레이도 선다 — 씨앗 없는 새 채팅의 범위 칩 자리다", () => {
-    expect(trayOf(composer({ tray: { at: "below" } }))).not.toBeNull();
-  });
-
-  it("Thread 화면(입력창이 아래에 붙음)에서는 상자 위에 선다 — 첫 말 뒤의 칩은 잠겨 메뉴가 없다", () => {
-    const markup = composer({
-      tray: { at: "above", work: { kind: "locked", locked: lockedWork(null, null, false), onOpen: none } },
-    });
-    expect(sideOf(markup)).toBe("above");
-    expect(trayOf(markup)).toContain("작업공간 없이 대화");
-    expect(trayOf(markup)).not.toContain("aria-haspopup");
+    expect(trayOf(composer({ tray: {} }))).not.toBeNull();
   });
 
   it("입력창 자리에 카드가 서면 트레이도 걷힌다", () => {
-    const markup = composer({
-      card: <section aria-label="승인" />,
-      tray: { at: "above", work: { kind: "locked", locked: lockedWork(null, null, false), onOpen: none } },
-    });
-    expect(trayOf(markup)).toBeNull();
-  });
-});
-
-describe("잠긴 Work 칩(03 §5 · S3)", () => {
-  it("Work에 이은 Thread는 그 Work 이름이고, 누르면 그 Work로 가는 단추다", () => {
-    const tray = trayOf(
-      composer({ tray: { at: "above", work: { kind: "locked", locked: lockedWork("refund-api", "환불 API 버그 수정", false), onOpen: none } } }),
-    );
-    expect(tray).toContain('aria-label="작업공간으로 가기: 환불 API 버그 수정"');
-    expect(tray).toContain("환불 API 버그 수정");
-  });
-
-  it("Work 없는 Thread · 아직 Work가 없는 「새 작업공간」 Thread는 보이기만 한다 — 누를 것이 없다", () => {
-    for (const [locked, text] of [
-      [lockedWork(null, null, false), "작업공간 없이 대화"],
-      [lockedWork(null, null, true), "새 작업공간"],
-    ] as const) {
-      const tray = trayOf(composer({ tray: { at: "above", work: { kind: "locked", locked, onOpen: none } } })) ?? "";
-      expect(tray, text).toContain(text);
-      expect(tray, text).not.toContain("<button");
-    }
+    expect(trayOf(composer({ card: <section aria-label="승인" />, tray: { work: { kind: "new-work", onDrop: none } } }))).toBeNull();
   });
 });
 
@@ -239,11 +207,17 @@ describe("Codex 채팅의 칩", () => {
 });
 
 describe("「/」 명령 메뉴", () => {
+  // Composer 「「/」 명령」 — 메뉴 머리는 그 채팅 Runtime의 명령이다.
+  it("메뉴 머리가 그 채팅 Runtime의 이름으로 선다", () => {
+    expect(composer({ runtime: { value: "claude-code" } }, "/")).toContain(">Claude Code 명령<");
+    expect(composer({ runtime: { value: "codex" }, model: null }, "/")).toContain(">Codex 명령<");
+  });
+
   it("첫 말 전에도 `/work`가 없다 — 어디서 일할지는 씨앗이 정한다", () => {
-    const menu = composer({ tray: { at: "below", work: { kind: "new-work", onDrop: none } } }, "/");
+    const menu = composer({ tray: { work: { kind: "new-work", onDrop: none } } }, "/");
     expect(menu).toContain("/new");
     expect(menu).not.toContain("/work");
-    expect(composer({ tray: { at: "below" } }, "/work")).not.toContain('role="listbox"');
+    expect(composer({ tray: {} }, "/work")).not.toContain('role="listbox"');
   });
 });
 
@@ -266,5 +240,61 @@ describe("보내기 원 하나의 네 상태", () => {
 
   it("턴이 도는 동안 글을 쓰면 원은 「보내기」다 — 멈추기는 Esc가 맡고, 원은 하나다", () => {
     expect(sendSpot(composer({ running: true, onStop: quiet }, "이것도 봐 줘"))).toEqual([{ name: "보내기", disabled: false }]);
+  });
+});
+
+// Composer 「비어 있음」 · 「일하는 중 · 비어 있음」 · 「세션 여는 중」 · Thread 보드의 자리표시 — 빈 칸의 말이 지금 할 수 있는 일을 말한다. 새 채팅은
+// 시작할 곳의 말을 따로 준다(`startPlaceholder`).
+describe("빈 칸의 말", () => {
+  const placeholderOf = (markup: string) => /<textarea[^>]*placeholder="([^"]*)"/.exec(markup)?.[1] ?? null;
+
+  it("턴이 끝난 채팅은 후속 작업을 묻는다 — 우리가 멈춘 뒤도 같다", () => {
+    expect(placeholderOf(composer())).toBe("후속 작업을 입력하세요");
+  });
+
+  it("턴이 도는 동안은 더 말해 두면 차례로 보낸다고 말한다", () => {
+    expect(placeholderOf(composer({ running: true, onStop: quiet }))).toBe("일하는 동안 더 말해 두면 차례로 보내요");
+  });
+
+  it("새 채팅은 받은 말이고, 첫 말을 보내는 동안은 시작하는 중이다", () => {
+    expect(placeholderOf(composer({ placeholder: "무엇이든 요청하세요" }))).toBe("무엇이든 요청하세요");
+    expect(placeholderOf(composer({ placeholder: "무엇이든 요청하세요", busy: true }))).toBe("채팅을 시작하는 중…");
+  });
+});
+
+// Composer 「세션 여는 중」 · Thread 보드 `chipSkeleton` — 첫 말을 보내 Session이 열리기를 기다리는 동안 모델 칩은 Runtime이 목록을 알려 줄 때까지
+// 스켈레톤이다(Codex처럼 모델 칩이 없던 Runtime도 같다). 물어보는 정도 칩 · 잠긴 Runtime 칩은 그대로 선다.
+describe("세션 여는 중", () => {
+  it("모델 칩 자리에 스켈레톤이 서고 다른 칩은 그대로다", () => {
+    const markup = composer({ busy: true, runtime: { value: "claude-code", onPick: none } }, "환불 API 고쳐 줘");
+    expect(markup).toContain('aria-label="모델을 읽는 중"');
+    expect(markup).not.toMatch(/aria-label="모델(과 생각 깊이)? /);
+    expect(markup).toContain('aria-label="물어보는 정도 매번 묻기"');
+    expect(markup).toContain('aria-label="Runtime Claude Code"');
+  });
+
+  it("모델 칩이 없던 Runtime도 받을 때까지 스켈레톤이다", () => {
+    expect(composer({ busy: true, model: null }, "첫 말")).toContain('aria-label="모델을 읽는 중"');
+  });
+
+  it("보내기 전에는 스켈레톤이 없다", () => {
+    expect(composer()).not.toContain("모델을 읽는 중");
+  });
+});
+
+// Composer 「첨부 · 언급」 — 붙인 칩은 글리프 · 이름 · ×다. 크기는 칩에 서지 않고 가리키면 경로와 함께 보인다.
+describe("입력창의 첨부 칩", () => {
+  const ATTACHED: Attachment[] = [
+    { path: "/w/spec/overview.md", size: 2048, folder: false },
+    { path: "/w/배너 시안.png", size: 48000, folder: false },
+  ];
+  const chipsOf = (markup: string) => /<ul aria-label="첨부"[^>]*>.*?<\/ul>/s.exec(markup)?.[0] ?? "";
+  const textOf = (markup: string) => markup.replace(/<[^>]*>/g, "");
+
+  it("이름과 빼기 단추로 서고 크기는 글로 서지 않는다", () => {
+    const chips = chipsOf(composer({}, "", ATTACHED));
+    expect(textOf(chips)).toBe("overview.md배너 시안.png");
+    expect(chips).toContain('aria-label="overview.md 빼기"');
+    expect(chips).toContain('title="/w/spec/overview.md · 2.0KB"');
   });
 });
