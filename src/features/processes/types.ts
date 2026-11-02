@@ -98,7 +98,7 @@ export interface MacMeasure {
  */
 export interface AtelierTotals {
   /**
-   * 앱 전체 메모리 합계(`phys_footprint`, 바이트) — 앱 본체 + 이 실행의 셸과 자손. 예외 · 다른 인스턴스 · 고아는 안 든다. 아무것도
+   * 앱 전체 메모리 합계(`phys_footprint`, 바이트) — 앱 본체 + 이 실행의 셸과 자손 + 고아 · 예외 · 다른 인스턴스(restart 03-6). 아무것도
    * 못 읽었으면(macOS 밖) `null`이고, nav 메타는 숫자를 안 세운다.
    */
   total: number | null;
@@ -130,6 +130,54 @@ export interface ProcessSnapshot {
   mac: MacMeasure | null;
   /** 아틀리에 합계 — 줄과 같은 표본에서 지었다. 화면을 보는 동안 메모리 카드가 이것을 읽는다(10초 요약이 아니라). */
   atelier: AtelierTotals;
+  /** 아틀리에 앱의 줄 — 앱 본체와 웹뷰(restart 03-6). 판정의 행이 아니라 따로 온다. */
+  body: BodyRows;
+  /** 맥 전체의 나눔 — 다른 앱의 줄, 시스템 · 못 읽음, 합계(restart 03-6). 아틀리에의 몫은 `atelier`다. */
+  breakdown: Breakdown;
+}
+
+/**
+ * **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — Rust `processes::screen::BodyRows`. 앱 본체(Rust)와 웹뷰(WebContent)의
+ * 지표다. 아틀리에 합계의 앱 본체(`AtelierTotals.app`)가 이 둘이다. 웹뷰를 못 물었거나 못 읽었으면 그 줄이 빈다(「—」).
+ */
+export interface BodyRows {
+  rust: ProcessMetrics;
+  webview: ProcessMetrics;
+}
+
+/**
+ * **다른 앱 한 줄**(restart 03-6) — Rust `processes::apps::OtherApp`. 이 맥의 같은 uid 프로세스 중 우리 트리 밖의 것을 실행 파일의 앱
+ * 번들(가장 바깥 `.app`)로 묶었다. 보기만 한다 — 끝내기가 없다.
+ */
+export interface OtherApp {
+  /** 앱 번들 이름. 번들 밖의 프로세스(데몬 · 명령줄 도구)를 모은 줄은 `null`이다 — 화면의 「그 밖의 프로세스」. */
+  name: string | null;
+  /** 이 줄에 든 프로세스 수 — 읽은 것만이다. */
+  processes: number;
+  /** 읽은 것의 메모리(`phys_footprint`) 합(바이트). */
+  memory: number;
+  /** 읽은 것의 CPU% 합(맥 전체 = 100). 하나도 못 쟀으면(첫 표본) `null`. */
+  cpu: number | null;
+}
+
+/** 한 줄의 몫 — CPU%(맥 전체 = 100)와 메모리(바이트). 못 잰 칸은 `null`(「—」)이다. */
+export interface Share {
+  cpu: number | null;
+  memory: number | null;
+}
+
+/**
+ * **맥 전체의 나눔**(restart 03-6 · 스펙 「합이 맞는다」) — Rust `processes::breakdown::Breakdown`. 줄(아틀리에 · 다른 앱 · 시스템 · 못
+ * 읽음)을 반올림 전 값으로 더하면 합계다.
+ */
+export interface Breakdown {
+  apps: OtherApp[];
+  /** 시스템 · 못 읽음 — 맥 전체 측정값 − 읽은 합(아틀리에 + 다른 앱). 남의 uid와 못 읽은 프로세스가 여기 든다. 0 아래로 안 내려간다. */
+  system: Share;
+  /** 합계 — 읽은 합이 안 넘은 칸은 맥 전체 측정값이고, 넘은 칸은 읽은 합이다. 머리 숫자가 이것의 CPU다. */
+  total: Share;
+  /** 읽은 합이 맥 전체 측정값을 넘은 칸 — 그 칸의 시스템 · 못 읽음은 0이고 합계는 읽은 합이다. */
+  over: { cpu: boolean; memory: boolean };
 }
 
 /**

@@ -4,7 +4,16 @@ import { terminalStore } from "@/features/terminal/terminal-store";
 import { cn } from "@/lib/utils";
 import { useProcessTrend } from "./hooks";
 import { NOT_READ } from "./metrics";
-import { WEBVIEW_EXCLUDED, appBodyNote, cardCounts, cardFigures, sparkline, trendLabel, type SparkBox } from "./summary-card";
+import {
+  WEBVIEW_EXCLUDED,
+  appBodyNote,
+  cardCounts,
+  cardFigures,
+  cpuLegend,
+  sparkline,
+  trendLabel,
+  type SparkBox,
+} from "./summary-card";
 import type { ProcessSnapshot, TrendPoint } from "./types";
 
 /**
@@ -23,6 +32,7 @@ import type { ProcessSnapshot, TrendPoint } from "./types";
 export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | undefined }) {
   const { data: trend } = useProcessTrend();
   const figures = cardFigures(snapshot);
+  const legend = cpuLegend(snapshot);
   const counts = cardCounts(useStore(terminalStore, (state) => state), snapshot);
   // 못 센 수(스냅샷 전)는 「—」다 — 「0」이면 모르는 것을 없다고 한다.
   const countOrDash = (count: number | null) => (count === null ? NOT_READ : String(count));
@@ -31,8 +41,9 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
 
   return (
     <section aria-label="요약" className="grid grid-cols-5 gap-2.5">
-      {/* 넓은 타일 — 이름 줄 밑에서 왼쪽이 큰 수 · 아래 줄, 오른쪽이 추이다(DS 미리보기의 넓은 타일 — 둘 사이 16). 큰 수는 맥 전체
-          CPU(정수)이고 아래 줄이 그 눈금 — 또는 왜 숫자가 없는지(첫 표본 · macOS 밖) — 와 아틀리에 CPU다(restart 03-5). */}
+      {/* 넓은 타일 — 이름 줄 밑에서 왼쪽이 큰 수 · 아래 줄, 오른쪽이 추이다(DS 미리보기의 넓은 타일 — 둘 사이 16). 큰 수는 합계
+          CPU(정수 — 맥 전체를 나눈 줄의 합, restart 03-6)이고 아래 줄이 그 눈금 — 또는 왜 숫자가 없는지(첫 표본 · macOS 밖) — 이다. 그 밑의
+          나눔이 그 CPU를 아틀리에 · 다른 앱 · 시스템 · 못 읽음 · 여유로 가른다(시안 Processes의 범례 — 쌓인 막대는 03-11). */}
       <div className={cn(TILE, "col-span-2")}>
         <TileName icon={Cpu}>CPU</TileName>
         <div className="flex min-w-0 flex-1 items-end gap-4">
@@ -40,14 +51,20 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
             <Figure data-figure="cpu" text={figures.cpu} />
             <p className={TILE_NOTE}>
               <span data-figure="cpu-note">{figures.cpuNote}</span>
-              <Dot />
-              <span data-figure="atelier-cpu">
-                아틀리에 <span className="tabular-nums">{figures.atelierCpu}</span>
-              </span>
             </p>
           </div>
           <Trend points={trend ?? []} />
         </div>
+        {/* 나눔은 타일의 폭 전체에 선다(시안 Processes의 범례 — 카드 밑) — 큰 수 칸에 두면 추이가 좁아진다. */}
+        <p data-figure="legend" className={cn(TILE_NOTE, "mt-1")}>
+          <LegendItem name="아틀리에" value={legend.atelier} />
+          <Dot />
+          <LegendItem name="다른 앱" value={legend.others} />
+          <Dot />
+          <LegendItem name="시스템 · 못 읽음" value={legend.system} />
+          <Dot />
+          <LegendItem name="여유" value={legend.idle} />
+        </p>
       </div>
       {/* 메모리 합계 — 아틀리에 전체, 줄과 같은 2초 스냅샷이다(restart 03-5). 아래 줄이 앱 본체 — Rust 본체 + 웹뷰(WebContent).
           GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 — 누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로
@@ -102,6 +119,15 @@ function TileName({ icon: Icon, children }: { icon: LucideIcon; children: React.
     <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-tertiary">
       <Icon aria-hidden className="size-3.5 shrink-0" />
       {children}
+    </span>
+  );
+}
+
+/** CPU 나눔의 한 조각 — 이름과 정수 %(`cpuLegend`). */
+function LegendItem({ name, value }: { name: string; value: string }) {
+  return (
+    <span className="whitespace-nowrap">
+      {name} <span className="tabular-nums">{value}</span>
     </span>
   );
 }

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { NO_SHELLS, ownerOf } from "@/features/terminal/shell-registry";
 import type { Shell, ShellsState } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
-import { TREND_SPAN_MS, appBodyNote, cardCounts, cardFigures, sparkline, trendLabel } from "./summary-card";
+import { TREND_SPAN_MS, appBodyNote, cardCounts, cardFigures, cpuLegend, sparkline, trendLabel } from "./summary-card";
 import { NOT_READ } from "./metrics";
-import { macOf, poolShell, processRow, snapshotFixture } from "./process-fixture";
+import { breakdownOf, macOf, otherAppOf, poolShell, processRow, snapshotFixture } from "./process-fixture";
 import type { ProcessGroups, ProcessRow, TrendPoint } from "./types";
 
 // 프로세스 티켓 30 — **요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」). 카드는 새 박자를 걸지 않고
@@ -113,19 +113,36 @@ describe("요약 카드의 머리 값 — 한 표본(restart 03-5)", () => {
   const 잰장 = snapshotFixture({
     mac: macOf(37.5, 12 * GiB, 10),
     atelier: { total: 1.5 * GiB, cpu: 3.25, app: 610 * MiB, webviewExcluded: false },
+    breakdown: breakdownOf({ total: { cpu: 37.5, memory: 12 * GiB } }),
   });
 
-  // **머리는 맥 전체 CPU다**(스토리 122) — 정수로 반올림한다. 아래 줄이 그 눈금(맥 전체 · 코어 수)을 말한다. 아틀리에 CPU와 메모리
-  // 카드도 **같은 스냅샷**에서 읽는다 — 10초 요약을 섞으면 머리와 줄이 다른 표본이 된다. 아틀리에 CPU는 줄과 같은 소수 한 자리다.
-  it("머리 · 아틀리에 CPU · 메모리 카드가 한 스냅샷에서 선다", () => {
+  // **머리는 합계 CPU다**(스토리 122 · restart 03-6) — 정수로 반올림한다. 읽은 합이 안 넘은 장의 합계는 맥 전체 측정값이다. 아래 줄이 그
+  // 눈금(맥 전체 · 코어 수)을 말한다. 메모리 카드도 **같은 스냅샷**에서 읽는다 — 10초 요약을 섞으면 머리와 줄이 다른 표본이 된다. 아틀리에
+  // CPU는 나눔(`cpuLegend`)이 든다.
+  it("머리 · 메모리 카드가 한 스냅샷에서 선다", () => {
     expect(cardFigures(잰장)).toEqual({
       cpu: "38%",
       cpuNote: "맥 전체 · 코어 10개",
-      atelierCpu: "3.3%",
       memory: "1.5GB",
       app: "610MB",
       webviewExcluded: false,
     });
+  });
+
+  // **읽은 합이 측정값을 넘는 표본에서는 읽은 합이 머리 숫자다**(스펙 「합이 맞는다」) — 줄을 더한 합계와 머리가 같은 값이다. 맥 전체
+  // 측정값(20%)이 아니다.
+  it("읽은 합이 측정값을 넘으면 머리는 읽은 합이다", () => {
+    const over = snapshotFixture({
+      mac: macOf(20.0, 12 * GiB),
+      atelier: { total: GiB, cpu: 12.0, app: 610 * MiB, webviewExcluded: false },
+      breakdown: breakdownOf({
+        apps: [otherAppOf("Sketchpad", 3, GiB, 10.4)],
+        system: { cpu: 0, memory: 10 * GiB },
+        total: { cpu: 22.4, memory: 12 * GiB },
+        over: { cpu: true, memory: false },
+      }),
+    });
+    expect(cardFigures(over).cpu).toBe("22%");
   });
 
   // **첫 표본은 CPU를 모른다** — 두 표본의 차이라 두 번 재야 안다(시안 「첫 표본」). 메모리는 첫 장부터 선다.
@@ -135,12 +152,7 @@ describe("요약 카드의 머리 값 — 한 표본(restart 03-5)", () => {
       atelier: { total: 1.5 * GiB, cpu: null, app: 610 * MiB, webviewExcluded: false },
     });
     const figures = cardFigures(first);
-    expect([figures.cpu, figures.cpuNote, figures.atelierCpu, figures.memory]).toEqual([
-      NOT_READ,
-      "두 번 재야 알 수 있어요",
-      NOT_READ,
-      "1.5GB",
-    ]);
+    expect([figures.cpu, figures.cpuNote, figures.memory]).toEqual([NOT_READ, "두 번 재야 알 수 있어요", "1.5GB"]);
   });
 
   // **macOS 밖은 맥 전체를 재지 않는다**(스펙 「Out of Scope」) — 숫자 대신 「측정 안 됨」으로 말하고, 깨지지 않는다.
@@ -154,7 +166,6 @@ describe("요약 카드의 머리 값 — 한 표본(restart 03-5)", () => {
     expect(cardFigures(undefined)).toEqual({
       cpu: NOT_READ,
       cpuNote: "재는 중",
-      atelierCpu: NOT_READ,
       memory: NOT_READ,
       app: NOT_READ,
       webviewExcluded: false,
@@ -220,5 +231,48 @@ describe("앱 본체의 툴팁", () => {
     expect(appBodyNote(false)).not.toContain("못 셌");
     expect(appBodyNote(true)).toContain("GPU");
     expect(appBodyNote(true)).toContain("못 셌");
+  });
+});
+
+describe("CPU 카드의 나눔 — 아틀리에 · 다른 앱 · 시스템 · 못 읽음 · 여유(restart 03-6)", () => {
+  const GiB = 1024 * 1024 * 1024;
+
+  // **그 CPU를 무엇이 얼마나 쓰는지 나눠 보인다**(스토리 123). 머리처럼 정수다. 시스템 · 못 읽음은 머리에서 아틀리에와 다른 앱을 뺀
+  // 정수라 셋을 더하면 머리 숫자다 — 따로 반올림하면 3 + 10 + 5가 18이 아니게 된다. 여유는 100에서 머리를 뺀 것이다.
+  it("나눔의 정수를 더하면 머리 숫자다", () => {
+    const sheet = snapshotFixture({
+      mac: macOf(18.45, 8 * GiB),
+      atelier: { total: GiB, cpu: 3.25, app: GiB, webviewExcluded: false },
+      breakdown: breakdownOf({
+        apps: [otherAppOf("Sketchpad", 4, GiB, 9.1), otherAppOf(null, 30, GiB, 1.2)],
+        system: { cpu: 4.9, memory: 5 * GiB },
+        total: { cpu: 18.45, memory: 8 * GiB },
+      }),
+    });
+    expect(cardFigures(sheet).cpu).toBe("18%");
+    expect(cpuLegend(sheet)).toEqual({ atelier: "3%", others: "10%", system: "5%", idle: "82%" });
+  });
+
+  // **여유는 0 아래로 내려가지 않는다**(스펙 「합이 맞는다」) — 읽은 합이 측정값을 넘어 합계가 100을 넘는 표본이다. 시스템 · 못 읽음도
+  // 0이다.
+  it("합계가 100을 넘는 표본에서 여유는 0이다", () => {
+    const sheet = snapshotFixture({
+      mac: macOf(99.0, 8 * GiB),
+      atelier: { total: GiB, cpu: 40.5, app: GiB, webviewExcluded: false },
+      breakdown: breakdownOf({
+        apps: [otherAppOf("Sketchpad", 4, GiB, 61.1)],
+        system: { cpu: 0, memory: 6 * GiB },
+        total: { cpu: 101.6, memory: 8 * GiB },
+        over: { cpu: true, memory: false },
+      }),
+    });
+    expect(cpuLegend(sheet)).toEqual({ atelier: "41%", others: "61%", system: "0%", idle: "0%" });
+  });
+
+  // 합계를 모르면(첫 스냅샷 전 · 첫 표본 · macOS 밖) 나눔도 모른다 — 「0%」라 하면 모르는 것을 없다고 한다.
+  it("합계를 모르면 나눔은 「—」다", () => {
+    const blank = { atelier: NOT_READ, others: NOT_READ, system: NOT_READ, idle: NOT_READ };
+    expect(cpuLegend(undefined)).toEqual(blank);
+    expect(cpuLegend(snapshotFixture({ mac: macOf(null, 8 * GiB) }))).toEqual(blank);
   });
 });

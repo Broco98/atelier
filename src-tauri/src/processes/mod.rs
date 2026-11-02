@@ -49,6 +49,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod apps;
+pub(crate) mod breakdown;
 pub(crate) mod cleanup_log;
 pub(crate) mod clock;
 pub(crate) mod ending;
@@ -136,6 +138,9 @@ pub struct Proc {
     /// 명령줄 — exec 때의 argv 전체를 빈칸 하나로 이었다(티켓 11). 부른 이름과 같은 버퍼에서 읽어 따로 드는 비용이 없고,
     /// `argv0`처럼 env를 읽은 행에만 있다. 정리 기록이 앞 200자를 담고(`cleanup_log`), 판 04의 자손 행 툴팁이 쓴다.
     pub command: Option<String>,
+    /// 실행 파일 경로 — exec 때 커널이 받은 그대로다(`KERN_PROCARGS2`의 맨 앞 칸). 부른 이름과 같은 버퍼에서 읽어 따로 드는 비용이
+    /// 없고, `argv0`처럼 env를 읽은 행에만 있다. 「다른 앱」이 이 경로의 앱 번들로 묶는다(`apps` — restart 03-6).
+    pub path: Option<String>,
     /// 표식(exec 때의 셸 키). 없거나 못 읽었으면 `None`.
     ///
     /// **exec 때의 env다.** 뜬 뒤에 바꾼 env는 안 보인다. 시스템 바이너리(`/bin/zsh`, `/bin/sleep`)는

@@ -1,12 +1,16 @@
 import type {
   AtelierTotals,
+  BodyRows,
+  Breakdown,
   MacMeasure,
+  OtherApp,
   PoolShell,
   ProcessGroups,
   ProcessIdentity,
   ProcessMetrics,
   ProcessRow,
   ProcessSnapshot,
+  Share,
 } from "./types";
 
 // 검사가 짓는 프로세스 자료 — 지표 · 신원 · 스냅샷의 행 · 풀의 셸 · 스냅샷. **이 모양을 리터럴로 짓는 자리를 여기 하나로 모았다**(코드
@@ -83,6 +87,32 @@ export const poolShell = (ptyId: number, shellKey: string, lastOutputMs: number,
 /** 아무것도 못 읽은 아틀리에 합계(macOS 밖의 앱과 같다) — 숫자가 모두 비고 웹뷰는 제외다. */
 export const NO_TOTALS: AtelierTotals = { total: null, cpu: null, app: null, webviewExcluded: true };
 
+/** 아무것도 못 읽은 아틀리에 앱의 줄(macOS 밖의 앱과 같다). */
+export const NO_BODY: BodyRows = { rust: NO_METRICS, webview: NO_METRICS };
+
+/** 못 잰 몫 — 「—」. */
+export const NO_SHARE: Share = { cpu: null, memory: null };
+
+/**
+ * 맥 전체의 나눔(restart 03-6). 기본은 **맥 전체를 못 잰 장**이다(macOS 밖의 앱과 같다) — 다른 앱이 없고 시스템 · 못 읽음과 합계가 빈다.
+ * 검사는 재는 칸만 덮어쓴다. 백엔드처럼 줄의 합을 지어 주지 않는다 — 합이 맞는지는 Rust(`breakdown`)가 재고, 화면은 받은 값을 보인다.
+ */
+export const breakdownOf = (over: Partial<Breakdown> = {}): Breakdown => ({
+  apps: [],
+  system: NO_SHARE,
+  total: NO_SHARE,
+  over: { cpu: false, memory: false },
+  ...over,
+});
+
+/** 다른 앱 한 줄 — 이름이 `null`이면 번들 밖의 줄이다. CPU를 안 주면 첫 표본이다. */
+export const otherAppOf = (name: string | null, processes: number, memory: number, cpu: number | null = null): OtherApp => ({
+  name,
+  processes,
+  memory,
+  cpu,
+});
+
 /** 맥 전체 한 표본 — CPU를 안 주면 첫 표본(`null`)이다. 코어는 열 개다(시안 ProcessSheet의 예). */
 export const macOf = (cpu: number | null, memory: number | null = null, cores = 10): MacMeasure => ({ cpu, memory, cores });
 
@@ -112,6 +142,8 @@ export function snapshotFixture({ verdict = {}, ...over }: SnapshotOver = {}): P
     measuredAt: MEASURED_AT,
     mac: null,
     atelier: NO_TOTALS,
+    body: NO_BODY,
+    breakdown: breakdownOf(),
     ...over,
   };
 }

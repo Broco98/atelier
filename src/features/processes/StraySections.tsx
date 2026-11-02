@@ -13,7 +13,7 @@ import {
   type ProcessNode,
   type ShownNode,
 } from "./process-tree";
-import { Section, SectionButton, TreeRow } from "./tree-rows";
+import { Section, SectionButton, TreeRow, ViewOnly } from "./tree-rows";
 
 /**
  * **셸 묶음 밑의 네 묶음** — 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31).
@@ -108,11 +108,6 @@ function StraySections({ strays, folds }: { strays: Strays; folds: Folds }) {
 }
 
 const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
-
-/** 프로세스 결정 10 그림의 「보기 전용」 — 구획 머리의 동작 자리에 선다. 버튼이 아니다. */
-function ViewOnly() {
-  return <span className="shrink-0 px-2 text-xs text-fg-tertiary">보기 전용</span>;
-}
 
 /**
  * 묶음의 프로세스 한 줄 — 셸의 자손 행과 같은 모양이다: 부른 이름(명령줄은 이름 글자의 툴팁 — 줄 안의 ⋯가 앱 툴팁을 들어 줄에 걸면

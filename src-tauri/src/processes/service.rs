@@ -15,6 +15,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use super::apps;
 use super::cleanup_log::{self, Event};
 use super::instances::Record;
 use super::machine;
@@ -88,6 +89,10 @@ impl ProcessService {
     /// 넣고, 아틀리에 합계를 같은 지표로 짓는다. 그래서 앱 본체(Rust · WebContent)도 읽는다 — WebContent는 배경 표본처럼 웹뷰에게
     /// 묻는다(메인 스레드로 가는 물음이라 풀 잠금 밖이다).
     ///
+    /// **다른 앱도 이 표본에서 읽는다**(restart 03-6 「합이 맞는다」) — 같은 표의 같은 uid 프로세스 중 우리 트리 밖의 것을 메모리 · CPU만
+    /// 읽어(`metrics::read_usage` — fd는 안 훑는다) 같은 미터에 넣고, 앱 번들로 묶는다(`apps`). 맥 전체에서 아틀리에와 다른 앱을 뺀 것이
+    /// 시스템 · 못 읽음이다(`breakdown`).
+    ///
     /// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
     pub fn screen(&self) -> ScreenSnapshot {
         let snapshot = snapshot::take(EnvScope::All);
@@ -105,13 +110,18 @@ impl ProcessService {
         });
         let asked = self.background.web_content.identity(snapshot::identity_of);
         let body = Body { rust: snapshot::identity_of(std::process::id()), web_content: asked.id };
-        let readings = metrics::read(screen::targets(&verdict, &listed, &body));
+        // 우리 트리는 포트까지, 그 밖의 같은 uid 프로세스(다른 앱)는 메모리 · CPU만 읽어 한 표본에 합친다(restart 03-6).
+        let ours = screen::targets(&verdict, &listed, &body);
+        let theirs = apps::targets(&snapshot, &ours);
+        let mut readings = metrics::read(ours.iter().copied());
+        readings.absorb(metrics::read_usage(theirs.iter().map(|proc| proc.id)));
         let measured = self.screen_cpu().measure(Instant::now(), readings, machine::read());
+        let apps = apps::of(&theirs, &measured);
         // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
         let instances = screen::instances(&verdict, &records, |generation| self.pool.record().file(generation));
         // `●`를 켜는 기록의 머리 — 요약을 모으는 자리와 같은 곳에서 고른다(`gather`). 화면이 보는 동안 본 것으로 앉힌다(티켓 29).
         let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
-        ScreenSnapshot::of(&verdict, listed, &body, &measured, instances, head)
+        ScreenSnapshot::of(&verdict, listed, &body, &measured, apps, instances, head)
     }
 
     /// **요약 한 장을 모은다**(`gather`) — 요약 IPC가 마지막 장이 없을 때 그 자리에서 부른다(`summary`). 배경 표본은 그 장을 미룰지도
@@ -312,8 +322,8 @@ mod tests {
         assert!(listed < records, "기록({records})을 셸 목록({listed})보다 먼저 읽는다");
         assert!(body.contains("shells: &live,"), "판정에 풀이 준 셸 목록을 안 넘긴다");
         assert!(
-            body.contains("ScreenSnapshot::of(&verdict, listed, &body, &measured, instances, head)"),
-            "판정 결과와 풀의 셸 목록과 앱 본체와 지표와 다른 인스턴스의 실행들과 기록의 머리를 그대로 싣지 않는다"
+            body.contains("ScreenSnapshot::of(&verdict, listed, &body, &measured, apps, instances, head)"),
+            "판정 결과와 풀의 셸 목록과 앱 본체와 지표와 다른 앱과 다른 인스턴스의 실행들과 기록의 머리를 그대로 싣지 않는다"
         );
         assert!(
             body.contains("let head = cleanup_log::look_head(&self.pool.record().cleanup_events());"),
@@ -335,20 +345,32 @@ mod tests {
     ///
     /// **머리 값도 같은 표본이다**(restart 03-5) — 맥 전체를 지표와 같은 미터 물음 하나에 넣고(`measure(…, machine::read())`), 앱 본체는
     /// 지표를 읽기 전에 서야 아틀리에 합계에 든다. 웹뷰에게 WebContent를 묻는 것은 풀 잠금 밖이다(메인 스레드로 가는 물음).
+    ///
+    /// **다른 앱도 같은 표본이다**(restart 03-6) — 우리 트리 밖의 같은 uid 프로세스(`apps::targets`)를 메모리 · CPU만 읽어(`read_usage` —
+    /// 포트 없음) 우리 트리의 읽기에 합치고, 같은 미터 물음에 넣는다. 그래야 줄을 더한 것과 맥 전체가 같은 두 순간 사이의 값이다. 다른 앱의
+    /// 줄은 그 표본에서 묶는다.
     #[test]
     fn the_screen_measures_what_the_verdict_picked_outside_the_pool_lock() {
         let body = method_body("pub fn screen(");
         let judged = body.find("verdict::judge(").expect("판정한다");
-        let read = body.find("metrics::read(screen::targets(&verdict, &listed, &body))").expect("판정이 고른 것과 앱 본체만 지표를 읽는다");
+        let ours = body.find("let ours = screen::targets(&verdict, &listed, &body);").expect("판정이 고른 것과 앱 본체가 우리 트리다");
+        let read = body.find("metrics::read(ours.iter().copied())").expect("우리 트리만 포트까지 읽는다");
         let listed = body.find("self.pool.listing()").expect("풀의 셸 목록을 받는다");
-        assert!(listed < read && judged < read, "지표를 판정({judged})이나 풀의 셸 목록({listed}) 전에 읽는다 — {read}");
+        assert!(listed < ours && judged < ours, "우리 트리를 판정({judged})이나 풀의 셸 목록({listed}) 전에 가른다 — {ours}");
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
         let asked = body.find("self.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
-        assert!(listed < asked && asked < read, "WebContent를 셸 목록({listed}) 앞이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
+        assert!(listed < asked && asked < ours, "WebContent를 셸 목록({listed}) 앞이나 우리 트리를 가른 뒤({ours})에 묻는다 — {asked}");
+        let theirs = body.find("apps::targets(&snapshot, &ours)").expect("다른 앱은 같은 표의 우리 트리 밖이다");
+        let usage = body
+            .find("readings.absorb(metrics::read_usage(theirs.iter().map(|proc| proc.id)));")
+            .expect("다른 앱은 메모리 · CPU만 읽어 같은 표본에 합친다");
+        assert_eq!(body.matches("metrics::read_usage(").count(), 1, "다른 앱을 두 번 읽는다");
         let sampled = body.find("self.screen_cpu().measure(Instant::now(), readings, machine::read())").expect(
             "이 자리가 쥔 앞 표본과 견주고, 맥 전체를 같은 표본으로 넣는다",
         );
-        assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
+        assert!(read < sampled && theirs < usage && usage < sampled, "읽기({read} · {usage}) 전에 CPU% 표본을 넣는다({sampled})");
+        let grouped = body.find("let apps = apps::of(&theirs, &measured);").expect("다른 앱의 줄을 같은 표본에서 묶는다");
+        assert!(sampled < grouped, "표본({sampled}) 전에 다른 앱을 묶는다({grouped})");
         assert_eq!(body.matches("machine::read(").count(), 1, "맥 전체를 두 번 읽는다 — 머리와 줄이 다른 표본이 된다");
         assert!(!body.contains("CpuMeter::"), "부를 때마다 앞 표본을 새로 세운다 — CPU%가 늘 첫 표본이다");
     }
@@ -453,9 +475,72 @@ mod tests {
             assert!(mac.cpu.is_some_and(|cpu| (0.0..=100.0).contains(&cpu)), "둘째 장의 맥 전체 CPU가 0~100이 아니다 — {:?}", mac.cpu);
             assert_eq!(mac.cores, machine::cores(), "코어 수가 앱이 읽은 수가 아니다");
             assert!(second.atelier.total.is_some(), "아틀리에 합계를 같은 장에서 못 지었다 — 앱 본체를 안 읽었다");
-            assert_eq!(second.atelier.total, second.atelier.app, "셸 없는 풀의 아틀리에 합계가 앱 본체가 아니다");
+            // 셸 없는 풀이라 합계는 앱 본체 + 판정이 묶음에 넣은 행이다(restart 03-6 — 이 맥에 떠 있는 다른 아틀리에의 셸 자손은 이 검사의
+            // 빈 기록에게 출처 불명으로 선다). 같은 장의 줄에서 더한 것과 같다.
+            let v = &second.verdict;
+            let rows = v
+                .descendants
+                .values()
+                .chain(v.orphans.confirmed.values())
+                .chain(v.orphans.unknown.values())
+                .chain(v.other_instances.values())
+                .flatten()
+                .chain(v.exceptions.iter());
+            let shown = second.atelier.app.unwrap_or(0) + rows.filter_map(|row| row.metrics.memory).sum::<u64>();
+            assert_eq!(second.atelier.total, Some(shown), "셸 없는 풀의 아틀리에 합계가 앱 본체 + 판정의 줄이 아니다");
         } else {
             assert_eq!(second.mac, None, "macOS 밖에서 맥 전체가 섰다");
+        }
+    }
+
+    /// **화면 스냅샷의 줄을 더하면 합계다**(restart 03-6 · 스펙 「합이 맞는다」 · 티켓 AC). 이 맥에서 찍은 장의 아틀리에 · 다른 앱 · 시스템
+    /// · 못 읽음을 반올림 전 값으로 더하면 합계다. 읽은 합이 안 넘은 칸의 합계는 맥 전체 측정값이고, 넘은 칸은 시스템 · 못 읽음이 0이고 합계가
+    /// 측정값보다 크다. 다른 앱은 이 맥의 같은 uid 프로세스라 줄이 선다(이 검사를 띄운 것들). macOS 밖은 맥 전체를 몰라 시스템 · 못 읽음과
+    /// 합계가 없다.
+    ///
+    /// 맥 전체 CPU가 설 때까지 0.2초마다 다시 찍는다(3초 — 커널이 tick을 몰아서 더한다). 이 맥의 표를 찍고 읽기만 한다.
+    #[test]
+    fn the_screen_rows_add_up_to_its_total() {
+        let service = service();
+        let mut sheet = service.screen();
+        for _ in 0..15 {
+            if sheet.mac.is_none_or(|mac| mac.cpu.is_some()) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            sheet = service.screen();
+        }
+        let split = &sheet.breakdown;
+        let Some(mac) = sheet.mac else {
+            assert_eq!((split.system, split.total), Default::default(), "macOS 밖에서 시스템 · 못 읽음이나 합계가 섰다");
+            return;
+        };
+        assert!(!split.apps.is_empty(), "다른 앱이 하나도 안 섰다 — 이 맥의 같은 uid 프로세스를 안 읽었다");
+
+        let measured_cpu = mac.cpu.expect("3초 동안 맥 전체 CPU가 안 섰다");
+        let total_cpu = split.total.cpu.expect("합계 CPU가 없다");
+        let rows_cpu = sheet.atelier.cpu.unwrap_or(0.0)
+            + split.apps.iter().filter_map(|app| app.cpu).sum::<f64>()
+            + split.system.cpu.expect("시스템 · 못 읽음 CPU가 없다");
+        assert!((rows_cpu - total_cpu).abs() < 1e-9, "줄의 CPU({rows_cpu})를 더한 것이 합계({total_cpu})가 아니다");
+        if split.over.cpu {
+            assert_eq!(split.system.cpu, Some(0.0), "넘은 표본의 시스템 · 못 읽음이 0이 아니다");
+            assert!(total_cpu > measured_cpu, "넘었다는데 합계({total_cpu})가 측정값({measured_cpu})보다 크지 않다");
+        } else {
+            assert!((total_cpu - measured_cpu).abs() < 1e-9, "합계({total_cpu})가 맥 전체({measured_cpu})가 아니다");
+        }
+
+        let measured_memory = mac.memory.expect("맥 전체 메모리가 없다");
+        let total_memory = split.total.memory.expect("합계 메모리가 없다");
+        let rows_memory = sheet.atelier.total.unwrap_or(0)
+            + split.apps.iter().map(|app| app.memory).sum::<u64>()
+            + split.system.memory.expect("시스템 · 못 읽음 메모리가 없다");
+        assert_eq!(rows_memory, total_memory, "줄의 메모리를 더한 것이 합계가 아니다");
+        if split.over.memory {
+            assert_eq!(split.system.memory, Some(0));
+            assert!(total_memory > measured_memory);
+        } else {
+            assert_eq!(total_memory, measured_memory, "합계 메모리가 맥 전체가 아니다");
         }
     }
 

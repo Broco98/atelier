@@ -1475,6 +1475,7 @@ mod tests {
             name: format!("p{pid}"),
             argv0: None,
             command: None,
+            path: None,
             shell_key: key.map(str::to_string),
         };
         let procs = vec![
@@ -1782,6 +1783,7 @@ mod tests {
             name: name.to_string(),
             argv0: None,
             command: None,
+            path: None,
             shell_key: None,
         };
         let attempts = settled.map(|kid_id| {

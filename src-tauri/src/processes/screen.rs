@@ -18,11 +18,16 @@
 //!
 //! **머리 값도 같은 표본에서 싣는다**(restart 03-5 「한 표본」) — 잰 시각, 맥 전체(`machine::Machine`), 아틀리에 합계(`summary::Totals`
 //! — 요약과 같은 함수). 화면을 보는 동안 머리와 줄과 메모리 카드가 이 한 장에서 선다. 그 밖(nav 메타)은 배경 10초 요약이다.
+//!
+//! **줄을 더하면 합계가 되게 싣는다**(restart 03-6) — 아틀리에 앱의 줄(앱 본체 · 웹뷰 — `BodyRows`), 다른 앱의 줄과 시스템 · 못 읽음 ·
+//! 합계(`breakdown::Breakdown`). 아틀리에의 몫은 `atelier`다. 다른 앱은 같은 표본의 같은 미터로 쟀다(`service`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
+use super::apps::OtherApp;
+use super::breakdown::Breakdown;
 use super::instances::{Build, InstanceFile};
 use super::machine::Machine;
 use super::metrics::Measured;
@@ -51,6 +56,19 @@ pub struct ScreenSnapshot {
     pub mac: Option<Machine>,
     /// 아틀리에 합계 — 줄과 같은 표본에서 지었다(restart 03-5). 요약의 그것과 같은 함수다(`Totals::of`).
     pub atelier: Totals,
+    /// 아틀리에 앱의 줄 — 앱 본체와 웹뷰(restart 03-6). 판정의 행이 아니라 따로 싣는다 — 판정은 앱 자신을 안 가른다.
+    pub body: BodyRows,
+    /// 맥 전체의 나눔 — 다른 앱의 줄, 시스템 · 못 읽음, 합계(restart 03-6). 줄(아틀리에 · 다른 앱 · 시스템 · 못 읽음)을 더하면 합계다.
+    pub breakdown: Breakdown,
+}
+
+/// **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰(WebContent). 아틀리에 합계의 앱 본체가 이
+/// 둘이다(S39). 웹뷰를 못 물었거나 못 읽었으면 그 줄의 숫자가 빈다(「—」 — 요약 카드의 「웹뷰 제외」와 같은 때다).
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BodyRows {
+    pub rust: Metrics,
+    pub webview: Metrics,
 }
 
 /// **다른 인스턴스 하나** — 지금 떠 있는 다른 아틀리에 실행(프로세스 스펙 S54 · 티켓 31). 화면이 이 실행마다 빌드 종류와 버전을
@@ -151,13 +169,15 @@ pub struct Row {
 }
 
 impl ScreenSnapshot {
-    /// 판정 하나와 풀의 셸 목록, 앱 본체, 이번 표본의 지표, 다른 인스턴스의 실행들(`instances`), 정리 기록의 머리로 한 장을 짓는다.
-    /// 아틀리에 합계는 풀의 셸 프로세스를 이 실행의 셸로 센다(요약의 `gather`와 같다).
+    /// 판정 하나와 풀의 셸 목록, 앱 본체, 이번 표본의 지표, 다른 앱의 줄(`apps`), 다른 인스턴스의 실행들(`instances`), 정리 기록의
+    /// 머리로 한 장을 짓는다. 아틀리에 합계는 풀의 셸 프로세스를 이 실행의 셸로 센다(요약의 `gather`와 같다). 나눔은 그 합계와 다른 앱의
+    /// 줄을 같은 표본의 맥 전체에서 가른다.
     pub fn of(
         verdict: &Verdict,
         pool: Vec<PoolShell>,
         body: &Body,
         measured: &Measured,
+        apps: Vec<OtherApp>,
         instances: Vec<Instance>,
         record_head: Option<u64>,
     ) -> Self {
@@ -166,6 +186,7 @@ impl ScreenSnapshot {
         let by_key = |groups: &BTreeMap<&str, Vec<&Proc>>| -> BTreeMap<String, Vec<Row>> {
             groups.iter().map(|(key, procs)| (key.to_string(), rows(procs))).collect()
         };
+        let atelier = Totals::of(verdict, &shells, body, measured);
         ScreenSnapshot {
             verdict: Groups {
                 descendants: by_key(&verdict.descendants),
@@ -182,7 +203,9 @@ impl ScreenSnapshot {
             record_head,
             measured_at: measured.measured_at,
             mac: measured.machine,
-            atelier: Totals::of(verdict, &shells, body, measured),
+            body: BodyRows { rust: metrics_of(measured, body.rust), webview: metrics_of(measured, body.web_content) },
+            breakdown: Breakdown::of(&atelier, apps, measured.machine),
+            atelier,
         }
     }
 }
@@ -217,13 +240,14 @@ pub fn instances(
         .collect()
 }
 
-/// **지표를 읽을 신원 — 우리 트리의 프로세스만**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부와 풀의 셸 프로세스, 앱 본체다(아틀리에
-/// 합계를 줄과 같은 표본에서 지으려고 — restart 03-5, `summary::targets`가 드는 것은 모두 여기 든다). 이 맥의
-/// 다른 프로세스는 읽지 않는다: 포트는 프로세스마다 fd를 훑는 일이라, 표 전체를 2초마다 훑으면 화면 하나가 이 맥의 모든 소켓을
-/// 뒤진다. 예외 묶음도 우리 트리 안의 것이다 — 판정이 셸별 자손이나 표식 묶음에 들 행에서만 예외를 가른다(launchd의
-/// `ssh-agent`, 앱 밖 tmux는 판정 밖이라 여기 안 온다). 셸 도우미는 셸의 자손 묶음에 이미 들었다.
+/// **포트까지 읽을 신원 — 우리 트리의 프로세스만**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부와 풀의 셸 프로세스, 앱 본체다 — 아틀리에
+/// 합계에 드는 것과 같다(`summary::targets` — restart 03-6). 이 맥의 다른 프로세스는 포트를 읽지 않는다: 포트는 프로세스마다 fd를 훑는
+/// 일이라, 표 전체를 2초마다 훑으면 화면 하나가 이 맥의 모든 소켓을 뒤진다(같은 uid의 그것들은 메모리 · CPU만 읽는다 — `apps`). 예외
+/// 묶음도 우리 트리 안의 것이다 — 판정이 셸별 자손이나 표식 묶음에 들 행에서만 예외를 가른다(launchd의 `ssh-agent`, 앱 밖 tmux는 판정
+/// 밖이라 여기 안 온다). 셸 도우미는 셸의 자손 묶음에 이미 들었다.
 pub fn targets(verdict: &Verdict, pool: &[PoolShell], body: &Body) -> BTreeSet<Identity> {
-    verdict.rows().map(|proc| proc.id).chain(pool.iter().filter_map(|shell| shell.process)).chain(body.ids()).collect()
+    let shells: Vec<Identity> = pool.iter().filter_map(|shell| shell.process).collect();
+    super::summary::targets(verdict, &shells, body)
 }
 
 impl Row {
@@ -256,6 +280,7 @@ mod tests {
             name: name.to_string(),
             argv0: None,
             command: None,
+            path: None,
             shell_key: None,
         }
     }
@@ -279,6 +304,9 @@ mod tests {
     /// **한 표본의 머리 값도 싣는다**(restart 03-5) — 잰 시각(에포크 ms), 맥 전체(CPU% · 메모리 · 코어 수), 아틀리에 합계(메모리 · CPU ·
     /// 앱 본체 · 「웹뷰 제외」). 화면을 보는 동안 머리와 줄과 메모리 카드가 이 한 장에서 선다. 맥 전체를 안 쟀으면(macOS 밖) `mac`이
     /// `null`이다 — 「측정 안 됨」.
+    ///
+    /// **아틀리에 앱의 줄과 나눔도 싣는다**(restart 03-6) — 앱 본체(Rust)와 웹뷰(WebContent)의 지표(`body`), 다른 앱의 줄 · 시스템 ·
+    /// 못 읽음 · 합계(`breakdown`). 아틀리에 합계에는 예외 · 고아 · 다른 인스턴스도 든다.
     #[test]
     fn the_snapshot_crosses_the_wire_in_the_shape_the_frontend_reads() {
         let mut vite = row(200, 100, "node");
@@ -317,8 +345,9 @@ mod tests {
                 (esbuild.id, reading(20_971_520, vec![])),
                 (zsh, reading(4_194_304, vec![])),
                 (app, reading(419_430_400, vec![])),
+                (tmux.id, reading(10_485_760, vec![])),
             ]),
-            cpu: HashMap::from([(vite.id, 12.5), (zsh, 0.25), (app, 1.25)]),
+            cpu: HashMap::from([(vite.id, 12.5), (zsh, 0.25), (app, 1.25), (tmux.id, 0.5)]),
             machine: Some(Machine { cpu: Some(37.5), memory: Some(12_884_901_888), cores: 10 }),
             measured_at: 1_758_000_100_000,
         };
@@ -326,6 +355,12 @@ mod tests {
         let instances = vec![
             Instance { generation: "H".into(), build: Some(Build::Release), version: Some("0.15.0".into()), shell_keys: vec!["H-2".into()] },
             Instance { generation: "D".into(), build: None, version: None, shell_keys: vec!["D-7".into()] },
+        ];
+
+        // 다른 앱 — 번들 하나와 번들 밖의 줄(`apps::of`가 짓는다).
+        let apps = vec![
+            OtherApp { name: Some("Sketchpad".into()), processes: 2, memory: 1_073_741_824, cpu: Some(9.5) },
+            OtherApp { name: None, processes: 3, memory: 67_108_864, cpu: Some(0.5) },
         ];
 
         let unmeasured = serde_json::json!({ "memory": null, "cpu": null, "ports": [] });
@@ -340,7 +375,7 @@ mod tests {
             })
         };
         assert_eq!(
-            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &body, &measured, instances, Some(7))).unwrap(),
+            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &body, &measured, apps, instances, Some(7))).unwrap(),
             serde_json::json!({
                 "verdict": {
                     "descendants": {
@@ -365,7 +400,14 @@ mod tests {
                         ],
                         "G-2": [],
                     },
-                    "exceptions": [plain(300, 1, "tmux")],
+                    "exceptions": [{
+                        "id": { "pid": 300, "startedUs": 1_300 },
+                        "ppid": 1,
+                        "name": "tmux",
+                        "argv0": null,
+                        "command": null,
+                        "metrics": { "memory": 10_485_760u64, "cpu": 0.5, "ports": [] },
+                    }],
                     "helpers": [{ "pid": 150, "startedUs": 1_150 }],
                     "orphans": {
                         "confirmed": { "F-4": [plain(400, 1, "node")] },
@@ -389,17 +431,34 @@ mod tests {
                 "recordHead": 7,
                 "measuredAt": 1_758_000_100_000u64,
                 "mac": { "cpu": 37.5, "memory": 12_884_901_888u64, "cores": 10 },
-                // 아틀리에 합계 — 앱 본체 + 이 실행의 셸(G-1의 zsh) + 셸의 자손(vite · esbuild · gitstatusd)이고, 예외 · 고아 · 다른
-                // 인스턴스는 안 든다(그 몫은 03-6이 넣는다). 줄과 같은 표본의 값이다.
+                // 아틀리에 합계 — 앱 본체 + 이 실행의 셸(G-1의 zsh) + 셸의 자손(vite · esbuild · gitstatusd) + 예외(tmux)다. 고아 · 다른
+                // 인스턴스도 들지만 이 장에서는 못 읽었다. 줄과 같은 표본의 값이다.
                 "atelier": {
-                    "total": 335_544_320u64 + 20_971_520 + 4_194_304 + 419_430_400,
-                    "cpu": 14.0,
+                    "total": 790_626_304u64,
+                    "cpu": 14.5,
                     "app": 419_430_400u64,
                     "webviewExcluded": true,
                 },
+                // 아틀리에 앱의 줄 — 앱 본체(Rust)는 읽었고, 웹뷰(WebContent)는 못 물어 비었다.
+                "body": {
+                    "rust": { "memory": 419_430_400u64, "cpu": 1.25, "ports": [] },
+                    "webview": unmeasured,
+                },
+                // 나눔 — 읽은 합(아틀리에 14.5 + 다른 앱 9.5 + 0.5 = 24.5%, 1,931,476,992B)을 맥 전체(37.5%, 12GB)에서 뺀 것이 시스템 ·
+                // 못 읽음이고, 합계는 맥 전체다.
+                "breakdown": {
+                    "apps": [
+                        { "name": "Sketchpad", "processes": 2, "memory": 1_073_741_824u64, "cpu": 9.5 },
+                        { "name": null, "processes": 3, "memory": 67_108_864u64, "cpu": 0.5 },
+                    ],
+                    "system": { "cpu": 13.0, "memory": 10_953_424_896u64 },
+                    "total": { "cpu": 37.5, "memory": 12_884_901_888u64 },
+                    "over": { "cpu": false, "memory": false },
+                },
             })
         );
-        let blank = serde_json::to_value(ScreenSnapshot::of(&verdict, vec![], &Body::default(), &Measured::default(), vec![], None)).unwrap();
+        let blank =
+            serde_json::to_value(ScreenSnapshot::of(&verdict, vec![], &Body::default(), &Measured::default(), vec![], vec![], None)).unwrap();
         assert_eq!(blank["recordHead"], serde_json::Value::Null, "머리가 없는데 번호가 섰다");
         assert_eq!(blank["mac"], serde_json::Value::Null, "맥 전체를 안 쟀는데(macOS 밖) 값이 섰다 — 화면이 「측정 안 됨」을 못 말한다");
         assert_eq!(
@@ -407,6 +466,17 @@ mod tests {
             serde_json::json!({ "total": null, "cpu": null, "app": null, "webviewExcluded": true }),
             "아무것도 못 읽었는데 아틀리에 합계에 숫자가 섰다"
         );
+        assert_eq!(
+            blank["breakdown"],
+            serde_json::json!({
+                "apps": [],
+                "system": { "cpu": null, "memory": null },
+                "total": { "cpu": null, "memory": null },
+                "over": { "cpu": false, "memory": false },
+            }),
+            "맥 전체를 안 쟀는데 시스템 · 못 읽음이나 합계가 섰다"
+        );
+        assert_eq!(blank["body"], serde_json::json!({ "rust": unmeasured, "webview": unmeasured }), "앱 본체를 모르는데 숫자가 섰다");
     }
 
     /// **지표는 우리 트리의 프로세스만 읽는다**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부(자손 · 예외 · 고아 두 갈래 · 다른

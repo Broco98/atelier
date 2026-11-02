@@ -6,8 +6,9 @@ import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 // **`Processes` 요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」 · 티켓 30). 순수 함수다.
 //
 // **카드는 새 박자를 걸지 않는다.** 화면이 이미 받는 셋에서 읽는다 — 어느 수를 어디서 읽는지가 이 파일의 결정이다.
-// - 2초 스냅샷(화면 표본): **머리(맥 전체 CPU) · 아틀리에 CPU · 메모리 합계 · 앱 본체 · 「웹뷰 제외」**(restart 03-5 「한 표본」 — 화면을
-//   보는 동안 머리와 줄과 메모리 카드가 같은 2초 표본에서 선다. 한때 10초 요약에서 읽었다), 셸 수(풀) · 확정 고아 수 · 출처 불명 수.
+// - 2초 스냅샷(화면 표본): **머리(합계 CPU) · 그 나눔 · 아틀리에 CPU · 메모리 합계 · 앱 본체 · 「웹뷰 제외」**(restart 03-5 「한 표본」 —
+//   화면을 보는 동안 머리와 줄과 메모리 카드가 같은 2초 표본에서 선다. 한때 10초 요약에서 읽었다. 머리는 맥 전체를 나눈 합계다 — restart
+//   03-6), 셸 수(풀) · 확정 고아 수 · 출처 불명 수.
 //   같은 화면의 줄 · 묶음(31 · 32)이 이 스냅샷으로 서므로 카드와 줄이 다른 표본을 말하지 않는다.
 // - 10초 요약의 고리(배경 표본): 추이 — 맥 전체 CPU와 아틀리에 CPU의 1시간치(`useProcessTrend`). nav 옆 숫자는 10초 요약이라 화면을 보는
 //   동안 카드의 합계와 한 박자 어긋날 수 있다.
@@ -43,12 +44,13 @@ export function cardCounts(state: ShellsState, snapshot: ProcessSnapshot | undef
 
 /** 요약 카드의 머리 값 — 한 스냅샷에서 읽은 글자(restart 03-5). 첫 스냅샷 전에는 모두 「—」다(10초 요약으로 메우지 않는다). */
 export interface CardFigures {
-  /** 머리 — 맥 전체 CPU, 정수 %. */
+  /**
+   * 머리 — 합계 CPU, 정수 %(restart 03-6). 읽은 합이 맥 전체 측정값을 안 넘은 표본은 그 측정값이고, 넘은 표본은 읽은 합이다(스펙 「합이
+   * 맞는다」 — 줄을 더한 것과 머리가 같다).
+   */
   cpu: string;
   /** 머리 아래 줄 — 눈금(맥 전체 · 코어 수), 또는 왜 숫자가 없는지(첫 스냅샷 전 · 첫 표본 · macOS 밖). */
   cpuNote: string;
-  /** 아틀리에 CPU — 줄과 같은 소수 한 자리. */
-  atelierCpu: string;
   /** 아틀리에 메모리 합계. */
   memory: string;
   /** 앱 본체의 메모리. */
@@ -61,23 +63,54 @@ export interface CardFigures {
 export const NOT_MEASURED = "측정 안 됨";
 
 /**
- * **요약 카드의 머리 값을 한 스냅샷에서 읽는다**(restart 03-5 「한 표본」 · 스토리 122). 머리는 맥 전체 CPU(정수)이고, 아래 줄이 그 눈금을
- * 말한다 — 첫 표본은 두 번 재야 알고, macOS 밖은 「측정 안 됨」이다. 아틀리에 CPU · 메모리 합계 · 앱 본체도 같은 장의 것이다.
+ * **요약 카드의 머리 값을 한 스냅샷에서 읽는다**(restart 03-5 「한 표본」 · 스토리 122). 머리는 합계 CPU(정수 — restart 03-6: 줄을 더한
+ * 것)이고, 아래 줄이 그 눈금을 말한다 — 첫 표본은 두 번 재야 알고, macOS 밖은 「측정 안 됨」이다. 아틀리에 CPU · 메모리 합계 · 앱 본체도
+ * 같은 장의 것이다.
  */
 export function cardFigures(snapshot: ProcessSnapshot | undefined): CardFigures {
   if (snapshot === undefined) {
-    return { cpu: NOT_READ, cpuNote: "재는 중", atelierCpu: NOT_READ, memory: NOT_READ, app: NOT_READ, webviewExcluded: false };
+    return { cpu: NOT_READ, cpuNote: "재는 중", memory: NOT_READ, app: NOT_READ, webviewExcluded: false };
   }
-  const { mac, atelier } = snapshot;
+  const { mac, atelier, breakdown } = snapshot;
   const cpuNote =
     mac === null ? NOT_MEASURED : mac.cpu === null ? "두 번 재야 알 수 있어요" : `맥 전체 · 코어 ${mac.cores}개`;
   return {
-    cpu: formatHeadCpu(mac?.cpu ?? null),
+    cpu: formatHeadCpu(breakdown.total.cpu),
     cpuNote,
-    atelierCpu: formatCpu(atelier.cpu),
     memory: formatMemory(atelier.total),
     app: formatMemory(atelier.app),
     webviewExcluded: atelier.webviewExcluded,
+  };
+}
+
+/** CPU 카드의 나눔 — 아틀리에 · 다른 앱 · 시스템 · 못 읽음 · 여유, 정수 %(시안 Processes의 범례). 모르면 모두 「—」다. */
+export interface CpuLegend {
+  atelier: string;
+  others: string;
+  system: string;
+  idle: string;
+}
+
+/**
+ * **CPU 카드의 나눔**(restart 03-6 · 스토리 123) — 머리 숫자(합계)를 아틀리에 · 다른 앱 · 시스템 · 못 읽음으로 나누고, 남은 것이 여유다.
+ * 머리처럼 정수다. **셋을 더하면 머리 숫자다** — 아틀리에와 다른 앱을 반올림하고, 시스템 · 못 읽음은 머리에서 그 둘을 뺀 정수다(따로
+ * 반올림하면 3 + 10 + 5가 머리 18과 갈린다 — 시안 Processes와 같은 셈). **여유는 0 아래로 내려가지 않는다**(스펙 「합이 맞는다」) —
+ * 읽은 합이 측정값을 넘어 합계가 100을 넘는 표본이 있다. 합계를 모르면(첫 표본 · macOS 밖) 모두 「—」다.
+ */
+export function cpuLegend(snapshot: ProcessSnapshot | undefined): CpuLegend {
+  const total = snapshot?.breakdown.total.cpu ?? null;
+  if (snapshot === undefined || total === null) {
+    return { atelier: NOT_READ, others: NOT_READ, system: NOT_READ, idle: NOT_READ };
+  }
+  const head = Math.round(total);
+  const atelier = Math.round(snapshot.atelier.cpu ?? 0);
+  const others = Math.round(snapshot.breakdown.apps.reduce((sum, app) => sum + (app.cpu ?? 0), 0));
+  const percent = (value: number) => `${value}%`;
+  return {
+    atelier: percent(atelier),
+    others: percent(others),
+    system: percent(Math.max(0, head - atelier - others)),
+    idle: percent(Math.max(0, 100 - head)),
   };
 }
 

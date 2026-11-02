@@ -16,6 +16,8 @@ use super::SHELL_KEY_ENV;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) struct ProcArgs<'b> {
     argc: usize,
+    /// 실행 파일 경로 — argc 뒤 첫 문자열(NUL은 뺐다).
+    path: &'b [u8],
     /// argv[0]부터 버퍼 끝까지. 실행 파일 경로와 정렬용 NUL은 이미 건넜다.
     strings: &'b [u8],
 }
@@ -33,7 +35,13 @@ impl<'b> ProcArgs<'b> {
             .iter()
             .position(|b| *b != 0)
             .map_or(rest.len(), |at| path_end + at);
-        Some(Self { argc, strings: &rest[start..] })
+        Some(Self { argc, path: &rest[..path_end], strings: &rest[start..] })
+    }
+
+    /// 실행 파일 경로 — exec 때 커널이 받은 그대로다(부른 이름 argv[0]과 다르다). 비었거나 UTF-8이 아니면 없는 것으로 센다 — 「다른
+    /// 앱」의 번들을 가르는 값이라(`apps::bundle_name`) 대체 글자로 고친 경로는 쓸모가 없다.
+    pub(crate) fn exec_path(&self) -> Option<&'b str> {
+        std::str::from_utf8(self.path).ok().filter(|path| !path.is_empty())
     }
 
     /// exec 때의 argv. 조각이 argc보다 적으면(잘린 버퍼) 있는 만큼만 준다.
@@ -196,6 +204,19 @@ mod tests {
             "env는 빈 문자열에서 끝난다 — 그 뒤는 커널이 덧붙인 것이다"
         );
         assert_eq!(args.shell_key(), Some("1790081243175-18"));
+    }
+
+    /// **실행 파일 경로는 버퍼 맨 앞의 칸이다**(restart 03-6 — 「다른 앱」이 이 경로의 앱 번들로 묶는다). 부른 이름(argv[0])과 다르다 —
+    /// 사람이 `node`로 불러도 커널이 받은 경로는 따로 온다. 경로가 빈 버퍼는 경로가 없다.
+    #[test]
+    fn the_exec_path_is_the_head_of_the_buffer() {
+        let buf = kernel_buffer(1, "/Applications/Sketchpad.app/Contents/MacOS/Sketchpad", 6, &["Sketchpad", "PATH=/usr/bin", ""]);
+        let args = ProcArgs::parse(&buf).expect("모양이 맞는 버퍼다");
+        assert_eq!(args.exec_path(), Some("/Applications/Sketchpad.app/Contents/MacOS/Sketchpad"));
+        assert_eq!(texts(args.argv()), ["Sketchpad"], "경로를 argv로 읽었다");
+
+        let blank = kernel_buffer(1, "", 2, &["x", ""]);
+        assert_eq!(ProcArgs::parse(&blank).expect("모양이 맞는 버퍼다").exec_path(), None);
     }
 
     /// 시스템 바이너리(`/bin/sleep`)는 env가 0개로 읽힌다 — 표식이 없는 것이다(프로세스 결정의 사실 4).

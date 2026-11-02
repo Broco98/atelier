@@ -52,6 +52,13 @@ impl Readings {
     pub fn cpu_ns(&self) -> HashMap<Identity, u64> {
         self.by_id.iter().map(|(id, reading)| (*id, reading.cpu_ns)).collect()
     }
+
+    /// 다른 읽기를 이 표본에 합친다 — 화면 스냅샷이 우리 트리(`read`)와 다른 앱(`read_usage`)을 한 미터에 넣는다(restart 03-6). 못 읽은
+    /// 수는 더한다.
+    pub fn absorb(&mut self, other: Readings) {
+        self.by_id.extend(other.by_id);
+        self.skipped += other.skipped;
+    }
 }
 
 /// 이번 표본의 지표 — 커널에서 읽은 것(`read`), 앞 표본으로 잰 CPU%(`CpuMeter`), 맥 전체(`machine`). 신원으로 찾는다. 화면 스냅샷과
@@ -75,6 +82,20 @@ pub struct Measured {
 /// (`identity_of`가 좀비를 안 준다).
 #[cfg(target_os = "macos")]
 pub fn read(ids: impl IntoIterator<Item = Identity>) -> Readings {
+    read_with(ids, true)
+}
+
+/// **다른 앱**(restart 03-6)의 지표를 읽는다 — 메모리 · CPU만이다. 포트는 프로세스마다 fd를 훑는 일이라 우리 트리만 한다(S38 · 시안
+/// ProcessSheet 「값이 오는 곳」) — 이 맥의 같은 uid 프로세스 전부를 2초마다 훑지 않는다. 실패하지 않는 것과 신원을 다시 보는 것은
+/// `read`와 같다.
+#[cfg(target_os = "macos")]
+pub fn read_usage(ids: impl IntoIterator<Item = Identity>) -> Readings {
+    read_with(ids, false)
+}
+
+/// `read` · `read_usage`의 몸통 — 포트를 읽을지만 다르다.
+#[cfg(target_os = "macos")]
+fn read_with(ids: impl IntoIterator<Item = Identity>, ports: bool) -> Readings {
     let (numer, denom) = mac::timebase();
     let mut readings = Readings::default();
     for id in ids {
@@ -84,7 +105,7 @@ pub fn read(ids: impl IntoIterator<Item = Identity>) -> Readings {
             Some(Reading {
                 memory: usage.ri_phys_footprint,
                 cpu_ns: ticks_to_ns(usage.ri_user_time.saturating_add(usage.ri_system_time), numer, denom),
-                ports: mac::listening_ports(pid),
+                ports: if ports { mac::listening_ports(pid) } else { Vec::new() },
             })
         });
         match reading {
@@ -100,6 +121,12 @@ pub fn read(ids: impl IntoIterator<Item = Identity>) -> Readings {
 /// 다른 OS는 아무것도 안 읽는다. 화면은 숫자 칸에 「—」를 세운다.
 #[cfg(not(target_os = "macos"))]
 pub fn read(_ids: impl IntoIterator<Item = Identity>) -> Readings {
+    Readings::default()
+}
+
+/// 다른 OS는 다른 앱도 안 읽는다.
+#[cfg(not(target_os = "macos"))]
+pub fn read_usage(_ids: impl IntoIterator<Item = Identity>) -> Readings {
     Readings::default()
 }
 
@@ -362,6 +389,18 @@ mod tests {
         assert_eq!(percent(2 * SEC, SEC, two, 10), None, "CPU 시간이 줄었는데 값을 지었다");
     }
 
+    /// **두 읽기를 한 표본으로 합친다**(restart 03-6 — 우리 트리의 읽기와 다른 앱의 읽기). 읽은 것은 모두 남고 못 읽은 수는 더한다.
+    #[test]
+    fn two_reads_join_into_one_sample() {
+        use super::{Reading, Readings};
+
+        let reading = |memory: u64| Reading { memory, cpu_ns: memory, ports: vec![] };
+        let mut ours = Readings { by_id: HashMap::from([(id(10, 1), reading(1))]), skipped: 2 };
+        ours.absorb(Readings { by_id: HashMap::from([(id(20, 2), reading(5))]), skipped: 3 });
+        assert_eq!(ours.by_id, HashMap::from([(id(10, 1), reading(1)), (id(20, 2), reading(5))]));
+        assert_eq!(ours.skipped, 5);
+    }
+
     /// 화면 박자의 미터 — 코어 하나인 맥이라 프로세스의 CPU%가 「한 코어 = 100」과 같은 숫자다(눈금은 위 검사가 잰다).
     fn one_core() -> CpuMeter {
         CpuMeter::new(STALE, 1)
@@ -541,6 +580,25 @@ mod real {
         assert!(!ports.contains(&connected), "연결된 소켓의 포트 {connected}를 LISTEN으로 셌다: {ports:?}");
         assert!(!ports.contains(&datagram), "UDP 포트 {datagram}를 셌다: {ports:?}");
         assert!(ports.windows(2).all(|pair| pair[0] < pair[1]), "포트가 오름차순 · 겹침 없음이 아니다: {ports:?}");
+    }
+
+    /// **다른 앱은 메모리 · CPU만 읽는다**(restart 03-6 · 시안 ProcessSheet 「포트를 찾는 fd 훑기는 지금처럼 우리 트리만 한다」). LISTEN을
+    /// 연 이 검사 자신을 그 읽기로 읽으면 메모리는 서고 포트는 없다. 앵커는 같은 소켓을 우리 트리의 읽기(`read`)로 본 것이다 — 포트가 선다.
+    #[test]
+    fn other_apps_are_read_without_their_ports() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("LISTEN 소켓을 연다");
+        let port = listener.local_addr().expect("LISTEN 주소").port();
+        let me = me();
+        let usage = super::read_usage([me]);
+        let ours = read([me]);
+
+        // **거두는 것이 단언보다 먼저다.**
+        drop(listener);
+
+        let usage = usage.by_id.get(&me).expect("이 검사 자신을 못 읽었다");
+        assert!(usage.memory > 0, "다른 앱의 읽기가 메모리를 안 읽었다");
+        assert_eq!(usage.ports, Vec::<u16>::new(), "다른 앱의 읽기가 fd를 훑어 포트를 읽었다");
+        assert!(ours.by_id.get(&me).is_some_and(|reading| reading.ports.contains(&port)), "앵커 — 우리 트리의 읽기는 그 포트를 본다");
     }
 
     /// **메모리(`phys_footprint`)를 읽는다.** 이 검사 자신의 값이 0보다 크다.

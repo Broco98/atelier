@@ -489,6 +489,7 @@ mod tests {
             name: format!("p{pid}"),
             argv0: None,
             command: None,
+            path: None,
             shell_key: None,
         }
     }

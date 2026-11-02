@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { EyeOff, Folder, SquareTerminal, Unlink } from "lucide-react";
+import { AppWindowMac, EyeOff, Folder, LayoutGrid, SquareTerminal, Unlink } from "lucide-react";
 import { Card, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import { SignalLane } from "@/components/shell/shell-signal";
@@ -20,22 +20,35 @@ import {
 import { worksQuery } from "@/features/works/hooks";
 import { StatusIcon } from "@/features/works/status";
 import { askThenEnd } from "./actions";
+import { otherAppRows, systemNote, totalNote } from "./breakdown";
 import CleanupLogSection from "./CleanupLogSection";
 import { OPEN_AT_FIRST, foldKey, liveFoldKeys, type Folds, type RowFold, type SectionId } from "./folds";
 import { useCleanupLog, useProcessSnapshot } from "./hooks";
 import { openProcessesScreen, useSeeWhileLooking } from "./looked";
 import { lookSourceOf, lookablesOf, ownerlessShellKeys } from "./needs-look";
 import { endAsk, straysOf } from "./process-groups";
-import { exceptionName, identityKey, processLabel, processRowLabel, shownNodes, subtreeAt } from "./process-tree";
+import {
+  exceptionName,
+  identityKey,
+  processCount,
+  processLabel,
+  processRowLabel,
+  shownNodes,
+  subtreeAt,
+  withMemory,
+} from "./process-tree";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
 import {
   ColumnHead,
+  CoresContext,
+  LedgerRow,
   ProcessRowMenuItems,
   RowButton,
   Section,
   SectionButton,
   TreeRow,
+  ViewOnly,
   memoryShare,
 } from "./tree-rows";
 import {
@@ -62,15 +75,17 @@ import {
   type ShellProcesses,
   type ShellState,
 } from "./shell-tree";
-import type { CleanupEvent, PoolShell } from "./types";
+import type { CleanupEvent, PoolShell, ProcessMetrics, ProcessSnapshot } from "./types";
 
 /**
  * `Processes` 화면(프로세스 결정 8 · 9 · 10). 아틀리에가 띄운 셸과 그 셸에서 뜬 프로세스를 **앱 전체**로 보인다 — 「지금 무엇이
  * 내 컴퓨터를 먹나」에 답하는 화면이다.
  *
  * 셸 묶음(작업 구획)은 work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work
- * 행은 그 트리의 합이다. 맨 위에 요약 타일(티켓 30)과 열 머리가 서고, 작업 구획 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 확정 고아 ·
- * 출처 불명 · 다른 인스턴스 · 예외(티켓 31 — `StraySections`), 정리 기록(티켓 32 — `CleanupLogSection`)이 차례로 선다. 자손 행에는
+ * 행은 그 트리의 합이다. 맨 위에 요약 타일(티켓 30)과 열 머리가 서고, 작업 구획 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 아틀리에
+ * 앱(앱 본체 · 웹뷰 — restart 03-6), 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외(티켓 31 — `StraySections`), 다른 앱과 시스템 · 못
+ * 읽음(restart 03-6), 정리 기록(티켓 32 — `CleanupLogSection`), 합계 줄이 차례로 선다. **줄을 더하면 합계다**(restart 03-6 — 합은
+ * Rust가 짓는다, `breakdown.ts`). 자손 행에는
  * [끝내기]와 행 메뉴(「예외로 두기」)가 선다. 머리 줄에는 [조용한 셸 모두 닫기](티켓 32)가 선다. 줄의 열 · 구획 머리의 모양은
  * `tree-rows.tsx`가 든다(DS `ProcessTree`, codex-ds 티켓 22).
  *
@@ -115,10 +130,12 @@ function ProcessesPage() {
             works: tree.length > 0,
             ownerless: ownerless.length > 0,
             offscreen: offscreen.length > 0,
+            app: true,
             confirmed: strays.confirmed.length > 0,
             unknown: strays.unknown.length > 0,
             instances: strays.instances.length > 0,
             exceptions: strays.exceptions.length > 0,
+            others: snapshot.breakdown.apps.length > 0,
             log: events.length > 0,
           }),
           rows: liveFoldKeys(snapshot, [...tree, ...ownerless]),
@@ -177,107 +194,131 @@ function ProcessesPage() {
                 {/* **제목은 머리 줄이 보여 주고, 제목 역할은 이 줄이 진다** — 머리 줄의 이름은 제목 역할이 없는 글자라(설정
                     화면과 같은 사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
                 <h2 className="sr-only">{PLACE.label}</h2>
-                {/* 요약 타일(티켓 30) — 메모리 합계와 추이 · CPU · 셸 · 고아. 셸 수(풀의 셸)도 여기 선다. */}
-                <SummaryCard snapshot={snapshot} />
-                <ColumnHead />
-                {tree.length > 0 && (
-                  // **작업 구획**(판 06 문구 표 R6) — 셸 묶음의 머리다. 수는 그 안의 셸이다.
-                  <Section
-                    icon={Folder}
-                    title="작업공간"
-                    note={shellCount(tree.reduce((sum, group) => sum + group.shells.length, 0))}
-                    fold={folds.section("works")}
-                  >
-                    {/* **트리 역할이다**(S58) — 스크린리더가 행마다 깊이를 읽는다. 줄은 평평하게 서고 깊이는 `aria-level`이 말한다(중첩
-                        `group` 대신). 줄마다 접근성 이름이 한 문장이라 안의 글자 조각을 이어 읽지 않는다. 작업 줄과 그 셸 줄들이 묶음의
-                        면 없이 한 표로 잇고, 줄마다 아래 선이 가른다(DS `ProcessTree`). */}
-                    <div role="tree" aria-label="셸" className="flex flex-col">
-                      {tree.map((group) => {
-                        const fold = folds.row(foldKey.work(group.owner), group.name);
-                        return (
-                          <Fragment key={group.owner}>
-                            {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
-                                한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. 접으면 그 work에는 이 줄만 남는다. */}
-                            <GroupRow group={group} total={total} fold={fold} />
-                            {fold.open &&
-                              group.shells.map((node) => (
-                                <StoreShellRows
-                                  key={node.shell.id}
-                                  node={node}
-                                  level={2}
-                                  now={now}
-                                  folds={folds}
-                                  // [이동] — 띠의 줄 · ⌘J와 같은 길이다(`useGoToShell`): 셸 주인의 화면으로 옮기고, 켜고, 포커스를
-                                  // 데려온다(티켓 16).
-                                  onGo={() => goToShell({ id: node.shell.id, owner: node.shell.owner })}
-                                />
-                              ))}
-                          </Fragment>
-                        );
-                      })}
-                    </div>
-                  </Section>
-                )}
-                {ownerless.length > 0 && (
-                  // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 조용하지 않아 남은 셸. work마다
-                  // 선다 — 작업 구획처럼 work 줄 밑에 그 셸 줄들이다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 한 번
-                  // 묻는다. [이동]은 없다: 그 work은 목록에 없어 갈 화면이 없다.
-                  <Section
-                    icon={Unlink}
-                    title="주인 잃은 셸"
-                    note={shellCount(ownerless.reduce((sum, group) => sum + group.shells.length, 0))}
-                    action={<SectionButton onClick={() => void closeOwnerless()}>모두 닫기</SectionButton>}
-                    fold={folds.section("ownerless")}
-                  >
-                    <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col">
-                      {ownerless.map((group) => {
-                        const fold = folds.row(foldKey.work(group.owner), group.name);
-                        return (
-                          <Fragment key={group.owner}>
-                            <GroupRow group={group} total={total} fold={fold} />
-                            {fold.open &&
-                              group.shells.map((node) => (
-                                <StoreShellRows key={node.shell.id} node={node} level={2} now={now} folds={folds} />
-                              ))}
-                          </Fragment>
-                        );
-                      })}
-                    </div>
-                  </Section>
-                )}
-                {offscreen.length > 0 && (
-                  // **화면 밖 셸**(프로세스 스펙 S42 · 티켓 32) — 풀에는 있는데 화면이 모르는 셸. 새로고침 중에 끝난 spawn이 남길 수 있다
-                  // (추정). 스토어의 칸이 없어 이름도 주인도 모른다 — 「셸」로 서고 자손은 셸 키로 잇는다. [닫기]는 셸 탭의 ×와 같은 규칙으로
-                  // 묻는다(`closeOffscreenShell`). 닫은 줄은 곧바로 빠진다(`useClosedOffscreen`). `●`를 안 켠다.
-                  <Section
-                    icon={EyeOff}
-                    title="화면 밖 셸"
-                    note={shellCount(offscreen.length)}
-                    fold={folds.section("offscreen")}
-                  >
-                    <div role="tree" aria-label="화면 밖 셸" className="flex flex-col">
-                      {offscreen.map((node) => (
-                        <ShellRows
-                          key={poolKey(node.pool)}
-                          node={node}
-                          level={1}
-                          name={OFFSCREEN_NAME}
-                          state={offscreenStateOf(node)}
-                          label={offscreenRowLabel(node, now)}
-                          now={now}
-                          folds={folds}
-                          onClose={() =>
-                            void closeOffscreenShell(node.pool.ptyId).then((closed) => closed && markOffscreenClosed(node.pool))
-                          }
-                        />
-                      ))}
-                    </div>
-                  </Section>
-                )}
-                {/* 고아 · 다른 인스턴스 · 예외(티켓 31) — 셸이 없어도 선다(앱을 막 켰는데 지난 실행이 남긴 것). */}
-                {strays && <StraySections strays={strays} folds={folds} />}
-                {/* 정리 기록(티켓 32) — 맨 끝이다. */}
-                <CleanupLogSection events={events} fold={folds.section("log")} />
+                {/* 줄의 CPU 칸에 포인터를 올리면 활성 상태 보기 눈금이 뜬다(restart 03-6) — 그 눈금의 코어 수다. */}
+                <CoresContext.Provider value={snapshot?.mac?.cores ?? null}>
+                  {/* 요약 타일(티켓 30) — 메모리 합계와 추이 · CPU · 셸 · 고아. 셸 수(풀의 셸)도 여기 선다. */}
+                  <SummaryCard snapshot={snapshot} />
+                  <ColumnHead />
+                  {tree.length > 0 && (
+                    // **작업 구획**(판 06 문구 표 R6) — 셸 묶음의 머리다. 수는 그 안의 셸이다.
+                    <Section
+                      icon={Folder}
+                      title="작업공간"
+                      note={shellCount(tree.reduce((sum, group) => sum + group.shells.length, 0))}
+                      fold={folds.section("works")}
+                    >
+                      {/* **트리 역할이다**(S58) — 스크린리더가 행마다 깊이를 읽는다. 줄은 평평하게 서고 깊이는 `aria-level`이 말한다(중첩
+                          `group` 대신). 줄마다 접근성 이름이 한 문장이라 안의 글자 조각을 이어 읽지 않는다. 작업 줄과 그 셸 줄들이 묶음의
+                          면 없이 한 표로 잇고, 줄마다 아래 선이 가른다(DS `ProcessTree`). */}
+                      <div role="tree" aria-label="셸" className="flex flex-col">
+                        {tree.map((group) => {
+                          const fold = folds.row(foldKey.work(group.owner), group.name);
+                          return (
+                            <Fragment key={group.owner}>
+                              {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
+                                  한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. 접으면 그 work에는 이 줄만 남는다. */}
+                              <GroupRow group={group} total={total} fold={fold} />
+                              {fold.open &&
+                                group.shells.map((node) => (
+                                  <StoreShellRows
+                                    key={node.shell.id}
+                                    node={node}
+                                    level={2}
+                                    now={now}
+                                    folds={folds}
+                                    // [이동] — 띠의 줄 · ⌘J와 같은 길이다(`useGoToShell`): 셸 주인의 화면으로 옮기고, 켜고, 포커스를
+                                    // 데려온다(티켓 16).
+                                    onGo={() => goToShell({ id: node.shell.id, owner: node.shell.owner })}
+                                  />
+                                ))}
+                            </Fragment>
+                          );
+                        })}
+                      </div>
+                    </Section>
+                  )}
+                  {ownerless.length > 0 && (
+                    // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 조용하지 않아 남은 셸. work마다
+                    // 선다 — 작업 구획처럼 work 줄 밑에 그 셸 줄들이다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 한 번
+                    // 묻는다. [이동]은 없다: 그 work은 목록에 없어 갈 화면이 없다.
+                    <Section
+                      icon={Unlink}
+                      title="주인 잃은 셸"
+                      note={shellCount(ownerless.reduce((sum, group) => sum + group.shells.length, 0))}
+                      action={<SectionButton onClick={() => void closeOwnerless()}>모두 닫기</SectionButton>}
+                      fold={folds.section("ownerless")}
+                    >
+                      <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col">
+                        {ownerless.map((group) => {
+                          const fold = folds.row(foldKey.work(group.owner), group.name);
+                          return (
+                            <Fragment key={group.owner}>
+                              <GroupRow group={group} total={total} fold={fold} />
+                              {fold.open &&
+                                group.shells.map((node) => (
+                                  <StoreShellRows key={node.shell.id} node={node} level={2} now={now} folds={folds} />
+                                ))}
+                            </Fragment>
+                          );
+                        })}
+                      </div>
+                    </Section>
+                  )}
+                  {offscreen.length > 0 && (
+                    // **화면 밖 셸**(프로세스 스펙 S42 · 티켓 32) — 풀에는 있는데 화면이 모르는 셸. 새로고침 중에 끝난 spawn이 남길 수 있다
+                    // (추정). 스토어의 칸이 없어 이름도 주인도 모른다 — 「셸」로 서고 자손은 셸 키로 잇는다. [닫기]는 셸 탭의 ×와 같은 규칙으로
+                    // 묻는다(`closeOffscreenShell`). 닫은 줄은 곧바로 빠진다(`useClosedOffscreen`). `●`를 안 켠다.
+                    <Section
+                      icon={EyeOff}
+                      title="화면 밖 셸"
+                      note={shellCount(offscreen.length)}
+                      fold={folds.section("offscreen")}
+                    >
+                      <div role="tree" aria-label="화면 밖 셸" className="flex flex-col">
+                        {offscreen.map((node) => (
+                          <ShellRows
+                            key={poolKey(node.pool)}
+                            node={node}
+                            level={1}
+                            name={OFFSCREEN_NAME}
+                            state={offscreenStateOf(node)}
+                            label={offscreenRowLabel(node, now)}
+                            now={now}
+                            folds={folds}
+                            onClose={() =>
+                              void closeOffscreenShell(node.pool.ptyId).then((closed) => closed && markOffscreenClosed(node.pool))
+                            }
+                          />
+                        ))}
+                      </div>
+                    </Section>
+                  )}
+                  {/* 아틀리에 앱 — 앱 본체(Rust)와 웹뷰(WebContent). 아틀리에 합계의 앱 본체가 이 둘이다(restart 03-6). */}
+                  {snapshot && <AppSection snapshot={snapshot} fold={folds.section("app")} />}
+                  {/* 고아 · 다른 인스턴스 · 예외(티켓 31) — 셸이 없어도 선다(앱을 막 켰는데 지난 실행이 남긴 것). */}
+                  {strays && <StraySections strays={strays} folds={folds} />}
+                  {/* 다른 앱과 시스템 · 못 읽음(restart 03-6) — 아틀리에 밖의 몫이다. */}
+                  {snapshot && <OthersSection snapshot={snapshot} fold={folds.section("others")} />}
+                  {snapshot && (
+                    <LedgerRow
+                      kind="system"
+                      name="시스템 · 못 읽음"
+                      note={systemNote(snapshot)}
+                      metrics={shareMetrics(snapshot.breakdown.system)}
+                    />
+                  )}
+                  {/* 정리 기록(티켓 32). */}
+                  <CleanupLogSection events={events} fold={folds.section("log")} />
+                  {/* 합계 — 위의 줄을 반올림 전 값으로 더한 것이다(restart 03-6). 머리 숫자가 이 CPU를 정수로 반올림한 값이다. */}
+                  {snapshot && (
+                    <LedgerRow
+                      kind="total"
+                      name="합계"
+                      note={totalNote(snapshot)}
+                      metrics={shareMetrics(snapshot.breakdown.total)}
+                    />
+                  )}
+                </CoresContext.Provider>
               </div>
             </div>
           )}
@@ -292,6 +333,73 @@ const NOTHING_SHOWN: ReadonlyArray<string> = [];
 
 /** 기록 전의 빈 기록 — 늘 같은 배열이다. */
 const NO_EVENTS: ReadonlyArray<CleanupEvent> = [];
+
+/** 나눔의 한 몫(시스템 · 못 읽음 · 합계)을 줄의 숫자 칸 모양으로 — 포트는 없다. */
+function shareMetrics(share: { cpu: number | null; memory: number | null }): ProcessMetrics {
+  return { memory: share.memory, cpu: share.cpu, ports: [] };
+}
+
+/**
+ * **아틀리에 앱**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰(WebContent)의 줄. 아틀리에 합계의 앱 본체가 이
+ * 둘이다(S39). 판정의 행이 아니라(판정은 앱 자신을 안 가른다) 스냅샷의 `body`에서 선다. 동작은 없다 — 앱 자신을 끝내는 길이 아니다.
+ * 웹뷰를 못 물었거나 못 읽었으면 그 줄의 숫자가 「—」다.
+ */
+function AppSection({ snapshot, fold }: { snapshot: ProcessSnapshot; fold: ReturnType<Folds["section"]> }) {
+  const rows = [
+    { key: "rust", name: "앱 본체", note: "Rust", metrics: snapshot.body.rust },
+    { key: "webview", name: "웹뷰", note: "WebContent", metrics: snapshot.body.webview },
+  ];
+  return (
+    <Section icon={AppWindowMac} title="아틀리에 앱" note={processCount(rows.length)} fold={fold}>
+      <div role="tree" aria-label="아틀리에 앱" className="flex flex-col">
+        {rows.map((row) => (
+          <TreeRow
+            key={row.key}
+            level={1}
+            label={withMemory([row.name, row.note], row.metrics.memory)}
+            kind="process"
+            metrics={row.metrics}
+            ports={false}
+          >
+            <span className="shrink-0">{row.name}</span>
+            <span className="min-w-0 truncate text-xs text-fg-tertiary">{row.note}</span>
+          </TreeRow>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * **다른 앱**(restart 03-6 · 시안 Processes 「다른 앱」 · 스토리 136) — 이 맥의 같은 uid 프로세스 중 우리 트리 밖의 것을 앱 번들로 묶은
+ * 줄(`otherAppRows`). **보기만 한다** — 끝내기도 행 메뉴도 없다(구획 머리의 「보기 전용」). 처음에는 접혀 있다(`OPEN_AT_FIRST`). 줄이
+ * 없으면 안 선다(macOS 밖).
+ */
+function OthersSection({ snapshot, fold }: { snapshot: ProcessSnapshot; fold: ReturnType<Folds["section"]> }) {
+  const rows = otherAppRows(snapshot);
+  if (rows.length === 0) return null;
+  const processes = snapshot.breakdown.apps.reduce((sum, app) => sum + app.processes, 0);
+  return (
+    <Section icon={LayoutGrid} title="다른 앱" note={processCount(processes)} action={<ViewOnly />} fold={fold}>
+      <div role="tree" aria-label="다른 앱" className="flex flex-col">
+        {rows.map((row) => (
+          <TreeRow
+            key={row.key}
+            level={1}
+            label={withMemory([row.name, row.note], row.metrics.memory)}
+            kind="process"
+            metrics={row.metrics}
+            ports={false}
+            data-other-app=""
+          >
+            <span className="min-w-0 shrink truncate">{row.name}</span>
+            <span className="shrink-0 text-xs text-fg-tertiary">{row.note}</span>
+          </TreeRow>
+        ))}
+      </div>
+    </Section>
+  );
+}
 
 /** 선 구획 — 구획마다 섰는지에서. */
 function sectionsShown(shown: Readonly<Record<SectionId, boolean>>): ReadonlySet<SectionId> {

@@ -68,17 +68,18 @@ fn take_from(pids: Vec<i32>, scope: EnvScope) -> Snapshot {
             continue;
         }
         let id = mac::identity(&info);
-        let (argv0, command, shell_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
+        let (argv0, command, path, shell_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
             // 못 읽으면(그사이 끝남 등) 행은 그대로 세우고 env만 비운다. 행을 빼면 그 밑의 자손이
-            // 트리에서 떨어진다. 명령줄(티켓 11)은 같은 버퍼의 argv라 따로 읽는 것이 없다.
+            // 트리에서 떨어진다. 명령줄(티켓 11)과 실행 파일 경로(restart 03-6)는 같은 버퍼라 따로 읽는 것이 없다.
             procargs::read(pid, &mut buf)
                 .and_then(|len| ProcArgs::parse(&buf[..len]))
-                .map_or((None, None, None), |args| {
+                .map_or((None, None, None, None), |args| {
                     let argv0 = args.argv().next().map(|a| String::from_utf8_lossy(a).into_owned());
-                    (argv0, Some(args.command()), args.shell_key().map(str::to_string))
+                    let path = args.exec_path().map(str::to_string);
+                    (argv0, Some(args.command()), path, args.shell_key().map(str::to_string))
                 })
         } else {
-            (None, None, None)
+            (None, None, None, None)
         };
         procs.push(Proc {
             id,
@@ -88,6 +89,7 @@ fn take_from(pids: Vec<i32>, scope: EnvScope) -> Snapshot {
             name: mac::kernel_name(&info),
             argv0,
             command,
+            path,
             shell_key,
         });
     }
@@ -208,6 +210,8 @@ mod tests {
         let mut argv = vec![crate::processes::testkit::exe().display().to_string()];
         argv.extend(crate::processes::testkit::child_args());
         assert_eq!(whole.command, Some(argv.join(" ")), "명령줄이 자식을 부른 argv 전체가 아니다");
+        // 실행 파일 경로도 같은 버퍼다(restart 03-6) — 검사가 exec한 그 파일이다.
+        assert_eq!(whole.path, Some(argv[0].clone()), "실행 파일 경로가 자식을 exec한 파일이 아니다");
         assert_eq!(whole.ppid, std::process::id(), "자식의 부모는 이 검사다");
         assert_eq!(
             from_birth.and_then(|p| p.shell_key).as_deref(),

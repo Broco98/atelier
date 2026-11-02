@@ -1,4 +1,4 @@
-import { Fragment, useId, useState } from "react";
+import { createContext, Fragment, useContext, useId, useState } from "react";
 import { ChevronRight, Ellipsis, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -7,6 +7,7 @@ import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { keepAsException } from "./actions";
+import { activityMonitorTip } from "./breakdown";
 import type { RowFold, SectionFold } from "./folds";
 import { PORT_SEPARATOR, formatCpu, formatMemory, formatPort, formatPorts } from "./metrics";
 import type { ProcessMetrics } from "./types";
@@ -289,6 +290,13 @@ function Guide() {
 }
 
 /**
+ * **이 맥의 코어 수** — 줄의 CPU 칸에 포인터를 올리면 활성 상태 보기 눈금(맥 전체 눈금 × 코어 수)이 뜬다(restart 03-6 · 스토리 125).
+ * 화면이 스냅샷의 `mac.cores`로 건다. 모르면(첫 스냅샷 전 · macOS 밖) `null`이고 눈금이 안 뜬다. 줄마다 넘기지 않는 것은 줄을 세우는
+ * 자리가 여럿(셸 묶음 · 손볼 것 · 아틀리에 앱 · 다른 앱)이라서다.
+ */
+export const CoresContext = createContext<number | null>(null);
+
+/**
  * 줄의 숫자 칸 — 메모리 · CPU · 포트(프로세스 결정 10 · 티켓 28). 글자는 표기 함수의 결과 그대로다(`formatMemory` · `formatCpu` ·
  * `formatPorts` — nav 메타와 다른 묶음도 같은 함수를 읽는다). 숫자 열은 오른쪽 맞춤이다.
  *
@@ -299,8 +307,20 @@ function Guide() {
  * 결과와 같다 — 잘린 목록의 전체는 칸의 `title`이 보인다(툴팁 `Hint`가 아닌 것은 `sidebar-active-band` S29의 「버튼이 아닌
  * 자리」와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다).
  */
-function Figures({ metrics, ports, share }: { metrics: ProcessMetrics; ports: boolean; share: number | null }) {
+function Figures({
+  metrics,
+  ports,
+  share,
+  tip = true,
+}: {
+  metrics: ProcessMetrics;
+  ports: boolean;
+  share: number | null;
+  /** CPU 칸에 활성 상태 보기 눈금을 띄우나 — 표의 끝 줄(시스템 · 못 읽음 · 합계)은 안 띄운다(시안 Processes). */
+  tip?: boolean;
+}) {
   const listed = formatPorts(metrics.ports);
+  const cores = useContext(CoresContext);
   return (
     <>
       <span className="flex items-center justify-end gap-2 whitespace-nowrap">
@@ -309,7 +329,13 @@ function Figures({ metrics, ports, share }: { metrics: ProcessMetrics; ports: bo
           {formatMemory(metrics.memory)}
         </span>
       </span>
-      <span data-cell="cpu" className="text-right whitespace-nowrap tabular-nums">
+      {/* **포인터를 올리면 활성 상태 보기 눈금이 뜬다**(restart 03-6 · 스토리 125). 줄이 아니라 CPU 칸에 건다 — 줄 안의 ⋯가 앱 툴팁을
+          들어 줄에 걸면 둘이 겹치고, 이름 글자에는 명령줄 툴팁이 이미 있다. */}
+      <span
+        data-cell="cpu"
+        title={tip && cores !== null ? activityMonitorTip(metrics.cpu, cores) : undefined}
+        className="text-right whitespace-nowrap tabular-nums"
+      >
         {formatCpu(metrics.cpu)}
       </span>
       {ports ? (
@@ -328,6 +354,51 @@ function Figures({ metrics, ports, share }: { metrics: ProcessMetrics; ports: bo
       )}
     </>
   );
+}
+
+/**
+ * **표의 끝 줄** — 시스템 · 못 읽음과 합계(restart 03-6 · 시안 Processes). 트리의 줄이 아니다 — 접히지도 끝내지도 않고, 깊이가 없다.
+ * 열은 줄과 같은 격자라 숫자가 세로로 맞는다. 이름 뒤에 그 줄이 무엇인지 말하는 글(`note`)이 옅게 선다. 합계 줄은 위에 1px `rule` 선을
+ * 두고 작업 줄의 글자(14 · 500)를 입는다 — 위의 줄을 더한 값이다. 포트 칸은 없다. CPU 칸에 활성 상태 보기 눈금을 띄우지 않는다.
+ */
+export function LedgerRow({
+  kind,
+  name,
+  note,
+  metrics,
+}: {
+  kind: "system" | "total";
+  name: string;
+  note: string;
+  metrics: ProcessMetrics;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={`${name}, ${note}`}
+      data-ledger={kind}
+      className={cn(
+        COLUMNS,
+        "items-center px-3",
+        kind === "total"
+          ? "relative mt-2 h-10 text-sm font-medium before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-rule"
+          : cn(ROW_RULE, KIND.process),
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-1.5 self-stretch">
+        <FoldSlot />
+        <span className="shrink-0">{name}</span>
+        <span className="min-w-0 truncate text-xs font-normal text-fg-tertiary">{note}</span>
+      </span>
+      <Figures metrics={metrics} ports={false} share={null} tip={false} />
+      <span />
+    </div>
+  );
+}
+
+/** 프로세스 결정 10 그림의 「보기 전용」 — 구획 머리의 동작 자리에 선다. 버튼이 아니다. 다른 인스턴스 · 예외 · 다른 앱이 쓴다. */
+export function ViewOnly() {
+  return <span className="shrink-0 px-2 text-xs text-fg-tertiary">보기 전용</span>;
 }
 
 /**

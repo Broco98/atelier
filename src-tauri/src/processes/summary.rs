@@ -6,8 +6,9 @@
 //! `service::ProcessService::sample_in_background`). 화면 스냅샷(2초, `screen`)은 화면이 열려 있을 때만 온다.
 //!
 //! 모으는 것은 이렇다.
-//! - **합계** = 앱 본체 + 이 실행의 모든 셸과 자손(셸 도우미 포함). 예외와 다른 인스턴스는 빼고, 고아도 안 든다(고아는 따로
-//!   적는다 — 요약 카드가 확정 고아와 출처 불명을 화면 스냅샷에서 센다).
+//! - **합계** = 앱 본체 + 이 실행의 모든 셸과 자손(셸 도우미 포함) + 고아 · 예외 · 다른 인스턴스 — 판정이 묶음에 넣은 것 전부다(restart
+//!   03-6 — 고장 난 프로세스도 아틀리에 숫자에 보여야 한다. 한때는 예외 · 다른 인스턴스 · 고아를 뺐다). 고아의 수는 따로 센다 — 요약
+//!   카드가 확정 고아와 출처 불명을 화면 스냅샷에서 센다. 이 밖의 같은 uid 프로세스는 「다른 앱」이다(`apps` — 화면 스냅샷만 읽는다).
 //! - **앱 본체** = Rust 본체 + 웹뷰(WebContent) 프로세스(프로세스 스펙 S39). WebContent는 부모가 launchd라 트리로 안 잡힌다 — 웹뷰에게
 //!   pid를 묻는다(`WebContent`, 묻는 길은 `webview.rs`의 비공개 SPI). 못 물었거나 못 읽었으면 Rust 본체만 세고 「웹뷰 제외」를
 //!   싣는다. **GPU와 Networking 프로세스는 세지 않는다** — 그래서 활성 상태 보기가 앱에 묶어 보이는 합과 차이가 난다(요약 카드의
@@ -135,18 +136,12 @@ impl Body {
     }
 }
 
-/// **합계에 드는 신원** — 앱 본체(Rust · WebContent)와 이 실행의 셸 프로세스, 판정이 셸마다 가른 자손(셸 도우미 포함). 이것만 지표를
-/// 읽는다(프로세스 스펙 S38의 「우리 트리만」). 예외 · 다른 인스턴스 · 고아는 판정이 다른 묶음에 넣어 여기 안 든다 — 화면 스냅샷의
-/// `screen::targets`와 다른 것이 그 셋이다.
+/// **합계에 드는 신원** — 앱 본체(Rust · WebContent)와 이 실행의 셸 프로세스, 그리고 판정이 묶음에 넣은 행 전부(셸별 자손과 셸 도우미 ·
+/// 고아 두 갈래 · 다른 인스턴스 · 예외 — restart 03-6). 고장 난 프로세스도 아틀리에 숫자에 보여야 한다(시안 ProcessSheet 「합계에서
+/// 빠지는 것이 있다」). 이것이 곧 「우리 트리」다(프로세스 스펙 S38) — 화면 스냅샷이 포트까지 읽는 것도 이 신원이다(`screen::targets`).
+/// 이 밖의 같은 uid 프로세스는 「다른 앱」이다(`apps`).
 pub fn targets(verdict: &Verdict, shells: &[Identity], body: &Body) -> BTreeSet<Identity> {
-    verdict
-        .descendants
-        .values()
-        .flatten()
-        .map(|proc| proc.id)
-        .chain(shells.iter().copied())
-        .chain(body.ids())
-        .collect()
+    verdict.rows().map(|proc| proc.id).chain(shells.iter().copied()).chain(body.ids()).collect()
 }
 
 /// 읽은 것끼리의 합. 하나도 못 읽었으면 없다 — 모르는 것을 0이라 하지 않는다(화면의 `sumMetrics`와 같은 규칙).
@@ -402,6 +397,7 @@ mod tests {
             name: name.to_string(),
             argv0: None,
             command: None,
+            path: None,
             shell_key: None,
         }
     }
@@ -508,12 +504,13 @@ mod tests {
         assert_eq!(summary.unknown, [older.id, lost.id, below.id], "출처 불명의 신원이 판정의 것과 다르다");
     }
 
-    /// **합계 = 앱 본체 + 이 실행의 셸과 자손**(프로세스 스펙 「수집 › 합계」). 셸 도우미도 셸의 몫이라 든다. 앱 본체는 Rust 본체와
-    /// WebContent다(S39). 예외 · 다른 인스턴스는 빼고, 고아(확정 · 출처 불명)도 안 든다. 못 읽은 것은 건너뛰고 읽은 것끼리 더한다(화면의
-    /// 트리 합과 같은 규칙) — 아무것도 못 읽었으면 합계가 없다(0이 아니다). **CPU도 같은 것끼리 더한다**(티켓 30) — 합계에 안 드는
-    /// 것의 CPU는 안 들고, 앞 표본이 없어 못 잰 것은 건너뛴다.
+    /// **합계 = 앱 본체 + 이 실행의 셸과 자손 + 고아 · 예외 · 다른 인스턴스**(프로세스 스펙 「수집 › 합계」 · restart 03-6). 셸 도우미도
+    /// 셸의 몫이라 든다. 앱 본체는 Rust 본체와 WebContent다(S39). 판정이 어느 묶음에든 넣은 것은 모두 든다 — 고장 난 프로세스도 숫자에
+    /// 보여야 한다(시안 ProcessSheet 「합계에서 빠지는 것이 있다」). 판정 밖의 것(이 맥의 다른 프로세스)은 안 든다 — 그것은 「다른 앱」이다.
+    /// 못 읽은 것은 건너뛰고 읽은 것끼리 더한다(화면의 트리 합과 같은 규칙) — 아무것도 못 읽었으면 합계가 없다(0이 아니다). **CPU도 같은
+    /// 것끼리 더한다**(티켓 30) — 합계에 안 드는 것의 CPU는 안 들고, 앞 표본이 없어 못 잰 것은 건너뛴다.
     #[test]
-    fn the_total_is_the_app_and_this_runs_shells_and_their_descendants() {
+    fn the_total_is_the_app_and_everything_the_verdict_grouped() {
         let (gitstatusd, vite, esbuild) = (row(150, 100, "gitstatusd"), row(200, 100, "node"), row(210, 200, "esbuild"));
         let (tmux, stale, lost, other) = (row(300, 1, "tmux"), row(400, 1, "node"), row(500, 1, "sleep"), row(600, 1, "zsh"));
         let (zsh, bash) = (Identity { pid: 100, started_us: 1_100 }, Identity { pid: 110, started_us: 1_110 });
@@ -531,6 +528,8 @@ mod tests {
             },
             other_instances: BTreeMap::from([("H-2", vec![&other])]),
         };
+        // 판정 밖의 것 — 이 맥의 다른 프로세스. 읽혔어도 합계에 안 든다(앵커).
+        let elsewhere = Identity { pid: 900, started_us: 9_000 };
         let readings = HashMap::from([
             (body.rust.unwrap(), reading(400 * MB)),
             (body.web_content.unwrap(), reading(200 * MB)),
@@ -539,34 +538,48 @@ mod tests {
             (gitstatusd.id, reading(2 * MB)),
             (vite.id, reading(300 * MB)),
             // esbuild는 못 읽었다 — 그사이 끝났다.
-            (tmux.id, reading(1_000 * MB)),
-            (stale.id, reading(1_000 * MB)),
-            (lost.id, reading(1_000 * MB)),
-            (other.id, reading(1_000 * MB)),
+            (tmux.id, reading(10 * MB)),
+            (stale.id, reading(20 * MB)),
+            (lost.id, reading(30 * MB)),
+            (other.id, reading(40 * MB)),
+            (elsewhere, reading(5_000 * MB)),
         ]);
         let cpu = HashMap::from([
             (body.rust.unwrap(), 3.0),
             (body.web_content.unwrap(), 2.0),
             (vite.id, 10.0),
             // 셸은 앞 표본이 없다 — 막 떴다.
-            (tmux.id, 90.0),
-            (stale.id, 90.0),
-            (lost.id, 90.0),
-            (other.id, 90.0),
+            (tmux.id, 0.5),
+            (stale.id, 1.5),
+            (lost.id, 2.0),
+            (other.id, 4.0),
+            (elsewhere, 90.0),
         ]);
 
         assert_eq!(
             targets(&verdict, &[zsh, bash], &body),
-            BTreeSet::from([body.rust.unwrap(), body.web_content.unwrap(), zsh, bash, gitstatusd.id, vite.id, esbuild.id]),
-            "합계에 드는 신원이 앱 본체 + 이 실행의 셸과 자손이 아니다"
+            BTreeSet::from([
+                body.rust.unwrap(),
+                body.web_content.unwrap(),
+                zsh,
+                bash,
+                gitstatusd.id,
+                vite.id,
+                esbuild.id,
+                tmux.id,
+                stale.id,
+                lost.id,
+                other.id,
+            ]),
+            "합계에 드는 신원이 앱 본체 + 이 실행의 셸 · 자손 + 고아 · 예외 · 다른 인스턴스가 아니다"
         );
         let summary = Summary::of(&verdict, &[zsh, bash], &body, &Measured { readings, cpu, ..Measured::default() }, None);
         assert_eq!(
             summary.atelier.total,
-            Some((400 + 200 + 4 + 3 + 2 + 300) * MB),
-            "합계가 어긋났다 — 예외 · 다른 인스턴스 · 고아가 섞였거나, 셸 · 도우미 · 앱 본체(WebContent 포함)가 빠졌다"
+            Some((400 + 200 + 4 + 3 + 2 + 300 + 10 + 20 + 30 + 40) * MB),
+            "합계가 어긋났다 — 판정 밖의 것이 섞였거나, 셸 · 도우미 · 앱 본체(WebContent 포함) · 고아 · 예외 · 다른 인스턴스가 빠졌다"
         );
-        assert_eq!(summary.atelier.cpu, Some(15.0), "CPU가 합계에 드는 것의 잰 값끼리의 합이 아니다");
+        assert_eq!(summary.atelier.cpu, Some(23.0), "CPU가 합계에 드는 것의 잰 값끼리의 합이 아니다");
         let unread = Summary::of(&verdict, &[zsh, bash], &body, &Measured::default(), None);
         assert_eq!((unread.atelier.total, unread.atelier.cpu), (None, None), "아무것도 못 읽었는데 숫자가 섰다 — 모르는 것을 0이라 한다");
     }
