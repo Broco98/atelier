@@ -153,13 +153,13 @@ describe("채팅 화면", () => {
     applyEngineEvent({ agent: "codex", found: true, loggedIn: false, missing: [] });
     try {
       const html = draw(view, codexRecord);
-      expect(html).toContain("Codex에 로그인이 안 돼 있어요");
+      expect(html).toContain("Codex에 로그인해야 이어서 쓸 수 있어요");
       expect(html).toContain("Reply with exactly one word: ok");
       expect(html).not.toContain('aria-label="보낼 말"');
       expect(html).not.toContain("바꾸기");
 
       const other = draw(claude);
-      expect(other).not.toContain("로그인이 안 돼 있어요");
+      expect(other).not.toContain("로그인해야 이어서 쓸 수 있어요");
       expect(other).toMatch(/<textarea[^>]*aria-label="보낼 말"[^>]*>Claude에 쓰던 말<\/textarea>/);
 
       applyEngineEvent({ agent: "codex", found: true, loggedIn: true, missing: [] });

@@ -403,6 +403,16 @@ describe("Runtime 경고의 자리", () => {
     const details = markup.match(/<pre[^>]*>([\s\S]*?)<\/pre>/)?.[1];
     expect(details).toBe("앱 기능 도구에 연결하지 못했어요\n둘째 줄");
     expect(markup).toContain('aria-expanded="true"');
+    // 펼친 원문은 안내 상자 안이다 — 상자가 닫히기 전에 선다.
+    expect(markup).toMatch(/data-warning[^>]*>(?:(?!<\/div><\/div>)[\s\S])*<pre/);
+  });
+
+  it("안내는 실패 · 끊김 안내와 같은 상자다(Cards 보드 `.ra-notice`) — 글리프 ⓘ, 굵은 첫마디 없이 첫 줄, 끝에 작은 단추 「자세히」", () => {
+    const markup = flow(inTurn);
+    const box = markup.match(/<div data-warning[^>]*class="([^"]*)"/)?.[1] ?? "";
+    expect(box.split(" ")).toEqual(expect.arrayContaining(["rounded-xl", "bg-fill-soft", "min-h-10", "text-chat-meta", "text-fg-secondary"]));
+    expect(markup).not.toMatch(/data-warning[\s\S]*<b[\s>]/);
+    expect(markup).toMatch(/<button[^>]*class="[^"]*h-6[^"]*"[^>]*>자세히<\/button>/);
   });
 
   it("턴 사이의 안내도 같다", () => {

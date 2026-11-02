@@ -4,12 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button";
 import { Frame } from "./Frame";
 import { PlainHead } from "./PlainFrame";
+import ShellControls from "./ShellControls";
+import { headButton } from "./ShellHead";
 
 // 머리(이름 · 할 일)는 앱 셸의 머리 줄로 포털을 탄다 — 정적 렌더는 포털을 못 그려, 머리를 이 마크업 안 머리 줄에 곧장 세운다
 // (`screen-head-inline`).
 vi.mock("@/components/shell/ShellHead", async (actual) =>
   (await import("@/components/shell/screen-head-inline")).inlineScreenHead(actual),
 );
+// 셸 컨트롤은 라우터의 뒤로 · 앞으로를 읽는다 — 그린 꼴만 보므로 라우터 없이 「갈 곳 없음」으로 둔다.
+vi.mock("@tanstack/react-router", async (actual) => ({
+  ...(await actual<typeof import("@tanstack/react-router")>()),
+  useRouter: () => ({ history: { back: () => {}, forward: () => {} } }),
+  useCanGoBack: () => false,
+}));
+vi.mock("@/can-go-forward", () => ({ useCanGoForward: () => false }));
 
 // **머리 줄은 한 결이다**(02 결정 「머리 줄은 한 결이다(03 뒤)」 · 구현 스펙 §3 「틀 하나」 · §6). 머리 줄은 앱 셸이 그리는 줄 하나라,
 // 그 위에 서는 화면 것의 값도 어느 화면이든 같다 — Thread 머리 줄(06)의 값이다: 이름 14/500, 단추 28, 오른쪽 끝 단추 사이 2(이름 쪽과는
@@ -86,5 +95,18 @@ describe("머리 줄은 한 결이다", () => {
     expect(head).toMatch(/<svg[^>]*class="[^"]*lucide-panel-right[^"]*size-4/);
     const text = head.match(/<button[^>]*>폴더 열기<\/button>/)?.[0] ?? "";
     expect(classOf(text), "글자 단추").toContain("h-7");
+  });
+
+  // 시안 `.ra-tbtn`(Main 머리 줄 — 사이드바 접기 · 뒤로 · 앞으로 · 검색 · 채팅 메뉴 · 요약 카드 · spec 패널 접기) — 28 · 둥글기 4(`radius-ctl`)다.
+  // 셸 컨트롤과 화면 것(⋯ · 요약 카드 · 패널 토글 · 돌아가기)이 한 벌이다(restart 02b-6b). 한때 아이콘 버튼 기본의 10(`radius-lg`)이었다.
+  it("아이콘 단추는 둥글기 4다 — 셸 컨트롤도 화면 것도", () => {
+    const shell = renderToStaticMarkup(<ShellControls sidebarOpen onToggleSidebar={() => {}} onOpenSearch={() => {}} />);
+    const shellButtons = shell.match(/<button[^>]*>/g) ?? [];
+    expect(shellButtons.map((tag) => tag.match(/aria-label="([^"]*)"/)?.[1])).toEqual(["사이드바 토글", "뒤로", "앞으로", "검색"]);
+    const toggle = frameHead().match(/<button[^>]*aria-label="작업공간 패널 접기"[^>]*>/)?.[0] ?? "";
+    for (const [where, tag] of [...shellButtons.map((one) => ["셸 컨트롤", one] as const), ["패널 토글", toggle] as const]) {
+      expect(classOf(tag), where).toEqual(expect.arrayContaining(["icon-button", "icon-button-ctl"]));
+    }
+    for (const state of ["rest", "open", "on"] as const) expect(headButton(state).split(" "), state).toContain("icon-button-ctl");
   });
 });

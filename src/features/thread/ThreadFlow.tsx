@@ -68,8 +68,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   시간은 기다린 동안을 뺀다(restart 02b-4 · Tools 보드 「승인 대기」 · `fold.ts`의 `waitedMs`). 끝나면 턴 머리 「N초 동안
 //   작업함 ›」(그 아래 0.5 선 — States 보드 13)으로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다. 머리를 누르면 생각 · 도구 줄 · 앞선
 //   답이 높이와 함께 펼쳐진다(`Unfold`). 답이 흐르는 동안은 접지 않는다 — 흐르는 글이 마지막 답인지는 턴이 끝나야 안다(States 보드 12와 다르다,
-//   restart 결정 「02b-1 — 답이 흐르는 동안 로그를 접지 않는다」). **펼칠 것 없이 끝난 턴(말만 한 턴)에는 머리가 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 바로 위의 결정 줄이다(v1 티켓 24 · restart 02b-4 — 「✓ 명령
-//   실행을 승인함 · 비슷한 명령 허용」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
+//   restart 결정 「02b-1 — 답이 흐르는 동안 로그를 접지 않는다」). **펼칠 것 없이 끝난 턴(말만 한 턴)에는 머리가 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 바로 위의 결정 줄이다(v1 티켓 24 · restart 02b-4 · 02b-5 — 「✓ 한 번만
+//   허용함」 · 「방패 ✓ 비슷한 명령 허용함」, 거부는 「✕ 거부함」과 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
 //   「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 작업공간 … 을 만들고 이 채팅에 연결함」이다.
 // - **흐르는 답은 조각이 도착하는 방식으로 선다**(`MessageView` · `ThreadMarkdown`의 `streaming` — 끝 240px이 옅다). 조각은 기록 줄이 아니라 접은
@@ -86,9 +86,9 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   사이의 옅은 줄이다.
 // - 마지막으로 끝난 답 아래 12에만 답 아래 줄(복사 · 그 턴의 사용량)이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」 · restart 02b-6).
 //   「…」는 무엇을 둘지 정해지면(02 P1) 단다. 내 말 · 답 · 코드 블록의 복사는 한 단추다(`CopyButton` — 스토리 72).
-// - **Runtime 경고**(01b-8 · Cards 보드 「Runtime 경고」 · `WarningLine`) — 이어진 `stderr` 줄의 안내다. 글은 첫 줄이고 「자세히」가 묶인 줄을 안내 안에서
-//   모두 펼친다. 대화를 막지 않는다 — 턴 안의 안내가 서도 머리줄 · 「생각 중」은 일의 줄로 정한다(`lastWork`). 접힌 턴에도 남는다.
-//   모양은 02b-5가 맞춘다.
+// - **Runtime 경고**(01b-8 · Cards 보드 「Runtime 경고」 · `WarningLine`) — 이어진 `stderr` 줄의 안내다. 실패 · 끊김 안내와 같은 상자(`.ra-notice`)에 글은
+//   첫 줄이고 「자세히」가 묶인 줄을 안내 안에서 모두 펼친다(restart 02b-5). 대화를 막지 않는다 — 턴 안의 안내가 서도 머리줄 · 「생각 중」은 일의 줄로
+//   정한다(`lastWork`). 접힌 턴에도 남는다.
 // - **PR 카드**(v1 티켓 36 · ChatCards 보드 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 턴의 일이 아니라
 //   Work의 일이라 턴의 줄이 아니고, 그 앞 턴의 상자 끝 — 답 아래 16에 선다(MainCards).
 //
@@ -235,27 +235,23 @@ function NoticeLine({ notice }: { notice: Notice }) {
 }
 
 /**
- * Runtime 경고(Cards 보드 「Runtime 경고」) — 그림 · 첫 줄 · 「자세히」. 펼침은 `expanded`에 둔다 — 턴이 끝나면 안내가 접힌 턴의 자리로 옮겨 서므로
- * 안내 안의 상태로 두면 펼친 것이 닫힌다.
+ * Runtime 경고(Cards 보드 「Runtime 경고」 · restart 02b-5) — 실패 · 끊김 안내와 같은 상자(`.ra-notice`)에 글리프 ⓘ 15 · 첫 줄(굵은 첫마디 없이), 끝에 작은 단추
+ * 「자세히」(`.ra-mini`)다. 「자세히」는 묶인 원문을 이 안내 안에서 글 아래로 펼친다 — 펼친 동안 단추는 켜진 모양이다(`.ra-mini.on`). 펼침은 `expanded`에
+ * 둔다 — 턴이 끝나면 안내가 접힌 턴의 자리로 옮겨 서므로 안내 안의 상태로 두면 펼친 것이 닫힌다. 턴 안에서는 앞 줄과 16이다(`className` — 턴 안 줄 사이 8 + 8).
  */
-function WarningLine({ warning }: { warning: Pick<WarningEntry, "key" | "lines"> }) {
+function WarningLine({ warning, className }: { warning: Pick<WarningEntry, "key" | "lines">; className?: string }) {
   const key = turnKey(useContext(FlowThread), warning.key);
   const open = useStore(threadUiStore, (state) => state.expanded[key] === true);
   return (
-    <div data-warning className="flex w-full flex-col gap-1 text-chat-meta text-fg-tertiary">
-      <p className="flex items-start gap-1.5">
-        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-        <span className="min-w-0 wrap-anywhere">{warning.lines[0]}</span>
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => toggleTurn(key)}
-          className="shrink-0 underline transition-colors hover:text-fg-secondary focus-ring"
-        >
-          자세히
-        </button>
-      </p>
-      {open && <pre className="pl-5 font-mono text-xs whitespace-pre-wrap wrap-anywhere">{warning.lines.join("\n")}</pre>}
+    <div data-warning className={cn(NOTICE_BOX, "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-y-1", className)}>
+      <Info className="size-3.75 shrink-0" aria-hidden />
+      <span className="wrap-anywhere">{warning.lines[0]}</span>
+      <Button variant="ghost" size="xs" aria-expanded={open} onClick={() => toggleTurn(key)} className={NOTICE_ACTION}>
+        자세히
+      </Button>
+      {open && (
+        <pre className="col-span-2 col-start-2 pb-1 font-mono text-xs tracking-normal whitespace-pre-wrap wrap-anywhere">{warning.lines.join("\n")}</pre>
+      )}
     </div>
   );
 }
@@ -629,7 +625,7 @@ function EntryView({ entry }: { entry: Entry }) {
     case "result":
       return <ResultCard card={entry} />;
     case "warning":
-      return <WarningLine warning={entry} />;
+      return <WarningLine warning={entry} className="mt-2" />;
     case "unanswered":
       return <UnansweredRow entry={entry} />;
     // Thread 도구 카드의 결정 줄(Work 만들기 · Work 밖 Project · Service 질문 · Project 추가) — 갈래마다의 줄은 그 표다(`ToolCards.tsx`).
@@ -653,8 +649,8 @@ export function AnsweredRow({ entry }: { entry: QuestionEntry }) {
 const DECISION = "flex min-h-6 w-fit max-w-full flex-wrap items-center gap-1.5 text-chat-meta";
 
 /**
- * 결정 줄(Tools 보드 「승인 결정 줄」) — 허락은 ✓, 「다시 묻지 않기」로 준 허락은 방패 ✓, 거부는 ✕(경고색)다. 남긴 말은 뒤에 따옴표로 선다. 글은 아직
- * 「명령 실행을 승인함 · …」이다 — 보드의 「한 번만 허용함」 · 「거부함」으로 바꾸는 것은 결정 줄의 글을 맞추는 02b-5다.
+ * 결정 줄(Tools 보드 「승인 결정 줄」) — 허락은 ✓, 「다시 묻지 않기」로 준 허락은 방패 ✓, 거부는 ✕(경고색)다. 글은 누른 단추의 글이다(「한 번만 허용함」 ·
+ * 「이 작업공간의 모든 편집 허용함」 · 「거부함」 — `decisionText`, restart 02b-5). 남긴 말은 뒤에 따옴표로 선다.
  */
 function DecisionRow({ entry }: { entry: DecisionEntry }) {
   const Icon = !entry.allowed ? X : entry.granted ? ShieldCheck : Check;
@@ -697,21 +693,24 @@ function noticeAction(
 }
 
 /**
- * 턴 끝의 안내 줄(Cards 보드 `.ra-notice` — 「실패한 턴」 · 「거절」 · 「턴 한도」 · 「연결 끊김」 · 「다시 잇지 못함」, States 보드 15 · 16) — 열 폭의
- * `fill-soft` 상자(반경 12, 높이 40부터, 안쪽 8 8 8 12)에 경고 글리프 15와 13 / 18 `fg-secondary` 글이 서고, 굵은 첫마디만 `fg`다. 끝에 작은
- * 단추(`.ra-mini` — 24, 12 / 18) 하나가 설 수 있다. 앞 줄과는 턴 칸 사이 16이다(턴 안 줄 사이 8 + `mt-2`).
+ * 안내 줄의 상자(Cards 보드 `.ra-notice` — 「실패한 턴」 · 「거절」 · 「턴 한도」 · 「연결 끊김」 · 「다시 잇지 못함」 · 「앱이 막음」 · 「Runtime 경고」, States 보드
+ * 15 · 16) — 열 폭의 `fill-soft` 상자(반경 12, 높이 40부터, 안쪽 8 8 8 12)에 글리프 15와 13 / 18 `fg-secondary` 글이 사이 8로 선다. 굵은 첫마디만 `fg`다.
  */
-const NOTICE = "mt-2 flex min-h-10 w-full items-center gap-2 rounded-xl bg-fill-soft py-2 pr-2 pl-3 text-chat-meta text-fg-secondary";
+const NOTICE_BOX = "flex min-h-10 w-full items-center gap-2 rounded-xl bg-fill-soft py-2 pr-2 pl-3 text-chat-meta text-fg-secondary";
 
+/** 안내 끝의 작은 단추(Cards 보드 `.ra-mini`) — 24 · 좌우 8 · 반경 10 · 12 / 18 `fg-secondary`, hover에 `fill-hover` · `fg`. */
+const NOTICE_ACTION = "h-6 rounded-lg px-2 font-normal tracking-normal";
+
+/** 턴 끝의 안내 줄 — 끝에 작은 단추 하나가 설 수 있다. 앞 줄과는 턴 칸 사이 16이다(턴 안 줄 사이 8 + `mt-2`). */
 function EndNoticeLine({ notice, action }: { notice: EndNotice; action: { label: string; run: () => void } | null }) {
   return (
-    <div data-end-notice={notice.kind} className={NOTICE}>
+    <div data-end-notice={notice.kind} className={cn(NOTICE_BOX, "mt-2")}>
       <CircleAlert className="size-3.75 shrink-0" aria-hidden />
       <span className="min-w-0 flex-1 wrap-anywhere">
         <b className="font-medium text-fg">{notice.title}</b> {notice.detail}
       </span>
       {action && (
-        <Button variant="ghost" size="xs" onClick={action.run} className="h-6 rounded-lg px-2 font-normal tracking-normal">
+        <Button variant="ghost" size="xs" onClick={action.run} className={NOTICE_ACTION}>
           {action.label}
         </Button>
       )}
@@ -722,7 +721,7 @@ function EndNoticeLine({ notice, action }: { notice: EndNotice; action: { label:
 /** 다시 잇는 중(Cards 보드 「다시 잇는 중」) — 안내 줄의 자리에 같은 상자로 서고, 글리프 자리에 12의 회전이 돈다. */
 function ReconnectingLine() {
   return (
-    <p data-end-notice="reconnecting" className={NOTICE}>
+    <p data-end-notice="reconnecting" className={cn(NOTICE_BOX, "mt-2")}>
       <Spinner className="spin-thread size-3 text-fg-secondary" aria-hidden />
       <span className="chat-shimmer">다시 잇는 중</span>
     </p>

@@ -564,14 +564,43 @@ describe("앱이 거절해 멈춘 턴", () => {
   const REASON =
     "작업공간 밖의 파일이라 고칠 수 없어요: /Users/USER/.atelier/works/atelier-restart/spec/구현-노트/녹음-codex-2.2.2/outside/edit.txt — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요";
 
-  it("머리줄은 「앱이 막아서 멈췄어요」이고 「앱이 막음」 안내가 까닭을 보인다", () => {
+  it("머리줄은 「앱이 막아서 멈췄어요」이고 「앱이 막음」 안내가 까닭을 사람의 말로 보인다", () => {
     const model = foldThread(refused);
     expect(model.running).toBe(false);
     const turn = model.turns[1];
     expect(turn.end).toMatchObject({ stopReason: "cancelled", cancelledByUs: false, appRefusal: REASON });
     expect(workLine(turn)?.text).toBe("앱이 막아서 멈췄어요");
-    expect(endNotice(turn)).toEqual({ kind: "app-refused", title: "앱이 이 편집을 막았어요.", detail: `${REASON}.` });
+    expect(endNotice(turn)).toEqual({
+      kind: "app-refused",
+      title: "앱이 이 편집을 막았어요.",
+      detail: "작업공간 밖 파일이라 고칠 수 없어요. 이 작업공간의 worktree와 spec 폴더 안에서만 고칠 수 있어요.",
+    });
     expect(continueAsk(turn)).toBeNull();
+  });
+
+  // Host가 Runtime에게 준 거절 글(`policy.rs`의 `outside_message` · `kept_message`, `seat.rs`의 `busy`)은 모델에게 할 말이라 경로와 채팅 도구 이름이
+  // 든다. 안내는 그 갈래를 사람의 말로 옮긴다(restart 02b-5 · Cards 보드 「앱이 막음」). 글은 엔진 시험의 글 그대로다.
+  it("거절 글의 갈래마다 사람의 말이다 — Project 안이면 보드의 글, 모르는 글은 그대로다", () => {
+    const blocked = (appRefusal: string) =>
+      endNotice({ ...foldThread(refused).turns[1], end: { ...foldThread(refused).turns[1].end!, appRefusal } })?.detail;
+    expect(
+      blocked("작업공간 밖의 파일이라 고칠 수 없어요: /repos/fe/src/cart.ts — `fe` Project를 고치려면 먼저 채팅 도구 `start_editing`(Project 고치기 시작)을 부르세요"),
+    ).toBe("작업공간 밖 파일이라 고칠 수 없어요. 고치려면 그 Project를 작업공간에 붙여 달라고 말해 보세요.");
+    expect(
+      blocked(
+        "`work/` 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 채팅 도구 `propose_work`로 그 Project를 넣은 작업공간을 만든 뒤 `start_editing`을 부르세요",
+      ),
+    ).toBe("채팅 폴더 밖 파일이라 고칠 수 없어요. 고치려면 그 Project로 작업공간을 만들어 달라고 말해 보세요.");
+    expect(blocked("`work/` 밖의 파일이라 고칠 수 없어요: /etc/hosts — 작업공간이 없는 채팅은 채팅 폴더의 `work/` 안에서만 고쳐요")).toBe(
+      "채팅 폴더 밖 파일이라 고칠 수 없어요. 작업공간이 없는 채팅은 채팅 폴더 안에서만 고칠 수 있어요.",
+    );
+    expect(
+      blocked("채팅 기록이라 고칠 수 없어요: /t/20261023-101010/thread.json — 채팅 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요"),
+    ).toBe("채팅 기록이라 고칠 수 없어요. 이 파일은 Atelier만 써요.");
+    expect(blocked("「환불 고치기」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요")).toBe(
+      "「환불 고치기」 채팅이 이 작업공간을 고치는 중이에요. 그 채팅이 끝난 뒤 다시 시켜 보세요.",
+    );
+    expect(blocked("새 까닭")).toBe("새 까닭.");
   });
 
   it("턴 끝 뒤에 온 도구의 끝은 새 턴을 열지 않고 그 턴의 도구 줄에 붙는다", () => {

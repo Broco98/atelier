@@ -411,6 +411,11 @@ describe("눈금의 사분 단", () => {
       why: "MCP 받은 값 상자의 확장자 꼬리표 — 좌우 안쪽 3(DS `.at-code .at-ext`의 `padding: 0 3px`)",
     },
     {
+      file: "src/features/thread/AskCard.tsx",
+      className: "py-1.25",
+      why: "입력창 자리 카드의 긴 글 알약(Codex가 보낸 이름) — 위아래 안쪽 5(restart 시안 Cards `.ra-opt.long`의 `padding: 5px 12px`)",
+    },
+    {
       file: "src/features/thread/SlashMenu.tsx",
       className: "gap-px",
       why: "「/」 · 「@」 메뉴(한 카드 `ComposerListbox`) — 머리와 줄 사이 1(restart 시안 Composer `.ra-menu`의 `gap: 1px`)",

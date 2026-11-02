@@ -542,9 +542,11 @@
      row          10         12.5         사이드바 줄(05)
      summary      12         15           한때 요약 카드(07) — restart 02b-8 뒤로 카드는 앱 틀의 `card` 8이라 읽는 자리가 없다
      tray         15          —           첫 화면 입력창 밑 트레이의 아래 두 모서리(10) — 시안에서도 둥근 15 하나다
-     slot         20         25           입력창 자리 카드 — 승인 · 계획 · 질문 · Work 만들기 · Project 붙이기(11)
-     prompt       22          —           입력창(10) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는 round」). DS `composer`(28)는
-                                          입력창 자리 카드 · 알림 카드 · 읽기만 줄 · 끌어 놓기 자리도 읽어 그대로 둔다
+     slot         20         25           한때 입력창 자리 카드(11) — restart 02b-5 뒤로 그 카드들은 시안 Cards `.ra-ask`의 `prompt` 22라 읽는
+                                          자리가 없다
+     prompt       22          —           입력창(10)과 입력창 자리 카드(restart 02b-5 — 승인 · 계획 · 질문 · 로그인 · Runtime 없음, 둥글기만
+                                          맞춘 작업공간 제안 · Project · 도구 질문) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는
+                                          round」 · Cards `.ra-ask`)
    - 둥근 네모 값은 아래 `@theme`에, superellipse 값은 그 뒤 `@supports (corner-shape: superellipse(1.5))`의 `:root`가 다시 세운다(층 밖
      선언이 `@theme`의 층 안 선언을 이긴다). **superellipse 단계를 쓰는 자리는 `corner-superellipse`를 함께 단다** — 모서리 모양도 같은 창에서만
      바뀐다. 짝이 빠지면 그 창에서 둥근 네모가 25% 커진다(`type-scale.test.ts`가 짝을 잰다).
@@ -1513,8 +1515,8 @@
    **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창)가 쓴다 — 줄 높이
    (28 · 30 · 32) 안에 들어앉는다. 머리 줄의 단추는 이 단이
    아니라 기본 28이다 — 셸 컨트롤(`[data-titlebar]`의 `--titlebar-control-size`)도 화면 것(작업 ⋯ · 요약 카드 · 패널 토글 · 편집기의
-   「설정으로 돌아가기」 — `ShellHead`의 `headButton`)도 Codex 머리 줄 값이다(02 결정 「머리 줄은 한 결이다(03 뒤)」 — 한때 화면 것은 머리
-   카드의 24였다). */
+   「설정으로 돌아가기」)도 `ShellHead`의 `headButton` 한 벌이고 모서리는 `icon-button-ctl`(4 — 시안 `.ra-tbtn`)이다(02 결정 「머리 줄은
+   한 결이다(03 뒤)」 — 한때 화면 것은 머리 카드의 24였고, restart 02b-6b 전에는 둥글기가 기본의 10이었다). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
   --icon-button-radius: var(--radius-md);
@@ -1535,9 +1537,9 @@
   --icon-button-radius: var(--radius-md);
 }
 
-/* **28 · `radius-ctl`**(시안 `.ra-tbtn`) — 탭 줄의 `+` 하나가 쓴다(restart 02a-5). 탭 칸(높이 28 · 둥글기 4 — `ShellTabs`)과 나란히
-   서서 같은 높이 · 같은 모서리여야 칸 옆에서 혼자 작거나 둥글지 않다. 크기는 기본(28)이라 모서리만 바꾼다. 얹는 법은
-   `icon-button-xs`와 같다. */
+/* **28 · `radius-ctl`**(시안 `.ra-tbtn`) — 탭 줄의 `+`(restart 02a-5)와 머리 줄의 아이콘 단추(`ShellHead`의 `headButton` — 셸 컨트롤 ·
+   ⋯ · 요약 카드 · 패널 토글, restart 02b-6b)가 쓴다. 탭 칸(높이 28 · 둥글기 4 — `ShellTabs`)과 나란히 서서 같은 높이 · 같은 모서리여야
+   칸 옆에서 혼자 작거나 둥글지 않다. 크기는 기본(28)이라 모서리만 바꾼다. 얹는 법은 `icon-button-xs`와 같다. */
 @utility icon-button-ctl {
   --icon-button-radius: var(--radius-ctl);
 }
@@ -2226,6 +2228,11 @@ body[data-palette-open] [data-scrollbar] {
 @utility diff-overflow-fade {
     -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent);
     mask-image: linear-gradient(180deg, #000 calc(100% - 24px), transparent);
+}
+/* 승인 카드의 줄어든 diff(Cards 보드 `.ra-mdiff` — 132까지)가 넘치면 아래 30%가 옅어진다(restart 02b-5). */
+@utility ask-diff-fade {
+    -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent);
+    mask-image: linear-gradient(180deg, #000 70%, transparent);
 }
 @utility diff-bar-deleted {
     background: repeating-linear-gradient(135deg, var(--diff-deleted) 0 1px, transparent 1px 2.8px);

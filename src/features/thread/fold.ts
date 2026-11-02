@@ -211,14 +211,16 @@ export interface UnansweredEntry {
 }
 
 /**
- * 결정 줄(v1 티켓 24) — 사람이 승인 카드에서 고른 것. 문구는 `approval.ts`의 `decisionText`가 짓는다(「명령 실행을 승인함 · 이 작업공간에서는
- * 다시 묻지 않음」).
+ * 결정 줄(v1 티켓 24) — 사람이 승인 카드에서 고른 것. 문구는 `approval.ts`의 `decisionText`가 짓는다(「한 번만 허용함」 · 「이 작업공간의 모든
+ * 편집 허용함」 · 「거부함」, restart 02b-5).
  */
 export interface DecisionEntry {
   kind: "decision";
   key: string;
   /** 허락했나(고른 선택지의 `kind`가 `allow…`). */
   allowed: boolean;
+  /** 고른 선택지 — Codex가 보낸 왼쪽 단추(`allow_always`)는 그 이름이 결정 줄의 글이다. 물음을 찾지 못했으면 null이다. */
+  chosen: PermissionOption | null;
   /** 「다시 묻지 않기」로 준 허락과 둔 자리 — 없으면 null이다. */
   granted: { rules: string[]; work: string | null } | null;
   /** 거절하며 남긴 말 — 없으면 null이다. */
@@ -911,6 +913,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             kind: "decision",
             key: `d${line.seq}`,
             allowed: chosen?.kind.startsWith("allow") ?? false,
+            chosen: chosen ?? null,
             granted: grantedOf(payload.granted),
             words: nonEmpty(payload.words),
             toolCall: asked.request.toolCall,
@@ -1511,13 +1514,37 @@ export interface EndNotice {
 const sentence = (words: string): string => (/[.!?。]$/.test(words) ? words : `${words}.`);
 
 /**
+ * 앱이 거절한 까닭을 사람의 말로(Cards 보드 「앱이 막음」 · restart 02b-5) — 엔진이 Runtime에게 준 거절 글은 모델에게 할 말이라 경로와 채팅 도구
+ * 이름(`start_editing` · `propose_work`)이 든다. 그 글의 갈래(`policy.rs`의 `outside_message` · `kept_message`, `seat.rs`의 `busy`)를 머리로 읽어 사람이 할
+ * 일을 말한다. 작업공간 밖이면서 등록된 Project 안이면 보드의 글 그대로다. 모르는 글은 그대로 보인다 — 엔진이 새 갈래를 더해도 까닭이 사라지지 않는다.
+ * 기록에 남은 글의 머리를 읽으므로, 엔진이 그 머리를 바꾸면 `fold.test.ts`의 축복한 기록(`thread-codex-refused`)이 빨개진다.
+ */
+function refusalWords(refusal: string): string {
+  const intoProject = / Project를 고치려면 /.test(refusal);
+  if (refusal.startsWith("작업공간 밖의 파일이라")) {
+    return intoProject
+      ? "작업공간 밖 파일이라 고칠 수 없어요. 고치려면 그 Project를 작업공간에 붙여 달라고 말해 보세요."
+      : "작업공간 밖 파일이라 고칠 수 없어요. 이 작업공간의 worktree와 spec 폴더 안에서만 고칠 수 있어요.";
+  }
+  if (refusal.startsWith("`work/` 밖의 파일이라")) {
+    return intoProject
+      ? "채팅 폴더 밖 파일이라 고칠 수 없어요. 고치려면 그 Project로 작업공간을 만들어 달라고 말해 보세요."
+      : "채팅 폴더 밖 파일이라 고칠 수 없어요. 작업공간이 없는 채팅은 채팅 폴더 안에서만 고칠 수 있어요.";
+  }
+  if (refusal.startsWith("채팅 기록이라 고칠 수 없어요")) return "채팅 기록이라 고칠 수 없어요. 이 파일은 Atelier만 써요.";
+  const busy = /^(「.*」 채팅이 이 작업공간을 고치는 중이에요) — /.exec(refusal);
+  if (busy) return `${busy[1]}. 그 채팅이 끝난 뒤 다시 시켜 보세요.`;
+  return sentence(refusal);
+}
+
+/**
  * 그 턴의 안내 줄(Cards 보드 「실패한 턴」 · 01b-5) — 실패는 까닭을 보이고 받은 글이 있으면 남아 있다고 말한다. 끝 까닭은 보드의 문장이다. 앱이 거절해 멈춘
- * 턴(Cards 보드 「앱이 막음」 · 01c-7)은 엔진이 Runtime에게 준 거절 글을 까닭으로 보인다 — 앱이 거절하는 것은 편집뿐이다(앱 경계 · 쓰기 자리). 도는 턴 ·
- * 보통으로 끝난 턴 · 멈춘 턴 · 사람이 거부한 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 `cutNotice`다.
+ * 턴(Cards 보드 「앱이 막음」 · 01c-7)은 엔진이 Runtime에게 준 거절 글을 사람의 말로 옮겨 보인다(`refusalWords`) — 앱이 거절하는 것은 편집뿐이다(앱 경계 ·
+ * 쓰기 자리). 도는 턴 · 보통으로 끝난 턴 · 멈춘 턴 · 사람이 거부한 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 `cutNotice`다.
  */
 export function endNotice(turn: Turn): EndNotice | null {
   if (turn.end === null) return null;
-  if (turn.end.appRefusal !== null) return { kind: "app-refused", title: "앱이 이 편집을 막았어요.", detail: sentence(turn.end.appRefusal) };
+  if (turn.end.appRefusal !== null) return { kind: "app-refused", title: "앱이 이 편집을 막았어요.", detail: refusalWords(turn.end.appRefusal) };
   if (turn.end.error !== null) {
     const received = turn.entries.some((entry) => entry.kind === "message");
     const detail = sentence(turn.end.error);
