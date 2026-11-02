@@ -47,6 +47,16 @@ export interface ProcessGroups {
   helpers: ProcessIdentity[];
   orphans: { confirmed: Record<string, ProcessRow[]>; unknown: Record<string, ProcessRow[]> };
   otherInstances: Record<string, ProcessRow[]>;
+  /**
+   * **채팅마다 그 Runtime과 Runtime이 띄운 것**(restart 03-7) — 열쇠는 채팅 id다. 이 실행의 엔진이 띄운 Runtime(그 Runtime 키를 문 앱의
+   * 자식)과 그 자손, 부모가 먼저 죽어 Runtime 키로 묶인 dev 서버가 든다.
+   */
+  chats: Record<string, ProcessRow[]>;
+  /**
+   * **엔진의 몫** — 채팅의 Runtime과 그 프로세스 그룹(MCP · Codex의 app-server). 엔진이 채팅을 닫거나 앱을 끌 때 그룹째 끝내므로 화면은
+   * [끝내기]를 안 세운다. 묶음이 아니라 표시다 — `chats`의 행과 신원으로 짝짓는다.
+   */
+  runtimes: ProcessIdentity[];
 }
 
 /**
@@ -67,7 +77,7 @@ export interface PoolShell {
 
 /**
  * 다른 인스턴스 하나 — **지금 떠 있는 다른 아틀리에 실행**(CONTEXT 「다른 인스턴스」 · 프로세스 스펙 S54 · 티켓 31). 화면이 실행마다
- * 빌드 종류와 버전을 머리로 세우고, 그 밑에 그 실행의 셸 키가 낸 행(`verdict.otherInstances`)을 보인다. 보기만 한다.
+ * 빌드 종류와 버전을 머리로 세우고, 그 밑에 그 실행의 키(셸 · 채팅)가 낸 행(`verdict.otherInstances`)을 보인다. 보기만 한다.
  */
 export interface OtherInstance {
   generation: string;
@@ -75,8 +85,8 @@ export interface OtherInstance {
   build: "dev" | "release" | null;
   /** 앱 버전. `build`와 같이 빈다. */
   version: string | null;
-  /** 이 실행의 셸 키 중 다른 인스턴스 묶음에 행이 선 것. */
-  shellKeys: string[];
+  /** 이 실행의 키(셸 키 · Runtime 키 — restart 03-7) 중 다른 인스턴스 묶음에 행이 선 것. */
+  keys: string[];
 }
 
 /**
@@ -104,7 +114,7 @@ export interface AtelierTotals {
   total: number | null;
   /** 합계에 드는 것의 CPU%를 더한 것(맥 전체 = 100). 첫 표본이거나 못 쟀으면 `null`(「—」). */
   cpu: number | null;
-  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
+  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent · WebKit 도우미 — restart 03-8) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
   app: number | null;
   /** 앱 본체에 웹뷰(WebContent)를 안 셌다(프로세스 스펙 S39) — 요약 카드가 「웹뷰 제외」를 붙인다. */
   webviewExcluded: boolean;
@@ -137,12 +147,19 @@ export interface ProcessSnapshot {
 }
 
 /**
- * **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — Rust `processes::screen::BodyRows`. 앱 본체(Rust)와 웹뷰(WebContent)의
- * 지표다. 아틀리에 합계의 앱 본체(`AtelierTotals.app`)가 이 둘이다. 웹뷰를 못 물었거나 못 읽었으면 그 줄이 빈다(「—」).
+ * **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — Rust `processes::screen::BodyRows`. 앱 본체(Rust)와 웹뷰(WebContent ·
+ * WebKit 도우미 — restart 03-8)의 지표다. 아틀리에 합계의 앱 본체(`AtelierTotals.app`)가 이 둘이다. 웹뷰를 못 물었거나 못 읽었고 도우미도
+ * 없으면 그 줄이 빈다(「—」).
  */
 export interface BodyRows {
   rust: ProcessMetrics;
+  /** WebContent와 앱이 책임지는 WebKit 도우미(GPU · Networking — restart 03-8)의 합. */
   webview: ProcessMetrics;
+  /**
+   * 웹뷰 줄에 함께 센 WebKit 도우미의 갈래(`GPU` · `Networking`) — 이 표본에서 읽은 것만, 갈래 순(Rust `webkit::Helper::kind`). 책임
+   * 프로세스를 묻는 함수가 없거나 앱이 제 책임 프로세스가 아니면(셸에서 띄운 개발 빌드) 빈다 — 그 도우미는 「다른 앱」에 있다.
+   */
+  webkit: string[];
 }
 
 /**

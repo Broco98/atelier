@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { threadRowKey } from "@/features/works/work-sections";
 import { useChanged } from "./arrival";
 import { useOpenChat } from "./chat-door";
+import { chatName } from "./chat-name";
 import { threadQuery, useThreads, useWaiting } from "./hooks";
 import { markOf, seenOf, statusOf } from "./status";
 import { linesOf, threadRecordStore } from "./thread-store";
@@ -197,7 +198,7 @@ export function ThreadRow({
   // 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 표시가 상태를 열쇠로 새로 서므로. `ready`는
   // 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
   const moved = useChanged(mark, ready);
-  const title = thread.broken ? "열 수 없는 채팅" : thread.title || "새 채팅";
+  const title = chatName(thread);
   return (
     <button
       type="button"

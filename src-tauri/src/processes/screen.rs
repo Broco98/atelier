@@ -13,8 +13,11 @@
 //! (`targets` — 프로세스 스펙 S38의 「우리 트리만」). 셸 프로세스 자신의 행은 판정에 없어 그 지표는 풀의 셸이 싣는다. 트리의 합
 //! (셸 행 · work 행)은 화면이 짓는다 — work은 화면만 아는 층이다.
 //!
-//! **다른 인스턴스는 실행마다 빌드 종류와 버전을 싣는다**(티켓 31 · 프로세스 스펙 S54). 판정의 묶음은 셸 키마다라 실행을 모른다 —
-//! 그 키를 낸 실행을 인스턴스 기록에서 찾아 묶고, 두 칸은 그 실행의 기록 파일에서 읽는다(`instances`).
+//! **다른 인스턴스는 실행마다 빌드 종류와 버전을 싣는다**(티켓 31 · 프로세스 스펙 S54). 판정의 묶음은 키(셸 키 · Runtime 키)마다라
+//! 실행을 모른다 — 그 키를 낸 실행을 인스턴스 기록에서 찾아 묶고, 두 칸은 그 실행의 기록 파일에서 읽는다(`instances`).
+//!
+//! **채팅은 채팅 id로 싣는다**(restart 03-7). 판정의 묶음은 Runtime 키(`<세대>:<채팅 id>`)마다인데 이 실행의 것만 들어 세대가 늘
+//! 같다 — 화면이 채팅 목록과 잇는 열쇠인 채팅 id만 남긴다. 엔진의 몫(`runtimes`)은 묶음이 아니라 표시다(셸 도우미와 같다).
 //!
 //! **머리 값도 같은 표본에서 싣는다**(restart 03-5 「한 표본」) — 잰 시각, 맥 전체(`machine::Machine`), 아틀리에 합계(`summary::Totals`
 //! — 요약과 같은 함수). 화면을 보는 동안 머리와 줄과 메모리 카드가 이 한 장에서 선다. 그 밖(nav 메타)은 배경 10초 요약이다.
@@ -31,9 +34,9 @@ use super::breakdown::Breakdown;
 use super::instances::{Build, InstanceFile};
 use super::machine::Machine;
 use super::metrics::Measured;
-use super::summary::{Body, Totals};
+use super::summary::{sum_read, Body, Totals};
 use super::verdict::{InstanceRecord, Verdict};
-use super::{shell_key, Identity, Proc};
+use super::{runtime_key, shell_key, webkit, Identity, Proc};
 
 /// 화면 스냅샷 한 장. 프런트의 `ProcessSnapshot`(`src/features/processes/types.ts`)과 **칸 이름으로만** 이어진다 — 어긋나면
 /// 컴파일도 타입 검사도 통과하고 화면만 조용히 빈다. 그래서 와이어 모양을 아래 검사가 글자로 못박는다.
@@ -62,13 +65,43 @@ pub struct ScreenSnapshot {
     pub breakdown: Breakdown,
 }
 
-/// **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰(WebContent). 아틀리에 합계의 앱 본체가 이
-/// 둘이다(S39). 웹뷰를 못 물었거나 못 읽었으면 그 줄의 숫자가 빈다(「—」 — 요약 카드의 「웹뷰 제외」와 같은 때다).
+/// **아틀리에 앱의 줄**(restart 03-6 · 시안 Processes 「아틀리에 앱」) — 앱 본체(Rust)와 웹뷰. 웹뷰 줄은 WebContent와 앱이 책임지는
+/// WebKit 도우미(GPU · Networking — restart 03-8)의 합이다. 아틀리에 합계의 앱 본체가 이 둘이다(S39). 웹뷰를 못 물었거나 못 읽었고
+/// 도우미도 없으면 그 줄의 숫자가 빈다(「—」 — 요약 카드의 「웹뷰 제외」와 같은 때다).
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BodyRows {
     pub rust: Metrics,
     pub webview: Metrics,
+    /// 웹뷰 줄에 함께 센 WebKit 도우미의 갈래(`webkit::Helper::kind` — `GPU` · `Networking`) — 이 표본에서 읽은 것만, 갈래 순, 겹침 없음.
+    /// 책임 프로세스를 묻는 함수가 없거나 앱이 제 책임 프로세스가 아니면(셸에서 띄운 개발 빌드) 빈다 — 그 도우미는 「다른 앱」에 있다.
+    pub webkit: Vec<String>,
+}
+
+impl BodyRows {
+    /// 앱 본체의 신원과 이번 표본의 지표로 두 줄을 짓는다. 웹뷰 줄은 WebContent와 WebKit 도우미 중 읽은 것끼리 더한다(CPU는 잰 것끼리 —
+    /// 아틀리에 합계와 같은 규칙).
+    fn of(body: &Body, measured: &Measured) -> Self {
+        let read: Vec<&webkit::Helper> = body.webkit.iter().filter(|helper| measured.readings.contains_key(&helper.id)).collect();
+        let webview = body.web_content.into_iter().chain(read.iter().map(|helper| helper.id));
+        let mut kinds: Vec<String> = read.iter().map(|helper| helper.kind.clone()).collect();
+        kinds.sort();
+        kinds.dedup();
+        BodyRows { rust: metrics_of(measured, body.rust), webview: metrics_summed(measured, webview), webkit: kinds }
+    }
+}
+
+/// 여러 프로세스의 지표를 한 줄로 더한다 — 읽은 것끼리(아무것도 못 읽었으면 없다), 포트는 모아 오름차순 · 겹침 없이.
+fn metrics_summed(measured: &Measured, ids: impl Iterator<Item = Identity>) -> Metrics {
+    let rows: Vec<Metrics> = ids.map(|id| metrics_of(measured, Some(id))).collect();
+    let mut ports: Vec<u16> = rows.iter().flat_map(|row| row.ports.iter().copied()).collect();
+    ports.sort_unstable();
+    ports.dedup();
+    Metrics {
+        memory: sum_read(rows.iter().map(|row| row.memory)),
+        cpu: sum_read(rows.iter().map(|row| row.cpu)),
+        ports,
+    }
 }
 
 /// **다른 인스턴스 하나** — 지금 떠 있는 다른 아틀리에 실행(프로세스 스펙 S54 · 티켓 31). 화면이 이 실행마다 빌드 종류와 버전을
@@ -81,8 +114,9 @@ pub struct Instance {
     pub build: Option<Build>,
     /// 앱 버전. `build`와 같이 빈다.
     pub version: Option<String>,
-    /// 이 실행의 셸 키 중 다른 인스턴스 묶음에 행이 선 것 — 판정의 순서(키 순) 그대로다.
-    pub shell_keys: Vec<String>,
+    /// 이 실행의 표식 중 다른 인스턴스 묶음에 행이 선 것 — 셸 키와 Runtime 키(그 실행의 채팅이 띄운 것, restart 03-7). 판정의 순서(키 순)
+    /// 그대로다.
+    pub keys: Vec<String>,
 }
 
 /// 풀에 앉은 셸 하나. **pty id와 셸 키를 함께 싣는다** — 셸 키는 스냅샷의 셸을 스토어의 셸과 잇는 값이고(스토어의
@@ -134,6 +168,12 @@ fn metrics_of(measured: &Measured, id: Option<Identity>) -> Metrics {
 pub struct Groups {
     /// 셸 키마다 그 셸의 자손. 셸 자신은 안 든다.
     pub descendants: BTreeMap<String, Vec<Row>>,
+    /// **채팅 id마다** 그 채팅의 Runtime과 그것이 띄운 것(restart 03-7). 판정은 Runtime 키(`<세대>:<채팅 id>`)마다 가르지만 이 실행의 것이라
+    /// 세대는 뗀다 — 화면이 채팅 목록에서 이름을 찾는 값이 채팅 id다.
+    pub chats: BTreeMap<String, Vec<Row>>,
+    /// Runtime 몫 — 앱이 띄운 Runtime과 그 프로세스 그룹. 묶음이 아니라 표시라 신원만 싣는다 — 채팅 행과 신원으로 짝짓는다. 화면이 이 줄에
+    /// [끝내기]를 안 세운다(엔진이 끈다).
+    pub runtimes: BTreeSet<Identity>,
     pub exceptions: Vec<Row>,
     /// 셸 도우미 — 묶음이 아니라 표시라 신원만 싣는다. 자손 행과 신원으로 짝짓는다.
     pub helpers: BTreeSet<Identity>,
@@ -190,6 +230,12 @@ impl ScreenSnapshot {
         ScreenSnapshot {
             verdict: Groups {
                 descendants: by_key(&verdict.descendants),
+                chats: verdict
+                    .chats
+                    .iter()
+                    .map(|(key, procs)| (runtime_key::split(key).map_or(*key, |(_, thread)| thread).to_string(), rows(procs)))
+                    .collect(),
+                runtimes: verdict.runtimes.clone(),
                 exceptions: rows(&verdict.exceptions),
                 helpers: verdict.helpers.clone(),
                 orphans: OrphanGroups {
@@ -203,15 +249,16 @@ impl ScreenSnapshot {
             record_head,
             measured_at: measured.measured_at,
             mac: measured.machine,
-            body: BodyRows { rust: metrics_of(measured, body.rust), webview: metrics_of(measured, body.web_content) },
+            body: BodyRows::of(body, measured),
             breakdown: Breakdown::of(&atelier, apps, measured.machine),
             atelier,
         }
     }
 }
 
-/// **다른 인스턴스 묶음의 셸 키를 그 키를 낸 실행으로 묶는다**(티켓 31). 실행은 판정이 받은 인스턴스 기록(`records`)에서 판정과
-/// 같은 규칙(`shell_key::of_generation` — 「세대-숫자」)으로 찾는다: 판정이 다른 인스턴스로 가른 키는 살아 있는 실행의 기록이 있는 키다.
+/// **다른 인스턴스 묶음의 표식을 그 표식을 낸 실행으로 묶는다**(티켓 31). 실행은 판정이 받은 인스턴스 기록(`records`)에서 판정과
+/// 같은 규칙(`shell_key::of_generation` — 「세대-숫자」, Runtime 키면 `runtime_key::of_generation` — 「세대:채팅」, restart 03-7)으로 찾는다:
+/// 판정이 다른 인스턴스로 가른 표식은 살아 있는 실행의 기록이 있는 표식이다.
 /// 기록에 없는 키는 판정이 다른 인스턴스로 가르지 않으므로 여기 안 선다 — 화면은 실행에 안 묶인 키를 따로 세운다.
 ///
 /// 빌드 종류와 버전은 그 실행의 기록 파일에서 읽는다(`file` — 판정의 기록이 안 싣는 칸이다). 행이 선 실행의 파일만 읽는다.
@@ -221,20 +268,23 @@ pub fn instances(
     file: impl Fn(&str) -> Option<InstanceFile>,
 ) -> Vec<Instance> {
     let mut keys_by_run: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    let issued = |key: &str, generation: &str| {
+        shell_key::of_generation(key, generation) || runtime_key::of_generation(key, generation)
+    };
     for key in verdict.other_instances.keys() {
-        if let Some(record) = records.iter().find(|record| shell_key::of_generation(key, &record.generation)) {
+        if let Some(record) = records.iter().find(|record| issued(key, &record.generation)) {
             keys_by_run.entry(record.generation.as_str()).or_default().push(key.to_string());
         }
     }
     keys_by_run
         .into_iter()
-        .map(|(generation, shell_keys)| {
+        .map(|(generation, keys)| {
             let file = file(generation);
             Instance {
                 generation: generation.to_string(),
                 build: file.as_ref().map(|file| file.build),
                 version: file.map(|file| file.version),
-                shell_keys,
+                keys,
             }
         })
         .collect()
@@ -282,6 +332,7 @@ mod tests {
             command: None,
             path: None,
             shell_key: None,
+            runtime_key: None,
         }
     }
 
@@ -319,10 +370,15 @@ mod tests {
         let stale = row(400, 1, "node");
         let unknown = row(500, 1, "sleep");
         let other = row(600, 1, "zsh");
+        // 채팅 하나(restart 03-7) — 앱이 띄운 Runtime(엔진의 몫)과 그것이 띄운 뒤 부모가 먼저 죽은 dev 서버.
+        let runtime = row(700, 42, "codex-acp");
+        let dev = row(710, 1, "node");
         let zsh = Identity { pid: 100, started_us: 1_100 };
 
         let verdict = Verdict {
             descendants: BTreeMap::from([("G-1", vec![&gitstatusd, &vite, &esbuild]), ("G-2", vec![])]),
+            chats: BTreeMap::from([("G:20261010-100000", vec![&runtime, &dev])]),
+            runtimes: BTreeSet::from([runtime.id]),
             exceptions: vec![&tmux],
             helpers: BTreeSet::from([gitstatusd.id]),
             orphans: Orphans {
@@ -338,7 +394,7 @@ mod tests {
         let reading = |memory: u64, ports: Vec<u16>| Reading { memory, cpu_ns: 0, ports };
         // 앱 본체는 Rust 본체만 읽었다 — 웹뷰를 못 물었다(「웹뷰 제외」).
         let app = Identity { pid: 42, started_us: 4_200 };
-        let body = Body { rust: Some(app), web_content: None };
+        let body = Body { rust: Some(app), web_content: None, ..Body::default() };
         let measured = Measured {
             readings: HashMap::from([
                 (vite.id, reading(335_544_320, vec![5173, 24678])),
@@ -353,8 +409,8 @@ mod tests {
         };
 
         let instances = vec![
-            Instance { generation: "H".into(), build: Some(Build::Release), version: Some("0.15.0".into()), shell_keys: vec!["H-2".into()] },
-            Instance { generation: "D".into(), build: None, version: None, shell_keys: vec!["D-7".into()] },
+            Instance { generation: "H".into(), build: Some(Build::Release), version: Some("0.15.0".into()), keys: vec!["H-2".into()] },
+            Instance { generation: "D".into(), build: None, version: None, keys: vec!["D-7".into()] },
         ];
 
         // 다른 앱 — 번들 하나와 번들 밖의 줄(`apps::of`가 짓는다).
@@ -400,6 +456,9 @@ mod tests {
                         ],
                         "G-2": [],
                     },
+                    // 채팅은 채팅 id로 선다 — 이 실행의 세대는 화면이 쓸 곳이 없다. Runtime 몫은 신원만 싣는다(셸 도우미처럼 표시다).
+                    "chats": { "20261010-100000": [plain(700, 42, "codex-acp"), plain(710, 1, "node")] },
+                    "runtimes": [{ "pid": 700, "startedUs": 1_700 }],
                     "exceptions": [{
                         "id": { "pid": 300, "startedUs": 1_300 },
                         "ppid": 1,
@@ -425,8 +484,8 @@ mod tests {
                     { "ptyId": 2, "shellKey": "G-2", "lastOutputMs": 1_758_000_060_000u64, "metrics": unmeasured },
                 ],
                 "instances": [
-                    { "generation": "H", "build": "release", "version": "0.15.0", "shellKeys": ["H-2"] },
-                    { "generation": "D", "build": null, "version": null, "shellKeys": ["D-7"] },
+                    { "generation": "H", "build": "release", "version": "0.15.0", "keys": ["H-2"] },
+                    { "generation": "D", "build": null, "version": null, "keys": ["D-7"] },
                 ],
                 "recordHead": 7,
                 "measuredAt": 1_758_000_100_000u64,
@@ -439,10 +498,11 @@ mod tests {
                     "app": 419_430_400u64,
                     "webviewExcluded": true,
                 },
-                // 아틀리에 앱의 줄 — 앱 본체(Rust)는 읽었고, 웹뷰(WebContent)는 못 물어 비었다.
+                // 아틀리에 앱의 줄 — 앱 본체(Rust)는 읽었고, 웹뷰(WebContent)는 못 물어 비었다. 앱이 책임지는 WebKit 도우미도 없다(restart 03-8).
                 "body": {
                     "rust": { "memory": 419_430_400u64, "cpu": 1.25, "ports": [] },
                     "webview": unmeasured,
+                    "webkit": [],
                 },
                 // 나눔 — 읽은 합(아틀리에 14.5 + 다른 앱 9.5 + 0.5 = 24.5%, 1,931,476,992B)을 맥 전체(37.5%, 12GB)에서 뺀 것이 시스템 ·
                 // 못 읽음이고, 합계는 맥 전체다.
@@ -476,7 +536,67 @@ mod tests {
             }),
             "맥 전체를 안 쟀는데 시스템 · 못 읽음이나 합계가 섰다"
         );
-        assert_eq!(blank["body"], serde_json::json!({ "rust": unmeasured, "webview": unmeasured }), "앱 본체를 모르는데 숫자가 섰다");
+        assert_eq!(
+            blank["body"],
+            serde_json::json!({ "rust": unmeasured, "webview": unmeasured, "webkit": [] }),
+            "앱 본체를 모르는데 숫자가 섰다"
+        );
+    }
+
+    /// **웹뷰 줄은 WebContent와 앱이 책임지는 WebKit 도우미의 합이다**(restart 03-8 · 시안 Processes 「웹뷰 — WebContent · GPU · Networking」).
+    /// 읽은 것끼리 더하고(CPU는 잰 것끼리), 이 표본에서 읽은 도우미의 갈래를 갈래 순으로 싣는다 — 화면이 줄의 글자로 쓴다. 그사이 끝나 못
+    /// 읽은 도우미는 숫자에도 갈래에도 없다. WebContent를 못 물었어도 읽은 도우미는 줄에 선다 — 아틀리에 합계가 그것을 세므로 줄을 더하면
+    /// 합계가 돼야 한다. 앱 본체(`atelier.app`)도 같은 것을 센다.
+    #[test]
+    fn the_webview_row_adds_the_webkit_helpers_to_the_web_content() {
+        use crate::processes::webkit::Helper;
+
+        let (app, page) = (Identity { pid: 42, started_us: 4_200 }, Identity { pid: 77, started_us: 7_700 });
+        let helper = |pid: u32, kind: &str| Helper { id: Identity { pid, started_us: u64::from(pid) * 100 }, kind: kind.into() };
+        let (render, relay, gone) = (helper(78, "Render"), helper(79, "Relay"), helper(80, "Paint"));
+        let webkit = vec![relay.clone(), render.clone(), gone];
+        let reading = |memory: u64| Reading { memory, cpu_ns: 0, ports: vec![] };
+        let measured = Measured {
+            readings: HashMap::from([
+                (app, reading(400)),
+                (page, reading(200)),
+                (render.id, reading(60)),
+                (relay.id, Reading { memory: 30, cpu_ns: 0, ports: vec![8080] }),
+            ]),
+            cpu: HashMap::from([(app, 1.0), (page, 1.0), (render.id, 0.5)]),
+            ..Measured::default()
+        };
+        let empty = Verdict {
+            descendants: BTreeMap::new(),
+            exceptions: vec![],
+            helpers: BTreeSet::new(),
+            orphans: Orphans::default(),
+            other_instances: BTreeMap::new(),
+            chats: BTreeMap::new(),
+            runtimes: BTreeSet::new(),
+        };
+
+        let body = Body { rust: Some(app), web_content: Some(page), webkit: webkit.clone() };
+        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &body, &measured, vec![], vec![], None)).unwrap();
+        assert_eq!(
+            sheet["body"],
+            serde_json::json!({
+                "rust": { "memory": 400, "cpu": 1.0, "ports": [] },
+                "webview": { "memory": 290, "cpu": 1.5, "ports": [8080] },
+                "webkit": ["Relay", "Render"],
+            }),
+            "웹뷰 줄이 WebContent와 읽은 WebKit 도우미의 합이 아니다"
+        );
+        assert_eq!(sheet["atelier"]["app"], 690, "앱 본체가 웹뷰 줄과 같은 것을 안 셌다");
+
+        let unasked = Body { rust: Some(app), web_content: None, webkit };
+        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &unasked, &measured, vec![], vec![], None)).unwrap();
+        assert_eq!(
+            sheet["body"]["webview"],
+            serde_json::json!({ "memory": 90, "cpu": 0.5, "ports": [8080] }),
+            "WebContent를 못 물었을 때 웹뷰 줄이 합계가 센 도우미를 빠뜨렸다"
+        );
+        assert_eq!(sheet["atelier"]["webviewExcluded"], true, "WebContent를 못 셌는데 웹뷰를 셌다고 한다");
     }
 
     /// **지표는 우리 트리의 프로세스만 읽는다**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부(자손 · 예외 · 고아 두 갈래 · 다른
@@ -487,9 +607,12 @@ mod tests {
     fn only_our_tree_is_measured() {
         let (vite, tmux, stale, unknown, other) =
             (row(200, 100, "node"), row(300, 1, "tmux"), row(400, 1, "node"), row(500, 1, "sleep"), row(600, 1, "zsh"));
+        let (runtime, dev) = (row(700, 42, "codex-acp"), row(710, 1, "node"));
         let zsh = Identity { pid: 100, started_us: 1_100 };
         let verdict = Verdict {
             descendants: BTreeMap::from([("G-1", vec![&vite])]),
+            chats: BTreeMap::from([("G:20261010-100000", vec![&runtime, &dev])]),
+            runtimes: BTreeSet::from([runtime.id]),
             exceptions: vec![&tmux],
             helpers: BTreeSet::new(),
             orphans: Orphans {
@@ -501,11 +624,11 @@ mod tests {
         let pool = [pool_shell(1, "G-1", 0, Some(zsh)), pool_shell(2, "G-2", 0, None)];
 
         let (rust, web) = (Identity { pid: 42, started_us: 4_200 }, Identity { pid: 77, started_us: 7_700 });
-        let body = Body { rust: Some(rust), web_content: Some(web) };
+        let body = Body { rust: Some(rust), web_content: Some(web), ..Body::default() };
 
         assert_eq!(
             targets(&verdict, &pool, &body),
-            BTreeSet::from([zsh, vite.id, tmux.id, stale.id, unknown.id, other.id, rust, web])
+            BTreeSet::from([zsh, vite.id, runtime.id, dev.id, tmux.id, stale.id, unknown.id, other.id, rust, web])
         );
     }
 
@@ -526,14 +649,20 @@ mod tests {
     #[test]
     fn other_instances_are_grouped_by_the_run_that_issued_their_keys() {
         let (a, b, c, d) = (row(600, 1, "zsh"), row(610, 1, "node"), row(620, 1, "zsh"), row(630, 1, "sleep"));
+        let (e, f) = (row(640, 1, "codex-acp"), row(650, 1, "node"));
         let verdict = Verdict {
             other_instances: BTreeMap::from([
                 ("H-1", vec![&a]),
                 ("H-2", vec![&b]),
                 ("HX-1", vec![&c]),
                 ("D-4", vec![&d]),
+                // 그 실행의 채팅이 띄운 것(restart 03-7) — Runtime 키도 그 세대의 실행에 묶인다. `HX`의 앞글자가 `H`여도 `H`가 아니다.
+                ("H:20261010-100000", vec![&e]),
+                ("HX:20261010-100000", vec![&f]),
             ]),
             descendants: BTreeMap::new(),
+            chats: BTreeMap::new(),
+            runtimes: BTreeSet::new(),
             exceptions: vec![],
             helpers: BTreeSet::new(),
             orphans: Orphans::default(),
@@ -558,14 +687,14 @@ mod tests {
             generation: generation.into(),
             build,
             version: version.map(String::from),
-            shell_keys: keys.iter().map(|key| key.to_string()).collect(),
+            keys: keys.iter().map(|key| key.to_string()).collect(),
         };
         assert_eq!(
             instances(&verdict, &records, file),
             vec![
                 instance("D", None, None, &["D-4"]),
-                instance("H", Some(Build::Release), Some("0.15.0"), &["H-1", "H-2"]),
-                instance("HX", Some(Build::Dev), Some("0.16.0-dev"), &["HX-1"]),
+                instance("H", Some(Build::Release), Some("0.15.0"), &["H-1", "H-2", "H:20261010-100000"]),
+                instance("HX", Some(Build::Dev), Some("0.16.0-dev"), &["HX-1", "HX:20261010-100000"]),
             ]
         );
     }

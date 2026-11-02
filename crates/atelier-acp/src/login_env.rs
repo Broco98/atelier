@@ -240,6 +240,8 @@ fn parse_env(body: &[u8]) -> Vec<(OsString, OsString)> {
 /// 자식에게는 덧붙이지 않고 이것으로 **통째로 바꿔** 준다(`runtime::open`).
 ///
 /// - `ATELIER_SHELL` — 사용자 훅이 개발자 셸에 신호를 쏘지 않게.
+/// - `ATELIER_RUNTIME`(Runtime의 표식, restart 03-7) — 앱을 다른 실행의 채팅이 띄웠으면 앱의 env가 그 채팅의 표식을 문다. 넘기면 그
+///   실행이 이 앱의 Runtime을 제 채팅의 자손으로 본다. 이 앱의 표식은 띄울 때 따로 심는다(`HostBuilder::mark_runtimes`).
 /// - `ATELIER_MODE` — 사용자 `atelier` MCP가 기본 루트를 읽게.
 /// - `CLAUDECODE` · `CLAUDE_CODE_*` · `CLAUDE_PID` · `CODEX_COMPANION_*` — Claude가 몬 셸에서 앱을 띄웠을 때
 ///   그 세션 변수가 새지 않게.
@@ -269,7 +271,8 @@ impl AgentEnv {
 
 fn leaks_into_agent(name: &OsStr) -> bool {
     let name = name.as_bytes();
-    matches!(name, b"ATELIER_SHELL" | b"ATELIER_MODE" | b"CLAUDECODE" | b"CLAUDE_PID")
+    name == crate::runtime::RUNTIME_KEY_ENV.as_bytes()
+        || matches!(name, b"ATELIER_SHELL" | b"ATELIER_MODE" | b"CLAUDECODE" | b"CLAUDE_PID")
         || name.starts_with(b"CLAUDE_CODE_")
         || name.starts_with(b"CODEX_COMPANION_")
 }

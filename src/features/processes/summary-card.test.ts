@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import { NO_SHELLS, ownerOf } from "@/features/terminal/shell-registry";
 import type { Shell, ShellsState } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
-import { TREND_SPAN_MS, appBodyNote, cardCounts, cardFigures, cpuLegend, sparkline, trendLabel } from "./summary-card";
+import {
+  TREND_SPAN_MS,
+  appBodyNote,
+  cardCounts,
+  cardFigures,
+  cpuLegend,
+  sparkline,
+  trendLabel,
+  webviewParts,
+} from "./summary-card";
 import { NOT_READ } from "./metrics";
 import { breakdownOf, macOf, otherAppOf, poolShell, processRow, snapshotFixture } from "./process-fixture";
 import type { ProcessGroups, ProcessRow, TrendPoint } from "./types";
@@ -223,14 +232,28 @@ describe("지난 1시간 스파크라인", () => {
 });
 
 describe("앱 본체의 툴팁", () => {
-  // **GPU와 Networking은 세지 않는다**(S39) — 활성 상태 보기가 앱에 묶어 보이는 합과 차이가 나는 까닭을 툴팁이 말한다. 웹뷰를 못
-  // 셌으면 그것도 말한다.
-  it("GPU · Networking을 안 센다고 말하고, 웹뷰를 못 셌으면 그렇다고 말한다", () => {
-    expect(appBodyNote(false)).toContain("GPU");
-    expect(appBodyNote(false)).toContain("Networking");
-    expect(appBodyNote(false)).not.toContain("못 셌");
-    expect(appBodyNote(true)).toContain("GPU");
-    expect(appBodyNote(true)).toContain("못 셌");
+  // **앱이 책임지는 WebKit 도우미를 셌으면 웹뷰가 그것까지다**(restart 03-8 · 스토리 128). 못 찾았으면(책임 프로세스를 묻는 함수가 없다 ·
+  // 셸에서 띄운 개발 빌드) 예전처럼 GPU · Networking을 안 센다고 말한다 — 활성 상태 보기가 앱에 묶어 보이는 합과 차이가 나는 까닭이다
+  // (S39). 웹뷰(WebContent)를 못 셌으면 그것도 말한다.
+  it("센 WebKit 도우미를 웹뷰에 넣어 말하고, 못 찾았으면 안 센다고 말한다", () => {
+    expect(appBodyNote(false, ["GPU", "Networking"])).toBe("Rust 본체와 웹뷰(WebContent · GPU · Networking)를 세요.");
+    expect(appBodyNote(false, [])).toBe(
+      "Rust 본체와 웹뷰(WebContent)를 세요. WebKit의 GPU · Networking 프로세스는 세지 않아서 활성 상태 보기의 앱 합과 차이가 나요.",
+    );
+    expect(appBodyNote(true, ["GPU", "Networking"])).toBe("웹뷰(WebContent)를 못 셌어요 — Rust 본체와 GPU · Networking만이에요.");
+    expect(appBodyNote(true, [])).toBe(
+      "웹뷰(WebContent)를 못 셌어요 — Rust 본체만이에요. WebKit의 GPU · Networking 프로세스는 세지 않아서 활성 상태 보기의 앱 합과 차이가 나요.",
+    );
+  });
+});
+
+describe("웹뷰 줄의 글자", () => {
+  // **웹뷰 줄은 WebContent와 함께 센 WebKit 도우미를 적는다**(restart 03-8 · 시안 Processes 「WebContent · GPU · Networking」). 도우미를 못
+  // 찾았으면 WebContent뿐이다. 앱이 책임지는 WebContent가 더 있어도(WebKit이 미리 띄운 것) 한 번만 적는다.
+  it("WebContent 뒤에 센 도우미를 잇는다", () => {
+    expect(webviewParts(["GPU", "Networking"])).toBe("WebContent · GPU · Networking");
+    expect(webviewParts([])).toBe("WebContent");
+    expect(webviewParts(["GPU", "Networking", "WebContent"])).toBe("WebContent · GPU · Networking");
   });
 });
 

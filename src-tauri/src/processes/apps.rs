@@ -107,6 +107,7 @@ mod tests {
             command: None,
             path: path.map(String::from),
             shell_key: None,
+            runtime_key: None,
         }
     }
 

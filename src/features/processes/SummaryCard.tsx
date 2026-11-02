@@ -66,13 +66,13 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
           <LegendItem name="여유" value={legend.idle} />
         </p>
       </div>
-      {/* 메모리 합계 — 아틀리에 전체, 줄과 같은 2초 스냅샷이다(restart 03-5). 아래 줄이 앱 본체 — Rust 본체 + 웹뷰(WebContent).
-          GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 — 누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로
+      {/* 메모리 합계 — 아틀리에 전체, 줄과 같은 2초 스냅샷이다(restart 03-5). 아래 줄이 앱 본체 — Rust 본체 + 웹뷰(WebContent와 앱이
+          책임지는 WebKit 도우미 — restart 03-8). 무엇을 셌는지(도우미를 못 찾았으면 GPU · Networking을 안 센다는 것)를 툴팁이 말한다(S39). 툴팁은 `title`이다 — 누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로
           세우면 포커스와 역할이 새로 생긴다(`sidebar-active-band` S29와 같은 까닭). */}
       <div className={TILE}>
         <TileName icon={MemoryStick}>메모리 합계</TileName>
         <Figure data-figure="total" text={figures.memory} />
-        <p data-figure="app" title={snapshot ? appBodyNote(figures.webviewExcluded) : undefined} className={TILE_NOTE}>
+        <p data-figure="app" title={snapshot ? appBodyNote(figures.webviewExcluded, snapshot.body.webkit) : undefined} className={TILE_NOTE}>
           앱 본체 <span className="tabular-nums">{figures.app}</span>
           {figures.webviewExcluded && <span className="ml-1.5">({WEBVIEW_EXCLUDED})</span>}
         </p>
