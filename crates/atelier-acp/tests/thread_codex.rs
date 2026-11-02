@@ -1,5 +1,6 @@
 //! L1 — Codex 채팅(restart 티켓 01c-3 · 스펙 「01c — Codex」). 새 채팅에서 Codex를 고르면 Host가 `codex-acp`를 `CODEX_PATH`와 함께 띄우고, 화면과
-//! 기록은 ACP 하나만 읽는다 — Claude 채팅과 같은 기록 줄이 선다.
+//! 기록은 ACP 하나만 읽는다 — Claude 채팅과 같은 기록 줄이 선다. Codex의 요청은 Claude의 정도를 읽지 않고 앱 경계를 본 뒤 묻는다 — 앱 서버의
+//! 도구만 허용하고, 앱이 거절해 멈춘 턴은 까닭을 단다(01c-7).
 //!
 //! `codex-acp`는 가짜 ACP 에이전트다. 진짜 codex-acp 2.2.2의 녹음(`tests/fixtures/codex-acp-2.2.2/`)을 재생한다(01c-1). 시험은 호스트에 Thread
 //! 명령을 넣고 Thread 폴더와 가짜의 영수증(받은 env · `session/new` · 되살리기)만 본다. 앱 재시작은 호스트를 끄고 같은 데이터 루트로 새 호스트를
@@ -8,8 +9,9 @@
 mod common;
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-use atelier_acp::{Agent, AskLevel, EngineCheck, EngineState, HostError, Runtime, StartPicks, ThreadLink};
+use atelier_acp::{Agent, AskLevel, ConversationHost, EngineCheck, EngineState, HostError, Runtime, ServiceChoice, StartPicks, ThreadLink};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
@@ -677,6 +679,160 @@ fn 같은_작업공간의_claude_채팅이_계획으로_들고_나도_codex_세�
     assert_eq!(sandbox.acp_modes(&sandbox.thread_session_id(&claude)), ["plan", "default"], "Claude 채팅의 Session은 따른다");
     assert_eq!(sandbox.acp_modes(&sandbox.thread_session_id(&codex_chat)), ["workspace-write"], "Codex 세션은 제 모드 그대로다");
     assert!(of_kind(&sandbox.thread_record(&codex_chat), "config").len() == 1, "Codex 채팅에 Claude의 모드 줄이 서지 않는다");
+}
+
+// ── 앱 기능 도구(01c-7) ──────────────────────────────────────────────────────────────
+//
+// 녹음 `mcp`는 앱 서버(`atelier-thread`)의 `rename_thread`를 「환불 API 버그」로 부른 턴이다 — 도구 줄 → 제목도 입력도 없는 MCP 승인 요청 → 답 →
+// 도구 줄의 끝. `FAKE_ACP_MCP_CALL`이 그 부르기의 서버 · 도구 · 인자를 바꿔 낸다(가짜 ACP의 머리말).
+
+/// 녹음 `mcp`를 재생하는 Codex 채팅의 첫 말 — `call`이 있으면 녹음의 MCP 부르기를 그것으로 바꾼다.
+fn mcp_thread(sandbox: &Sandbox, call: Option<Value>, link: ThreadLink) -> (ConversationHost, String) {
+    let call = call.map(|call| call.to_string());
+    let extra: Vec<(&str, &str)> = call.iter().map(|call| ("FAKE_ACP_MCP_CALL", call.as_str())).collect();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/mcp", &extra));
+    let thread = host.start_thread_picking("환불이 두 번 빠져요", &[], link, codex()).expect("Codex 채팅의 첫 말");
+    (host, thread)
+}
+
+#[test]
+fn codex의_앱_서버_도구는_카드_없이_허용되어_앱_기능_도구를_지나고_도구_줄을_한도까지_기다리지_않는다() {
+    let sandbox = Sandbox::new();
+    let started = Instant::now();
+    let (host, thread) = mcp_thread(&sandbox, None, ThreadLink::NoWork);
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let took = started.elapsed();
+    host.shut_down();
+
+    let judged = of_kind(&record, "permission");
+    assert_eq!(judged.len(), 1, "카드가 서지 않는다:\n{}", common::lines_text(&record));
+    let payload = &judged[0]["payload"];
+    assert_eq!(
+        (&payload["state"], &payload["optionId"], &payload["reason"]),
+        (&json!("decided"), &json!("allow_once"), &json!("앱 기능 도구")),
+        "앞선 도구 줄의 서버가 앱 서버라 「한 번만 허용」으로 닫는다: {payload}"
+    );
+    assert_eq!(payload["toolCall"]["rawInput"]["server"], "atelier-thread", "판정이 읽은 것은 같은 id로 앞서 온 도구 줄의 서버다: {payload}");
+    assert_eq!(sandbox.thread_json(&thread)["title"], "환불 API 버그", "녹음의 인자로 앱 기능 도구를 지났다");
+    let called = sandbox.acp_mcp(&sandbox.thread_session_id(&thread));
+    assert_eq!((called.len(), &called[0]["tool"]), (1, &json!("rename_thread")), "{called:?}");
+    // 도구 줄 대기(`tool_lines.rs`)가 `mcp.<서버>.<도구>` 제목을 읽지 못하면 부르기마다 5초를 기다린다(01c-1의 실측).
+    assert!(took < Duration::from_secs(5), "앱 기능 도구 줄에서 한도(5초)를 기다리지 않는다: {took:?}");
+}
+
+#[test]
+fn codex의_다른_서버_mcp_도구는_앱이_허용하지_않고_카드가_선다() {
+    let sandbox = Sandbox::new();
+    let (host, thread) = mcp_thread(&sandbox, Some(json!({"server": "github"})), ThreadLink::NoWork);
+    let asked = first_permission(&sandbox, &thread);
+    let payload = asked["payload"].clone();
+    host.answer_thread_permission(&thread, payload["requestId"].as_str().expect("요청 id"), "allow_once").expect("한 번만 허용");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(
+        (&payload["state"], &payload["card"], &payload["policy"]),
+        (&json!("asked"), &json!("command"), &json!("")),
+        "앱 서버가 아니면 묻는다 — `_meta.is_mcp_tool_approval`은 같아도: {payload}"
+    );
+    assert_eq!(payload["toolCall"]["title"], "mcp.github.rename_thread", "{payload}");
+    let kinds: Vec<&str> = payload["request"]["options"].as_array().unwrap().iter().filter_map(|option| option["kind"].as_str()).collect();
+    assert_eq!(kinds, ["allow_once", "allow_always", "allow_always", "reject_once"], "선택지는 Codex가 보낸 그대로다");
+    assert_ne!(sandbox.thread_json(&thread)["title"], "환불 API 버그", "앱 기능 도구를 지나지 않았다");
+}
+
+#[test]
+fn 작업공간의_정도가_묻지_않음이어도_codex_채팅의_service_붙이기는_묻지_않고_넣지_않고_카드로_묻는다() {
+    // Claude 채팅이라면 「묻지 않음」 · 지금 Service 없음 · 맞는 Service가 넘긴 것 하나뿐이라 묻지 않고 넣는다(`thread_service_host.rs`).
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    atelier_core::update_policy(&sandbox.data_root(), atelier_core::PolicyPlace::Work("cart"), |policy| policy.mode = Some("auto".into()))
+        .expect("작업공간의 정도");
+    let services = atelier_core::services_in(&sandbox.data_root());
+    std::fs::create_dir_all(&services).unwrap();
+    std::fs::write(services.join("결제-서비스.md"), "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\n---\n").unwrap();
+    let call = json!({"tool": "set_service", "arguments": {"service": "결제-서비스", "projects": [], "reason": "환불은 결제 서비스 쪽 일이에요"}});
+    let (host, thread) = mcp_thread(&sandbox, Some(call), ThreadLink::Work { slug: "cart".into() });
+
+    let card = |record: &[Value]| {
+        of_kind(record, "question").into_iter().find(|line| line["payload"]["card"] == "service" && line["payload"]["state"] == "asked").cloned()
+    };
+    let asked = card(&sandbox.wait_thread_record(&thread, |record| card(record).is_some())).expect("Service 카드");
+    let request = asked["payload"]["requestId"].as_str().expect("요청 id");
+    host.answer_service(&thread, request, ServiceChoice::Later).expect("나중에");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert!(of_kind(&record, "service").is_empty(), "묻지 않고 넣은 Service 줄이 없다:\n{}", common::lines_text(&record));
+    let work: Value = serde_json::from_str(&std::fs::read_to_string(sandbox.work_dir("cart").join("work.json")).unwrap()).unwrap();
+    assert!(work.get("service").is_none(), "작업공간의 Service가 그대로다: {work}");
+}
+
+// ── 앱이 거절한 턴(01c-7) ──────────────────────────────────────────────────────────────
+//
+// codex-acp는 앱의 거절도 거부 선택지(`reject_once`)로만 받아 턴을 `cancelled`로 끝내고, 답의 `_meta.atelier`를 읽지 않아 까닭이 Codex에 닿지
+// 않는다. 그래서 Host가 그 턴의 끝 줄에 까닭을 단다 — 사람이 거부한 턴과 갈린다.
+
+/// 녹음 `edit`의 둘째 말 — 작업공간 밖(녹음한 자리의 `outside/`) 파일을 편집한다. 녹음에서는 사람이 거부했다.
+const OUTSIDE_EDIT: &str = "Use apply_patch to create the file /Users/USER/.atelier/works/atelier-restart/spec/구현-노트/녹음-codex-2.2.2/outside/edit.txt \
+                            containing exactly `hi`. Do not use shell commands. Do nothing else.";
+
+/// 기록 축복 — 작업공간에 이은 Codex 채팅이 작업 폴더 안에 묻지 않고 쓴 턴 뒤, 작업공간 밖 파일을 편집하려다 앱이 거절해 멈춘 턴(녹음 `edit`의
+/// 두 턴). 화면의 L2가 이 기록으로 「앱이 막아서 멈췄어요」와 「앱이 막음」 안내를 본다.
+#[test]
+fn 작업공간_밖_편집은_앱이_묻지_않고_거절하고_그_턴은_까닭을_단_끝_줄로_끝나며_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/edit", &[]));
+    let first = "Use apply_patch to create a file named hello.txt in the current folder containing exactly `hi`. Do nothing else.";
+    let thread =
+        host.start_thread_picking(first, &[], ThreadLink::Work { slug: "cart".into() }, codex()).expect("Codex 채팅의 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, OUTSIDE_EDIT).expect("둘째 말");
+    // 거부된 도구의 끝 줄(`failed`)은 턴의 답 뒤에 온다(01c-1의 실측) — 그 줄까지 기다린다.
+    let late = |line: &Value| line["payload"]["update"]["status"] == "failed";
+    let record = sandbox.wait_thread_record(&thread, |record| record.iter().any(late));
+    host.shut_down();
+
+    let outside = "/Users/USER/.atelier/works/atelier-restart/spec/구현-노트/녹음-codex-2.2.2/outside/edit.txt";
+    let reason = format!("작업공간 밖의 파일이라 고칠 수 없어요: {outside} — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요");
+    let judged: Vec<&Value> = of_kind(&record, "permission").into_iter().map(|line| &line["payload"]).collect();
+    assert_eq!(judged.len(), 1, "카드가 서지 않는다:\n{}", common::lines_text(&record));
+    assert_eq!(
+        (&judged[0]["state"], &judged[0]["optionId"], &judged[0]["reason"]),
+        (&json!("decided"), &json!("cancel"), &json!(reason)),
+        "`kind: edit`로 온 밖 편집은 거부 선택지로 닫는다"
+    );
+    let ends: Vec<&Value> = of_kind(&record, "turn-end").into_iter().map(|line| &line["payload"]).collect();
+    assert_eq!(ends.len(), 2);
+    assert!(ends[0].get("appRefusal").is_none(), "앱이 거절하지 않은 턴: {}", ends[0]);
+    assert_eq!(
+        (&ends[1]["stopReason"], &ends[1]["cancelledByUs"], &ends[1]["appRefusal"]),
+        (&json!("cancelled"), &json!(false), &json!(reason)),
+        "앱이 거절해 멈춘 턴은 그 까닭을 단다"
+    );
+    let ended_at = record.iter().position(|line| line["kind"] == "turn-end" && line["payload"]["appRefusal"].is_string()).unwrap();
+    assert!(record[ended_at + 1..].iter().any(late), "늦게 온 도구의 끝은 턴 끝 뒤의 update 줄로 선다:\n{}", common::lines_text(&record));
+
+    let session = sandbox.thread_session_id(&thread);
+    let settled = common::commands_after_each_opened(&record);
+    common::assert_record("thread-codex-refused", &common::fix_thread_record(&settled, &sandbox.data_root(), &thread, &[&session]));
+}
+
+#[test]
+fn 사람이_거부한_codex_턴은_앱이_거절한_까닭_없이_끝난다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.login_shell_for_login("deny-cancels", common::NO_BROWSER, &[]));
+    let thread = host.start_thread_picking("고쳐 줘", &[], ThreadLink::NoWork, codex()).expect("Codex 채팅의 첫 말");
+    let asked = first_permission(&sandbox, &thread);
+    assert_eq!(asked["payload"]["state"], "asked", "{asked}");
+    host.answer_thread_permission(&thread, asked["payload"]["requestId"].as_str().expect("요청 id"), "cancel").expect("거부");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let end = &of_kind(&record, "turn-end")[0]["payload"];
+    assert_eq!((&end["stopReason"], &end["cancelledByUs"]), (&json!("cancelled"), &json!(false)), "{end}");
+    assert!(end.get("appRefusal").is_none(), "사람의 거부에는 앱의 까닭이 없다: {end}");
 }
 
 // ── 로그인 ─────────────────────────────────────────────────────────────────────────

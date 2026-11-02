@@ -76,6 +76,8 @@ interface ApprovalCardProps {
   thread: string;
   /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 머리 한 줄과 카드 이름에 선다. */
   name: string;
+  /** 그 채팅의 Runtime 값(`ThreadView.runtime`) — Codex는 보낸 선택지를 그대로 그린다(`cardChoices`). */
+  runtime: string;
   /** 맨 앞의 답하지 않은 요청. 부르는 쪽이 요청 id를 key로 건다 — 다음 요청이 오면 카드가 새로 선다. */
   request: PendingPermission;
   /** 허락을 둘 자리 — Work에 이은 Thread면 그 Work, 아니면 이 Thread(S18). */
@@ -90,12 +92,12 @@ interface ApprovalCardProps {
   next?: ReactNode;
 }
 
-function ApprovalCard({ thread, name, request, scope, cwd, place, count = null, next }: ApprovalCardProps) {
+function ApprovalCard({ thread, name, runtime, request, scope, cwd, place, count = null, next }: ApprovalCardProps) {
   const hintId = useId();
   const { box: card, armed, sent, problem, send } = useSlotCard();
   const field = useRef<HTMLInputElement>(null);
   const view = describeApproval(request, name, place);
-  const { layout, choices } = cardChoices(request, scope);
+  const { layout, choices } = cardChoices(request, scope, runtime);
   const [active, setActive] = useState(0);
   const [writing, setWriting] = useState(false);
   const [words, setWords] = useState("");

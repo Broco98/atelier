@@ -45,6 +45,18 @@ pub(crate) fn app_tool(name: &str) -> Option<&str> {
     name.strip_prefix("mcp__")?.strip_prefix(SERVER_NAME)?.strip_prefix("__")
 }
 
+/// ACP 표준 값으로 읽은 MCP 부르기(restart 01c-2) — 도구 요지의 제목이 `mcp.<서버>.<도구>`이고 `rawInput`의 `server` · `tool`이 그 둘이면
+/// (서버, 도구)다(codex-acp 2.2.2). 둘이 어긋나면 MCP로 읽지 않는다 — `rawInput`에 `server` · `tool` 칸이 든 다른 도구를 MCP로 읽지 않게.
+/// `_meta.is_mcp_tool_call` · `is_mcp_tool_approval`은 보지 않는다 — 어느 서버인지 말하지 않는다.
+///
+/// 도구 줄 대기(`host/thread/tool_lines.rs`)와 Codex 판정(`policy::Act::of_codex`)이 이 규칙 하나를 쓴다. Claude 판정은 쓰지 않는다 —
+/// Claude의 제목과 입력은 모델이 쓴 글일 수 있다(restart 01a-9).
+pub(crate) fn mcp_call(call: &Value) -> Option<(&str, &str)> {
+    let input = &call["rawInput"];
+    let (server, tool, title) = (input["server"].as_str()?, input["tool"].as_str()?, call["title"].as_str()?);
+    (title == format!("mcp.{server}.{tool}")).then_some((server, tool))
+}
+
 /// 이 서버가 말하는 MCP 판 — 새것부터. 클라이언트가 이 가운데 하나를 물으면 그것으로, 아니면 맨 앞의 것으로 답한다. 쓰는 것(도구
 /// 목록 · 부르기 · 글 결과)은 네 판이 같다.
 const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];

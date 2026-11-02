@@ -500,9 +500,47 @@ describe("끝 까닭의 안내 줄", () => {
   });
 
   it("멈춘 턴과 거부로 멈춘 턴은 안내가 아니라 구분선이 말한다", () => {
-    const end = { durationMs: 1000, error: null, cut: null, cutReason: null, at: at(1) };
+    const end = { durationMs: 1000, error: null, cut: null, cutReason: null, appRefusal: null, at: at(1) };
     expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: true })).toBe("1초 후에 중단했습니다");
     expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: false })).toBe("거부해서 멈췄어요");
+  });
+});
+
+// 앱이 거절해 멈춘 Codex 턴(01c-7 · 스펙 「01c — Codex」 앱이 거절한 턴) — codex-acp는 앱의 거절도 거부 선택지로만 받아 턴을 `cancelled`로 끝낸다.
+// 엔진 검사(L1)가 녹음 `edit`의 둘째 턴(작업공간 밖 편집)으로 축복한 기록이다(`thread-codex-refused`). 엔진이 그 턴의 끝 줄에 단 까닭
+// (`appRefusal`)으로 사람이 거부한 턴과 가른다.
+describe("앱이 거절해 멈춘 턴", () => {
+  const refused = record("thread-codex-refused");
+  const REASON =
+    "작업공간 밖의 파일이라 고칠 수 없어요: /Users/USER/.atelier/works/atelier-restart/spec/구현-노트/녹음-codex-2.2.2/outside/edit.txt — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요";
+
+  it("머리줄은 「앱이 막아서 멈췄어요」이고 「앱이 막음」 안내가 까닭을 보인다", () => {
+    const model = foldThread(refused);
+    expect(model.running).toBe(false);
+    const turn = model.turns[1];
+    expect(turn.end).toMatchObject({ stopReason: "cancelled", cancelledByUs: false, appRefusal: REASON });
+    expect(workLine(turn)?.text).toBe("앱이 막아서 멈췄어요");
+    expect(endNotice(turn)).toEqual({ kind: "app-refused", title: "앱이 이 편집을 막았어요.", detail: `${REASON}.` });
+    expect(continueAsk(turn)).toBeNull();
+  });
+
+  it("턴 끝 뒤에 온 도구의 끝은 새 턴을 열지 않고 그 턴의 도구 줄에 붙는다", () => {
+    const model = foldThread(refused);
+    expect(model.turns).toHaveLength(2);
+    const tools = model.turns[1].entries.filter((entry): entry is ToolEntry => entry.kind === "tool");
+    expect(tools.map((tool) => [tool.call.status, describeTool(tool).state])).toEqual([["failed", "failed"]]);
+  });
+
+  it("사람이 거부해 멈춘 턴은 그대로 「거부해서 멈췄어요」이고 안내가 없다", () => {
+    const denied = refused.map((line) => {
+      if (line.kind !== "turn-end") return line;
+      const { appRefusal: _reason, ...payload } = line.payload as Record<string, unknown>;
+      return { ...line, payload };
+    });
+    const turn = foldThread(denied).turns[1];
+    expect(turn.end?.appRefusal).toBeNull();
+    expect(workLine(turn)?.text).toBe("거부해서 멈췄어요");
+    expect(endNotice(turn)).toBeNull();
   });
 });
 

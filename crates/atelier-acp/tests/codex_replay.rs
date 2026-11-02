@@ -153,7 +153,8 @@ fn thread_replaying(sandbox: &Sandbox, fixture: &str, first: &str) -> (Conversat
     (host, thread)
 }
 
-/// 턴이 끝날 때까지 기다린다. 그 사이 승인 카드가 서면 「한 번만 허용」으로 답한다 — 앱 기능 도구를 카드 없이 허용하는 것은 01c-7이다.
+/// 턴이 끝날 때까지 기다린다. 그 사이 승인 카드가 서면 「한 번만 허용」으로 답한다 — 이 시험은 녹음을 Claude 변환기 자리에 두어 Claude의 판정이
+/// 묻는다. Codex 채팅의 판정은 앱 서버의 도구를 카드 없이 허용한다(`thread_codex.rs`, 01c-7).
 fn finish_turn_allowing(sandbox: &Sandbox, host: &ConversationHost, thread: &str) -> Vec<Value> {
     let mut answered = Vec::new();
     wait_until("턴이 끝나지 않았다", || {

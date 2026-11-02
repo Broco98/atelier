@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { autoAllowReason, buttonKey, cardChoices, cardKey, decisionText, describeApproval, fieldLabel, placeOf, skipHint } from "./approval";
 import type { DecisionEntry, PendingPermission } from "./fold";
+import type { Runtime } from "./types";
 
 // 승인 카드(v1 티켓 24 · 캔버스 Cards · Approval 보드 A안) — 걸린 물음을 카드의 값(제목 · Policy · 명령이나 diff · 실행할 자리)과 선택지
 // 셋으로, 키 하나를 고르기로, 사람이 고른 것을 결정 줄의 글로 옮긴다. seam은 `approval.ts`의 순수 함수들이고, 그리는 쪽
@@ -127,12 +128,14 @@ describe("카드의 값", () => {
   });
 });
 
+/** 카드의 선택지를 견줄 꼴 — (글, 고를 선택지, 허락 문구인가, 입력칸을 여나, 글쇠). */
+const row = (request: PendingPermission, scope: "work" | "thread", runtime: Runtime = "claude-code") => {
+  const { layout, choices } = cardChoices(request, scope, runtime);
+  return { layout, choices: choices.map((choice) => [choice.label, choice.option, choice.remember, choice.opensField, choice.key]) };
+};
+
 describe("선택지 — 승인은 단추 줄, 계획은 번호 줄", () => {
   // 승인 카드의 단추 줄(02 §10 · Screen-Live 단계 4) — 왼쪽에서 오른쪽으로 「아니요, 다르게」(esc) · 허락 문구 · 맨 오른쪽 「이번만 허용」(↵).
-  const row = (request: PendingPermission, scope: "work" | "thread") => {
-    const { layout, choices } = cardChoices(request, scope);
-    return { layout, choices: choices.map((choice) => [choice.label, choice.option, choice.remember, choice.opensField, choice.key]) };
-  };
 
   it("아니요, 다르게 · 비슷한 명령 허용 · 이번만 허용 — 왼쪽에서 오른쪽 차례이고, ↵는 이번만 허용, esc는 입력칸을 여는 아니요다", () => {
     expect(row(request(migrate, { grant: ["Bash(pnpm prisma *)"] }), "work")).toEqual({
@@ -147,7 +150,7 @@ describe("선택지 — 승인은 단추 줄, 계획은 번호 줄", () => {
 
   it("명령 허락은 「비슷한 명령 허용」이고, 편집 허락은 작업공간과 밖에서 갈린다", () => {
     const always = (extra: Partial<PendingPermission>, scope: "work" | "thread") =>
-      cardChoices(request(migrate, extra), scope).choices.find((choice) => choice.remember)?.label;
+      cardChoices(request(migrate, extra), scope, "claude-code").choices.find((choice) => choice.remember)?.label;
     expect(always({ grant: ["Bash(pnpm prisma *)"] }, "work")).toBe("비슷한 명령 허용");
     expect(always({ grant: ["Bash(pnpm prisma *)"] }, "thread")).toBe("비슷한 명령 허용");
     expect(always({ card: "edit", grant: ["edit"] }, "work")).toBe("이 작업공간의 모든 편집 허용");
@@ -178,6 +181,60 @@ describe("선택지 — 승인은 단추 줄, 계획은 번호 줄", () => {
   });
 });
 
+// Codex의 선택지(01c-7 · 스펙 「01c — Codex」 권한 판정) — Codex가 보낸 것을 그대로 그린다. 선택지는 codex-acp 2.2.2의 녹음 그대로다(`mcp` · `edit`).
+// Codex 채팅의 물음에는 줄 허락(`grant`)이 없다 — 판정이 Claude의 「다시 묻지 않기」를 읽지 않는다.
+describe("Codex의 선택지", () => {
+  const mcpCall = { toolCallId: "exec-1", kind: "execute", status: "pending", title: "mcp.github.delete_file", rawInput: { server: "github", tool: "delete_file", arguments: {} } };
+  const mcp = request(mcpCall, {
+    policy: null,
+    options: [
+      { optionId: "allow_once", name: "Allow", kind: "allow_once" },
+      { optionId: "allow_session", name: "Allow for this session", kind: "allow_always" },
+      { optionId: "allow_always", name: "Always allow", kind: "allow_always" },
+      { optionId: "cancel", name: "Cancel", kind: "reject_once" },
+    ],
+  });
+
+  it("allow_always는 왼쪽 단추로 Codex가 보낸 이름 그대로, reject_once는 「거부」(esc), allow_once는 맨 오른쪽 「한 번만 허용」(↵)이다", () => {
+    expect(row(mcp, "work", "codex")).toEqual({
+      layout: "buttons",
+      choices: [
+        ["Allow for this session", "allow_session", false, false, null],
+        ["Always allow", "allow_always", false, false, null],
+        ["거부", "cancel", false, false, "escape"],
+        ["한 번만 허용", "allow_once", false, false, "enter"],
+      ],
+    });
+    const edit = request(schemaEdit, {
+      card: "edit",
+      policy: null,
+      options: [
+        { optionId: "allow_once", name: "Yes, proceed", kind: "allow_once" },
+        { optionId: "allow_for_session", name: "Yes, and don't ask again for these files", kind: "allow_always" },
+        { optionId: "cancel", name: "No, and tell Codex what to do differently", kind: "reject_once" },
+      ],
+    });
+    expect(row(edit, "thread", "codex").choices.map(([label]) => label)).toEqual(["Yes, and don't ask again for these files", "거부", "한 번만 허용"]);
+  });
+
+  it("거부는 입력칸을 열지 않는다 — codex-acp는 답에 실은 말을 읽지 않는다. Claude의 허락 문구도 서지 않는다", () => {
+    const { choices } = cardChoices({ ...mcp, grant: ["edit"] }, "work", "codex");
+    expect(choices.some((choice) => choice.opensField || choice.remember)).toBe(false);
+  });
+
+  it("키는 같다 — ↵는 「한 번만 허용」, esc는 「거부」다", () => {
+    const { choices } = cardChoices(mcp, "work", "codex");
+    const press = (code: string) => ({ code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false });
+    expect(choices[buttonKey(press("Enter"), choices, null) ?? -1]?.option).toBe("allow_once");
+    expect(choices[buttonKey(press("Escape"), choices, null) ?? -1]?.option).toBe("cancel");
+  });
+
+  it("한 번만 허용이나 거부가 없으면 번호 줄로 Codex가 보낸 이름 그대로다", () => {
+    const odd = request(mcpCall, { options: [{ optionId: "allow_session", name: "Allow for this session", kind: "allow_always" }] });
+    expect(row(odd, "work", "codex")).toEqual({ layout: "rows", choices: [["Allow for this session", "allow_session", false, false, null]] });
+  });
+});
+
 describe("고르기 전에 할 말(v1 티켓 25)", () => {
   it("카드 안 입력칸에 말을 쓰면 보내면 무엇이 건너뛰어지고 누구에게 가는지 한 줄로 말한다(스토리 83)", () => {
     expect(skipHint("command", "Claude Code")).toBe("보내면 이 명령은 건너뛰고 Claude Code에게 말을 전해요");
@@ -204,7 +261,7 @@ describe("키보드로 고른다", () => {
   });
 
   describe("승인 카드의 단추 줄 — ↵ · esc만(S25)", () => {
-    const { choices } = cardChoices(request(migrate, { grant: ["Bash(pnpm prisma *)"] }), "work");
+    const { choices } = cardChoices(request(migrate, { grant: ["Bash(pnpm prisma *)"] }), "work", "claude-code");
     const label = (at: number | null) => (at === null ? null : choices[at]?.label);
 
     it("↵는 이번만 허용, esc는 아니요, 다르게다", () => {

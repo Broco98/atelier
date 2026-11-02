@@ -10,7 +10,7 @@
 //! - **Service를 지우면**(티켓 07 · §9) 그 Service에 이은 칸이 비고 그 Service로 읽던 Thread마다 「지워짐」 줄이, 되돌리면 다시 적은 곳마다
 //!   「되돌림」 줄이 선다. 앱 밖에서 파일이 사라졌으면 그 Thread의 다음 말을 보낼 때 같은 줄로 닫는다([`ConversationHost::close_lost_service`]).
 
-use atelier_core::{DeletedService, ReadingScope, RecordKind, RestoredService, ScopeOf, ServiceLinks, ThreadFile, Work};
+use atelier_core::{DeletedService, ReadingScope, RecordKind, RestoredService, Runtime, ScopeOf, ServiceLinks, ThreadFile, Work};
 use serde_json::{json, Value};
 
 use super::gate;
@@ -219,7 +219,7 @@ impl ConversationHost {
         if current == ask.service.as_deref() {
             return thread_tools::said(&format!("{} — 바꾸지 않았다.", now_text(&asking.scope)), false);
         }
-        let auto = gate::asking(&self.data_root, thread, asking.work.as_deref()).0 == AskLevel::Auto;
+        let auto = asking.reads_level && gate::asking(&self.data_root, thread, asking.work.as_deref()).0 == AskLevel::Auto;
         if let (true, None, true, Some(slug)) = (auto, current, asking.alone, ask.service.as_deref()) {
             return match self.put_thread_service(thread, Some(slug), Change::Attached, false) {
                 Ok(()) => {
@@ -288,7 +288,8 @@ impl ConversationHost {
         }
         let names = registered.iter().map(|view| (view.project.slug.clone(), view.project.name.clone())).collect();
         let scope = self.scope_of(&file, work.as_ref());
-        Ok(Asking { work: file.work, scope, candidates, alone, names })
+        let reads_level = Runtime::of(file.runtime.as_deref().unwrap_or_default()) == Some(Runtime::ClaudeCode);
+        Ok(Asking { work: file.work, reads_level, scope, candidates, alone, names })
     }
 
     /// Service 질문 카드의 답(§11) — 사람이 고른 것으로 그 카드를 닫는다. 고른 Service는 이 Thread(Work에 이었으면 그 Work)에 적고, 이 Thread에는
@@ -390,6 +391,9 @@ pub(super) struct ServiceCard {
 /// Project의 slug → 이름.
 struct Asking {
     work: Option<String>,
+    /// Claude 채팅인가 — 물어보는 정도는 Claude 채팅만 읽는다(restart 스펙 「01c — Codex」 권한 판정). Codex 채팅은 「묻지 않음」의 묻지 않고
+    /// 붙이기를 하지 않는다.
+    reads_level: bool,
     scope: ReadingScope,
     candidates: Vec<atelier_core::Service>,
     /// 추천을 끼우기 전의 후보가 넘긴 Service 하나뿐이다 — 「묻지 않음」이 묻지 않고 붙이는 셋째 조건(§11).
