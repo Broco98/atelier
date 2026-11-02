@@ -144,6 +144,30 @@ describe("작업공간 도구의 기둥", () => {
     expect(open).toEqual(expect.arrayContaining(["max-w-full", "transition-[max-width]", "delay-[var(--duration-panel-open)]"]));
   });
 
+  it("패널 상자는 움직이는 동안만 가로를 자른다 — 다 편 뒤에는 카드의 0.5 링이 상자 끝(위 · 오른쪽 · 아래)에서 잘리지 않는다", () => {
+    // 카드는 상자 끝까지 차서(높이 100% · 폭 = 상자 − 틈) 상자가 넘침을 자르면 카드의 바깥 링(`shadow-hairline`)이 그 세 변에서 잘린다
+    // (02a-15 — L3 `frame.spec` 「카드의 0.5px 링이 네 변에 다 칠해진다」). 세로는 늘 자르지 않고(폭만 움직인다), 가로는 접힌 동안 ·
+    // 접고 펴는 동안만 자른다 — 그동안은 카드가 상자에 잘린다(02a-14c). 다 편 뒤에 놓는 순간은 펴는 길이만큼 늦는다(넘침은 이산 값이라
+    // `transition-discrete`로 늦춘다). 접을 때는 곧장 자른다.
+    const box = () => classOf(asideTag(column()));
+    stand(false);
+    const closed = box();
+    expect(closed).toContain("overflow-x-clip");
+    expect(closed).not.toContain("overflow-hidden");
+    expect(closed.filter((name) => name.startsWith("transition-[")), "접을 때 넘침은 곧장 잘린다").toEqual(["transition-[flex-basis]"]);
+    stand(true);
+    const open = box();
+    expect(open).not.toContain("overflow-hidden");
+    expect(open).toEqual(
+      expect.arrayContaining([
+        "overflow-x-visible",
+        "transition-[flex-basis,min-width,overflow-x]",
+        "delay-[0s,0s,var(--duration-panel-open)]",
+        "transition-discrete",
+      ]),
+    );
+  });
+
   it("처음 그리는 기둥은 움직이지 않는다 — 앱을 작업공간에서 켜면 레일과 패널이 자라지 않고 선다", () => {
     // restart 02a-15c — 작업공간 화면은 기둥과 한 커밋에 서지만 값은 레이아웃 이펙트로 닿아(`WorkTools`), 접힌 기둥이 그려지기 전에도 브라우저가
     // 그 사이의 모양을 셈해 두면 트랜지션이 걸렸다(L3 `shell-cold-start` — 붙은 셸이 `pty_resize`를 거듭 받았다). 기둥을 처음 그리는 동안은

@@ -30,7 +30,7 @@ export async function pickFiles(): Promise<string[]> {
 }
 
 /**
- * 창에 파일을 끌고 들어온 동안 참이다 — 놓으면 `onDrop`이 그 경로들로 불린다. `enabled`가 거짓이면(보내는 중 · 입력창 자리에 카드)
+ * 창에 파일을 끌고 들어온 동안 참이다 — 놓으면 `onDrop`이 그 경로들로 불린다. `enabled`가 거짓이면(숨은 입력창 · 보내는 중 · 입력창 자리에 카드)
  * 듣지 않는다. 앱 안의 끌기(사이드바 줄 옮기기)는 경로가 없어 이 상태를 켜지 않는다.
  */
 export function useAttachmentDrop(enabled: boolean, onDrop: (paths: string[]) => void): boolean {

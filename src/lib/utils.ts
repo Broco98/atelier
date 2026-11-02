@@ -19,8 +19,8 @@ import { createCn } from "cn/config";
 // 남겨, 어느 길이가 서는지를 CSS의 순서가 정한다. 시간은 합치기의 이름표(theme)가 없어 갈래(`duration`)에 직접 더한다. 모션 보드의
 // 시간 여섯(`duration-card` … `duration-spin`)과 감속 곡선(`ease-settle`)도 같은 목록이다(v1 티켓 43).
 //
-// **02가 더한 Codex 실측 이름도 같은 목록이다**(02 티켓 01) — 글자 `codespan` · `home`, 반경 `codespan` · `row` · `summary` · `tray` ·
-// `speech` · `slot` · `prompt`, 그림자 `panel` · `menu` · `summary` · `prompt`, 시간 `sidebar` · `think` · `arrive` · `wave` · `morph`, 곡선
+// **02가 더한 Codex 실측 이름도 같은 목록이다**(02 티켓 01) — 글자 `codespan`, 반경 `codespan` · `row` · `summary` · `tray` ·
+// `slot` · `prompt`, 그림자 `panel` · `menu` · `summary` · `prompt`, 시간 `sidebar` · `think` · `arrive` · `wave` · `morph`, 곡선
 // `spring` · `shimmer` · `arrive` · `wave`. 값과 쓰임은 `index.css`의 그 머리말들이 든다.
 //
 // **restart 시안의 이름도 같은 목록이다**(restart 티켓 02a-1) — 반경 `ctl` · `rail` · `card`, 시간 `panel-open` · `rail` · `rise`. restart 03-11이
@@ -57,9 +57,8 @@ export const cn = createCn({
         "code",
         "nav-row",
         "codespan",
-        "home",
       ],
-      radius: ["ctl", "codespan", "rail", "card", "row", "summary", "tray", "speech", "slot", "bubble", "prompt", "composer"],
+      radius: ["ctl", "codespan", "rail", "card", "row", "summary", "tray", "slot", "bubble", "prompt", "composer"],
       shadow: [
         "hairline",
         "100",

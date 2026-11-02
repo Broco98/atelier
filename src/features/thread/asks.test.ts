@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { askTurn, nextOf } from "./asks";
 import {
-  answeringLine,
+  thinkingLine,
   foldThread,
   type PendingPermission,
   type PendingProject,
@@ -96,11 +96,11 @@ describe("물음 차례", () => {
     expect(order(askTurn(foldThread(lines)))).toEqual(["1", { at: 2, total: 3 }, "2"]);
   });
 
-  it("승인을 기다리는 세션은 「답하는 중」에 서지 않는다 — 입력창 자리의 카드가 말한다", () => {
-    // 물음 줄이 도구 줄보다 먼저 왔다 — 턴에 아직 아무 줄도 없어 묻지 않았다면 「답하는 중」이다.
+  it("승인을 기다리는 세션은 「생각 중」에 서지 않는다 — 입력창 자리의 카드가 말한다", () => {
+    // 물음 줄이 도구 줄보다 먼저 왔다 — 턴에 아직 아무 줄도 없어 묻지 않았다면 「생각 중」이다.
     const lines = [sent(1, "환불 API 버그 고쳐줘"), asked(2, migrate, "0")];
-    expect(answeringLine(foldThread(lines.slice(0, 1)))).toBe(true);
-    expect(answeringLine(foldThread(lines))).toBe(false);
+    expect(thinkingLine(foldThread(lines.slice(0, 1)))).toBe(true);
+    expect(thinkingLine(foldThread(lines))).toBe(false);
   });
 
   it("세션이 사라지면 걸린 물음이 모두 걷힌다 — 답할 곳이 없다", () => {

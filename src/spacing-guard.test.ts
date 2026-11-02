@@ -381,8 +381,8 @@ describe("눈금의 사분 단", () => {
     },
     {
       file: "src/features/thread/WorkLog.tsx",
-      className: "pb-2.25",
-      why: "작업 구분선 — 글자 아래 9에 1px 선(02 구현 스펙 §8 · Diff-Chat · Screen-Live 「작업 구분선」의 `gap: 9px`)",
+      className: "gap-2.25",
+      why: "턴 머리 — 글 줄 아래 9에 0.5 선(States 보드 `.ra-whblock`의 `gap: 9px` · restart 02b-1, 한때 Diff-Chat 「작업 구분선」의 아래 안쪽 9)",
     },
     {
       file: "src/features/thread/SlashMenu.tsx",

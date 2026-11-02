@@ -55,11 +55,18 @@ describe("Thread 화면의 움직임", () => {
   });
 
   // 「생각 중」은 박자를 둔 띠다(Codex cadenced shimmer — 02 구현 스펙 §12 · 스토리 98). 쉬지 않고 도는 반짝임(`chat-shimmer`)은 작업 중 ·
-  // 도는 도구 줄의 것이다. 「생각 중」이 서는 자리(흐름의 도는 턴 · 첫 말을 보낸 새 Thread)가 모두 그 띠다.
+  // 도는 도구 줄 · 「채팅을 시작하는 중」의 것이다. 「생각 중」은 흐름의 도는 턴에 서고, 그 줄(`ThreadFlow`의 `ThinkingLine`)이 띠를 든다
+  // (restart 02b-1 — 한때 첫 말을 보낸 새 Thread에도 섰다). 줄을 거치지 않고 적은 「생각 중」도 그 띠여야 한다.
   it("「생각 중」은 think-shimmer로 선다", () => {
-    const thinking = placesOf(/className="([^"]*)"[^>]*>생각 중</g, thread);
-    expect(thinking.length, "「생각 중」이 서는 자리").toBeGreaterThanOrEqual(2);
-    expect(thinking.filter(({ match }) => !match[1].split(" ").includes("think-shimmer")).map(where)).toEqual([]);
+    const thinking = placesOf(/<(\w+)(?: className="([^"]*)")?>생각 중</g, thread);
+    expect(thinking.length, "「생각 중」이 서는 자리").toBeGreaterThanOrEqual(1);
+    const line = placesOf(/function ThinkingLine\b[\s\S]*?return <p className="([^"]*)"/g, thread);
+    expect(
+      line.map(({ match }) => match[1].split(" ").includes("think-shimmer")),
+      "`ThinkingLine`의 띠",
+    ).toEqual([true]);
+    const loose = thinking.filter(({ match }) => match[1] !== "ThinkingLine" && !(match[2] ?? "").split(" ").includes("think-shimmer"));
+    expect(loose.map(where)).toEqual([]);
   });
 
   it("인라인 style에 움직임을 적지 않는다", () => {

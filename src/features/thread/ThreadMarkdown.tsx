@@ -21,7 +21,7 @@ import { continueBlocks, type BlockScan } from "./markdown-blocks";
 //
 // 링크는 바깥 URL만 연다 — Tauri 웹뷰에서 `<a>`가 그대로 주소를 바꾸면 앱이 그 페이지로 간다.
 
-/** 0.5px 가름선 — 작업 머리줄 아래 · 답 안의 `---`(DS `.at-hr` — `border-heavy`). */
+/** 0.5px 가름선 — 턴 머리 아래(States 보드 `.ra-rule`) · 답 안의 `---`(DS `.at-hr` — `border-heavy`). */
 export const RULE = "h-[0.5px] shrink-0 border-0 bg-border-heavy";
 
 const components: Components = {
@@ -31,10 +31,16 @@ const components: Components = {
   h4: ({ children }) => <h4 className="text-heading-xs">{children}</h4>,
   h5: ({ children }) => <h5 className="text-heading-xs">{children}</h5>,
   h6: ({ children }) => <h6 className="text-heading-xs">{children}</h6>,
-  ul: ({ children }) => <ul className="flex list-disc flex-col gap-1 pl-5 marker:text-fg-tertiary">{children}</ul>,
-  ol: ({ children }) => <ol className="flex list-decimal flex-col gap-1 pl-5 marker:text-fg-tertiary">{children}</ol>,
+  // 목록(Cards 보드 「답 본문」 · DS `.at-prose ul`) — 안쪽 22 · 줄 사이 4.
+  ul: ({ children }) => <ul className="flex list-disc flex-col gap-1 pl-5.5 marker:text-fg-tertiary">{children}</ul>,
+  ol: ({ children }) => <ol className="flex list-decimal flex-col gap-1 pl-5.5 marker:text-fg-tertiary">{children}</ol>,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  blockquote: ({ children }) => <blockquote className="border-l-[3px] border-rule pl-4 text-fg-secondary">{children}</blockquote>,
+  // 인용(DS `.at-prose blockquote`) — 왼쪽 16 안쪽에 `fg-secondary` 글, 3 폭의 둥근 막대가 위아래 2를 비우고 선다.
+  blockquote: ({ children }) => (
+    <blockquote className="relative pl-4 text-fg-secondary before:absolute before:inset-y-0.5 before:left-0 before:w-[3px] before:rounded-2xs before:bg-rule">
+      {children}
+    </blockquote>
+  ),
   hr: () => <hr className={RULE} />,
   a: ({ children, href }) => (
     <a
@@ -64,10 +70,10 @@ const components: Components = {
     const code = node?.children?.[0];
     return <CodeBlock lang={codeLang(code)} code={hastText(code).replace(/\n$/, "")} />;
   },
-  // 인라인 코드(02 구현 스펙 §8 · Diff-Chat 「인라인 코드」) — 둘레 글자의 .92(고정 13px가 아니다) · 바탕 `surface-codespan` · 안쪽
-  // 1 / 6 · 둥글기 7.5 superellipse(WebKit은 6의 둥근 네모)라 높이가 17이다. 코드 블록은 그대로다(`CodeBlock`).
+  // 인라인 코드(Thread 보드 `.ra-prose code`) — 둘레 글자의 .92(고정 13px가 아니다) · 바탕 `fill-soft` · 안쪽 1 / 6 · 둥글기 6(superellipse를
+  // 쓰는 창은 7.5)이라 높이가 17이다. 한때 Codex 실측의 바탕 `surface-codespan`(#e8e9e9)이었다. 코드 블록은 그대로다(`CodeBlock`).
   code: ({ children }) => (
-    <code className="rounded-codespan corner-superellipse bg-surface-codespan px-1.5 py-px font-mono text-codespan wrap-anywhere">
+    <code className="rounded-codespan corner-superellipse bg-fill-soft px-1.5 py-px font-mono text-codespan wrap-anywhere">
       {children}
     </code>
   ),

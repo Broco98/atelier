@@ -76,8 +76,8 @@ describe("글자 단계", () => {
   // **먼저 읽었음을 센다.** 주석 지우기가 새서 원문을 통째로 지우면 아래 「0건」이 저절로 초록이 된다 —
   // 단계 클래스가 주석 밖에서 실제로 보이는지까지 본다.
   it("검사가 실제로 소스를 읽는다", () => {
-    // DS 「Atelier」 2판 `type.groups`의 차례 그대로다 — 제목 · 글 · 대화 · 라벨 · 코드 · Atelier. 끝의 둘은 02가 더한 Codex 실측이다 —
-    // 인라인 코드의 .92em(`codespan`, 스펙 §8)과 첫 화면 물음의 28(`home`, 스펙 §11).
+    // DS 「Atelier」 2판 `type.groups`의 차례 그대로다 — 제목 · 글 · 대화 · 라벨 · 코드 · Atelier. 끝의 하나는 02가 더한 Codex 실측이다 —
+    // 인라인 코드의 .92em(`codespan`, 스펙 §8). 첫 화면 물음의 28(`home`, 스펙 §11)은 restart 02b-1이 시안의 `heading-lg`로 옮기며 걷었다.
     expect(steps).toEqual([
       "heading-5xl",
       "heading-4xl",
@@ -102,7 +102,6 @@ describe("글자 단계", () => {
       "code",
       "nav-row",
       "codespan",
-      "home",
     ]);
     const uses = new RegExp(`(?<![\\w-])text-(?:${steps.join("|")})(?![\\w-])`, "g");
     expect(sources.length).toBeGreaterThan(100);
@@ -156,7 +155,8 @@ function classUnits({ file, text }: { file: string; text: string }): { file: str
 describe("반경 단계", () => {
   it("Codex의 반경 이름이 `@theme`에 있다", () => {
     // 02가 Codex 실측 일곱을 더했다(크기 차례에 끼운다) — 인라인 코드 `codespan` · 사이드바 줄 `row` · 요약 카드 `summary` · 트레이 `tray` ·
-    // 사람 말풍선 `speech` · 입력창 자리 카드 `slot` · 입력창 `prompt`. 값과 쓰임은 `index.css`의 반경 머리말이 든다.
+    // 입력창 자리 카드 `slot` · 입력창 `prompt`와 사람 말풍선 `speech`다. 값과 쓰임은 `index.css`의 반경 머리말이 든다. restart 02b-1이 말풍선을
+    // 시안의 `bubble` 22로 옮기며 `speech`를 걷었다.
     // restart 02a-1이 앱 틀의 셋을 더했다(같은 값의 이름 뒤에 끼운다) — 틀 안 `ctl` 4 · 레일 카드 `rail` 6 · 앱 틀 카드 `card` 8.
     expect(radii).toEqual([
       "2xs",
@@ -173,7 +173,6 @@ describe("반경 단계", () => {
       "summary",
       "tray",
       "2xl",
-      "speech",
       "3xl",
       "slot",
       "bubble",
@@ -185,7 +184,7 @@ describe("반경 단계", () => {
   });
 
   it("superellipse 단계는 `@theme`의 반경 이름이다", () => {
-    expect(superellipse).toEqual(["codespan", "row", "summary", "slot", "speech"]);
+    expect(superellipse).toEqual(["codespan", "row", "summary", "slot"]);
     expect(superellipse.filter((name) => !radii.includes(name))).toEqual([]);
   });
 
@@ -198,9 +197,9 @@ describe("반경 단계", () => {
     // 앵커: 꼴이 모서리 앞말 · 변형까지 잡고, superellipse 단계가 아닌 반경은 잡지 않는다.
     const sample = classUnits({
       file: "예.tsx",
-      text: '"rounded-row corner-superellipse" "rounded-b-summary" "hover:rounded-slot" "rounded-lg rounded-tray" `rounded-speech`',
+      text: '"rounded-row corner-superellipse" "rounded-b-summary" "hover:rounded-slot" "rounded-lg rounded-tray" `rounded-codespan`',
     });
-    expect(unpaired(sample).map(({ text }) => text)).toEqual(['"rounded-b-summary"', '"hover:rounded-slot"', "`rounded-speech`"]);
+    expect(unpaired(sample).map(({ text }) => text)).toEqual(['"rounded-b-summary"', '"hover:rounded-slot"', "`rounded-codespan`"]);
     expect(unpaired(sources.flatMap(classUnits)).map(({ file, text }) => `${file}: ${text}`)).toEqual([]);
   });
 

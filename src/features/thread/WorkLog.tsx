@@ -19,6 +19,7 @@ import { autoAllowReason } from "./approval";
 import { useArrival, useChanged } from "./arrival";
 import type { ToolEntry } from "./fold";
 import { logRows, type LogGroup } from "./log";
+import { RULE } from "./ThreadMarkdown";
 import { motionMs, reducedMotion } from "./motion";
 import { elapsed, phraseText, shownPath, type DiffPiece, type ToolGlyph, type ToolView } from "./tool-view";
 
@@ -104,12 +105,12 @@ function Glyph({ glyph, running = false }: { glyph: ToolGlyph; running?: boolean
   return <Icon className={cn("size-3.5 shrink-0", running && "text-fg-tool-running")} aria-hidden data-glyph={glyph} />;
 }
 
-/** 펼침 셰브런 — 접히면 ›, 펼치면 90° 돌아 ∨다(Motion 보드 「작업 묶음 펼침」 — .3s). 동작 줄이기에서는 곧바로 바뀐다. */
+/** 펼침 셰브런 — 접히면 ›, 펼치면 90° 돌아 ∨다(Motion 보드 「작업 묶음 펼침」 — .3s `ease-enter`, States 보드 `.ra-chev`). 동작 줄이기에서는 곧바로 바뀐다. */
 function Chevron({ open, className }: { open: boolean; className?: string }) {
   return (
     <ChevronRight
       className={cn(
-        "size-3 shrink-0 transition-transform duration-relaxed ease-default motion-reduce:transition-none",
+        "size-3 shrink-0 transition-transform duration-relaxed ease-enter motion-reduce:transition-none",
         open && "rotate-90",
         className,
       )}
@@ -456,45 +457,53 @@ function DiffView({ piece }: { piece: DiffPiece }) {
   );
 }
 
-/** 작업 구분선의 줄 — 글자 14/20 `fg-subtle`, 그 아래 9에 1 `separator-soft` 선이 열 폭으로 그어지고, 다음 줄까지 14다(턴 안 줄 사이 8 + 6). */
-const DIVIDER = "flex w-full items-center gap-1 border-b border-separator-soft pt-0.5 pb-2.25 mb-1.5 text-left text-sm text-fg-subtle";
+/** 턴 머리의 글 줄 — 14 / 20 `fg-tertiary`가 22 줄 가운데에 서고, 셰브런 12가 4 뒤에 선다(States 보드 `.ra-wh`). 줄은 글만큼이다. */
+const HEAD_LABEL = "flex min-h-5.5 w-fit max-w-full items-center gap-1 text-left text-sm text-fg-tertiary";
 
 /**
- * 작업 구분선(02 구현 스펙 §8 · Diff-Chat · Screen-Live — Codex 결) — 「N초 동안 작업 ›」과 그 아래 가는 선. 펼칠 것이 있으면(`onToggle`)
- * 단추이고 셰브런이 펼치면 ∨로 돈다. 도는 동안은 「N초 동안 작업 중입니다」가 같은 줄에 선다(셰브런 없음). 펼칠 것 없이 끝 까닭만 있는
- * 턴(거부 …)도 셰브런 없는 같은 줄이다. 턴이 끝나 도는 줄이 이 줄로 바뀌면 같은 자리에서 떠오른다(v1 티켓 43 · 줄 바뀜 —
- * `arrival`은 그 턴의 열쇠다). 위 2(`pt-0.5`)는 말풍선 → 첫 글자 잉크 51.5를 지킨다(`ThreadFlow`의 `TURN_GAP`).
+ * 턴 머리(States 보드 `.ra-whblock` · restart 02b-1) — 글 줄 아래 9에 0.5 `border-heavy` 선이 열 폭으로 그어진다. 끝난 턴은 「N초 동안 작업함 ›」 ·
+ * 「N초 후에 중단했습니다 ›」, 도는 턴은 「N초 동안 작업 중입니다」가 같은 자리에 선다(`RunningHead` — 셰브런 없음). 펼칠 것이 있으면(`onToggle`) 글 줄이
+ * 단추이고 셰브런이 펼치면 ∨로 돈다. 펼칠 것 없이 끝 까닭만 있는 턴(거부 …)도 셰브런 없는 같은 줄이다. 턴이 끝나 도는 줄이 이 줄로 바뀌면 글이 같은
+ * 자리에서 떠오른다(v1 티켓 43 · 줄 바뀜 — `arrival`은 그 턴의 열쇠다). 선은 움직이지 않는다.
+ *
+ * 다음 줄까지는 끝난 턴이 16, 도는 턴이 12다(턴 안 줄 사이 8 + `mb`) — 시안의 턴 칸 사이 16과 작업 로그의 위 12다. 끝난 턴의 펼친 로그는 그 안에서 4를 당겨
+ * 12에 선다(`ThreadFlow`의 `OpenedLog`).
  */
 export function WorkDivider({
   open = false,
   onToggle,
   arrival,
+  running = false,
   children,
 }: {
   open?: boolean;
   onToggle?: () => void;
   arrival?: string;
+  /** 도는 턴의 머리 — 다음 줄(작업 로그의 첫 줄)까지 12다. */
+  running?: boolean;
   children: ReactNode;
 }) {
   const moving = useArrival("row-in", arrival);
   const rising = arrival === undefined ? undefined : moving;
-  if (!onToggle) {
-    return (
-      <div data-work-divider className={cn(DIVIDER, rising)}>
-        {children}
-      </div>
-    );
-  }
   return (
-    <button
-      type="button"
-      data-work-divider
-      aria-expanded={open}
-      onClick={onToggle}
-      className={cn(DIVIDER, "transition-colors hover:text-fg-secondary", rising)}
-    >
-      {children}
-      <Chevron open={open} />
-    </button>
+    <div data-turn-head className={cn("flex w-full flex-col gap-2.25", running ? "mb-1" : "mb-2")}>
+      {onToggle ? (
+        <button
+          type="button"
+          data-work-divider
+          aria-expanded={open}
+          onClick={onToggle}
+          className={cn(HEAD_LABEL, "rounded-xs transition-colors hover:text-fg-secondary focus-ring", rising)}
+        >
+          {children}
+          <Chevron open={open} />
+        </button>
+      ) : (
+        <div data-work-divider className={cn(HEAD_LABEL, rising)}>
+          {children}
+        </div>
+      )}
+      <div aria-hidden className={RULE} />
+    </div>
   );
 }

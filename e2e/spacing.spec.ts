@@ -142,7 +142,7 @@ test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("작업 화면: 탭 아이콘 · 패널 머리 제목 · 패널 트리 행이 카드 끝에서 16이다", async ({ page }) => {
+test("작업 화면: 탭 아이콘 · 패널 머리 제목 · 패널 트리 행이 카드 끝에서 16이고, `+`는 마지막 칸 뒤 줄의 틈에 선다", async ({ page }) => {
   await installFixtureBackend(page);
   // 채팅이 없는 작업공간은 새 채팅 탭으로 선다(restart 02a-8). 탭 줄 맨 앞이 그 탭이다 — 한때 맨 앞은 spec 칸이었다(02a-13이 걷었다).
   await page.goto(`/works/${pinnedWork.slug}`);
@@ -152,6 +152,13 @@ test("작업 화면: 탭 아이콘 · 패널 머리 제목 · 패널 트리 행�
 
   const tab = await 아이콘(card.locator('[data-tab="new-chat"]'));
   expect(tab.x - (await 상자(card)).x, "새 채팅 탭 아이콘 — 카드 + 16").toBe(행글자);
+
+  // `+`는 칸들과 같은 줄 틈(시안 `.ra-tabs`의 gap 2)을 두고 마지막 칸 뒤에 선다(restart 02a-17). 한때 0으로 맞붙었다 — 02a-5가 줄 틈을
+  // 4 → 2로 줄일 때 틈 반을 덜던 `-ml-0.5`가 남아 틈을 다 지웠다.
+  const 줄틈 = parseFloat(await card.locator("[data-tab-row]").evaluate((el) => getComputedStyle(el).columnGap));
+  const 끝칸 = await 상자(card.locator("[data-tab-strip] > [data-tab]").last());
+  const plus = await 상자(card.locator('[data-tab="new"]'));
+  expect(plus.x - 끝칸.right, "`+` — 마지막 칸 끝 + 줄 틈").toBeCloseTo(줄틈, 1);
 
   // 작업 패널 카드 — 둘째 `aside` 안의 카드다. 머리 제목과 트리의 첫 행 글리프가 같은 세로줄이다(DS `.at-panel-head .title` · `.at-tree-row`).
   const panel = page.locator("aside").nth(1).locator('[data-slot="card"]');

@@ -719,6 +719,9 @@ function WorksPage({
   //
   // **켜진 새 채팅 탭에 오른쪽 자리를 건넨다**(restart 02a-11) — 채팅 탭 몸과 같은 값(`right.card`)이라 요약 카드 · 넓힌 카드가 선다. 숨은 탭은
   // 받지 않는다 — 카드가 보이지 않는 곳에서 변경 · PR을 읽지 않게.
+  //
+  // **끌어다 놓기도 켜진 새 채팅 탭의 입력창만 듣는다**(restart 02a-16b · `shown`) — 놓기는 창 전체의 이벤트라 숨은 탭의 입력창이 들으면 보이지
+  // 않는 탭에도 첨부가 붙는다. 셸 · 파일 탭이 켜져 있으면 듣는 입력창이 없다(숨은 채팅 탭은 내려가 듣지 않는다).
   const visibleNewChat = newChatShown && tabOwner !== null ? activeTabOf(shellState, tabOwner) : null;
   const newChats =
     panelWork &&
@@ -729,6 +732,7 @@ function WorksPage({
               <WorkNewChat
                 work={panelWork.slug}
                 draftKey={newChatKey(one.id)}
+                shown={visibleNewChat?.id === one.id}
                 card={visibleNewChat?.id === one.id ? right.card : null}
                 onStarted={(started) => {
                   settleNewChat(one.id, started);
@@ -1048,8 +1052,10 @@ function WorksPage({
                 가운데는 이 틀의 **카드 줄** 가운데다. 한때 그 줄에 spec 패널이 함께 서서 패널에서
                 일어나는 일(트리 복사)까지 말하는 토스트가 둘을 아우른 가운데에 떴다 — 패널이 앱 셸의
                 기둥으로 옮겨(restart 02a-14) 이제 본문 카드의 가운데다. Provider는 앱 루트에 하나고
-                자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면도 제 카드 줄 아래 가운데에 둔다. */}
-            <Toaster />
+                자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면도 제 카드 줄 아래 가운데에 둔다.
+                **넓힌 카드가 서 있으면 그 보기의 자리가 받는다**(`ExpandedViewer` — 채팅 본문의 `toasts={!expanded}`와 같다). 두 자리가 한
+                관리자를 읽으면 같은 토스트가 두 자리에 함께 선다 — 토스트는 한 장이다(S26, 02a-15). */}
+            {right.card.opened === null && <Toaster />}
             {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
           </>
         }
