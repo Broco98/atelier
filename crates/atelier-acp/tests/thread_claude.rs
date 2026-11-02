@@ -165,6 +165,15 @@ fn background_thread(sandbox: &Sandbox, extra: &[(&str, &str)], second: &str) ->
     (host, thread, session)
 }
 
+/// 스스로 이어 간 턴이 서고 그 턴의 도구가 끝날 때까지 기다린다. 가짜는 그 턴의 답까지 내고 `result` 앞에서 멈춰 있고, 답 글은 쌓여 있어 턴
+/// 끝 전에는 기록에 없다.
+fn wait_self_turn(sandbox: &Sandbox, thread: &str) {
+    let started = |line: &Value| line["payload"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "started";
+    sandbox.wait_thread_record(thread, |record| {
+        record.iter().skip_while(|line| !started(line)).any(|line| line["payload"]["update"]["status"] == "completed")
+    });
+}
+
 #[test]
 fn 백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴은_턴_밖_update와_턴_밖_끝으로_적힌다() {
     let sandbox = Sandbox::new();
@@ -234,8 +243,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     let sandbox = Sandbox::new();
     let (host, thread, session) =
         background_thread(&sandbox, &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")], "백그라운드로 걸어");
-    // 가짜는 스스로 이어 간 턴의 답까지 내고 그 턴의 result 앞에서 멈춰 있다.
-    sandbox.wait_thread_record(&thread, |record| answers_after(record, 0).iter().any(|text| text == SELF_ANSWER));
+    wait_self_turn(&sandbox, &thread);
 
     host.send_to_thread(&thread, "그동안 보낸 말").expect("스스로 이어 간 턴 동안의 말은 대기 줄에 든다");
 
@@ -269,7 +277,7 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
     let sandbox = Sandbox::new();
     let (host, thread, session) =
         background_thread(&sandbox, &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")], "백그라운드로 걸어");
-    sandbox.wait_thread_record(&thread, |record| answers_after(record, 0).iter().any(|text| text == SELF_ANSWER));
+    wait_self_turn(&sandbox, &thread);
 
     host.stop_thread(&thread).expect("스스로 이어 간 턴도 멈춘다");
 

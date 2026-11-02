@@ -85,6 +85,10 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("resume-advertised", resume_advertised),
     ("replays-on-load", replays_on_load),
     ("resume-resets-config", resume_resets_config),
+    ("streams-then-holds", streams_then_holds),
+    ("streams-then-asks", streams_then_asks),
+    ("streams-then-dies", streams_then_dies),
+    ("chunk-after-turn-end", chunk_after_turn_end),
 ];
 
 fn main() {
@@ -230,6 +234,73 @@ fn late_update_after_cancel(fake: &mut Fake) {
         ] {
             fake.update(session_id, update);
         }
+    };
+    fake.converse();
+}
+
+/// 글 조각 둘을 보내고 표지 줄을 잇는다(restart 티켓 01b-2). 쌓인 글은 기록에 없으므로, 호스트가 조각을 받았는지는 기록으로 알 수 없다.
+/// 표지는 조각과 같은 수신 루프를 차례대로 지나고 쌓인 글을 비우지 않는다 — 기록에 `auth-status` 줄이 서면 앞선 조각은 호스트가 받았다.
+fn stream_answer(fake: &mut Fake, session_id: &str) {
+    for text in ["흐르던 ", "답"] {
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_stream",
+                   "content": {"type": "text", "text": text}}),
+        );
+    }
+    fake.wire.notify("_auth/status_update", json!({"authStatus": {"kind": "chatgpt"}}));
+}
+
+/// 조각을 보내고 `session/cancel`이 올 때까지 턴을 쥔다 — 멈추거나 앱이 Session을 끌 때 쌓인 글을 잰다.
+fn streams_then_holds(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        stream_answer(fake, session_id);
+        if fake.await_cancel() {
+            fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        }
+    };
+    fake.converse();
+}
+
+/// 조각을 보내고 도구 줄 없이 곧바로 권한을 묻는다 — 답을 기다리지 않는다.
+fn streams_then_asks(fake: &mut Fake) {
+    fake.on_prompt = |fake, _id, session_id| {
+        stream_answer(fake, session_id);
+        fake.request(
+            "session/request_permission",
+            json!({"sessionId": session_id,
+                   "toolCall": {"toolCallId": "exec-fake-stream", "kind": "execute", "status": "pending",
+                                "title": PERMISSION_COMMAND, "rawInput": {"command": PERMISSION_COMMAND}},
+                   "options": [allow_once_option(), reject_option()]}),
+        );
+    };
+    fake.converse();
+}
+
+/// 조각을 보내고 `<세션 id>.go`가 설 때까지 기다렸다가 답 없이 죽는다.
+fn streams_then_dies(fake: &mut Fake) {
+    fake.on_prompt = |fake, _id, session_id| {
+        stream_answer(fake, session_id);
+        fake.hold_until_released(session_id);
+        std::process::exit(3);
+    };
+    fake.converse();
+}
+
+/// 턴을 끝낸 뒤에 조각이 하나 더 온다. 둘째 턴도 같은 메시지 id를 써서 이어 붙이기가 턴을 넘으면 드러나게 한다.
+fn chunk_after_turn_end(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        let chunk = |text: &str| {
+            json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_late",
+                   "content": {"type": "text", "text": text}})
+        };
+        if fake.prompts > 1 {
+            fake.update(session_id, chunk("다음 턴의 글"));
+            return fake.wire.reply(id, json!({"stopReason": "end_turn"}));
+        }
+        fake.update(session_id, chunk("앞선 턴의 글"));
+        fake.wire.reply(id, json!({"stopReason": "end_turn"}));
+        fake.update(session_id, chunk("턴 끝 뒤의 글"));
     };
     fake.converse();
 }

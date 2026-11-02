@@ -29,7 +29,7 @@ const button = (markup: string, label: string) =>
 
 describe("입력창 자리의 Thread 도구 카드", () => {
   it("갈래마다 그 카드가 선다 — Work 만들기 · Work 밖 Project · Service 질문 · Project 추가", () => {
-    expect(slot("thread-work", 55)).toContain("이 일을 작업공간으로 묶을까요?");
+    expect(slot("thread-work", 54)).toContain("이 일을 작업공간으로 묶을까요?");
     expect(slot("thread-project", 7)).toContain("Claude Code가 이 작업공간에 없는 Project를 고치려고 해요");
     expect(slot("thread-service-ask", 7)).toContain("어느 Service에서 할까요?");
     expect(slot("thread-project-add", 7)).toContain("notes는 git 저장소가 아니에요. 어떻게 할까요?");
@@ -46,7 +46,7 @@ describe("입력창 자리의 Thread 도구 카드", () => {
   });
 
   it("Work 만들기 카드의 추천 꼬리표는 「추천」이다", () => {
-    const work = slot("thread-work", 55);
+    const work = slot("thread-work", 54);
     expect(work).toMatch(/>추천</);
     expect(work).not.toContain("Host");
   });

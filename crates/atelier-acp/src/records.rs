@@ -211,7 +211,7 @@ impl Recorder {
         self.write(RecordKind::Sent, payload)
     }
 
-    /// `session/update` 원문.
+    /// `session/update` 원문 — 턴 안의 글 조각은 호스트가 쌓아 합친 글을 실은 줄 하나로 넘긴다.
     pub(crate) fn update(&self, raw: Value) -> Result<(), RecordError> {
         self.write(RecordKind::Update, raw)
     }

@@ -24,12 +24,14 @@ use crate::quote::Quote;
 use crate::records::{self, PermissionLine, QuestionLine, RecordLine, Recorder, SessionState, TurnEndLine, QUESTION_CARD};
 use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms, Ruling, RuntimeEvent, SessionPlace, Sink, Turns};
 
+mod chunks;
 mod thread;
 mod turn_order;
 
 pub use thread::{
     DocWriting, ProjectAddChoice, ProjectChoice, QuestionReply, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
 };
+use chunks::{is_chunk, Chunks};
 use thread::VanishWatch;
 use turn_order::{Draft, Preamble, Seat, TurnHands, TurnOrder};
 
@@ -192,11 +194,13 @@ pub struct HostCore {
 
 /// Session 하나의 기록과 턴의 상태. 런타임의 sink가 함께 쥔다 — 받은 것은 sink가 곧바로 적는다.
 ///
-/// 잠금 순서는 늘 `state` → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고, 같은 잠금 안에서 대기 줄의 다음 말을 보낸다 — 그래야
+/// 잠금 순서는 늘 `state` → 조각 → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고, 같은 잠금 안에서 대기 줄의 다음 말을 보낸다 — 그래야
 /// 다음 말의 `sent` 줄이 턴 끝 줄보다 앞에 서지 않고, 그 사이에 온 보내기가 대기 줄을 앞지르지 못한다.
 struct Conv {
     recorder: Recorder,
     state: Mutex<ConvState>,
+    /// 쌓이는 글 조각(restart 01b) — `state`와 따로 쥔다. 권한 줄은 `state`를 쥐지 않고 적는데 그 앞에 쌓인 글을 써야 한다.
+    chunks: Mutex<Chunks>,
     /// 턴 도중에 Runtime이 로그인을 요구하면 그 Session을 로그인 창구에 쥐게 한다(three-axes 티켓 12).
     login: LoginWatch,
     /// 설정 바꾸기를 하나씩 세운다 — 엔진에 넣은 차례와 `thread.json`에 남는 차례가 엇갈리지 않게(three-axes 티켓 09). `state`와
@@ -256,7 +260,8 @@ impl ConvState {
 
 impl Conv {
     fn new(recorder: Recorder, login: LoginWatch, vanish: VanishWatch) -> Arc<Self> {
-        Arc::new(Self { recorder, state: Mutex::new(ConvState::fresh()), login, setting: Mutex::new(()), vanish })
+        let state = Mutex::new(ConvState::fresh());
+        Arc::new(Self { recorder, state, chunks: Mutex::default(), login, setting: Mutex::new(()), vanish })
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -277,6 +282,30 @@ impl Conv {
         order.seat(ConvHands { conv: self, turns: turns.as_ref() })
     }
 
+    fn lock_chunks(&self) -> MutexGuard<'_, Chunks> {
+        self.chunks.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 조각 하나를 받는다 — 턴 안이면 쌓고, 턴 밖이면 곧바로 쓴다. 꺼낸 Session도 쓴다: 끈 Session의 쌓인 글을 비울 자리는 끄기 하나뿐이라
+    /// 그 뒤에 쌓으면 잃는다. 그래서 턴을 보고 쌓는 사이 `state`를 쥔다.
+    fn chunk(&self, raw: Value) -> Result<(), records::RecordError> {
+        let state = self.lock_state();
+        if !state.order.turning() || state.taken {
+            self.spill();
+            return self.recorder.update(raw);
+        }
+        let mut chunks = self.lock_chunks();
+        chunks.push(raw).map_or(Ok(()), |line| self.recorder.update(line))
+    }
+
+    /// 쌓인 글을 기록 줄로 쓴다. 이 줄을 쓰는 동안 잠금을 쥔다 — 다른 스레드가 비운 글보다 뒤의 줄이 앞서지 않게.
+    fn spill(&self) {
+        let mut chunks = self.lock_chunks();
+        if let Some(Err(error)) = chunks.take().map(|line| self.recorder.update(line)) {
+            eprintln!("{error}");
+        }
+    }
+
     /// 런타임이 넘긴 것을 기록에 적는 sink.
     fn sink(self: &Arc<Self>) -> Sink {
         let conv = Arc::clone(self);
@@ -284,7 +313,16 @@ impl Conv {
     }
 
     fn receive(&self, event: RuntimeEvent) {
+        match &event {
+            // 스펙의 비우는 때에 없는 줄은 글을 끊지 않는다 — `stderr`는 스레드가 달라 조각과 차례도 없다.
+            RuntimeEvent::Stderr(_) | RuntimeEvent::AuthStatus(_) => {}
+            // 죽음은 수신 루프 밖에서 온다 — 죽었다고 적은 뒤에 비워야 그사이 쌓인 글이 남지 않는다.
+            RuntimeEvent::Died(_) => {}
+            RuntimeEvent::Update(raw) if is_chunk(raw) => {}
+            _ => self.spill(),
+        }
         let written = match event {
+            RuntimeEvent::Update(raw) if is_chunk(&raw) => self.chunk(raw),
             RuntimeEvent::Update(raw) => match OutOfTurn::of(&raw) {
                 Some(OutOfTurn::Started) => {
                     let written = self.recorder.update(raw);
@@ -354,6 +392,7 @@ impl Conv {
                 // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡는다.
                 let mut state = self.lock_state();
                 state.order.died();
+                self.spill();
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
@@ -495,7 +534,9 @@ fn mark_taken<'a>(taken: impl IntoIterator<Item = &'a Conv>) {
 /// 하나마다 1초씩 줄을 세우면 N초가 된다.
 fn end_together(mut agents: Vec<(&mut AgentProcess, &Conv)>) {
     let deadline = Instant::now() + runtime::SHUTDOWN_GRACE;
-    for (agent, _) in agents.iter_mut() {
+    for (agent, conv) in agents.iter_mut() {
+        // 끈 Session에는 죽음도 턴 끝도 오지 않는다 — 쌓인 글은 여기서 쓴다.
+        conv.spill();
         agent.begin_shutdown();
     }
     for (agent, conv) in agents {

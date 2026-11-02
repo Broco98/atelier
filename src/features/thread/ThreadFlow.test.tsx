@@ -69,7 +69,7 @@ describe("흐름의 물음 자리", () => {
     const waiting = (lines: readonly RecordLine[]) => /<span class="text-link">([^<]*)<\/span>/.exec(flow(lines))?.[1] ?? null;
     expect(waiting(through(record("thread-permission"), 8))).toBe("승인을 기다립니다");
     expect(waiting(through(record("thread-question"), 7))).toBe("질문의 답을 기다려요");
-    expect(waiting(through(record("thread-work"), 55))).toBe("작업공간 만들기 답을 기다려요");
+    expect(waiting(through(record("thread-work"), 54))).toBe("작업공간 만들기 답을 기다려요");
     expect(waiting(through(record("thread-project"), 7))).toBe("작업공간 밖 Project 답을 기다려요");
     expect(waiting(through(record("thread-service-ask"), 7))).toBe("Service 답을 기다려요");
     expect(waiting(through(record("thread-project-add"), 7))).toBe("Project 추가 답을 기다려요");

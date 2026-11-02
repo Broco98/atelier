@@ -602,7 +602,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     finalMessages(model.turns[0]).map((entry) => (entry.kind === "message" ? entry.text.split("\n")[0] : null));
 
   it("제안 줄이 오면 카드가 서고 — 제목 · 까닭 · 브랜치와 등록된 Project(Host 추천이 먼저) — 그 도구 줄은 「작업공간 만들기를 묻는 중」이다", () => {
-    const model = foldThread(through(working, 55));
+    const model = foldThread(through(working, 54));
     expect(cards(model).map((one) => [one.requestId, one.title, one.reason, one.slug, one.branch])).toEqual([
       [
         "fake-request",
@@ -635,9 +635,9 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
   });
 
   it("Service에 이은 Thread의 카드는 새 Work로 옮겨 갈 Service를 싣고, Service가 없으면 그 칸이 비었다(03 S8)", () => {
-    expect(cards(foldThread(through(working, 55)))[0].service).toBeNull();
-    const serviced = through(working, 55).map((line) =>
-      line.seq === 55 ? { ...line, payload: { ...(line.payload as object), service: { slug: "결제-서비스", name: "결제 서비스" } } } : line,
+    expect(cards(foldThread(through(working, 54)))[0].service).toBeNull();
+    const serviced = through(working, 54).map((line) =>
+      line.seq === 54 ? { ...line, payload: { ...(line.payload as object), service: { slug: "결제-서비스", name: "결제 서비스" } } } : line,
     );
     expect(cards(foldThread(serviced))[0].service).toEqual({ slug: "결제-서비스", name: "결제 서비스" });
   });
@@ -667,7 +667,7 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
   });
 
   it("결정 줄은 턴 끝 메시지를 가르지 않는다 — 카드 앞에 물은 말과 결정 뒤의 답이 함께 접힌 턴에 남는다(화면 2 보드)", () => {
-    const asked = update(53, 53, {
+    const asked = update(52, 52, {
       sessionUpdate: "agent_message_chunk",
       messageId: "m-ask",
       content: { type: "text", text: "이 일을 Work로 만들어 둘까요?" },
@@ -678,23 +678,23 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
       content: { type: "text", text: "Work를 만들었어요." },
     });
     const end = { ...working[working.length - 1], seq: 61, at: "2026-10-10T10:01:01.000+09:00" };
-    const lines = [...through(working, 58).map((line) => (line.seq === 53 ? asked : line)), done, end];
+    const lines = [...through(working, 57).map((line) => (line.seq === 52 ? asked : line)), done, end];
     expect(firstLines(foldThread(lines))).toEqual(["이 일을 Work로 만들어 둘까요?", "Work를 만들었어요."]);
   });
 
   it("「작업공간 없이 계속」은 시스템 줄 없이 결정 줄만 서고, 멈춤으로 거둔 카드는 결정 줄 없이 걷힌다", () => {
     const answered = (payload: Record<string, unknown>): RecordLine => ({
-      seq: 56,
-      at: "2026-10-10T10:00:56.000+09:00",
+      seq: 55,
+      at: "2026-10-10T10:00:55.000+09:00",
       kind: "question",
       payload: { requestId: "fake-request", card: "work", ...payload },
     });
-    const continued = foldThread([...through(working, 55), answered({ state: "answered", choice: "continue" })]);
+    const continued = foldThread([...through(working, 54), answered({ state: "answered", choice: "continue" })]);
     expect(cards(continued)).toEqual([]);
     expect(continued.system.map((line) => line.kind)).toEqual(["title"]);
     expect(continued.turns[0].entries.flatMap((entry) => (entry.kind === "work-choice" ? [entry.created] : []))).toEqual([false]);
 
-    const withdrawn = foldThread([...through(working, 55), answered({ state: "withdrawn", reason: "stopped" })]);
+    const withdrawn = foldThread([...through(working, 54), answered({ state: "withdrawn", reason: "stopped" })]);
     expect(cards(withdrawn)).toEqual([]);
     expect(withdrawn.turns[0].entries.filter((entry) => entry.kind === "work-choice")).toEqual([]);
     expect(toolTitles(withdrawn)).toContain(PROPOSE);
