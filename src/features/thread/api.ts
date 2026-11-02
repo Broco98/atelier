@@ -44,7 +44,7 @@ export const threadApi = {
   readRecord: (thread: string, after: number) => invoke<RecordLine[]>("thread_read_record", { thread, after }),
   /**
    * 새 Thread — 첫 말과 함께 세운다. Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
-   * 이어 갈 곳(`link`)은 Work 칩에서 고른 것이다(v1 티켓 31 · 03 §5 — 새 Work · Work 없이 대화 · 최근 Work). 첨부는 경로만 간다(v1 티켓
+   * 이어 갈 곳(`link`)은 주소 씨앗이 정한 것이다(새 Work · Work 없이 대화 · 그 Work). 첨부는 경로만 간다(v1 티켓
    * 06 · S30). 나머지는 입력창 칩에서 첫 말 전에 고른 것이고 고르지 않은 칸은 `null`이다 — 물어보는 정도(v1 티켓 23 — 이은 Work면
    * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 Runtime의 기본값), 트레이 범위 칩의
    * Service(03 §5 — 이은 Work면 그 Work의 Service가 된다, S4)나 Project.
@@ -121,7 +121,7 @@ export const threadApi = {
    * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
    */
   setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),
-  /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. */
+  /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 채팅의 물어보는 정도 칩이 이것을 보인다. */
   workMode: (work: string) => invoke<AskLevel>("thread_work_mode", { work }),
   /**
    * Thread의 Service 붙이기 · 바꾸기 · 빼기(`null`, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Service가 바뀐다. 떠 있는 Session은 다음 말부터 새

@@ -7,7 +7,7 @@ import { useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
-import { AskChip, LockedWorkChip, ModelChip, ScopeChip, ScopeLineText, WorkChip, type ComposerTray } from "./ComposerChips";
+import { AskChip, LockedWorkChip, ModelChip, NewWorkChip, ScopeChip, ScopeLineText, type ComposerTray } from "./ComposerChips";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
 import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
@@ -17,7 +17,7 @@ import type { AskLevel, Attachment } from "./types";
 // 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · Screen-Live · v52 F4-KitComposer) — Codex
 // 입력창이다: 대화 열과 같은 737 폭에 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소
 // 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6).
-// Work 칩은 상자 **밖** 트레이에 서고, 새 채팅이면 범위 칩 · 범위 줄이 곁에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
+// Work 칩은 상자 **밖** 트레이에 서고(씨앗 없는 새 채팅에는 없다), 새 채팅이면 범위 칩 · 범위 줄이 곁에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
 //   꺼짐), 쓰면 ↑, 새 Thread의 첫 말을 보내는 중이면 옅은 파랑(`accent-solid-pending`)에 스피너, 턴이 도는 동안 비어 있으면 멈추기(■)다.
@@ -26,9 +26,8 @@ import type { AskLevel, Attachment } from "./types";
 //   입력창 자리에 「놓으면 첨부합니다」가 선다. 보내면 경로만 간다(`ComposerAttachments.tsx`).
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글(「❝ 이 자리를 두고 말하기」)이 입력칸 위에 인용 칩으로 붙는다(×로 뗀다). 보내면
 //   말과 함께 가고, 엔진이 그 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 둔다.
-// - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/work`는 Work 칩 메뉴를 열고(첫 말
-//   전에만, v1 티켓 31), `/plan`은 물어보는 정도를 「계획」으로 바꾸고, `/policy`는 물어보는
-//   정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이 된다.
+// - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/plan`은 물어보는 정도를 「계획」으로 바꾸고,
+//   `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
 // - **움직임**(v1 티켓 43 · 02 §12 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜),
@@ -78,12 +77,9 @@ export interface ThreadComposerProps {
   /** 지금 물어보는 정도(v1 티켓 23) — 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
   level: AskLevel;
   onLevel: (level: AskLevel) => void;
-  /**
-   * 트레이(03 §5) — 첫 화면은 상자 아래, Thread 화면은 상자 위에 서는 회색 띠다. 그 Work 칩이 고르는 칩(첫 말 전)이면 `/work`가 선다.
-   * 입력창 자리에 카드가 서면 함께 걷힌다.
-   */
+  /** 트레이(03 §5) — 첫 화면은 상자 아래, Thread 화면은 상자 위에 서는 회색 띠다. 입력창 자리에 카드가 서면 함께 걷힌다. */
   tray?: ComposerTray;
-  /** 비어 있을 때의 말 — Work 칩이 고른 것을 따른다(빈 Thread, v1 티켓 31). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
+  /** 비어 있을 때의 말 — 새 채팅이 시작할 곳을 따른다(`startPlaceholder`). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
   placeholder?: string;
 }
 
@@ -121,27 +117,20 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const picking = tray?.work.kind === "pick";
-  const all = useMemo(() => slashCommands(commands, { work: picking }), [commands, picking]);
+  const all = useMemo(() => slashCommands(commands), [commands]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
   const active = pointer.query === query ? Math.min(pointer.at, Math.max(items.length - 1, 0)) : 0;
   const setActive = (at: number) => setPointer({ query, at });
   const menuOpen = items.length > 0 && dismissed !== draft;
 
-  // 물어보는 정도 · Work · 모델 메뉴의 열림 — 칩을 누르거나 `/policy` · `/work` · `/model`이 연다.
+  // 물어보는 정도 · 모델 메뉴의 열림 — 칩을 누르거나 `/policy` · `/model`이 연다.
   const [asking, setAsking] = useState(false);
-  const [placing, setPlacing] = useState(false);
   const [choosingModel, setChoosingModel] = useState(false);
   const pickCommand = (command: CommandOption) => {
     if (command.thread && command.name === "new") {
       setDraft(draftKey, "");
       onNewThread();
-      return;
-    }
-    if (command.thread && command.name === "work") {
-      setDraft(draftKey, "");
-      setPlacing(true);
       return;
     }
     if (command.thread && command.name === "plan") {
@@ -237,11 +226,7 @@ function ThreadComposer({
   const shown = outside ?? problem;
   const trayed = tray && !card && (
     <Tray at={tray.at}>
-      {tray.work.kind === "pick" ? (
-        <WorkChip {...tray.work} open={placing} onOpenChange={setPlacing} />
-      ) : (
-        <LockedWorkChip {...tray.work} />
-      )}
+      {tray.work?.kind === "new-work" ? <NewWorkChip {...tray.work} /> : tray.work && <LockedWorkChip {...tray.work} />}
       {tray.scope && (
         <>
           <ScopeChip {...tray.scope} />

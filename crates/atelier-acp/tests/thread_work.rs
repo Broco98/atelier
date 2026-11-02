@@ -374,7 +374,7 @@ fn 작업공간에_이으면_project_범위가_지워진다() {
     assert_eq!((file["work"].clone(), file.get("project")), (json!("refund-api"), None), "이으면 Project 범위가 지워진다");
 }
 
-/// 입력창 Work 칩의 「새 Work로 시작」(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
+/// 「새 작업공간」 칩을 둔 채 시작(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
 /// Work부터 만든다. `thread.json`에 그 표시(`newWork`)가 남아, Work가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린 「새 Work」다(03 S3).
 /// 「Work 없이」는 아무것도 하지 않는다.
 #[test]

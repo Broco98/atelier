@@ -205,7 +205,7 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
 }
 
 /// 앱이 묻는 읽는 범위(명령 `reading_scope`) — `thread`가 있으면 그 Thread(`thread.json`과 이은 Work를 읽는다), 없으면 보내기 전의 새
-/// Thread(입력창이 쥔 Work · Service · Project)다. 새 Thread의 Service는 입력창이 쥔 것 그대로다 — 최근 Work를 고르면 입력창이 그 Work의 Service를
+/// Thread(입력창이 쥔 Work · Service · Project)다. 새 Thread의 Service는 입력창이 쥔 것 그대로다 — `?work=`로 열면 입력창이 그 Work의 Service를
 /// 쥐고, 바꾼 Service는 첫 말 때 그 Work에 적는다(03 S4). 없는 Thread · 없는 Work는 그 까닭으로 실패한다. Thread와 입력창의 Work · Service ·
 /// Project를 함께 주면 거절한다 — Thread의 범위는 그 파일이 정해, 함께 준 것을 말없이 버리게 된다.
 pub fn reading_scope_of(

@@ -857,7 +857,7 @@ describe("Work 줄이 그 Work의 Thread를 품는다", () => {
   });
 });
 
-// **Work 묶음 머리의 +는 「작업공간 만들기」다**(02 구현 스펙 §4 · S5 · 캔버스 F2-Work `.sec .ib`) — 새 Thread를 열고 Work 칩을 「새 작업공간」으로 둔다. 누르면
+// **Work 묶음 머리의 +는 「작업공간 만들기」다**(02 구현 스펙 §4 · S5 · 캔버스 F2-Work `.sec .ib`) — 「새 작업공간」 칩을 세워 새 Thread를 연다. 누르면
 // 어디로 가는지는 위(`SidebarWorkList`)의 일이고(`/?new=work` — `router.test.ts`), 여기서 보는 것은 단추가 어디에 어떻게 서는가다.
 describe("Work 묶음 머리의 「작업공간 만들기」", () => {
   const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="작업공간 만들기"[^>]*>/g) ?? [];
@@ -876,7 +876,7 @@ describe("Work 묶음 머리의 「작업공간 만들기」", () => {
     expect(markup.indexOf('aria-label="작업공간 만들기"')).toBeLessThan(markup.indexOf("data-work-row="));
   });
 
-  it("목록의 Tab 정류장이 아니다 — 목록은 Tab 한 번이고, 키보드의 길은 ⌘N 뒤의 Work 칩이다", () => {
+  it("목록의 Tab 정류장이 아니다 — 목록은 Tab 한 번이다", () => {
     expect(plusOf(render(works("가")))[0]).toContain('tabindex="-1"');
   });
 });

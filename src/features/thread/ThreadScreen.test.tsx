@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import { scopeKey } from "@/features/services/hooks";
 import type { ReadingScope, ScopeOf } from "@/features/services/scope";
 import { threadQuery } from "./hooks";
-import { mergeLines, setQueue } from "./thread-store";
-import type { NewThreadSeed } from "@/routes/-new-thread-search";
+import { fillDraft, mergeLines, NEW_THREAD, setDraft, setQueue, takeFill } from "./thread-store";
+import { seedOf, withoutNewWork, type NewThreadSeed } from "@/routes/-new-thread-search";
 import { NewThreadScreen, ThreadScreen } from "./ThreadScreen";
 import type { RecordLine, ThreadView } from "./types";
 
@@ -91,7 +91,7 @@ describe("채팅 화면", () => {
 });
 
 describe("새 채팅 화면", () => {
-  const SEEDLESS = { link: { kind: "no-work" }, say: null, service: null, project: null } as const;
+  const SEEDLESS = { link: null, say: null, service: null, project: null } as const;
   const READ: ReadingScope = { service: null, project: null, projects: [], worked: [], kind: "all", registered: 2 };
   const drawNew = (seed: Partial<NewThreadSeed> = {}, reading?: [ScopeOf, Partial<ReadingScope>]) => {
     const client = new QueryClient();
@@ -105,6 +105,87 @@ describe("새 채팅 화면", () => {
 
   it("작업공간 없는 새 채팅의 칩은 「편집 자동」이다", () => {
     expect(drawNew()).toContain('aria-label="물어보는 정도 편집 자동"');
+  });
+
+  it("씨앗이 없는 새 채팅은 작업공간 없는 채팅이다 — Work 칩이 서지 않는다", () => {
+    const html = drawNew();
+    expect(html).not.toContain("작업공간 없이 대화");
+    expect(html).not.toContain("새 작업공간");
+    expect(html).not.toContain("어디서 일할지");
+    expect(html).toContain('placeholder="무엇이든 요청하세요"');
+  });
+
+  it("예전 판이 기억한 스위치 값을 읽지 않는다", () => {
+    globalThis.localStorage = { getItem: () => "new-work", setItem: () => {} } as unknown as Storage;
+    try {
+      expect(drawNew()).not.toContain("새 작업공간");
+    } finally {
+      // @ts-expect-error — 시험이 심은 저장소를 걷는다.
+      delete globalThis.localStorage;
+    }
+  });
+
+  it("`?new=thread`로 연 새 채팅도 작업공간 없는 채팅이고 고른 범위만 선다", () => {
+    const html = drawNew(
+      { link: { kind: "no-work" }, service: "결제-서비스" },
+      [{ service: "결제-서비스" }, { service: { slug: "결제-서비스", name: "결제 서비스", troubled: false }, kind: "service" }],
+    );
+    expect(html).toContain('aria-label="범위: 결제 서비스"');
+    expect(html).not.toContain("작업공간 없이 대화");
+    expect(html).not.toContain("새 작업공간");
+    expect(html).toContain('placeholder="무엇이든 요청하세요"');
+  });
+
+  it("`?new=work`로 연 새 채팅에 「새 작업공간」 칩이 서고 ×로 뺀다 — 고르는 메뉴는 없다", () => {
+    const html = drawNew({ link: { kind: "new-work" } });
+    expect(html).toContain('data-slot="new-work-chip"');
+    expect(html).toContain('aria-label="새 작업공간 빼기"');
+    expect(html).not.toContain("어디서 일할지");
+    expect(html).toContain('placeholder="만들 기능이나 고칠 문제를 적어 주세요"');
+    expect(html.indexOf('data-slot="new-work-chip"')).toBeLessThan(html.indexOf('aria-label="범위 없음"'));
+  });
+
+  it("「새 작업공간」 칩을 ×로 빼면 그냥 새 채팅이다 — 범위는 남는다", () => {
+    const service: [ScopeOf, Partial<ReadingScope>] = [
+      { service: "결제-서비스" },
+      { service: { slug: "결제-서비스", name: "결제 서비스", troubled: false }, kind: "service" },
+    ];
+    const made = { link: { kind: "new-work" }, say: null, service: "결제-서비스", project: null } as const;
+    expect(drawNew(made, service)).toContain('data-slot="new-work-chip"');
+    const html = drawNew(seedOf(withoutNewWork(made)), service);
+    expect(html).not.toContain("새 작업공간");
+    expect(html).toContain('aria-label="범위: 결제 서비스"');
+    expect(html).toContain('placeholder="무엇이든 요청하세요"');
+    expect(html).toContain('aria-label="물어보는 정도 편집 자동"');
+  });
+
+  it("`?work=`로 연 새 채팅의 칩은 그 작업공간을 보이기만 한다 — 메뉴도 ×도 없다", () => {
+    const html = drawNew({ link: { kind: "work", slug: "refund-api" } });
+    expect(html).toContain('aria-label="작업공간으로 가기: refund-api"');
+    expect(html).not.toContain("어디서 일할지");
+    expect(html).not.toContain("빼기");
+    expect(html).toContain('placeholder="refund-api에서 무엇을 할까요?"');
+  });
+
+  // 씨앗의 말은 화면이 선 뒤에 효과가 넣는다. 정적 그림에는 효과가 돌지 않아 그 자리를 채워 두고 재고, 주소에서 입력칸까지는 L3가 잰다.
+  it("`?new=thread` · `?service=` · `?say=`의 말이 입력창에 채워져 있고 사람을 기다린다", () => {
+    const say = "결제 서비스에 Project를 넣고 싶어요. ";
+    fillDraft(NEW_THREAD, say);
+    try {
+      const html = drawNew(
+        { link: { kind: "no-work" }, service: "결제-서비스", say },
+        [{ service: "결제-서비스" }, { service: { slug: "결제-서비스", name: "결제 서비스", troubled: false }, kind: "service" }],
+      );
+      expect(html).toMatch(new RegExp(`<textarea[^>]*>${say}</textarea>`));
+      expect(html).toContain('aria-label="범위: 결제 서비스"');
+      expect(html).toContain('aria-label="보내기"');
+      expect(html).not.toContain('aria-label="보내는 중"');
+      expect(html).toContain("무엇을 만들까요?");
+      expect(html).not.toContain("생각 중");
+    } finally {
+      takeFill();
+      setDraft(NEW_THREAD, "");
+    }
   });
 
   it("씨앗이 없으면 범위 칩이 「범위 없음」으로 선다", () => {
@@ -135,6 +216,6 @@ describe("새 채팅 화면", () => {
   it("「새 작업공간」으로 연 새 채팅도 그 Project를 고른 채 선다", () => {
     const html = drawNew({ link: { kind: "new-work" }, project: "api-server" });
     expect(html).toContain('aria-label="범위: api-server"');
-    expect(html).toContain('aria-label="어디서 일할지 새 작업공간"');
+    expect(html).toContain('aria-label="새 작업공간 빼기"');
   });
 });

@@ -97,7 +97,7 @@ export interface ThreadView {
   /** 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 읽기만 된 Thread다(v1 티켓 38). 열린 화면은 목록 요약 이벤트가 고친다(`putSummary`). */
   readOnly: WorkGone | null;
   /**
-   * 입력창 Work 칩에서 「새 작업공간」으로 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. Work가 서기 전까지 잠긴 Work 칩이
+   * 「새 작업공간」 칩을 둔 채 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. Work가 서기 전까지 잠긴 Work 칩이
    * 흐린 「새 작업공간」이다(`lockedWork`).
    */
   newWork?: boolean;
@@ -155,8 +155,8 @@ export interface QuestionAnswer {
 }
 
 /**
- * 새 Thread를 어디에 잇나(`atelier_acp::ThreadLink`) — 첫 말과 함께 간다. 입력창 Work 칩이 고른다(v1 티켓 31): Work 없이 · 새 Work로
- * 시작(첫 머리말이 Work 만들기 제안을 먼저 하라고 한다) · 이 Work(Thread가 처음부터 그 Work에 이어진다).
+ * 새 Thread를 어디에 잇나(`atelier_acp::ThreadLink`) — 첫 말과 함께 간다. 주소 씨앗이 정한다: Work 없이 · 새 Work로 시작(첫 머리말이 Work 만들기
+ * 제안을 먼저 하라고 한다) · 이 Work(Thread가 처음부터 그 Work에 이어진다).
  */
 export type ThreadLink = { kind: "no-work" } | { kind: "new-work" } | { kind: "work"; slug: string };
 

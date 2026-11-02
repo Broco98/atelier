@@ -415,7 +415,7 @@ fn 계획으로_들고_나면_떠_있는_session의_모드가_바뀌고_같은_w
     host.shut_down();
 }
 
-/// 최근 Work에 이은 새 Thread(v1 티켓 31 · S18) — 입력창 칩은 그 Work의 지금 정도를 읽고(`work_ask_level`), 첫 말 전에 다른 정도를
+/// `?work=`로 연 새 Thread(v1 티켓 31 · S18) — 입력창 칩은 그 Work의 지금 정도를 읽고(`work_ask_level`), 첫 말 전에 다른 정도를
 /// 고르면 그 Work의 정도가 바뀌며 흐름에 「Policy를 … 바꿈」 줄이 선다 — 이은 Thread의 칩에서 바꾼 것과 같다. 같은 정도면 아무것도
 /// 바뀌지 않는다.
 #[test]

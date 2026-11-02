@@ -293,12 +293,12 @@ export function scopeMenu(
 
 // ── 시작 단추 ───────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// Service 화면의 시작 단추(§14)는 첫 화면(`/`)을 씨앗과 함께 연다 — Work 칩 · 범위 칩 · 입력 글을 미리 넣을 뿐 보내지 않는다. 보내기는 사람이
+// Service 화면의 시작 단추(§14)는 첫 화면(`/`)을 씨앗과 함께 연다 — 「새 작업공간」 칩 · 범위 칩 · 입력 글을 미리 넣을 뿐 보내지 않는다. 보내기는 사람이
 // 한다(S16 — 사람이 말을 더할 수 있다).
 
 /**
- * 「대화로 만들기」(§14 S16 — 목록 「새 Service ⌄」의 기본 · Service 메뉴에 Service가 하나도 없을 때의 「대화로 Service 만들기」) — Work 칩 「작업공간 없이
- * 대화」와 이 입력 글. Host는 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
+ * 「대화로 만들기」(§14 S16 — 목록 「새 Service ⌄」의 기본 · Service 메뉴에 Service가 하나도 없을 때의 「대화로 Service 만들기」) — 작업공간 없는
+ * 채팅과 이 입력 글. Host는 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
  */
 export const HOST_MAKE: NewThreadSearch = {
   new: "thread",
@@ -306,7 +306,7 @@ export const HOST_MAKE: NewThreadSearch = {
 };
 
 /**
- * Service 상세 머리의 둘(§14) — 「새 작업공간」은 Work 칩 「새 작업공간」 · 범위 칩 「◇ 결제 서비스 ×」(스토리 159), 「대화로 고치기」(S17)는 그 Service를
+ * Service 상세 머리의 둘(§14) — 「새 작업공간」은 「새 작업공간」 칩 · 범위 칩 「◇ 결제 서비스 ×」(스토리 159), 「대화로 고치기」(S17)는 그 Service를
  * 붙인 Work 없는 대화에 고쳐 달라는 말(끝에 빈칸 — 사람이 이어 쓴다)이다. Host는 그 Service의 Project를 읽은 채 시작한다.
  */
 export function serviceStarts(service: Pick<Service, "slug" | "name">): { newWork: NewThreadSearch; hostEdit: NewThreadSearch } {

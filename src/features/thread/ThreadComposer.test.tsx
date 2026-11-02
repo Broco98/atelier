@@ -48,17 +48,20 @@ const formOf = (markup: string) => /<form[^>]*>.*<\/form>/s.exec(markup)?.[0] ??
 describe("트레이의 자리", () => {
   it("트레이를 주지 않으면 서지 않는다", () => {
     const markup = composer();
-    expect(markup).not.toContain("어디서 일할지");
+    expect(markup).not.toContain("새 작업공간");
     expect(trayOf(markup)).toBeNull();
   });
 
-  it("첫 화면(입력창이 가운데)에서는 상자 아래에 서고, 고르는 Work 칩이 든다 — 입력창 안에는 없다", () => {
-    const markup = composer({
-      tray: { at: "below", work: { kind: "pick", label: "새 작업공간", link: { kind: "new-work" }, onPick: none } },
-    });
-    expect(trayOf(markup)).toContain('aria-label="어디서 일할지 새 작업공간"');
-    expect(formOf(markup)).not.toContain("어디서 일할지");
+  it("첫 화면(입력창이 가운데)에서는 상자 아래에 서고, 「새 작업공간」 칩이 든다 — 입력창 안에는 없다", () => {
+    const markup = composer({ tray: { at: "below", work: { kind: "new-work", onDrop: none } } });
+    expect(trayOf(markup)).toContain("새 작업공간");
+    expect(trayOf(markup)).toContain('aria-label="새 작업공간 빼기"');
+    expect(formOf(markup)).not.toContain("새 작업공간");
     expect(sideOf(markup)).toBe("below");
+  });
+
+  it("칩이 없는 트레이도 선다 — 씨앗 없는 새 채팅의 범위 칩 자리다", () => {
+    expect(trayOf(composer({ tray: { at: "below" } }))).not.toBeNull();
   });
 
   it("Thread 화면(입력창이 아래에 붙음)에서는 상자 위에 선다 — 첫 말 뒤의 칩은 잠겨 메뉴가 없다", () => {
@@ -67,7 +70,6 @@ describe("트레이의 자리", () => {
     });
     expect(sideOf(markup)).toBe("above");
     expect(trayOf(markup)).toContain("작업공간 없이 대화");
-    expect(trayOf(markup)).not.toContain("어디서 일할지");
     expect(trayOf(markup)).not.toContain("aria-haspopup");
   });
 
@@ -129,6 +131,15 @@ const buttonsOf = (markup: string) =>
     return name === undefined ? [] : [{ name, disabled: /\sdisabled=""/.test(attrs) }];
   });
 const sendSpot = (markup: string) => buttonsOf(markup).filter((one) => ["보내기", "보내는 중", "멈추기"].includes(one.name));
+
+describe("「/」 명령 메뉴", () => {
+  it("첫 말 전에도 `/work`가 없다 — 어디서 일할지는 씨앗이 정한다", () => {
+    const menu = composer({ tray: { at: "below", work: { kind: "new-work", onDrop: none } } }, "/");
+    expect(menu).toContain("/new");
+    expect(menu).not.toContain("/work");
+    expect(composer({ tray: { at: "below" } }, "/work")).not.toContain('role="listbox"');
+  });
+});
 
 describe("보내기 원 하나의 네 상태", () => {
   it("비었으면 꺼진 「보내기」다", () => {

@@ -9,7 +9,7 @@ import { appReturnTarget, shellStore } from "./components/shell/shell-store";
 import { navigateGuardingSettings } from "./features/settings/navigate-guarding-settings";
 import { trackCanGoForward } from "./can-go-forward";
 import { rememberView, tabSearch } from "./routes/-work-search";
-import { isBlankNewThread } from "./routes/-new-thread-search";
+import { isBlankNewThread, newThreadKey, seedOf, withoutNewWork } from "./routes/-new-thread-search";
 import type { ViewTab } from "./routes/-work-search";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
@@ -158,7 +158,7 @@ describe("진입은 새 Thread다", () => {
 
   // 02 구현 스펙 S5 · 티켓 05 — 사이드바 Work 묶음 머리의 +가 「새 작업공간」 칩을 고른 새 Thread를 연다(결정.md 조정자 「05 · 「새 작업공간」+」).
   // 주소의 모양은 검증기의 타입이 든다 — +가 부르는 것과 같은 `navigate`라, 그 갈래가 없으면 타입 검사(L0)가 이 줄에서 빨개진다.
-  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 Work 칩을 「새 작업공간」으로 둔 채 연다", async () => {
+  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 「새 작업공간」 칩을 세워 연다", async () => {
     const { router } = setup(["/threads/20261010-100000"]);
     await router.load();
     await router.navigate({ to: "/", search: { new: "work" } });
@@ -166,9 +166,9 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work" });
   });
 
-  // 03 구현 스펙 §5 · 티켓 02 — 「작업공간 없이 대화」 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「대화로 만들기」(S16)는 둘을 함께
+  // 03 구현 스펙 §5 · 티켓 02 — 작업공간 없는 채팅의 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「대화로 만들기」(S16)는 둘을 함께
   // 싣는다 — Work 없는 새 대화의 입력창에 맡기는 말을 넣는다(보내지 않는다).
-  it("`/?new=thread&say=…`도 새 Thread다 — 「작업공간 없이 대화」와 입력 글이 함께 선다", async () => {
+  it("`/?new=thread&say=…`도 새 Thread다 — 작업공간 없는 채팅에 입력 글이 선다", async () => {
     const { router } = setup(["/threads/20261010-100000"]);
     await router.load();
     await router.navigate({ to: "/", search: { new: "thread", say: "결제 서비스 Service를 만들고 싶어" } });
@@ -197,11 +197,56 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", project: "api-server" });
   });
 
+  it("`/?new=thread&service=…&say=…`도 새 Thread다 — 「Project 넣기」가 그 Service를 고르고 말을 채워 연다", async () => {
+    const { router } = setup(["/services/결제-서비스"]);
+    await router.load();
+    const seed = { new: "thread", service: "결제-서비스", say: "결제 서비스에 Project를 넣고 싶어요. " } as const;
+    await router.navigate({ to: "/", search: seed });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual(seed);
+  });
+
   it("시작 직후 뒤로갈 곳이 없다", async () => {
     const { router, history } = setup(["/"]);
     await router.load();
     expect(history.length).toBe(1);
     expect(history.canGoBack()).toBe(false);
+  });
+});
+
+// 구현 스펙 「01a — 범위와 새 채팅」. 「새 작업공간」 칩을 ×로 빼면 그냥 새 채팅이다 — 주소가 `?new=thread`로 갈아 서서 작업공간 만들기를 다시 누르면 칩이
+// 돌아온다. 화면은 새로 서지 않아 고른 범위 · 모드 · 쓴 글이 남는다(`newThreadKey`가 같다).
+describe("「새 작업공간」 칩의 ×", () => {
+  const searchAt = (router: ReturnType<typeof setup>["router"]) => router.state.matches.find((match) => match.routeId === "/")?.search ?? {};
+
+  it("범위 · 입력 글은 그대로 `?new=thread`로 갈아 서고 히스토리가 늘지 않는다", async () => {
+    const { router, history } = setup(["/?new=work&service=pay&say=%EC%95%88%EB%85%95"]);
+    await router.load();
+    const before = seedOf(searchAt(router));
+    await router.navigate({ to: "/", search: withoutNewWork(before), replace: true });
+    expect(searchAt(router)).toEqual({ new: "thread", service: "pay", say: "안녕" });
+    expect(history.length).toBe(1);
+    expect(newThreadKey(seedOf(searchAt(router)))).toBe(newThreadKey(before));
+  });
+
+  it("다시 작업공간 만들기로 가면 칩의 씨앗이 돌아온다", async () => {
+    const { router } = setup(["/?new=work"]);
+    await router.load();
+    await router.navigate({ to: "/", search: withoutNewWork(seedOf(searchAt(router))), replace: true });
+    await router.navigate({ to: "/", search: { new: "work" } });
+    expect(seedOf(searchAt(router)).link).toEqual({ kind: "new-work" });
+  });
+
+  it("씨앗을 걷거나 다른 씨앗으로 가면 화면을 새로 세운다", () => {
+    const key = (search: Parameters<typeof seedOf>[0]) => newThreadKey(seedOf(search));
+    expect(key({ new: "work" })).toBe(key({ new: "thread" }));
+    expect(key({ new: "work" })).not.toBe(key({}));
+    expect(key({ new: "thread" })).not.toBe(key({}));
+    expect(key({ new: "work" })).not.toBe(key({ work: "refund-api" }));
+    expect(key({ work: "a" })).not.toBe(key({ work: "b" }));
+    expect(key({ new: "work", service: "pay" })).not.toBe(key({ new: "thread" }));
+    expect(key({ new: "work", say: "안녕" })).not.toBe(key({ new: "thread" }));
+    expect(key({ project: "api" })).not.toBe(key({}));
   });
 });
 

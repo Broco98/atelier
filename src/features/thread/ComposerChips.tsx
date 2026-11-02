@@ -8,7 +8,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -16,10 +15,9 @@ import { addProject } from "@/features/projects/add-store";
 import type { ReadingScope, ScopePick } from "@/features/services/scope";
 import { ScopeMenuItems } from "@/features/services/ServiceMenu";
 import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, EFFORTS, type ChoiceOption } from "./chips";
-import { useRecentWorks } from "./hooks";
 import { scopeChip, scopeLine, type ShownScope } from "./service-chip";
 import type { AskLevel, ThreadLink } from "./types";
-import type { LockedWork } from "./work-chip";
+import { NEW_WORK, type LockedWork } from "./work-chip";
 
 // 입력창의 칩(v1 티켓 05 · 23 · 31 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · v52 F4-KitComposer) — 입력칸
 // 아래 줄에 `+` 다음으로 물어보는 정도가, 보내기 원 앞에 모델 · 생각 깊이가 선다(입력창 안은 이 셋뿐이다 — `@` 단추는 숨겼다, 03 §6). Work
@@ -30,10 +28,10 @@ import type { LockedWork } from "./work-chip";
 // - **모델 · 생각 깊이**(「Opus · 높음」)는 그 채팅의 값이다(스토리 33). 앞에 Runtime 표시(Claude 마크)가 선다.
 //   누르면 16 반경 메뉴에 「Claude Code」 모델 목록과 「생각 깊이」 칸 줄이 선다. 생각 깊이는 턴이 도는 동안 바꿀 수 없다(엔진이
 //   거절한다 — 그래서 그동안 잠근다). 목록이 없으면(앉지 않은 Agent를 멘션했다) 보이기만 한다.
-// - **Work 칩**(03 §5 · F4-KitComposer · F4-HomeWorkMenu)은 스위치다 — 첫 말 전의 메뉴에 「새 작업공간」 · 「작업공간 없이 대화」(설명 한 줄 · 지금
-//   것에 ✓)와 최근 Work 다섯(줄 끝에 그 Work의 Service 이름)이 선다. 입력창의 `/work`도 이 메뉴를 연다. 첫 말을 보낸 뒤에는 잠겨 보이기만
-//   한다(연결을 끊는 길은 없다 — v1 §11). Work에 이은 칩만 누를 수 있고, 누르면 그 Work 화면으로 간다.
-// - **범위 칩**(03 §5 · 티켓 06 · Composer 「범위 메뉴」)은 새 채팅의 Work 칩 바로 뒤다 — 비어 있으면 흐린 「범위 없음」, 고르면 흰 칩 「결제 서비스 ×」
+// - **Work 칩**은 고르는 칩이 아니다(구현 스펙 「01a — 범위와 새 채팅」) — 어디서 일할지는 주소 씨앗이 정한다. `?new=work`로 연 새 채팅에만 「새 작업공간」
+//   칩이 범위 칩 앞에 서고 ×로 뺀다(`NewWorkChip`). 씨앗이 없으면 첫 말 전의 트레이에 Work 칩이 없다. 그 밖에는 잠겨 보이기만 한다(연결을 끊는 길은
+//   없다 — v1 §11). Work에 이은 칩만 누를 수 있고, 누르면 그 Work 화면으로 간다.
+// - **범위 칩**(03 §5 · 티켓 06 · Composer 「범위 메뉴」)은 새 채팅의 트레이에 선다(Work 칩이 있으면 그 바로 뒤) — 비어 있으면 흐린 「범위 없음」, 고르면 흰 칩 「결제 서비스 ×」
 //   (×는 빼기)이고, 바꾸는 것이 Work의 Service면 × 대신 ▾다. 메뉴는 범위 없음 · Service · Project에서 고른다(`ScopeMenuItems`). 첫 말 뒤에는 서지
 //   않는다 — 대화로 바꾼다. 그 곁의 **범위 줄**이 지금 읽는 Project를 한 줄로 말한다(읽는 범위 — `scopeLine`).
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84)는 방패 · 지금 정도 이름의 칩이다(시안의 「매번 묻기」 — 셰브런 없이). 누르면 「언제
@@ -46,16 +44,14 @@ const CHIP =
 const MENU_CHIP = cn(CHIP, "quiet-hover data-[popup-open]:bg-fill-hover data-[popup-open]:text-fg");
 /** 모델 칩 — 본문색 · 좌우 8(시안 「Claude Code Default」 칩). */
 const MODEL_CHIP = "px-2 text-fg";
-/** 트레이 칩의 얼굴(시안 v52 `.tray .tc`) — 글리프와 글자 사이 5 · 13/18. 고른 범위 칩은 흰 면 안에서 이것으로 이름 단추를 세운다. */
+/** 트레이 칩의 얼굴(시안 v52 `.tray .tc`) — 글리프와 글자 사이 5 · 13/18. 흰 칩은 흰 면 안에서 이것으로 이름 자리를 세운다. */
 const TRAY_FACE = "flex min-w-0 items-center gap-1.25 text-chat-meta whitespace-nowrap outline-none focus-ring";
 /** 트레이 칩 — 26 · 알약 · 좌우 8, 테두리 · 면 없음. 칩 줄이 좁으면 칩이 줄어 이름이 말줄임으로 끊긴다(`shrink`). */
 const TRAY_CHIP = cn(TRAY_FACE, "h-6.5 shrink rounded-full px-2");
-/** 고르는 트레이 칩 — 본문색 글자 · `fg-icon` 글리프 · `fg-subtle` 셰브런. hover와 메뉴가 열린 동안 켜짐 면(시안 `.tc.open`). */
-const PICK_CHIP = cn(TRAY_CHIP, "text-fg transition-colors quiet-hover data-[popup-open]:bg-fill-hover");
+/** 흰 트레이 칩(시안 `.tc.on`) — 흰 면 + 0.5 고리. 고른 범위 칩과 「새 작업공간」 칩이다. */
+const ON_CHIP = "flex h-6.5 min-w-0 shrink items-center rounded-full bg-surface ring-[0.5px] ring-border-tray-on";
 /** 트레이 칩 이름의 폭 — 긴 Work 제목이 범위 줄(03 티켓 06)의 자리를 다 먹지 않게. */
 const TRAY_NAME = "max-w-44 min-w-0 truncate";
-/** Work 칩의 접근성 이름 — 칩 글자(「새 작업공간」 · 「작업공간 없이 대화」 · 제목)만으로는 무엇을 고르는 칩인지 말하지 않는다. */
-const workName = (label: string) => `어디서 일할지 ${label}`;
 /** 고른 것의 글리프 — 새 Work는 폴더 더하기, Work 없이 대화는 말풍선, Work는 폴더다(시안 v52). */
 const WORK_GLYPH: Record<ThreadLink["kind"], LucideIcon> = { "new-work": FolderPlus, "no-work": MessageSquare, work: Folder };
 
@@ -150,14 +146,10 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
   );
 }
 
-/** 고르는 Work 칩이 받는 것 — 칩 글자와 고르기(첫 말 전의 새 Thread). */
-export interface WorkChoice {
-  kind: "pick";
-  /** 칩 글자 — 「새 작업공간」 · 「작업공간 없이 대화」 · Work 제목(`workHome`). */
-  label: string;
-  link: ThreadLink;
-  /** 골랐다 — 최근 Work면 그 제목도 함께 온다(입력창 안내가 쓴다). */
-  onPick: (link: ThreadLink, title: string | null) => void;
+/** 「새 작업공간」 칩이 받는 것 — 뺀다. 빼면 그냥 새 채팅이다. */
+export interface NewWorkChoice {
+  kind: "new-work";
+  onDrop: () => void;
 }
 
 /** 잠긴 Work 칩이 받는 것 — 첫 말 뒤의 칩 글(`lockedWork`)과, 이은 Work로 가는 길(그 Work의 slug를 받는다). */
@@ -178,107 +170,44 @@ export interface ScopeChoice {
 
 /**
  * 입력창 트레이(03 §5 · 시안 v52 `.tray`) — 입력창 상자에 붙은 회색 띠다. 자리는 입력창의 자리를 따른다: 입력창이 가운데인 첫 화면은 상자
- * 아래(`below`), 화면 아래에 붙은 Thread 화면은 상자 위(`above` — 창 끝에 눌려 칩이 입력창 뒤로 숨지 않게)다. 첫 칩이 Work 칩이다 — 첫
- * 말 전이면 고르는 스위치(`WorkChoice`), 뒤면 잠긴 칩(`LockedChoice`)이다. 새 채팅이면 그 뒤에 범위 칩과 범위 줄이 선다(`scope`).
+ * 아래(`below`), 화면 아래에 붙은 Thread 화면은 상자 위(`above` — 창 끝에 눌려 칩이 입력창 뒤로 숨지 않게)다. 첫 칩이 Work 칩이다 — `?new=work`로
+ * 연 새 채팅의 「새 작업공간」(`NewWorkChoice`)이거나 잠긴 칩(`LockedChoice`)이고, 씨앗 없는 새 채팅에는 없다. 새 채팅이면 그 뒤에 범위 칩과 범위 줄이
+ * 선다(`scope`).
  */
 export interface ComposerTray {
   at: "below" | "above";
-  work: WorkChoice | LockedChoice;
+  work?: NewWorkChoice | LockedChoice;
   scope?: ScopeChoice;
 }
 
-/** 메뉴 고르기의 값 — 새 Work · Work 없이 대화 · 그 Work. slug와 겹치지 않는 머리를 단다. */
-const valueOf = (link: ThreadLink): string => (link.kind === "work" ? `work:${link.slug}` : link.kind);
-
-/** 스위치 둘 — 차례 · 이름 · 설명 한 줄이 시안 v52 그대로다(03 §5 · 스토리 15–17). */
-const SWITCHES = [
-  { kind: "new-work", name: "새 작업공간", description: "첫 말로 작업공간을 만들고 그 안에서 시작해요" },
-  { kind: "no-work", name: "작업공간 없이 대화", description: "묻고 답하기 · 나중에 제안을 받아 작업공간이 될 수 있어요" },
-] as const;
+/** 흰 칩 끝의 × — 이름 자리 옆의 따로 선 단추다(이름 → × 사이 6: 시안 `.x{margin-left:1px}` + 칩 틈 5). */
+function ChipRemove({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-full shrink-0 items-center rounded-full pr-2 pl-1 text-fg-subtle transition-colors outline-none hover:text-fg focus-ring"
+    >
+      <X className="size-2.5" aria-hidden />
+    </button>
+  );
+}
 
 /**
- * 고르는 Work 칩과 메뉴(03 §5 · F4-HomeWorkMenu · F4-KitComposer 「작업공간 칩 메뉴」) — 칩 아래로 연다. 위에 스위치 둘(설명 한 줄 · 지금 것에 ✓),
- * 구분선 아래 「최근 작업공간 — 그 작업공간에 새 채팅으로」와 진행 중인 Work 다섯이 선다. Work가 하나도 없으면 그 묶음 대신 「아직 작업공간이 없어요」
- * 한 줄이다(시안 「작업공간 칩 메뉴 — 작업공간이 없을 때」). 최근 Work를 아직 읽지 못했으면 스위치 둘만 선다. 메뉴의 열림은 `/work`도 연다.
+ * 「새 작업공간」 칩(Composer 「새 채팅 · 범위 트레이」) — 작업공간 만들기로 연 새 채팅의 첫 말 전에만 범위 칩 앞에 선다. 고르는 메뉴는 없고 ×로 빼면
+ * 그냥 새 채팅이다. 다시 세우는 길은 칩에 없다 — 작업공간 만들기로 다시 연다.
  */
-export function WorkChip({
-  label,
-  link,
-  onPick,
-  open,
-  onOpenChange,
-}: WorkChoice & { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const recent = useRecentWorks();
-  const value = valueOf(link);
-  const Glyph = WORK_GLYPH[link.kind];
+export function NewWorkChip({ onDrop }: NewWorkChoice) {
+  const Glyph = WORK_GLYPH["new-work"];
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger aria-label={workName(label)} className={PICK_CHIP}>
+    <span data-slot="new-work-chip" className={ON_CHIP}>
+      <span className={cn(TRAY_FACE, "pr-0.5 pl-2 text-fg")}>
         <Glyph className="size-3.5 shrink-0 text-fg-icon" aria-hidden />
-        <span className={TRAY_NAME}>{label}</span>
-        <ChevronDown className="size-3 shrink-0 text-fg-subtle" aria-hidden />
-      </DropdownMenuTrigger>
-      {/* 트레이 아래 6에 선다(시안 `.pmenu{top:calc(100% + 6px)}`) — 칩 아래끝에서 트레이 안쪽 6을 지나 6이다. */}
-      <DropdownMenuContent side="bottom" align="start" sideOffset={12} width="note">
-        <DropdownMenuRadioGroup
-          value={value}
-          onValueChange={(next: string) => {
-            if (next === value) return;
-            if (next === "no-work" || next === "new-work") return onPick({ kind: next }, null);
-            const work = recent?.find((one) => valueOf({ kind: "work", slug: one.slug }) === next);
-            if (work) onPick({ kind: "work", slug: work.slug }, work.title);
-          }}
-        >
-          {SWITCHES.map((one) => {
-            const SwitchGlyph = WORK_GLYPH[one.kind];
-            return (
-              <DropdownMenuRadioItem
-                key={one.kind}
-                value={one.kind}
-                label={one.name}
-                aria-label={one.name}
-                aria-description={one.description}
-                size="note"
-              >
-                <SwitchGlyph className="mt-0.5" aria-hidden />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{one.name}</span>
-                  <span className="truncate text-xs text-fg-tertiary">{one.description}</span>
-                </span>
-              </DropdownMenuRadioItem>
-            );
-          })}
-          {recent && (
-            <>
-              <DropdownMenuSeparator />
-              {recent.length > 0 ? (
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>최근 작업공간 — 그 작업공간에 새 채팅으로</DropdownMenuLabel>
-                  {recent.map((work) => (
-                    <DropdownMenuRadioItem
-                      key={work.slug}
-                      value={valueOf({ kind: "work", slug: work.slug })}
-                      label={work.title}
-                      aria-label={work.title}
-                      aria-description={work.serviceName ?? undefined}
-                    >
-                      <Folder aria-hidden />
-                      <span className="min-w-0 flex-1 truncate">{work.title}</span>
-                      {/* 그 Work의 Service — 흐린 곁말(시안 F4-HomeWorkMenu 줄 끝 「결제 서비스」). ✓는 부품이 이 뒤에 붙인다. */}
-                      {work.serviceName && <span className="shrink-0 pl-3 text-xs text-fg-tertiary">{work.serviceName}</span>}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuGroup>
-              ) : (
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>아직 작업공간이 없어요</DropdownMenuLabel>
-                </DropdownMenuGroup>
-              )}
-            </>
-          )}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <span className={TRAY_NAME}>{NEW_WORK}</span>
+      </span>
+      <ChipRemove label={`${NEW_WORK} 빼기`} onClick={onDrop} />
+    </span>
   );
 }
 
@@ -326,7 +255,7 @@ const SCOPE_GLYPH = { service: Layers, project: Folder } as const;
  */
 export function ScopeChip({ shown, ofWork, onPick }: ScopeChoice) {
   const look = scopeChip(shown, ofWork);
-  // 메뉴 카드는 트레이 바깥 6에 선다(Work 칩 메뉴와 같은 띄움 — 시안 `.pmenu{top:calc(100% + 6px)}`).
+  // 메뉴 카드는 트레이 바깥 6에 선다(시안 `.pmenu{top:calc(100% + 6px)}`) — 칩 아래끝에서 트레이 안쪽 6을 지나 6이다.
   const menu = (
     <DropdownMenuContent side="bottom" align="start" sideOffset={12} width="note">
       <ScopeMenuItems current={shown} onPick={onPick} withProjects={!ofWork} />
@@ -348,9 +277,9 @@ export function ScopeChip({ shown, ofWork, onPick }: ScopeChoice) {
   }
   const Glyph = SCOPE_GLYPH[look.of];
   return (
-    <span data-slot="scope-chip" className="flex h-6.5 min-w-0 shrink items-center rounded-full bg-surface ring-[0.5px] ring-border-tray-on">
+    <span data-slot="scope-chip" className={ON_CHIP}>
       <DropdownMenu>
-        {/* 이름 → × 사이 6(시안 `.x{margin-left:1px}` + 칩 틈 5) — 이름 단추의 오른쪽 2와 × 단추의 왼쪽 4다. */}
+        {/* 이름 → × 사이 6 — 이름 단추의 오른쪽 2와 × 단추의 왼쪽 4다. */}
         <DropdownMenuTrigger
           aria-label={`범위: ${look.name}`}
           className={cn(TRAY_FACE, "h-full rounded-full pl-2 text-fg", look.end === "menu" ? "pr-2" : "pr-0.5")}
@@ -361,16 +290,7 @@ export function ScopeChip({ shown, ofWork, onPick }: ScopeChoice) {
         </DropdownMenuTrigger>
         {menu}
       </DropdownMenu>
-      {look.end === "remove" && (
-        <button
-          type="button"
-          aria-label="범위 빼기"
-          onClick={() => onPick(null)}
-          className="flex h-full shrink-0 items-center rounded-full pr-2 pl-1 text-fg-subtle transition-colors outline-none hover:text-fg focus-ring"
-        >
-          <X className="size-2.5" aria-hidden />
-        </button>
-      )}
+      {look.end === "remove" && <ChipRemove label="범위 빼기" onClick={() => onPick(null)} />}
     </span>
   );
 }

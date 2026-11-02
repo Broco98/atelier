@@ -1134,7 +1134,7 @@ pub async fn thread_restore_service(
     to_host(&engine, "Service를 되돌리지 못했습니다", move |host| host.restore_service(&slug)).await
 }
 
-/// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 「최근 Work」를 고르면 물어보는 정도 칩이 이것을 보인다.
+/// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 Thread의 물어보는 정도 칩이 이것을 보인다.
 /// 읽기만 한다. 없는 Work는 그 까닭이 오류 글이다.
 #[tauri::command]
 pub async fn thread_work_mode(

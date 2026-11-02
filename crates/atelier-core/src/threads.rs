@@ -63,7 +63,7 @@ pub struct ThreadFile {
     /// 함께 여는 폴더로 더한다. 고치기는 판정이 계속 거절한다. 비었으면 칸째 빠진다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub read_only_projects: Vec<String>,
-    /// 입력창 Work 칩에서 「새 Work」로 시작했나(v1 티켓 31 · 03 구현 스펙 S3) — `work`가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린
+    /// 「새 작업공간」 칩을 둔 채 시작했나(v1 티켓 31 · 03 구현 스펙 S3) — `work`가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린
     /// 「새 Work」다(Work를 만드는 중). 아니면 칸째 빠진다.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub new_work: bool,

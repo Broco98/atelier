@@ -78,7 +78,7 @@ const TITLE_LIMIT: usize = 40;
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 /// 머리말의 첫 줄 — 기록에서 머리말 블록을 알아본다([`service::heard_service`]).
 const PREAMBLE_HEAD: &str = "Atelier Thread 안에서 열린 Session이다.";
-/// 입력창 Work 칩에서 「새 Work로 시작」을 고른 Thread의 첫 머리말 끝 줄(v1 티켓 31 · §11) — 받은 Agent가 Work부터 만든다.
+/// 「새 작업공간」 칩을 둔 채 시작한 Thread의 첫 머리말 끝 줄(v1 티켓 31 · §11) — 받은 Agent가 Work부터 만든다.
 const NEW_WORK_NOTE: &str = "- 사람이 「새 Work로 시작」을 골랐다 — 먼저 `propose_work`로 Work 만들기를 제안하라. 고칠 Project가 \
                              보이지 않으면 `list_projects`로 보고 고르고, 기획만이면 Project 없이 제안한다.\n";
 
@@ -595,7 +595,7 @@ impl ConversationHost {
         answered
     }
 
-    /// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 입력창 칩이 「최근 Work」를 고르면 이것을 보인다. 그 Work에 이은
+    /// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 Thread의 입력창 칩이 이것을 보인다. 그 Work에 이은
     /// Thread들의 판정이 읽는 것과 같은 점 파일이다. 읽기만 한다. 없는 Work는 [`HostError::WorkNotFound`]다.
     pub fn work_ask_level(&self, work: &str) -> Result<AskLevel, HostError> {
         self.open_work(work)?;

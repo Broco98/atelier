@@ -134,7 +134,7 @@ describe("고른 것이 가는 때 — 첫 말 전에는 입력창이 쥐고 첫
   const seed = (over: { service?: string; project?: string; link?: Parameters<typeof holdOf>[0]["link"] }) =>
     holdOf({ link: null, service: null, project: null, ...over });
 
-  it("주소 씨앗이 처음 쥔 범위다 — 「새 작업공간」 · 「작업공간 없이 대화」를 오가도 남는다", () => {
+  it("주소 씨앗이 처음 쥔 범위다 — 「새 작업공간」 칩을 ×로 빼도 남는다", () => {
     const service = seed({ link: NEW_WORK, service: "결제-서비스" });
     expect(heldScope(NEW_WORK, service, null)).toEqual(SERVICE);
     expect(heldScope(NO_WORK, service, null)).toEqual(SERVICE);
@@ -164,21 +164,21 @@ describe("고른 것이 가는 때 — 첫 말 전에는 입력창이 쥐고 첫
     expect(scopeArgs(null)).toEqual(NOTHING);
   });
 
-  it("Project 범위는 작업공간 밖의 값이다 — 최근 Work를 고른 동안 서지 않고 돌아오면 남아 있다", () => {
+  it("Project 범위는 작업공간 밖의 값이다 — `?work=`로 연 새 채팅에는 서지 않는다", () => {
     const hold = seed({ project: "api-server" });
     expect(heldScope(REFUND, hold, null)).toBeNull();
     expect(startScope(REFUND, hold, null)).toEqual(NOTHING);
     expect(heldScope(NO_WORK, hold, null)).toEqual(PROJECT);
   });
 
-  it("최근 Work를 고르면 그 Work의 Service를 보이고, 건드리지 않으면 첫 말이 그 Work의 Service를 바꾸지 않는다", () => {
+  it("`?work=`로 열면 그 Work의 Service를 보이고, 건드리지 않으면 첫 말이 그 Work의 Service를 바꾸지 않는다", () => {
     const hold = seed({ service: "결제-서비스" });
     expect(heldScope(REFUND, hold, "사내-도구")).toEqual(TOOLS);
     expect(heldScope(REFUND, hold, null)).toBeNull();
     expect(startScope(REFUND, hold, SHOWN_TOOLS)).toEqual(NOTHING);
   });
 
-  it("최근 Work의 Service를 바꾸면 첫 말을 보낼 때 그 Work에 적는다 — 「범위 없음」도 고른 것이다", () => {
+  it("`?work=`로 열고 Service를 바꾸면 첫 말을 보낼 때 그 Work에 적는다 — 「범위 없음」도 고른 것이다", () => {
     const moved = holdPick(REFUND, seed({}), SERVICE);
     expect(heldScope(REFUND, moved, "사내-도구")).toEqual(SERVICE);
     expect(startScope(REFUND, moved, SHOWN_SERVICE)).toEqual({ service: { slug: "결제-서비스" }, project: null });

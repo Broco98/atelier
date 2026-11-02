@@ -49,7 +49,7 @@ export function ServiceMenuItems({ current, onPick }: { current: string | null; 
         if (next !== value) onPick(next === NONE ? null : next);
       }}
     >
-      {/* 줄 이름은 머리 글자만이다 — 곁말은 설명으로 따로 읽힌다(아래 Service 줄 · Work 칩의 스위치와 같다). */}
+      {/* 줄 이름은 머리 글자만이다 — 곁말은 설명으로 따로 읽힌다(아래 Service 줄과 같다). */}
       {menu.top.kind === "none" ? (
         <DropdownMenuRadioItem
           value={NONE}

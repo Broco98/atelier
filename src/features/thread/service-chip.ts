@@ -9,7 +9,7 @@ import {
 import type { StartPicks, ThreadLink } from "./types";
 
 // 트레이의 **범위 칩**과 **범위 줄**(03 구현 스펙 §5 · 티켓 06 · 캔버스 v52 F4-KitComposer · Composer 「범위 메뉴」)의 순수 함수다. 범위 칩은 새
-// 채팅의 Work 칩 바로 뒤에 서서 이 채팅이 읽을 곳(없음 · Service · Project)을 고르고, 범위 줄은 그 곁에서 지금 읽는 Project를 한 줄로 말한다 — 글은
+// 채팅의 트레이에 서서(Work 칩이 있으면 그 바로 뒤) 이 채팅이 읽을 곳(없음 · Service · Project)을 고르고, 범위 줄은 그 곁에서 지금 읽는 Project를 한 줄로 말한다 — 글은
 // 읽는 범위(core `reading_scope` — Session이 함께 여는 폴더와 같은 값)에서 나온다. 화면은 다시 세지 않는다. 칩은 첫 말 뒤에 서지 않는다 — 범위는
 // 대화로 바꾼다.
 
@@ -50,7 +50,7 @@ export type ShownScope = NonNullable<ScopePick> & { name: string };
 
 /**
  * 범위 칩의 모양(§5 · 시안 `.tc.ghost` · `.tc.on`) — 범위가 없으면 흐린 빈 칩, 있으면 흰 칩에 이름이다. 끝은 ×(빼기)인데, 그 칩이 바꾸는 것이
- * Work의 Service면(최근 Work를 고른 첫 화면) × 대신 ▾다 — 빼기도 메뉴에서만 한다.
+ * Work의 Service면(`?work=`로 연 첫 화면) × 대신 ▾다 — 빼기도 메뉴에서만 한다.
  */
 export type ScopeChipLook =
   | { kind: "ghost" }
@@ -76,9 +76,9 @@ export function shownScope(held: ScopePick, scope: ReadingScope | undefined, fre
 }
 
 /**
- * 첫 말 전에 입력창이 쥔 범위(§5 · S4) — 둘을 따로 쥔다. Work 없는 쪽(「새 작업공간」 · 「작업공간 없이 대화」)이 고른 Service나 Project는 그 둘을
- * 오가도 남고, 최근 Work를 고르고 범위 칩에서 바꾼 Service는 그 Work를 고른 동안만 산다(바꾸지 않았으면 그 Work의 Service 그대로다). 바꾼 것은 첫
- * 말을 보낼 때 그 Work에 적는다 — 메뉴를 훑다 버린 입력이 Work 파일을 바꾸지 않게. Project 범위는 Work 밖의 값이라 Work 쪽에는 없다.
+ * 첫 말 전에 입력창이 쥔 범위(§5 · S4) — 둘을 따로 쥔다. Work 없는 쪽(「새 작업공간」 칩이 있든 없든)이 고른 Service나 Project는 그 칩을 ×로 빼도
+ * 남고, `?work=`로 열고 범위 칩에서 바꾼 Service는 그 Work 몫이다(바꾸지 않았으면 그 Work의 Service 그대로다). 바꾼 것은 첫 말을 보낼 때 그 Work에
+ * 적는다 — 메뉴를 훑다 버린 입력이 Work 파일을 바꾸지 않게. Project 범위는 Work 밖의 값이라 Work 쪽에는 없다.
  */
 export interface ScopeHold {
   loose: ScopePick;
@@ -102,7 +102,7 @@ export function holdPick(link: ThreadLink, hold: ScopeHold, pick: ScopePick): Sc
   return link.kind === "work" ? { ...hold, work: { slug: link.slug, service: pick?.slug ?? null } } : { ...hold, loose: pick };
 }
 
-/** 칩 · 범위 줄이 보이는 쥔 범위 — 최근 Work면 바꾼 것, 바꾸지 않았으면 그 Work의 Service(`workService`)다. */
+/** 칩 · 범위 줄이 보이는 쥔 범위 — Work면 바꾼 것, 바꾸지 않았으면 그 Work의 Service(`workService`)다. */
 export function heldScope(link: ThreadLink, hold: ScopeHold, workService: string | null): ScopePick {
   if (link.kind !== "work") return hold.loose;
   const service = hold.work?.slug === link.slug ? hold.work.service : workService;

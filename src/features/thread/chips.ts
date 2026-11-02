@@ -41,26 +41,20 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
 ];
 
 /**
- * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/work`는 Work 칩 메뉴를 연다(v1 티켓
- * 31 — 고를 수 있는 첫 말 전에만 선다). `/plan`은 물어보는 정도를 「계획」으로 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓
- * 23). `/model`은 모델 칩 메뉴(모델과 생각 깊이)를 연다(구현 스펙 §14, 코드 리뷰 1차 B8).
+ * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/plan`은 물어보는 정도를 「계획」으로 바꾸고,
+ * `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴(모델과 생각 깊이)를 연다(구현 스펙 §14, 코드 리뷰 1차 B8).
  */
 export const THREAD_COMMANDS: readonly CommandOption[] = [
   { name: "new", description: "새 채팅", aliases: [], thread: true },
-  { name: "work", description: "작업공간 만들기 · 붙이기", aliases: [], thread: true },
   { name: "plan", description: "계획만 세우고 멈추기", aliases: [], thread: true },
   { name: "model", description: "모델과 생각 깊이", aliases: [], thread: true },
   { name: "policy", description: "언제 물어볼지", aliases: [], thread: true },
 ];
 
-/**
- * 「/」 메뉴의 명령 — 화면 명령 뒤에 Runtime 명령이다. 화면 명령과 이름이 같은 Runtime 명령은 가린다 — 같은 글이 다른 일을 하지 않게.
- * `/work`는 Work 칩을 고를 수 있을 때(`work` — 첫 말 전)만 선다. 첫 말 뒤의 칩은 잠겨 보이기만 한다.
- */
-export function slashCommands(runtime: readonly CommandOption[], { work = false }: { work?: boolean } = {}): CommandOption[] {
+/** 「/」 메뉴의 명령 — 화면 명령 뒤에 Runtime 명령이다. 화면 명령과 이름이 같은 Runtime 명령은 가린다 — 같은 글이 다른 일을 하지 않게. */
+export function slashCommands(runtime: readonly CommandOption[]): CommandOption[] {
   const taken = new Set(THREAD_COMMANDS.map((command) => command.name));
-  const shown = THREAD_COMMANDS.filter((command) => work || command.name !== "work");
-  return [...shown, ...runtime.filter((command) => !taken.has(command.name))];
+  return [...THREAD_COMMANDS, ...runtime.filter((command) => !taken.has(command.name))];
 }
 
 /**

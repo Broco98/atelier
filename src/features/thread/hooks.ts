@@ -1,9 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { searchApi } from "@/features/search/api";
-import { SCOPE_KEY, useServices } from "@/features/services/hooks";
-import { useWorks } from "@/features/works/hooks";
+import { SCOPE_KEY } from "@/features/services/hooks";
 import type { ProjectPr } from "@/features/works/types";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
@@ -15,7 +13,6 @@ import type { AskLevel, ChipValues, QueuedMessage, RecordLine, ThreadSummary, Th
 import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { workPrsKey } from "./summary-card";
 import { workMarks, type WorkMarks } from "./work-threads";
-import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
@@ -263,25 +260,8 @@ function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): 
 }
 
 /**
- * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
- * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 작업공간이 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Service 이름은 Work
- * 목록 · Service 목록에서 읽는다(아직 못 읽었으면 비어 선다).
- */
-export function useRecentWorks(): RecentWork[] | null {
-  const { data } = useQuery({
-    queryKey: ["recent-works"],
-    queryFn: () => searchApi.run("", []),
-    staleTime: 0,
-    retry: false,
-  });
-  const { data: works } = useWorks();
-  const { data: services } = useServices();
-  return data ? recentWorks(data.hits, works, services) : null;
-}
-
-/**
- * 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. Work를 고르지
- * 않았으면 읽지 않는다(`null`). 읽기 전 · 못 읽으면 `null`이다.
+ * 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 채팅의 물어보는 정도 칩이 이것을 보인다. Work가 없으면 읽지
+ * 않는다(`null`). 읽기 전 · 못 읽으면 `null`이다.
  */
 export function useWorkMode(work: string | null): AskLevel | null {
   const { data } = useQuery({
