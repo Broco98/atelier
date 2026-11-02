@@ -284,6 +284,16 @@ export function useSetMode() {
   });
 }
 
+/** Codex 모드 바꾸기(restart 01c-5) — 답(바뀐 채팅의 값)으로 연 Thread를 고친다. 채팅마다의 값이라 다른 Thread는 그대로다. */
+export function useSetCodexMode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ thread, mode }: { thread: string; mode: string }) => threadApi.setCodexMode(thread, mode),
+    onSuccess: ({ codexMode }, { thread }) =>
+      queryClient.setQueryData<ThreadView>(threadKey(thread), (view) => (view ? { ...view, codexMode } : view)),
+  });
+}
+
 /** 연 Thread의 지금 정도를 고친다 — Work에 이은 Thread면 정도가 그 Work의 것이라 같은 Work에 이은 다른 Thread의 연 캐시도 함께다. */
 function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): void {
   const work = queryClient.getQueryData<ThreadView>(threadKey(thread))?.work ?? null;

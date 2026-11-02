@@ -99,7 +99,8 @@ describe("흐름의 물음 자리", () => {
   // Codex 채팅의 카드는 사람이 답하지 않으면 한도에 닫힌다(01c-8 · Tools 보드 「승인 결정 줄」의 마지막 줄).
   it("답이 없어 닫힌 카드는 그 도구 줄 자리에 결정 줄 한 줄로 서고 실패한 도구 줄은 서지 않는다", () => {
     const closed = record("thread-codex-unanswered");
-    for (const lines of [closed, through(closed, 13)]) {
+    const shut = closed.find((line) => line.kind === "question" && (line.payload as { state?: string }).state === "withdrawn")!.seq;
+    for (const lines of [closed, through(closed, shut)]) {
       const markup = flow(lines);
       expect(rowText(markup, 'data-decision="unanswered"')).toBe("답이 없어 닫음 · Codex는 5분까지만 기다려요");
       expect(markup).not.toContain('role="group"');

@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { ASK_LEVELS } from "./features/thread/chips";
+import { ASK_LEVELS, CODEX_DEFAULT_MODE } from "./features/thread/chips";
 
 // `CONTEXT.md`는 **말의 정본**이다 — 코드가 아니라 그 문서가 앱의 낱말을 정한다. 그래서
 // 화면이 바뀌면 그 문서가 **거짓말을 하는 상태**가 될 수 있고, 그 거짓말은 아무 층에도
@@ -229,13 +229,16 @@ describe("말의 사전", () => {
   });
 
   // v1 티켓 23 · 스토리 84 · 86. 입력창 칩이 고르는 것은 「물어보는 정도」이고 그 넷의 이름은 칩 · 판정의 까닭 · 시스템 줄이 같은
-  // 글을 쓴다 — 사전이 다른 이름을 들면 다음 사람이 그 이름으로 칩을 고친다. Runtime의 「모드」는 화면에서 고르지 않는다(「계획」이
-  // 계획 모드를 고른다).
-  it("「물어보는 정도」가 칩의 넷을 그 이름 그대로 들고, 「방패 줄」이 있으며, 「모드」는 화면에서 고르지 않는다", () => {
+  // 글을 쓴다 — 사전이 다른 이름을 들면 다음 사람이 그 이름으로 칩을 고친다. Claude Code의 「모드」는 화면에서 고르지 않는다(「계획」이
+  // 계획 모드를 고른다). Codex의 모드는 Codex가 보낸 이름 그대로 칩에서 고르고 채팅마다 따로다(restart 01c-5) — 사전이 「화면에서 고르지 않는다」만
+  // 말하면 다음 사람이 Codex 모드 칩을 걷거나 물어보는 정도와 합친다.
+  it("「물어보는 정도」가 칩의 넷을 그 이름 그대로 들고, 「방패 줄」이 있으며, 「모드」는 Claude는 「계획」이 · Codex는 Codex가 보낸 모드가 정한다", () => {
     expect(names).toEqual(expect.arrayContaining(["물어보는 정도", "방패 줄"]));
     for (const level of ASK_LEVELS) expect(bodyOf("물어보는 정도")).toContain(level.name);
     expect(bodyOf("방패 줄")).toContain("자동으로 허용함");
     expect(bodyOf("모드")).toContain("「계획」");
+    expect(bodyOf("모드")).toContain(CODEX_DEFAULT_MODE.name);
+    expect(bodyOf("모드")).toContain("채팅마다");
   });
 
   // 03 구현 스펙 §2 · §5 · 티켓 02 · 01a-14. 입력창 상자에 붙은 회색 띠가 「트레이」이고, 그 첫 칩이 이 채팅이 어디서 시작했나를 말하는 「Work

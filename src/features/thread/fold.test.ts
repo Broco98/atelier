@@ -562,7 +562,8 @@ describe("답이 없어 닫힌 카드", () => {
   });
 
   it("도는 턴에서 카드가 닫히면 기다림이 끝나고 그 자리에 결정 줄이 선다", () => {
-    const model = foldThread(through(closed, 13));
+    const shut = closed.find((line) => line.kind === "question" && (line.payload as { state?: string }).state === "withdrawn")!.seq;
+    const model = foldThread(through(closed, shut));
     expect(model.running).toBe(true);
     expect(model.asks).toEqual([]);
     expect(kinds(model.turns[0].entries)).toEqual(["unanswered"]);

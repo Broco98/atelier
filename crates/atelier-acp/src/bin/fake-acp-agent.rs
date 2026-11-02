@@ -32,6 +32,8 @@
 //!   권한이 걸린 채 죽는 갈래(three-axes 티켓 10).
 //! - `FAKE_ACP_REFUSES_RESUME` — 있으면 아는 세션이어도 `session/resume`을 모르는 세션으로 거절한다 — `session/load`는 받는다. 재개
 //!   차례(resume → load)의 둘째 칸을 잰다(restart 티켓 01c-3).
+//! - `FAKE_ACP_REFUSES_MODE` — 있으면 `session/set_mode`를 잘못된 인자 오류로 거절한다(`replay` 포함) — 모드를 맞추지 못한 Codex 채팅이 턴을
+//!   열지 않는지 잰다(restart 티켓 01c-5).
 //! - `FAKE_ACP_REVIVE_HOLDS` — 있으면 아는 세션의 되살리기(`session/resume` · `session/load`)를 답하기 전에 `<세션 id>.go`가 설
 //!   때까지 붙잡는다 — 되살리는 동안 온 명령(칩의 바꾸기)을 잰다.
 //! - `FAKE_ACP_LINGERS` — 있으면 시나리오가 끝나도(stdin이 닫혀도) 끝나지 않는다 — `ignores-shutdown`처럼 끄기가 1초 한도를 다
@@ -448,7 +450,8 @@ impl Play {
     /// 받은 요청 하나.
     fn request(&mut self, fake: &mut Fake, method: &str, id: Value, params: &Value) {
         let reviving = matches!(method, "session/resume" | "session/load");
-        if reviving && !fake.knows_session(method, params) {
+        let refused = method == "session/set_mode" && std::env::var_os("FAKE_ACP_REFUSES_MODE").is_some();
+        if (reviving && !fake.knows_session(method, params)) || refused {
             return generic_answer(fake, method, &id, params);
         }
         let Some((recorded, skipped)) = self.script.seek(method) else { return generic_answer(fake, method, &id, params) };
@@ -649,14 +652,21 @@ impl Play {
     }
 }
 
-/// 녹음에 없는 요청의 답 — 모드 · 설정 바꾸기는 `{}`(영수증 `config`에 남는다), 되살리기는 진짜 codex의 모르는 세션, 나머지는 모르는
-/// 메서드다.
+/// 모드 · 설정 바꾸기 하나 — 받은 것을 `<세션 id>.config`에 남기고 알림 없이 `{}`로 답한다(three-axes 결정 27). `FAKE_ACP_REFUSES_MODE`면
+/// `session/set_mode`를 거절한다 — 진짜 codex-acp가 모드를 받지 않을 때의 오류 꼴은 재지 않았다. JSON-RPC의 잘못된 인자로 답한다.
+fn change_setting(fake: &mut Fake, method: &str, id: &Value, params: &Value) {
+    fake.append_receipt("config", &json!({"method": method, "params": params}).to_string());
+    if method == "session/set_mode" && std::env::var_os("FAKE_ACP_REFUSES_MODE").is_some() {
+        let mode = params["modeId"].as_str().unwrap_or_default();
+        return fake.wire.reply_error(id, -32602, &format!("Invalid params: unknown mode {mode}"));
+    }
+    fake.wire.reply(id, json!({}));
+}
+
+/// 녹음에 없는 요청의 답 — 모드 · 설정 바꾸기는 [`change_setting`], 되살리기는 진짜 codex의 모르는 세션, 나머지는 모르는 메서드다.
 fn generic_answer(fake: &mut Fake, method: &str, id: &Value, params: &Value) {
     match method {
-        "session/set_mode" | "session/set_config_option" => {
-            fake.append_receipt("config", &json!({"method": method, "params": params}).to_string());
-            fake.wire.reply(id, json!({}));
-        }
+        "session/set_mode" | "session/set_config_option" => change_setting(fake, method, id, params),
         "session/resume" | "session/load" => {
             let session_id = params["sessionId"].as_str().unwrap_or_default();
             let receipt = json!({"pid": std::process::id(), "method": method, "params": params, "ok": false});
@@ -1300,11 +1310,8 @@ impl Fake {
                 // `{configOptions}`로 답하지만 호스트는 그 답을 쓰지 않는다 — 값은 호스트가 쥔다.
                 method @ "session/resume" if self.resumes => self.revive(&id, method, &message["params"]),
                 method @ "session/load" if self.loads => self.revive(&id, method, &message["params"]),
-                method @ ("session/set_mode" | "session/set_config_option") if self.codex_lists => {
-                    let line = json!({"method": method, "params": message["params"]});
-                    self.append_receipt("config", &line.to_string());
-                    self.wire.reply(&id, json!({}));
-                }
+                // Codex 채팅은 열 때마다 모드를 넣는다(restart 01c-5) — 시나리오마다 받는다.
+                method @ ("session/set_mode" | "session/set_config_option") => change_setting(self, method, &id, &message["params"]),
                 unknown => {
                     let text = format!("method not found: {unknown}");
                     self.wire.reply_error(&id, -32601, &text);

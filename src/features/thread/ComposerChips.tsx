@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { addProject } from "@/features/projects/add-store";
 import type { ReadingScope, ScopePick } from "@/features/services/scope";
 import { ScopeMenuItems } from "@/features/services/ServiceMenu";
-import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, EFFORTS, type ChoiceOption } from "./chips";
+import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, type ModeChipValue, type ModelChipValue } from "./chips";
 import { RUNTIMES, runtimeNameOf, type Runtime } from "./runtime";
 import { scopeChip, scopeLine, type ShownScope } from "./service-chip";
 import type { AskLevel, ThreadLink } from "./types";
@@ -37,6 +37,9 @@ import { NEW_WORK, type LockedWork } from "./work-chip";
 //   않는다 — 대화로 바꾼다. 그 곁의 **범위 줄**이 지금 읽는 Project를 한 줄로 말한다(읽는 범위 — `scopeLine`).
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84)는 방패 · 지금 정도 이름의 칩이다(시안의 「매번 묻기」 — 셰브런 없이). 누르면 「언제
 //   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 입력창의 `/policy`도 이 메뉴를 연다.
+// - **Codex 모드**(restart 01c-5 · Composer 「모드 · Codex」 · 스토리 24 · 25)는 Codex 채팅에서 물어보는 정도 자리에 선다 — 방패 · 지금 모드 이름이고,
+//   누르면 「Codex가 정하는 모드예요」 아래 Codex가 보낸 모드가 이름과 설명 그대로 선다. Codex의 목록이 오기 전(첫 말 전)에는 기본 「Workspace access」로만
+//   서고 메뉴가 없다. Runtime이 선언하지 않은 칩은 서지 않는다(「능력이 적을 때」) — 모양은 02b-2가 다듬는다.
 // - **Runtime 칩**(restart 01c-3 · Composer 「Runtime 고르기」 · 스토리 30 · 31)은 모델 칩 앞에 선다. 새 채팅에서만 이름 ▾로 열려 「이 채팅을 돌릴
 //   Runtime」 아래 Claude Code와 Codex가 이름과 설명 한 줄로 서고, 턴이 시작되면 이름만 남아 잠긴다(시안 `.ra-cc.locked`).
 
@@ -58,27 +61,29 @@ const TRAY_NAME = "max-w-44 min-w-0 truncate";
 /** 고른 것의 글리프 — 새 Work는 폴더 더하기, Work 없이 대화는 말풍선, Work는 폴더다(시안 v52). */
 const WORK_GLYPH: Record<ThreadLink["kind"], LucideIcon> = { "new-work": FolderPlus, "no-work": MessageSquare, work: Folder };
 
-/** 모델 칩 앞의 Runtime 표시 — Claude Code의 마크. 단색이라 칩 글자색을 따른다(`agent-mark.tsx` — 브랜드 색을 박지 않는다). */
-const ClaudeMark = agentMarkOf("claude")?.Glyph;
+/** 모델 칩 앞의 Runtime 표시 — 그 채팅 Runtime의 마크. 단색이라 칩 글자색을 따른다(`agent-mark.tsx` — 브랜드 색을 박지 않는다). */
+const MARK = { "claude-code": agentMarkOf("claude")?.Glyph, codex: agentMarkOf("codex")?.Glyph } as const;
 
-interface ModelChipProps {
-  /** 모델 목록 — Session이 알린 것, 열기 전이면 claude가 받는 별칭(`CLAUDE_MODELS`). 없으면 칩은 보이기만 한다. */
-  models: readonly ChoiceOption[] | null;
-  model: string | null;
-  effort: string | null;
-  /** 턴이 도는가 — 생각 깊이를 잠근다. */
-  running: boolean;
+/** 모델 칩이 받는 것 — 그 채팅의 Runtime(메뉴 머리 · 마크)과 칩의 값(`ModelChipValue`), 고르기. */
+export interface ModelChoice extends ModelChipValue {
+  runtime: Runtime | string;
   onModel: (value: string) => void;
   onEffort: (value: string) => void;
+}
+
+interface ModelChipProps extends ModelChoice {
+  /** 턴이 도는가 — 생각 깊이를 잠근다. */
+  running: boolean;
   /** 메뉴의 열림 — 칩을 누르거나 `/model`이 연다. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ModelChip({ models, model, effort, running, onModel, onEffort, open, onOpenChange }: ModelChipProps) {
-  const label = chipLabel(models, model, effort);
-  const parts = chipParts(models, model, effort);
-  const mark = ClaudeMark && <ClaudeMark className="size-3.5 shrink-0" />;
+export function ModelChip({ runtime, models, model, efforts, effort, running, onModel, onEffort, open, onOpenChange }: ModelChipProps) {
+  const label = chipLabel(models, model, effort, efforts);
+  const parts = chipParts(models, model, effort, efforts);
+  const Mark = runtime === "codex" || runtime === "claude-code" ? MARK[runtime] : undefined;
+  const mark = Mark && <Mark className="size-3.5 shrink-0" />;
   // 모델은 본문색, 생각 깊이는 옅은 글자다(Diff-Chat 「GPT-6.1 Sol High」). 글은 칩 글자 그대로다.
   const text = (
     <>
@@ -105,7 +110,7 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
       {/* 열릴 때 움직이는 메뉴는 이것 하나다 — .32s · 30ms 늦게 · 0.98에서 커진다(02 구현 스펙 §12 · Codex 모델 피커). */}
       <DropdownMenuContent side="top" align="end" grows>
         <DropdownMenuGroup>
-          <DropdownMenuLabel>Claude Code</DropdownMenuLabel>
+          <DropdownMenuLabel>{runtimeNameOf({ runtime })}</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={model ?? ""}
             onValueChange={(next: string) => {
@@ -119,31 +124,33 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
             ))}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>{running ? "생각 깊이 · 턴이 끝나면 바꿀 수 있어요" : "생각 깊이"}</DropdownMenuLabel>
-          {/* 칸 줄(보드 `.segm`) — 메뉴의 라디오 줄이라 ↑ · ↓로도 지난다. 고른 칸만 떠 있는 흰 면이다. 칸 폭은 제 글자 폭에서 남는 폭을
-              나눠 갖는다(`flex-auto`) — 다섯을 같은 폭으로 나누면 「아주 높음」만 칸에 빠듯했다(v1 티켓 46). */}
-          <MenuPrimitive.RadioGroup
-            value={effort ?? ""}
-            onValueChange={(next: string) => {
-              if (next !== effort) onEffort(next);
-            }}
-            className="mx-1 mb-1 flex gap-0.5 rounded-lg bg-fill-soft p-0.5"
-          >
-            {EFFORTS.map((one) => (
-              <MenuPrimitive.RadioItem
-                key={one.value}
-                value={one.value}
-                label={one.label}
-                disabled={running}
-                closeOnClick
-                className="flex h-6.5 flex-auto cursor-default items-center justify-center rounded-md px-1.5 text-xs whitespace-nowrap text-fg-secondary outline-hidden select-none focus:bg-fill-hover data-checked:bg-surface data-checked:text-fg data-checked:shadow-hairline data-disabled:opacity-55"
-              >
-                {one.label}
-              </MenuPrimitive.RadioItem>
-            ))}
-          </MenuPrimitive.RadioGroup>
-        </DropdownMenuGroup>
+        {efforts && efforts.length > 0 && (
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{running ? "생각 깊이 · 턴이 끝나면 바꿀 수 있어요" : "생각 깊이"}</DropdownMenuLabel>
+            {/* 칸 줄(보드 `.segm`) — 메뉴의 라디오 줄이라 ↑ · ↓로도 지난다. 고른 칸만 떠 있는 흰 면이다. 칸 폭은 제 글자 폭에서 남는 폭을
+                나눠 갖는다(`flex-auto`) — 다섯을 같은 폭으로 나누면 「아주 높음」만 칸에 빠듯했다(v1 티켓 46). */}
+            <MenuPrimitive.RadioGroup
+              value={effort ?? ""}
+              onValueChange={(next: string) => {
+                if (next !== effort) onEffort(next);
+              }}
+              className="mx-1 mb-1 flex gap-0.5 rounded-lg bg-fill-soft p-0.5"
+            >
+              {efforts.map((one) => (
+                <MenuPrimitive.RadioItem
+                  key={one.value}
+                  value={one.value}
+                  label={one.name}
+                  disabled={running}
+                  closeOnClick
+                  className="flex h-6.5 flex-auto cursor-default items-center justify-center rounded-md px-1.5 text-xs whitespace-nowrap text-fg-secondary outline-hidden select-none focus:bg-fill-hover data-checked:bg-surface data-checked:text-fg data-checked:shadow-hairline data-disabled:opacity-55"
+                >
+                  {one.name}
+                </MenuPrimitive.RadioItem>
+              ))}
+            </MenuPrimitive.RadioGroup>
+          </DropdownMenuGroup>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -370,6 +377,61 @@ export function RuntimeChip({ value, onPick }: RuntimeChoice) {
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{one.name}</span>
                   <span className="truncate text-xs text-fg-tertiary">{one.description}</span>
+                </span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** 모드 칩이 받는 것 — Claude Code는 물어보는 정도와 바꾸기, Codex는 Codex 모드와 고르기(restart 01c-5). */
+export type ModeChoice =
+  | (Extract<ModeChipValue, { kind: "ask" }> & { onLevel: (level: AskLevel) => void })
+  | (Extract<ModeChipValue, { kind: "codex" }> & { onPick: (mode: string) => void });
+
+/**
+ * Codex 모드 칩과 메뉴(Composer 「모드 · Codex」 · 스토리 24) — 방패 · 지금 모드 이름이다. 메뉴는 「Codex가 정하는 모드예요」 아래 Codex가 보낸 모드를
+ * 이름과 설명 그대로 세우고 고른 것에만 체크가 붙는다. Claude의 물어보는 정도와 합치지 않는다. 목록이 없으면(첫 말 전 — 「첫 말 전 Codex」) 보이기만 한다.
+ */
+export function CodexModeChip({ value, name, options, onPick }: Extract<ModeChoice, { kind: "codex" }>) {
+  if (!options || options.length === 0) {
+    return (
+      <span aria-label={`Codex 모드 ${name}`} className={CHIP}>
+        <Shield className="size-3.5" aria-hidden />
+        {name}
+      </span>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label={`Codex 모드 ${name}`} className={MENU_CHIP}>
+        <Shield className="size-3.5" aria-hidden />
+        {name}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Codex가 정하는 모드예요</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={value}
+            onValueChange={(next: string) => {
+              if (next !== value) onPick(next);
+            }}
+          >
+            {options.map((one) => (
+              <DropdownMenuRadioItem
+                key={one.value}
+                value={one.value}
+                label={one.name}
+                aria-label={one.name}
+                aria-description={one.description ?? undefined}
+                size="note"
+              >
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{one.name}</span>
+                  {one.description && <span className="truncate text-xs text-fg-tertiary">{one.description}</span>}
                 </span>
               </DropdownMenuRadioItem>
             ))}

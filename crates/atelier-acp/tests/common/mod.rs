@@ -351,6 +351,21 @@ impl Sandbox {
         json_lines(&self.acp_receipts().join(format!("{session_id}.prompts")))
     }
 
+    /// 가짜 ACP 에이전트가 그 세션에서 받은 모드 · 설정 바꾸기(`session/set_mode` · `session/set_config_option`)마다 `{method, params}` —
+    /// 받은 차례대로. 되살린 세션은 옛 세션 id의 파일에 이어 적힌다.
+    pub fn acp_settings(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join(format!("{session_id}.config")))
+    }
+
+    /// 그 세션에서 받은 `session/set_mode`의 모드들 — 받은 차례대로.
+    pub fn acp_modes(&self, session_id: &str) -> Vec<String> {
+        self.acp_settings(session_id)
+            .iter()
+            .filter(|setting| setting["method"] == "session/set_mode")
+            .map(|setting| setting["params"]["modeId"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    }
+
     /// `replay`가 그 세션에서 녹음 속 MCP를 정말 부른 것들 — `{server, tools, tool, arguments, call}`, 부른 차례대로. 없으면 비었다.
     pub fn acp_mcp(&self, session_id: &str) -> Vec<Value> {
         json_lines(&self.acp_receipts().join(format!("{session_id}.mcp")))

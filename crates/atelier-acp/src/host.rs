@@ -997,7 +997,8 @@ fn claude_launch(
 
 /// Codex를 띄우는 것(restart 스펙 「01c — Codex」 연결) — 찾은 `codex-acp`를 로그인 env 그대로, 인자 없이 띄우고 찾은 `codex`를
 /// `CODEX_PATH`로 준다(three-axes 결정 26 — `codex-acp`가 사용자의 `codex`를 돌린다). 앱이 짓는 변환기가 아니라 판을 맞춰 보지 않고, 세션을 여는
-/// 요청에 Atelier의 값(`_meta`)을 싣지 않는다 — ACP 표준 값(`cwd` · `additionalDirectories` · `mcpServers`)만 간다. 모드는 01c-5가 연 뒤에 넣는다.
+/// 요청에 Atelier의 값(`_meta`)을 싣지 않는다 — ACP 표준 값(`cwd` · `additionalDirectories` · `mcpServers`)만 간다. 모드 · 모델 · 생각 깊이는 연 뒤에 넣는다
+/// (`thread.rs`의 `settle_codex`).
 fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &SessionPlace) -> (Launch, OpenTerms) {
     let found = |name: &str| {
         programs.iter().find(|program| program.name == name).map(|program| program.path.clone()).expect("찾은 것에 codex 셋이 있다")
@@ -1026,12 +1027,14 @@ enum Revive {
 }
 
 /// 사람이 바꾸는 Session의 설정 하나 — Runtime에 넣는 요청과 `config` 줄이 짝을 이룬다. Runtime이 떠 있는 Session에 곧바로 넣는
-/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 권한 모드(「계획」을 들고 날 때, v1 티켓 23)다. 생각 깊이는 띄울 때의 플래그로만
-/// 받는다(v1 티켓 05).
+/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 모드(Claude는 「계획」을 들고 날 때 — v1 티켓 23, Codex는 Codex 모드 — restart 01c-5)다. Claude의
+/// 생각 깊이는 띄울 때의 플래그로만 받는다(v1 티켓 05). Codex의 생각 깊이는 `configOptions`의 `reasoning_effort`라 곧바로 넣는다.
 enum Setting {
     Model(String),
-    /// claude의 권한 모드 — `default` · `plan`(S17, `AskLevel::claude_mode`).
-    Mode(&'static str),
+    /// 모드 — claude의 권한 모드(`default` · `plan`, S17 · `AskLevel::claude_mode`)이거나 Codex 모드(Codex가 `modes`로 보낸 id).
+    Mode(String),
+    /// Codex의 생각 깊이 — `configOptions`의 `reasoning_effort` 값.
+    Effort(String),
 }
 
 impl Setting {
@@ -1040,6 +1043,7 @@ impl Setting {
         match self {
             Setting::Model(model) => ("session/set_config_option", json!({"configId": "model", "value": model})),
             Setting::Mode(mode) => ("session/set_mode", json!({"modeId": mode})),
+            Setting::Effort(effort) => ("session/set_config_option", json!({"configId": "reasoning_effort", "value": effort})),
         }
     }
 
@@ -1048,6 +1052,16 @@ impl Setting {
         match self {
             Setting::Model(model) => json!({"model": model}),
             Setting::Mode(mode) => json!({"mode": mode}),
+            Setting::Effort(effort) => json!({"effort": effort}),
+        }
+    }
+
+    /// 안내 글의 이름과 값 — 「모드 바꾸기(workspace-write)」.
+    fn described(&self) -> String {
+        match self {
+            Setting::Model(model) => format!("모델 바꾸기({model})"),
+            Setting::Mode(mode) => format!("모드 바꾸기({mode})"),
+            Setting::Effort(effort) => format!("생각 깊이 바꾸기({effort})"),
         }
     }
 }

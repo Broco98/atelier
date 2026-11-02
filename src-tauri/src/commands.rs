@@ -1112,6 +1112,17 @@ pub async fn thread_set_mode(
     to_host(&engine, "물어보는 정도를 바꾸지 못했습니다", move |host| host.set_thread_mode(&thread, mode)).await
 }
 
+/// Codex 모드 바꾸기(restart 01c-5) — Codex 채팅의 모드 칩. Codex가 보낸 모드 id 하나이고 채팅마다의 값이다. 떠 있으면 곧바로 넣고, 아니면 열 때
+/// 든다. Claude Code 채팅이면 거절된다. 답은 바뀐 채팅의 값이다.
+#[tauri::command]
+pub async fn thread_set_codex_mode(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    mode: String,
+) -> CmdResult<atelier_core::ThreadFile> {
+    to_host(&engine, "Codex 모드를 바꾸지 못했습니다", move |host| host.set_thread_codex_mode(&thread, &mode)).await
+}
+
 /// Work의 Service 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Service 메뉴(03 티켓 05). 그 Work의 Thread마다 Service 줄이 선다(S9).
 #[tauri::command]
 pub async fn thread_set_work_service(

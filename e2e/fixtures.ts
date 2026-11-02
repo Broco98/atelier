@@ -1277,6 +1277,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   thread_set_effort: FIXTURE_THREAD,
   // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
   thread_set_mode: null,
+  // Codex 모드(restart 01c-5) — 답은 바뀐 채팅의 값이다. 기본은 처음 채팅 그대로다.
+  thread_set_codex_mode: FIXTURE_THREAD,
   // Service 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `service` 줄과 Work 목록 다시 읽기로 온다.
   thread_set_work_service: null,
   // Service 지우기 · 되돌리기(03 티켓 07) — 답은 지운 · 되돌린 Service와 고친 곳이다. 지운 것을 기억하지 않는다 — 지운 뒤의 목록을 재는 시험은

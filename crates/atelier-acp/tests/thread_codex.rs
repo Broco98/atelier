@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use atelier_acp::{
-    Agent, ConversationHost, EngineCheck, EngineState, HostError, ProjectChoice, Runtime, ServiceChoice, StartPicks, ThreadLink,
+    Agent, AskLevel, ConversationHost, EngineCheck, EngineState, HostError, ProjectChoice, Runtime, ServiceChoice, StartPicks,
+    ThreadLink,
 };
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
@@ -69,6 +70,126 @@ fn 새_채팅에서_codex를_고르면_codex_acp가_codex_path와_함께_뜨고_
     assert_eq!(blocks[1], json!({"type": "text", "text": "Reply with exactly one word: ok"}));
 }
 
+// ── 모드(restart 01c-5) ─────────────────────────────────────────────────────────────
+//
+// 스펙 「01c — Codex」 모드 — 채팅 파일에 Codex 모드를 두고 새로 열 때나 재개할 때 언제나 `session/set_mode`를 보낸다. 재개하면 모드가 풀리고,
+// 모드가 풀린 채 턴이 돌면 경계가 사라진다. 기본은 `workspace-write`다.
+
+/// 그 기록에서 처음으로 그 종류인 줄의 자리.
+fn first_at(record: &[Value], kind: &str) -> usize {
+    record.iter().position(|line| line["kind"] == kind).unwrap_or_else(|| panic!("{kind} 줄이 없다:\n{}", common::lines_text(record)))
+}
+
+#[test]
+fn 새_codex_채팅은_workspace_access로_시작하고_첫_말보다_먼저_그_모드를_codex에_넣는다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[]));
+
+    let thread = host
+        .start_thread_picking("Reply with exactly one word: ok", &[], ThreadLink::NoWork, codex())
+        .expect("Codex 채팅의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert_eq!(sandbox.thread_json(&thread)["codexMode"], "workspace-write", "채팅 파일에 Codex 모드가 선다");
+    let session = sandbox.thread_session_id(&thread);
+    assert_eq!(sandbox.acp_modes(&session), ["workspace-write"], "codex-acp의 기본 `agent`를 쓰지 않는다");
+    let set = first_at(&record, "config");
+    assert_eq!(record[set]["payload"], json!({"mode": "workspace-write"}), "넣은 모드가 기록에 남는다");
+    assert!(first_at(&record, "session") < set && set < first_at(&record, "sent"), "모드를 맞춘 뒤에 첫 말이 간다:\n{}", common::lines_text(&record));
+}
+
+#[test]
+fn 떠_있는_codex_채팅에서_모드를_바꾸면_다시_띄우지_않고_그_세션에_넣고_채팅_파일에_남긴다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[]));
+    let thread = host
+        .start_thread_picking("Reply with exactly one word: ok", &[], ThreadLink::NoWork, codex())
+        .expect("Codex 채팅의 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    let changed = host.set_thread_codex_mode(&thread, "read-only").expect("Codex 모드 바꾸기");
+    assert_eq!(changed.codex_mode.as_deref(), Some("read-only"), "답은 바뀐 채팅의 값이다");
+    host.send_to_thread(&thread, "Run the shell command `echo atelier` and tell me what it printed. Do nothing else.").expect("이어 말하기");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.shut_down();
+
+    let session = sandbox.thread_session_id(&thread);
+    assert_eq!(sandbox.acp_modes(&session), ["workspace-write", "read-only"], "떠 있는 세션에 곧바로 넣는다");
+    assert_eq!(sandbox.acp_launches().len(), 1, "다시 띄우지 않는다");
+    assert_eq!(sandbox.thread_json(&thread)["codexMode"], "read-only");
+    assert_eq!(common::payloads_of(&record, "config"), [json!({"mode": "workspace-write"}), json!({"mode": "read-only"})]);
+}
+
+#[test]
+fn 고른_codex_모드는_다시_켠_앱이_재개한_세션에_넣고_칩이_읽는_채팅의_값으로_남는다() {
+    let sandbox = Sandbox::new();
+    let (thread, _) = yesterday(&sandbox);
+    let session = sandbox.thread_session_id(&thread);
+
+    // 다시 켠 앱 — Session이 떠 있지 않을 때 고른 모드는 채팅 파일에만 서고, 다음에 열 때 든다.
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/resume", &[]));
+    host.set_thread_codex_mode(&thread, "read-only").expect("떠 있지 않은 채팅의 Codex 모드 바꾸기");
+    assert_eq!(sandbox.acp_modes(&session), ["workspace-write"], "떠 있지 않은 세션에는 넣을 곳이 없다");
+    host.send_to_thread(&thread, "What word did I ask you to remember? Reply with that one word.").expect("말을 보내면 띄워 되살린다");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    let view = host.thread(&thread).expect("채팅의 지금");
+    host.shut_down();
+
+    assert_eq!(common::opened_hows(&record), ["new", "resumed"]);
+    assert_eq!(sandbox.acp_modes(&session), ["workspace-write", "read-only"], "재개하면 모드가 풀리므로 고른 모드를 다시 넣는다");
+    let reopened = record.iter().rposition(|line| line["payload"]["state"] == "opened").expect("재개의 열림 줄");
+    let set = reopened + record[reopened..].iter().position(|line| line["kind"] == "config").expect("재개 뒤의 config 줄");
+    assert_eq!(record[set]["payload"], json!({"mode": "read-only"}));
+    assert!(set < record.iter().rposition(|line| line["kind"] == "sent").unwrap(), "모드를 맞춘 뒤에 말이 간다");
+    assert_eq!(answer_of(&record, 2), "lantern");
+    assert_eq!(view.file.codex_mode.as_deref(), Some("read-only"), "칩은 Codex의 `currentModeId`가 아니라 이 값을 그린다");
+}
+
+#[test]
+fn 재개_뒤_codex가_모드를_받지_않으면_턴을_시작하지_않고_말을_보내지_않은_채_까닭을_돌려준다() {
+    let sandbox = Sandbox::new();
+    let (thread, _) = yesterday(&sandbox);
+    let session = sandbox.thread_session_id(&thread);
+    let before = sandbox.thread_record(&thread).len();
+
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/resume", &[("FAKE_ACP_REFUSES_MODE", "1")]));
+    let sent = host.send_to_thread(&thread, "What word did I ask you to remember? Reply with that one word.");
+    let live = host.thread(&thread).expect("채팅의 지금").live;
+    host.shut_down();
+
+    // 화면은 거절된 말을 입력창에 돌려놓고 이 글을 보인다(`ThreadComposer`의 `onSend` 거절).
+    let Err(HostError::Open { reason, .. }) = sent else { panic!("모드를 맞추지 못하면 보내기가 거절된다: {sent:?}") };
+    assert!(reason.contains("모드 바꾸기(workspace-write)") && reason.contains("턴을 시작하지 않았어요"), "{reason}");
+    assert_eq!(sandbox.acp_modes(&session), ["workspace-write", "workspace-write"], "재개한 세션에 모드를 넣으려 했다");
+    assert_eq!(sandbox.acp_prompts(&session).len(), 1, "Codex는 어제의 말 하나만 받았다 — 모드가 풀린 채 턴이 돌지 않는다");
+    let record = sandbox.thread_record(&thread);
+    let today = &record[before..];
+    assert!(of_kind(today, "sent").is_empty(), "말이 기록에 서지 않는다:\n{}", common::lines_text(today));
+    assert_eq!(today.last().unwrap()["payload"], json!({"state": "died", "reason": reason}), "까닭이 흐름에 남는다");
+    assert!(!live, "모드가 풀린 Session은 띄워 두지 않는다 — 다음 말이 다시 띄운다");
+}
+
+#[test]
+fn 새_codex_채팅의_첫_말도_모드를_맞추지_못하면_codex에_가지_않는다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[("FAKE_ACP_REFUSES_MODE", "1")]));
+
+    let started = host.start_thread_picking("Reply with exactly one word: ok", &[], ThreadLink::NoWork, codex());
+    host.shut_down();
+
+    assert!(matches!(started, Err(HostError::Open { .. })), "{started:?}");
+    let launched = sandbox.acp_launches();
+    assert_eq!(launched.len(), 1);
+    // 모드를 받지 않은 세션은 채팅의 세션으로 적지 않는다 — 다음 말은 새 세션을 연다. 가짜의 세션 id는 `fake-<pid>`다.
+    let session = format!("fake-{}", launched[0]["pid"]);
+    let thread = host.list_threads().expect("목록")[0].id.clone();
+    assert!(sandbox.thread_json(&thread).get("sessionId").is_none_or(Value::is_null), "{}", sandbox.thread_json(&thread));
+    assert_eq!(sandbox.acp_modes(&session), ["workspace-write"]);
+    assert!(sandbox.acp_prompts(&session).is_empty(), "첫 말이 Codex에 가지 않는다");
+    assert!(of_kind(&sandbox.thread_record(&thread), "sent").is_empty());
+}
+
 /// 그 기록에서 줄 종류마다 payload의 칸 이름들 — 갈래가 있는 세션 줄은 `state`로 가른다.
 fn shapes(record: &[Value]) -> Vec<(String, Vec<String>)> {
     let mut shapes: Vec<(String, Vec<String>)> = Vec::new();
@@ -102,8 +223,10 @@ fn codex_턴은_claude_턴과_같은_기록_줄을_만들고_그_기록이_검�
     host.shut_down();
 
     // Atelier 전용 이벤트 형식을 만들지 않는다 — 줄의 종류와 칸이 Claude 채팅의 것 안에 들고, Runtime이 보낸 update는 원문 그대로 선다. 계정
-    // 줄(`auth-status`)은 codex-acp만 보내는 ACP 알림을 Host가 이미 적던 세션 줄이다.
-    let claude = shapes(&common::record_at(&common::records_dir().join("thread-two-turns.jsonl")));
+    // 줄(`auth-status`)은 codex-acp만 보내는 ACP 알림을 Host가 이미 적던 세션 줄이다. 열 때 넣은 Codex 모드의 `config` 줄(01c-5)은 Claude 채팅이
+    // 「계획」을 들고 날 때 떠 있는 Session에 넣은 모드를 적던 줄과 같은 꼴이다 — 이 축복 자료에는 그 바꾸기가 없어 따로 든다.
+    let mut claude = shapes(&common::record_at(&common::records_dir().join("thread-two-turns.jsonl")));
+    claude.push(("config".to_owned(), vec!["mode".to_owned()]));
     for (kind, keys) in shapes(&record).into_iter().filter(|(kind, _)| kind != "session auth-status") {
         let known = claude.iter().find(|(seen, _)| *seen == kind).map(|(_, keys)| keys);
         assert!(
@@ -446,6 +569,119 @@ fn 작업공간의_정도가_편집_자동이나_묻지_않음이어도_codex의
         assert_eq!(codex["payload"]["policy"], "", "Claude의 정도를 까닭으로 달지 않는다(질문 카드처럼 빈 까닭): {codex}");
         assert!(codex["payload"].get("grant").is_none(), "「다시 묻지 않기」로 줄 허락이 없다: {codex}");
     }
+}
+
+// ── 모델 · 생각 깊이(restart 01c-5 · 스토리 34) ───────────────────────────────────────────
+//
+// Codex의 모델과 생각 깊이는 `configOptions`의 `model` · `reasoning_effort`다 — claude `--model` · `--effort`가 아니다. 칩이 채팅의 값을 그리므로
+// 그 값은 Session을 열 때마다 넣는다.
+
+/// 그 세션이 받은 모드 · 설정 바꾸기를 `(메서드, 칸, 값)`으로.
+fn settings_of(sandbox: &Sandbox, session: &str) -> Vec<(String, String, String)> {
+    let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
+    sandbox
+        .acp_settings(session)
+        .iter()
+        .map(|setting| match setting["method"].as_str() {
+            Some("session/set_mode") => (text(&setting["method"]), "mode".to_owned(), text(&setting["params"]["modeId"])),
+            _ => (text(&setting["method"]), text(&setting["params"]["configId"]), text(&setting["params"]["value"])),
+        })
+        .collect()
+}
+
+#[test]
+fn codex_채팅의_모델과_생각_깊이는_codex의_설정으로_넣고_다시_열_때도_넣는다() {
+    let sandbox = Sandbox::new();
+    let (thread, _) = yesterday(&sandbox);
+    let session = sandbox.thread_session_id(&thread);
+
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/resume", &[]));
+    host.set_thread_model(&thread, "gpt-6-astra").expect("떠 있지 않은 채팅의 모델");
+    host.set_thread_effort(&thread, "ultra").expect("Codex가 보낸 생각 깊이 — claude `--effort`에는 없는 값이다");
+    host.send_to_thread(&thread, "What word did I ask you to remember? Reply with that one word.").expect("보내기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.set_thread_effort(&thread, "low").expect("떠 있는 채팅의 생각 깊이");
+    host.shut_down();
+
+    let set = |method: &str, field: &str, value: &str| (method.to_owned(), field.to_owned(), value.to_owned());
+    assert_eq!(
+        settings_of(&sandbox, &session),
+        [
+            set("session/set_mode", "mode", "workspace-write"),
+            set("session/set_mode", "mode", "workspace-write"),
+            set("session/set_config_option", "model", "gpt-6-astra"),
+            set("session/set_config_option", "reasoning_effort", "ultra"),
+            set("session/set_config_option", "reasoning_effort", "low"),
+        ],
+        "어제 연 세션 · 재개한 세션에 채팅의 값을 넣고, 떠 있는 세션에는 바꾼 것을 곧바로 넣는다"
+    );
+    assert_eq!(sandbox.acp_launches().len(), 2, "생각 깊이를 바꾸려고 다시 띄우지 않는다");
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((&file["model"], &file["effort"]), (&json!("gpt-6-astra"), &json!("low")));
+}
+
+// ── 작업공간이 함께 쓰는 물어보는 정도(restart 01c-5 · 스토리 27) ─────────────────────────────
+//
+// 물어보는 정도는 작업공간의 채팅이 함께 쓰는 Claude의 값이다. Codex 채팅은 그 값을 보내지도 바꾸지도 받지도 않는다 — Codex 모드는 채팅마다 따로다.
+
+/// 작업공간 `cart`의 물어보는 정도.
+fn cart_level(sandbox: &Sandbox) -> Value {
+    let dot = sandbox.work_dir("cart").join(".policy.json");
+    std::fs::read_to_string(dot).map_or(Value::Null, |text| serde_json::from_str::<Value>(&text).unwrap()["mode"].clone())
+}
+
+#[test]
+fn codex_채팅은_첫_말과_함께_고른_정도도_칩의_바꾸기도_작업공간의_정도로_보내지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    atelier_core::update_policy(&sandbox.data_root(), atelier_core::PolicyPlace::Work("cart"), |policy| policy.mode = Some("always".into()))
+        .expect("작업공간의 정도");
+    let host = sandbox.host(sandbox.codex_login_shell("codex-acp-2.2.2/edit", &[]));
+
+    let picks = StartPicks { mode: Some(AskLevel::Auto), ..codex() };
+    let first = "Use apply_patch to create a file named hello.txt in the current folder containing exactly `hi`. Do nothing else.";
+    let thread = host.start_thread_picking(first, &[], ThreadLink::Work { slug: "cart".into() }, picks).expect("Codex 채팅의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    assert_eq!(cart_level(&sandbox), "always", "첫 말과 함께 온 정도가 작업공간의 값을 바꾸지 않는다");
+    assert!(of_kind(&record, "mode").is_empty(), "「Policy를 … 바꿈」 줄이 서지 않는다");
+
+    let refused = host.set_thread_mode(&thread, AskLevel::Plan);
+    host.shut_down();
+    assert!(matches!(refused, Err(HostError::Setting(_))), "Codex 채팅의 칩은 물어보는 정도를 바꾸지 않는다: {refused:?}");
+    assert_eq!(cart_level(&sandbox), "always");
+    assert!(of_kind(&sandbox.thread_record(&thread), "mode").is_empty());
+    assert_eq!(thread_level(&sandbox, &thread), Value::Null, "채팅 파일에도 정도를 적지 않는다");
+}
+
+/// 그 채팅 파일의 물어보는 정도 칸 — 작업공간 없는 채팅의 값이다.
+fn thread_level(sandbox: &Sandbox, thread: &str) -> Value {
+    sandbox.thread_json(thread)["mode"].clone()
+}
+
+#[test]
+fn 같은_작업공간의_claude_채팅이_계획으로_들고_나도_codex_세션에는_claude의_모드가_가지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    // Claude 채팅의 변환기 자리에도 같은 가짜를 둔다 — 두 채팅이 받은 모드 바꾸기를 같은 영수증으로 읽는다.
+    let shell = sandbox.codex_login_shell("codex-acp-2.2.2/turns", &[("FAKE_ACP_VERSION", env!("CARGO_PKG_VERSION"))]);
+    let agent = atelier_acp::TranslatorCommand::new(env!("CARGO_BIN_EXE_fake-acp-agent"), Vec::<String>::new());
+    let host = sandbox.host_builder_with_translator(shell, agent, |_| {}).build();
+    let in_cart = || ThreadLink::Work { slug: "cart".into() };
+
+    let claude = host
+        .start_thread_picking("Reply with exactly one word: ok", &[], in_cart(), StartPicks::default())
+        .expect("Claude 채팅");
+    sandbox.wait_thread_kind(&claude, "turn-end", 1);
+    let codex_chat = host.start_thread_picking("Reply with exactly one word: ok", &[], in_cart(), codex()).expect("Codex 채팅");
+    sandbox.wait_thread_kind(&codex_chat, "turn-end", 1);
+
+    host.set_thread_mode(&claude, AskLevel::Plan).expect("작업공간을 계획으로");
+    host.set_thread_mode(&claude, AskLevel::Always).expect("계획에서 나감");
+    host.shut_down();
+
+    assert_eq!(sandbox.acp_modes(&sandbox.thread_session_id(&claude)), ["plan", "default"], "Claude 채팅의 Session은 따른다");
+    assert_eq!(sandbox.acp_modes(&sandbox.thread_session_id(&codex_chat)), ["workspace-write"], "Codex 세션은 제 모드 그대로다");
+    assert!(of_kind(&sandbox.thread_record(&codex_chat), "config").len() == 1, "Codex 채팅에 Claude의 모드 줄이 서지 않는다");
 }
 
 // ── 앱 기능 도구(01c-7) ──────────────────────────────────────────────────────────────

@@ -2,7 +2,21 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { ASK_LEVELS, chipLabel, chipLists, chipParts, CLAUDE_MODELS, currentModel, newThreadLevel, slashCommands } from "./chips";
+import {
+  ASK_LEVELS,
+  chipLabel,
+  chipLists,
+  chipParts,
+  CLAUDE_MODELS,
+  currentModel,
+  EFFORTS,
+  newThreadChips,
+  newThreadLevel,
+  pickRuntime,
+  slashCommands,
+  threadChips,
+  threadCommands,
+} from "./chips";
 import type { RecordLine } from "./types";
 
 // 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 채팅의 값에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
@@ -149,5 +163,140 @@ describe("새 채팅의 정도", () => {
     expect(newThreadLevel("auto", null, null, "codex").sent).toBeNull();
     expect(newThreadLevel("plan", "cart", "auto", "codex").sent).toBeNull();
     expect(newThreadLevel(null, null, null, "claude-code")).toEqual({ shown: "edits", sent: "edits" });
+  });
+});
+
+// restart 01c-5 · 스펙 「01c — Codex」 칩 — Claude는 앱의 네 정도와 앱의 생각 깊이를 그리고 모델은 `configOptions`에서 읽는다. Codex는 `configOptions`의
+// `model` · `reasoning_effort`를 그리고, `modes`는 메뉴 목록으로만 쓴다 — 칩의 지금 값은 언제나 채팅 파일의 Codex 모드다. 바탕은 축복한 Codex 기록이다.
+const codexRecord: RecordLine[] = readFileSync(
+  fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-codex.jsonl", import.meta.url)),
+  "utf8",
+)
+  .split("\n")
+  .filter((line) => line.trim() !== "")
+  .map((line) => JSON.parse(line) as RecordLine);
+
+const codexChat = { runtime: "codex", askLevel: "auto", model: null, effort: null } as const;
+const claudeChat = { runtime: "claude-code", askLevel: "edits", model: null, effort: null } as const;
+const values = (options: readonly { value: string }[] | null | undefined) => options?.map((option) => option.value) ?? null;
+const names = (options: readonly { name: string }[] | null | undefined) => options?.map((option) => option.name) ?? null;
+
+describe("Codex 채팅의 칩", () => {
+  it("모드 칩의 값은 채팅 파일의 Codex 모드다 — Codex가 알린 `currentModeId`(agent)를 믿지 않고, 메뉴는 Codex가 보낸 모드 넷이다", () => {
+    const { mode } = threadChips({ ...codexChat, codexMode: "read-only" }, chipLists(codexRecord));
+    expect(mode).toEqual({
+      kind: "codex",
+      value: "read-only",
+      name: "Read-only",
+      options: [
+        { value: "read-only", name: "Read-only", description: "Requires approval to edit files and access the internet." },
+        {
+          value: "workspace-write",
+          name: "Workspace access",
+          description: "Edit workspace files; ask before writing outside the workspace or accessing the network.",
+        },
+        { value: "agent", name: "Auto review", description: "Only ask for actions detected as potentially unsafe" },
+        { value: "agent-full-access", name: "Full access", description: "Unrestricted access to the internet and any file on your computer" },
+      ],
+    });
+  });
+
+  it("채팅 파일에 Codex 모드가 없으면 앱의 기본 Workspace access다", () => {
+    expect(threadChips(codexChat, chipLists(codexRecord)).mode).toMatchObject({ value: "workspace-write", name: "Workspace access" });
+  });
+
+  it("모델 칩은 `configOptions`의 `model`과 `reasoning_effort`다 — `collaboration_mode` · `fast-mode`는 어디에도 서지 않는다", () => {
+    const { model } = threadChips(codexChat, chipLists(codexRecord));
+    expect(values(model?.models)).toEqual([
+      "gpt-6.1-sol",
+      "gpt-6-astra",
+      "gpt-6.1-terra",
+      "gpt-6-sol",
+      "gpt-6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+    ]);
+    expect(names(model?.efforts)).toEqual(["Low", "Medium", "High", "Xhigh", "Max", "Ultra"]);
+    expect([model?.model, model?.effort]).toEqual(["gpt-6.1-sol", "xhigh"]);
+    expect(chipLabel(model?.models ?? null, model?.model ?? null, model?.effort ?? null, model?.efforts ?? null)).toBe("6.1 Sol · Xhigh");
+  });
+
+  it("고른 모델 · 생각 깊이(채팅의 값)가 Session이 연 값을 이긴다", () => {
+    const { model } = threadChips({ ...codexChat, model: "gpt-6-astra", effort: "ultra" }, chipLists(codexRecord));
+    expect([model?.model, model?.effort]).toEqual(["gpt-6-astra", "ultra"]);
+  });
+
+  it("Session이 열리기 전에는 모델 칩이 없고, 모드 칩은 기본값으로만 서고 메뉴가 없다", () => {
+    const before = codexRecord.slice(0, 1);
+    expect(threadChips(codexChat, chipLists(before))).toEqual({
+      mode: { kind: "codex", value: "workspace-write", name: "Workspace access", options: null },
+      model: null,
+    });
+  });
+
+  // Composer 「능력이 적을 때」 — Runtime이 선언하지 않은 칩은 그리지 않는다.
+  it("Runtime이 선언하지 않은 칩은 서지 않는다 — 모드가 없으면 모드 칩이, 생각 깊이가 없으면 그 칸이, 모델이 없으면 모델 칩이 없다", () => {
+    const opened = (payload: Record<string, unknown>): RecordLine[] => [
+      { seq: 1, at: "2026-10-10T10:00:00.000+09:00", kind: "session", payload: { state: "opened", how: "new", ...payload } },
+    ];
+    const model = { id: "model", type: "select", currentValue: "gpt-5.5", options: [{ value: "gpt-5.5", name: "GPT 5.5" }] };
+    const fewer = threadChips(codexChat, chipLists(opened({ modes: null, configOptions: [model] })));
+    expect(fewer.mode).toBeNull();
+    expect(fewer.model).toMatchObject({ model: "gpt-5.5", efforts: null, effort: null });
+    expect(chipLabel(fewer.model?.models ?? null, "gpt-5.5", null, null)).toBe("GPT 5.5");
+    expect(threadChips(codexChat, chipLists(opened({ modes: { availableModes: [] }, configOptions: [] }))).model).toBeNull();
+  });
+
+  it("「/」 메뉴는 Codex가 보낸 명령을 그 글 그대로 보인다 — 앱의 `/plan` · `/policy`(물어보는 정도)는 서지 않는다", () => {
+    const { mode } = threadChips(codexChat, chipLists(codexRecord));
+    const menu = slashCommands(chipLists(codexRecord).commands, threadCommands(mode));
+    expect(menu.map((command) => command.name).slice(0, 3)).toEqual(["new", "model", "plan"]);
+    expect(menu.find((command) => command.name === "plan")?.description).toBe("Turn plan mode on.");
+    expect(menu.map((command) => command.name)).not.toContain("policy");
+    expect(menu.map((command) => command.name)).toContain("compact");
+  });
+});
+
+describe("Claude Code 채팅의 칩", () => {
+  it("모드 칩은 앱의 물어보는 정도다 — 변환기가 낸 `modes`를 읽지 않는다", () => {
+    expect(threadChips(claudeChat, chipLists(blessed)).mode).toEqual({ kind: "ask", level: "edits" });
+  });
+
+  it("모델은 `configOptions`에서, 생각 깊이 목록은 앱의 것에서 온다", () => {
+    const { model } = threadChips({ ...claudeChat, effort: "high" }, chipLists(blessed));
+    expect(values(model?.models)?.slice(0, 2)).toEqual(["default", "opus"]);
+    expect(names(model?.efforts)).toEqual(["낮음", "중간", "높음", "아주 높음", "최대"]);
+    expect([model?.model, model?.effort]).toEqual(["sonnet", "high"]);
+  });
+
+  it("「/」 메뉴에 앱의 명령 넷이 그대로 선다", () => {
+    const { mode } = threadChips(claudeChat, chipLists(blessed));
+    expect(slashCommands([], threadCommands(mode)).map((command) => command.name)).toEqual(["new", "plan", "model", "policy"]);
+  });
+});
+
+describe("새 채팅의 칩", () => {
+  it("Claude Code는 물어보는 정도와 claude가 받는 별칭 목록이다", () => {
+    expect(newThreadChips("claude-code", { model: "opus", effort: "high" }, "edits")).toEqual({
+      mode: { kind: "ask", level: "edits" },
+      model: { models: CLAUDE_MODELS, model: "opus", efforts: EFFORTS, effort: "high" },
+    });
+    expect(newThreadChips("claude-code", { model: null, effort: null }, "edits").model?.model).toBe("default");
+  });
+
+  // Composer 「첫 말 전 Codex」 — 목록이 아직 없어 모델 칩이 없다 · 모드 칩은 기본값으로만 서고 메뉴는 열리지 않는다.
+  it("첫 말 전 Codex는 모델 칩이 없고, 모드 칩은 Workspace access로 메뉴 없이 선다", () => {
+    expect(newThreadChips("codex", { model: null, effort: null }, "edits")).toEqual({
+      mode: { kind: "codex", value: "workspace-write", name: "Workspace access", options: null },
+      model: null,
+    });
+  });
+
+  it("Runtime을 바꾸면 고른 모델과 생각 깊이가 비워진다 — Claude 값이 Codex로 가지 않는다", () => {
+    const picked = { runtime: "claude-code", mode: "auto", model: "opus", effort: "max" } as const;
+    expect(pickRuntime(picked, "codex")).toEqual({ runtime: "codex", mode: "auto", model: null, effort: null });
+    expect(pickRuntime(pickRuntime(picked, "codex"), "claude-code")).toEqual({ runtime: "claude-code", mode: "auto", model: null, effort: null });
+    expect(pickRuntime(picked, "claude-code")).toBe(picked);
   });
 });
