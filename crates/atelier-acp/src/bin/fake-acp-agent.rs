@@ -33,6 +33,8 @@
 //!   때까지 붙잡는다 — 되살리는 동안 온 명령(칩의 바꾸기)을 잰다.
 //! - `FAKE_ACP_LINGERS` — 있으면 시나리오가 끝나도(stdin이 닫혀도) 끝나지 않는다 — `ignores-shutdown`처럼 끄기가 1초 한도를 다
 //!   쓴다. 호스트가 대화를 끄는 그 1초 사이에 닿은 명령을 잰다.
+//! - `FAKE_ACP_FIXTURE` — `replay`가 재생할 진짜 codex-acp의 녹음(`codex-acp-<판>/<이름>`). 고를 수 있는 것은 `src/fakes/codex_replay.rs`의
+//!   원문 표다(restart 티켓 01c-1).
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -49,12 +51,17 @@
 //! 되살리기마다 `revivals`에 `{pid, method, params, ok}` 한 줄. 되살린 세션은 옛 세션 id를 그대로 쓰므로 그 뒤의 영수증
 //! (`prompts` · `inbox` · `config` …)은 옛 세션의 파일에 이어 적힌다.
 
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use serde_json::{json, Value};
 
+#[path = "../fakes/codex_replay.rs"]
+mod codex_replay;
+#[path = "../fakes/mcp_client.rs"]
+mod mcp_client;
 #[path = "../fakes/receipts.rs"]
 #[allow(dead_code)] // 가짜들이 함께 쓰는 영수증 배관이라 이 가짜가 쓰지 않는 몫이 있다.
 mod receipts;
@@ -91,6 +98,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("streams-steadily", streams_steadily),
     ("thinks-then-holds", thinks_then_holds),
     ("chunk-after-turn-end", chunk_after_turn_end),
+    ("replay", replay),
 ];
 
 fn main() {
@@ -340,6 +348,280 @@ fn chunk_after_turn_end(fake: &mut Fake) {
         fake.update(session_id, chunk("턴 끝 뒤의 글"));
     };
     fake.converse();
+}
+
+/// 진짜 codex-acp의 녹음(`FAKE_ACP_FIXTURE`)을 재생하는 에이전트(restart 티켓 01c-1). 녹음의 에이전트 줄을 그대로 내되, 세션 id는 이
+/// 가짜의 것(`fake-<pid>`, 되살리면 받은 id)으로, 녹음의 작업 폴더는 받은 `cwd`로 바꾼다. 받은 요청의 답은 녹음의 답에 받은 요청 id를
+/// 끼운 것이다.
+///
+/// - **차례.** 요청을 받으면 녹음에서 같은 메서드의 클라이언트 요청을 찾아 그 뒤의 에이전트 줄을 다음 클라이언트 요청 앞까지 낸다. 앱이
+///   보내지 않은 녹음의 요청(`session/set_mode`)은 건너뛰고 그 사이의 알림만 낸다. 녹음에 없는 요청은 모드 · 설정 바꾸기면 `{}`,
+///   되살리기면 모르는 세션, 나머지는 모르는 메서드로 답한다.
+/// - **되살리기.** 녹음이 다시 띄운 codex-acp의 `session/resume` · `session/load`로 가서 그 뒤를 잇는다. 이 가짜가 연 적 없는 세션이면
+///   (`<세션 id>.json` 영수증이 없거나 `FAKE_ACP_FORGETS`) 진짜처럼 거절한다.
+/// - **권한.** 녹음의 `session/request_permission`을 내고 받은 답을 기다린다. 답이 녹음과 달라도 녹음대로 잇는다. 기다리는 동안
+///   `session/cancel`이 오면 턴을 `cancelled`로 끝내고 녹음의 그 턴을 버린다.
+/// - **MCP.** 녹음의 도구 줄(`rawInput.server` · `tool` · `arguments`)의 서버가 받은 `mcpServers`에 있으면, 그 도구 줄이 끝나는 줄을
+///   내기 전에 그 서버를 띄워 같은 인자로 정말 `tools/call`하고, 끝나는 줄의 `rawOutput.result`를 받은 답으로 바꿔 낸다. 그 도구를
+///   거부로 답했으면 부르지 않는다. 부른 것은 `<세션 id>.mcp`에 `{server, tools, tool, arguments, call}` 한 줄로 남는다. 서버가 오류로
+///   답한 끝 줄의 꼴은 재지 않았다 — `status: "failed"`, `rawOutput: {result: null, error}`로 낸다.
+/// - `FAKE_ACP_VERSION`이 있으면 `initialize` 답의 `agentInfo.version`을 그 값으로 바꾼다.
+fn replay(fake: &mut Fake) {
+    let name = std::env::var("FAKE_ACP_FIXTURE").unwrap_or_default();
+    let Some(text) = codex_replay::fixture(&name) else {
+        eprintln!("모르는 원문: {name} (있는 것: {})", codex_replay::fixture_names().join(", "));
+        std::process::exit(2);
+    };
+    let mut play = Play::new(codex_replay::Script::new(text));
+    while let Some(message) = fake.read() {
+        let (Some(method), Some(id)) = (message["method"].as_str(), message.get("id")) else { continue };
+        play.request(fake, method, id.clone(), &message["params"]);
+    }
+    fake.note("stdin-eof");
+}
+
+/// `replay`의 상태.
+struct Play {
+    script: codex_replay::Script,
+    /// 녹음의 요청 id → (받은 요청 id, 메서드). 녹음의 답을 받은 요청의 답으로 낸다.
+    asked: HashMap<String, (Value, String)>,
+    /// 녹음의 글 → 이 재생의 글(JSON 글 안의 꼴) — 세션 id와 작업 폴더.
+    swaps: Vec<(String, String)>,
+    /// 받은 세션 열기의 `mcpServers`.
+    servers: Value,
+    /// 녹음의 MCP 도구 줄 — 도구 줄 id → (서버, 도구, 인자).
+    calls: HashMap<String, (String, String, Value)>,
+    /// 사람이 거부로 답한 도구 줄 id.
+    denied: HashSet<String>,
+    /// 마지막으로 낸 권한 요청 — (도구 줄 id, 선택지).
+    permission: Option<(String, Value)>,
+    /// 도는 턴의 받은 요청 id.
+    turn: Option<Value>,
+}
+
+impl Play {
+    fn new(script: codex_replay::Script) -> Self {
+        Self {
+            script,
+            asked: HashMap::new(),
+            swaps: Vec::new(),
+            servers: json!([]),
+            calls: HashMap::new(),
+            denied: HashSet::new(),
+            permission: None,
+            turn: None,
+        }
+    }
+
+    /// 받은 요청 하나.
+    fn request(&mut self, fake: &mut Fake, method: &str, id: Value, params: &Value) {
+        let reviving = matches!(method, "session/resume" | "session/load");
+        if reviving && !fake.knows_session(params) {
+            return generic_answer(fake, method, &id, params);
+        }
+        let Some((recorded, skipped)) = self.script.seek(method) else { return generic_answer(fake, method, &id, params) };
+        for line in skipped {
+            self.emit(fake, line);
+        }
+        self.begin(fake, method, &id, params, &recorded);
+        self.run(fake);
+    }
+
+    /// 녹음의 요청 `recorded`에 맞는 요청을 받았다 — 세션 id · 작업 폴더 · 서버를 익히고 영수증을 남긴다.
+    fn begin(&mut self, fake: &mut Fake, method: &str, id: &Value, params: &Value, recorded: &Value) {
+        match method {
+            "initialize" => {
+                fake.append_shared("launches", &json!({"pid": std::process::id()}).to_string());
+                fake.initialize = params.clone();
+            }
+            "session/new" => {
+                let session_id = format!("fake-{}", std::process::id());
+                let answer = self.script.answer_to(&recorded["id"]);
+                if let Some(old) = answer.and_then(|answer| answer["result"]["sessionId"].as_str()).map(str::to_owned) {
+                    self.swap(&old, &session_id);
+                }
+                fake.leave_receipt(&session_id, params);
+                fake.session_id = Some(session_id);
+                self.opened(params, &recorded["params"]);
+            }
+            "session/resume" | "session/load" => {
+                let session_id = params["sessionId"].as_str().unwrap_or_default().to_owned();
+                self.swap(recorded["params"]["sessionId"].as_str().unwrap_or_default(), &session_id);
+                fake.append_shared("revivals", &json!({"pid": std::process::id(), "method": method, "params": params, "ok": true}).to_string());
+                fake.session_id = Some(session_id);
+                fake.append_receipt("inbox", method);
+                self.opened(params, &recorded["params"]);
+            }
+            "session/prompt" => {
+                fake.prompts += 1;
+                fake.append_receipt("prompts", &params.to_string());
+                self.turn = Some(id.clone());
+            }
+            "session/set_mode" | "session/set_config_option" => {
+                fake.append_receipt("config", &json!({"method": method, "params": params}).to_string());
+            }
+            _ => {}
+        }
+        self.asked.insert(recorded["id"].to_string(), (id.clone(), method.to_owned()));
+    }
+
+    /// 세션을 열었다 — 받은 서버들과, 녹음의 작업 폴더를 받은 `cwd`로 바꾸기.
+    fn opened(&mut self, params: &Value, recorded: &Value) {
+        self.servers = params["mcpServers"].clone();
+        if let (Some(old), Some(new)) = (recorded["cwd"].as_str(), params["cwd"].as_str()) {
+            self.swap(old, new);
+        }
+    }
+
+    fn swap(&mut self, old: &str, new: &str) {
+        let inner = |text: &str| {
+            let quoted = Value::from(text).to_string();
+            quoted[1..quoted.len() - 1].to_owned()
+        };
+        let pair = (inner(old), inner(new));
+        if !old.is_empty() && old != new && !self.swaps.contains(&pair) {
+            self.swaps.push(pair);
+        }
+    }
+
+    /// 다음 클라이언트 요청 앞까지 녹음을 낸다. 사이의 클라이언트 줄(권한의 답 · 알림)은 받은 것을 기다린다.
+    fn run(&mut self, fake: &mut Fake) {
+        while let Some(row) = self.script.peek() {
+            if row.is_client_request() {
+                return;
+            }
+            let (from_client, line) = (row.from_client, row.line.clone());
+            self.script.advance();
+            if !from_client {
+                self.emit(fake, line);
+            } else if !self.await_client(fake, &line) {
+                return;
+            }
+        }
+    }
+
+    /// 녹음의 에이전트 줄 하나를 낸다.
+    fn emit(&mut self, fake: &mut Fake, line: Value) {
+        let text = self.swaps.iter().fold(line.to_string(), |text, (old, new)| text.replace(old.as_str(), new));
+        let mut line: Value = serde_json::from_str(&text).expect("바꾼 줄도 JSON이다");
+        match (line.get("method").is_some(), line.get("id").is_some()) {
+            // 받은 요청의 답 — 받지 않은(건너뛴) 요청의 답이면 내지 않는다.
+            (false, _) => {
+                let Some((id, method)) = self.asked.remove(&line["id"].to_string()) else { return };
+                line["id"] = id;
+                if method == "initialize" {
+                    if let Ok(version) = std::env::var("FAKE_ACP_VERSION") {
+                        line["result"]["agentInfo"]["version"] = json!(version);
+                    }
+                }
+                if method == "session/prompt" {
+                    self.turn = None;
+                }
+            }
+            (true, true) => {
+                let call = line["params"]["toolCall"]["toolCallId"].as_str().unwrap_or_default().to_owned();
+                self.permission = Some((call, line["params"]["options"].clone()));
+            }
+            (true, false) if line["method"] == "session/update" => self.call_tool(fake, &mut line["params"]["update"]),
+            (true, false) => {}
+        }
+        fake.wire.send(&line);
+    }
+
+    /// 녹음의 클라이언트 줄 `recorded`(권한의 답 · 알림)에 맞는 것을 받을 때까지 읽는다. 그 사이의 요청에는 녹음 없이 답한다. 턴이
+    /// 멈추거나(`session/cancel`) 상대가 사라지면 false다.
+    fn await_client(&mut self, fake: &mut Fake, recorded: &Value) -> bool {
+        loop {
+            let Some(message) = fake.read() else { return false };
+            match (message["method"].as_str(), message.get("id")) {
+                (None, Some(id)) if recorded.get("method").is_none() && *id == recorded["id"] => {
+                    self.answered(&message["result"]["outcome"]);
+                    return true;
+                }
+                (Some(method), None) if recorded["method"] == method => return true,
+                (Some("session/cancel"), None) => {
+                    if let Some(turn) = self.turn.take() {
+                        fake.wire.reply(&turn, json!({"stopReason": "cancelled"}));
+                    }
+                    self.script.skip_to_request();
+                    self.asked.clear();
+                    return false;
+                }
+                (Some(method), Some(id)) => generic_answer(fake, method, &id.clone(), &message["params"]),
+                _ => {}
+            }
+        }
+    }
+
+    /// 낸 권한 요청에 받은 답 — 거부면 그 도구를 부르지 않는다.
+    fn answered(&mut self, outcome: &Value) {
+        let Some((call, options)) = self.permission.take() else { return };
+        let kind = options
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|option| outcome["outcome"] == "selected" && option["optionId"] == outcome["optionId"])
+            .and_then(|option| option["kind"].as_str());
+        if !kind.is_some_and(|kind| kind.starts_with("allow")) {
+            self.denied.insert(call);
+        }
+    }
+
+    /// 녹음의 MCP 도구 줄을 익히고, 그 도구가 끝나는 줄이면 받은 서버에 정말 부른 답을 싣는다.
+    fn call_tool(&mut self, fake: &mut Fake, update: &mut Value) {
+        let call = update["toolCallId"].as_str().unwrap_or_default().to_owned();
+        if update["sessionUpdate"] == "tool_call" {
+            if let (Some(server), Some(tool)) = (update["rawInput"]["server"].as_str(), update["rawInput"]["tool"].as_str()) {
+                self.calls.insert(call, (server.to_owned(), tool.to_owned(), update["rawInput"]["arguments"].clone()));
+            }
+            return;
+        }
+        let ends = update["sessionUpdate"] == "tool_call_update" && matches!(update["status"].as_str(), Some("completed" | "failed"));
+        if !ends || self.denied.contains(&call) {
+            return;
+        }
+        let Some((server, tool, arguments)) = self.calls.remove(&call) else { return };
+        let Some(spec) = self.servers.as_array().into_iter().flatten().find(|spec| spec["name"] == server.as_str()) else { return };
+        let program = spec["command"].as_str().expect("MCP 서버의 command");
+        let args = spec["args"].as_array().into_iter().flatten().filter_map(Value::as_str);
+        let env = spec["env"].as_array().into_iter().flatten().filter_map(|var| Some((var["name"].as_str()?, var["value"].as_str()?)));
+        let mut mcp = mcp_client::McpServer::start(program, args, env);
+        mcp.handshake("fake-acp-agent");
+        let tools = mcp.request("tools/list", json!({}))["result"]["tools"].clone();
+        let answer = mcp.request("tools/call", json!({"name": tool, "arguments": arguments}));
+        mcp.close();
+        let receipt = json!({"server": server, "tools": tools, "tool": tool, "arguments": arguments, "call": answer.get("result").unwrap_or(&answer["error"])});
+        fake.append_receipt("mcp", &receipt.to_string());
+        match answer.get("result") {
+            Some(result) => {
+                let field = |key: &str| result.get(key).cloned().unwrap_or(Value::Null);
+                update["rawOutput"] = json!({"result": {"content": field("content"), "structuredContent": field("structuredContent"),
+                                                        "_meta": field("_meta")}, "error": null});
+            }
+            None => {
+                update["status"] = json!("failed");
+                update["rawOutput"] = json!({"result": null, "error": answer["error"]["message"]});
+            }
+        }
+    }
+}
+
+/// 녹음에 없는 요청의 답 — 모드 · 설정 바꾸기는 `{}`(영수증 `config`에 남는다), 되살리기는 진짜 codex의 모르는 세션, 나머지는 모르는
+/// 메서드다.
+fn generic_answer(fake: &mut Fake, method: &str, id: &Value, params: &Value) {
+    match method {
+        "session/set_mode" | "session/set_config_option" => {
+            fake.append_receipt("config", &json!({"method": method, "params": params}).to_string());
+            fake.wire.reply(id, json!({}));
+        }
+        "session/resume" | "session/load" => {
+            let session_id = params["sessionId"].as_str().unwrap_or_default();
+            let receipt = json!({"pid": std::process::id(), "method": method, "params": params, "ok": false});
+            fake.append_shared("revivals", &receipt.to_string());
+            fake.wire.reply_error(id, -32603, &format!("Internal error: no rollout found for thread id {session_id}"));
+        }
+        unknown => fake.wire.reply_error(id, -32601, &format!("method not found: {unknown}")),
+    }
 }
 
 /// 「Codex 한 턴」 — 생각 · 답 · 도구 줄(진행 → 완료, 명령 출력) · 모르는 kind · 마지막 답 · 사용량. 모양은
@@ -989,9 +1271,7 @@ impl Fake {
     /// 앞서 무엇을 바꿨든 config 기본값이다(three-axes 결정 27). load는 답 전에 과거를 되감고 답 뒤에 줄 하나를 더 보낸다.
     fn revive(&mut self, id: &Value, method: &str, params: &Value) {
         let session_id = params["sessionId"].as_str().unwrap_or_default().to_owned();
-        let known = std::env::var_os("FAKE_ACP_FORGETS").is_none()
-            && !session_id.is_empty()
-            && self.receipts.as_ref().is_some_and(|dir| dir.join(format!("{session_id}.json")).exists());
+        let known = self.knows_session(params);
         let receipt = json!({"pid": std::process::id(), "method": method, "params": params, "ok": known});
         self.append_shared("revivals", &receipt.to_string());
         if !known {
@@ -1022,6 +1302,15 @@ impl Fake {
             self.wire.reply(id, opened);
             self.send_commands(&session_id);
         }
+    }
+
+    /// 되살리라는 세션(`params.sessionId`)을 아나 — 이 영수증 폴더에 `<세션 id>.json`이 있는 세션(가짜가 연 세션)이다.
+    /// `FAKE_ACP_FORGETS`면 모른다(세션 저장소가 빈 꼴).
+    fn knows_session(&self, params: &Value) -> bool {
+        let session_id = params["sessionId"].as_str().unwrap_or_default();
+        std::env::var_os("FAKE_ACP_FORGETS").is_none()
+            && !session_id.is_empty()
+            && self.receipts.as_ref().is_some_and(|dir| dir.join(format!("{session_id}.json")).exists())
     }
 
     /// 다음 메시지. 세션이 열린 뒤에 받은 것이면 그 메서드를 `inbox` 영수증에 더하고, 가짜가 보낸 요청의 답이면 원문을
