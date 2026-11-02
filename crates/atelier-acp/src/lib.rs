@@ -21,8 +21,8 @@ mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{
-    ConversationHost, DocWriting, HostBuilder, HostError, HostEvent, ProjectAddChoice, ProjectChoice, QuestionReply, QueuedMessage, QuitCounts,
-    Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, TranslatorCommand, WorkChoice,
+    ConversationHost, DocWriting, FlowChunk, FlowKind, HostBuilder, HostError, HostEvent, ProjectAddChoice, ProjectChoice, QuestionReply,
+    QueuedMessage, QuitCounts, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, TranslatorCommand, WorkChoice,
 };
 pub use login::{EngineState, LoginProgress};
 pub use policy::AskLevel;

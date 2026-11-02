@@ -990,6 +990,7 @@ export const FIXTURE_THREAD: ThreadView = {
   live: false,
   queue: [],
   readOnly: null,
+  flowing: null,
 };
 
 /**

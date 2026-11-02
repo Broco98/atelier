@@ -47,6 +47,7 @@ const chat: ThreadView = {
   live: false,
   queue: [{ id: "q1", text: "열 때 읽은 말", sendNow: false }],
   readOnly: null,
+  flowing: null,
 };
 
 function draw(view: ThreadView): string {

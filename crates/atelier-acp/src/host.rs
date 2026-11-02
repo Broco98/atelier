@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
@@ -31,6 +32,7 @@ mod turn_order;
 pub use thread::{
     DocWriting, ProjectAddChoice, ProjectChoice, QuestionReply, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
 };
+pub use chunks::{FlowChunk, FlowKind};
 use chunks::{is_chunk, Chunks};
 use thread::VanishWatch;
 use turn_order::{Draft, Preamble, Seat, TurnHands, TurnOrder};
@@ -44,7 +46,10 @@ const CLAUDE_OPEN_LIMIT: Duration = Duration::from_secs(10);
 /// 둔다.
 const SETTING_LIMIT: Duration = Duration::from_secs(10);
 
-/// 호스트가 내보내는 것 — 엔진 상태와 Thread의 기록 줄 · 대기 줄 · 목록 요약.
+/// 쌓인 글을 화면 조각으로 묶는 박자(스펙 「01b — 스트리밍」).
+const CHUNK_BEAT: Duration = Duration::from_millis(33);
+
+/// 호스트가 내보내는 것 — 엔진 상태와 Thread의 기록 줄 · 흐르는 글 · 대기 줄 · 목록 요약.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostEvent {
     /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 엔진을 확인할 때, Runtime이 로그인을 요구할 때,
@@ -52,6 +57,8 @@ pub enum HostEvent {
     Engine(EngineState),
     /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이다(v1 티켓 04). 화면은 Thread를 이것 하나로 그린다.
     ThreadRecord { thread: String, line: RecordLine },
+    /// 흐르는 글 한 조각 — 기록하지 않는다. 그 흐름의 기록 줄보다 늘 먼저 나간다.
+    ThreadChunk { thread: String, chunk: FlowChunk },
     /// Thread의 Session의 대기 줄 바뀜 — 그 대기 줄 전체.
     ThreadQueue { thread: String, queue: Vec<QueuedMessage> },
     /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 이름 · 읽은 자리(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
@@ -201,6 +208,8 @@ struct Conv {
     state: Mutex<ConvState>,
     /// 쌓이는 글 조각(restart 01b) — `state`와 따로 쥔다. 권한 줄은 `state`를 쥐지 않고 적는데 그 앞에 쌓인 글을 써야 한다.
     chunks: Mutex<Chunks>,
+    /// 조각이 쌓였다고 박자에 알린다([`pace_chunks`]). 놓이면 박자도 끝난다.
+    pushed: Sender<()>,
     /// 턴 도중에 Runtime이 로그인을 요구하면 그 Session을 로그인 창구에 쥐게 한다(three-axes 티켓 12).
     login: LoginWatch,
     /// 설정 바꾸기를 하나씩 세운다 — 엔진에 넣은 차례와 `thread.json`에 남는 차례가 엇갈리지 않게(three-axes 티켓 09). `state`와
@@ -261,7 +270,11 @@ impl ConvState {
 impl Conv {
     fn new(recorder: Recorder, login: LoginWatch, vanish: VanishWatch) -> Arc<Self> {
         let state = Mutex::new(ConvState::fresh());
-        Arc::new(Self { recorder, state, chunks: Mutex::default(), login, setting: Mutex::new(()), vanish })
+        let (pushed, beats) = mpsc::channel();
+        let conv = Arc::new(Self { recorder, state, chunks: Mutex::default(), pushed, login, setting: Mutex::new(()), vanish });
+        let weak = Arc::downgrade(&conv);
+        std::thread::spawn(move || pace_chunks(weak, beats));
+        conv
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -295,7 +308,22 @@ impl Conv {
             return self.recorder.update(raw);
         }
         let mut chunks = self.lock_chunks();
-        chunks.push(raw).map_or(Ok(()), |line| self.recorder.update(line))
+        let written = chunks.push(raw).map_or(Ok(()), |line| self.recorder.update(line));
+        // 받는 쪽은 Session이 사는 동안 산다.
+        let _ = self.pushed.send(());
+        written
+    }
+
+    /// 지금 흐르는 글 — 받은 글 전부다.
+    fn flowing(&self) -> Option<FlowChunk> {
+        self.lock_chunks().flowing()
+    }
+
+    /// 쌓인 글의 보내지 않은 몫을 화면 조각으로 낸다. 내는 동안 잠금을 쥔다 — 그 흐름의 기록 줄이 조각을 앞서지 않게.
+    fn send_chunk(&self) {
+        if let Some(chunk) = self.lock_chunks().unsent() {
+            self.recorder.chunk(chunk);
+        }
     }
 
     /// 쌓인 글을 기록 줄로 쓴다. 이 줄을 쓰는 동안 잠금을 쥔다 — 다른 스레드가 비운 글보다 뒤의 줄이 앞서지 않게.
@@ -404,6 +432,16 @@ impl Conv {
             // 기록이 막혀도 Session은 이어 간다 — sink는 오류를 돌려줄 곳이 없다.
             eprintln!("{error}");
         }
+    }
+}
+
+/// 화면 조각의 박자 — 조각이 쌓이면 [`CHUNK_BEAT`] 뒤에 그동안 쌓인 글을 보낸다. 쌓이는 조각이 없으면 잠들고, Session이 놓이면 끝난다.
+fn pace_chunks(conv: Weak<Conv>, pushed: Receiver<()>) {
+    while pushed.recv().is_ok() {
+        std::thread::sleep(CHUNK_BEAT);
+        while pushed.try_recv().is_ok() {}
+        let Some(conv) = conv.upgrade() else { return };
+        conv.send_chunk();
     }
 }
 

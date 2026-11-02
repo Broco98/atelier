@@ -88,6 +88,8 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("streams-then-holds", streams_then_holds),
     ("streams-then-asks", streams_then_asks),
     ("streams-then-dies", streams_then_dies),
+    ("streams-steadily", streams_steadily),
+    ("thinks-then-holds", thinks_then_holds),
     ("chunk-after-turn-end", chunk_after_turn_end),
 ];
 
@@ -255,6 +257,41 @@ fn stream_answer(fake: &mut Fake, session_id: &str) {
 fn streams_then_holds(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| {
         stream_answer(fake, session_id);
+        if fake.await_cancel() {
+            fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        }
+    };
+    fake.converse();
+}
+
+/// 틈을 둔 조각 12개를 보내고 멈출 때까지 턴을 쥔다(restart 티켓 01b-3) — 조각이 박자보다 잦은 때를 잰다. 글에 4바이트 글자를 넣어 오프셋의 단위가 드러나게 한다.
+fn streams_steadily(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        for _ in 0..12 {
+            fake.update(
+                session_id,
+                json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_steady",
+                       "content": {"type": "text", "text": "가😀"}}),
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        fake.wire.notify("_auth/status_update", json!({"authStatus": {"kind": "chatgpt"}}));
+        if fake.await_cancel() {
+            fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        }
+    };
+    fake.converse();
+}
+
+/// 글이 빈 생각 조각 하나를 보내고 멈출 때까지 턴을 쥔다 — claude의 생각은 빈 글로 온다(2.1.316 실측).
+fn thinks_then_holds(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_thought_chunk", "messageId": "msg_fake_think",
+                   "content": {"type": "text", "text": ""}}),
+        );
+        fake.wire.notify("_auth/status_update", json!({"authStatus": {"kind": "chatgpt"}}));
         if fake.await_cancel() {
             fake.wire.reply(id, json!({"stopReason": "cancelled"}));
         }

@@ -1,7 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Quote } from "@/features/works/QuotePick";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT, WORK_WRITING_EVENT } from "./events";
+import {
+  THREAD_CHUNK_EVENT,
+  THREAD_ENGINE_EVENT,
+  THREAD_LIST_EVENT,
+  THREAD_QUEUE_EVENT,
+  THREAD_RECORD_EVENT,
+  WORK_WRITING_EVENT,
+} from "./events";
 import type {
   AskLevel,
   Attachment,
@@ -15,6 +22,7 @@ import type {
   RecordLine,
   ServiceAnswer,
   StartPicks,
+  ThreadChunkEvent,
   ThreadLink,
   ThreadQueueEvent,
   ThreadRecordEvent,
@@ -144,6 +152,11 @@ const pathsOf = (attached: readonly Attachment[]) => attached.map((one) => one.p
 /** 기록 줄이 적힐 때마다 온다 — 어느 Thread든. 앱 층(`useThreadFeeds`) 하나가 듣는다. */
 export function onThreadRecord(listener: (event: ThreadRecordEvent) => void): Promise<UnlistenFn> {
   return listen<ThreadRecordEvent>(THREAD_RECORD_EVENT, (event) => listener(event.payload));
+}
+
+/** 흐르는 글이 33ms마다 온다 — 어느 Thread든. 앱 층(`useThreadFeeds`) 하나가 듣는다. */
+export function onThreadChunk(listener: (event: ThreadChunkEvent) => void): Promise<UnlistenFn> {
+  return listen<ThreadChunkEvent>(THREAD_CHUNK_EVENT, (event) => listener(event.payload));
 }
 
 /** 대기 줄이 바뀔 때마다 온다 — 그 Session의 대기 줄 전체다. */

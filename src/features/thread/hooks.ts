@@ -3,13 +3,23 @@ import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type Q
 import { useStore } from "@tanstack/react-store";
 import { SCOPE_KEY } from "@/features/services/hooks";
 import type { ProjectPr } from "@/features/works/types";
-import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
+import { onThreadChunk, onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { isObject } from "./json";
 import { prLineOf } from "./pr";
-import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
-import type { AskLevel, ChipValues, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
+import {
+  addChunk,
+  finishFlow,
+  linesOf,
+  mergeLines,
+  settleFlowing,
+  threadQueueStore,
+  threadRecordStore,
+  setQueue,
+  setWriting,
+} from "./thread-store";
+import type { AskLevel, ChipValues, QueuedMessage, RecordLine, ThreadChunkEvent, ThreadSummary, ThreadView } from "./types";
 import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { workPrsKey } from "./summary-card";
 import { workMarks, type WorkMarks } from "./work-threads";
@@ -25,7 +35,8 @@ export const threadsQuery = () =>
 
 /**
  * Thread 하나 — `get` 다음에 `readRecord(0)`이다(구현 스펙 §18 「여는 차례」). 읽은 기록은 기록 줄 스토어에 seq로 합치고, 그 뒤는 앱 층이
- * 받은 기록 줄 이벤트가 잇는다. 한 번 읽으면 다시 읽지 않는다 — 이름 · 모델은 바꾸기의 답과 요약 이벤트가 캐시를 고친다.
+ * 받은 기록 줄 이벤트가 잇는다. 흐르던 글도 여기서 잇는다 — 새로 그린 화면에 받은 글이 이어서 선다. 한 번 읽으면 다시 읽지 않는다 — 이름 ·
+ * 모델은 바꾸기의 답과 요약 이벤트가 캐시를 고친다.
  */
 export const threadQuery = (thread: string) =>
   queryOptions({
@@ -33,6 +44,7 @@ export const threadQuery = (thread: string) =>
     queryFn: async () => {
       const view = await threadApi.get(thread);
       mergeLines(thread, await threadApi.readRecord(thread, 0));
+      settleFlowing(view);
       return view;
     },
     staleTime: Infinity,
@@ -137,7 +149,7 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
 }
 
 /**
- * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
+ * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 흐르는 글 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
  * 가 있어도 돌아오면 그사이 흐른 줄이 보인다), 요약은 사이드바의 목록을 고치고, 엔진 상태는 안내 카드의 바탕이 된다. 문서 쓰는 중은
  * Work마다 쌓는다 — 요약 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
  */
@@ -145,11 +157,8 @@ export function useThreadFeeds(): void {
   const queryClient = useQueryClient();
   useEffect(() => {
     const unlisten = [
-      onThreadRecord(({ thread, line }) => {
-        mergeLines(thread, [line]);
-        if (isLoginRequired(line)) markLoginRequired();
-        followRecordLine(queryClient, thread, line);
-      }),
+      onThreadRecord(({ thread, line }) => receiveRecordLine(queryClient, thread, line)),
+      onThreadChunk((event) => receiveChunk(queryClient, event)),
       onThreadQueue(({ thread, queue }) => setQueue(thread, queue)),
       onThreadList((summary) => putSummary(queryClient, summary)),
       onThreadEngine(applyEngineEvent),
@@ -161,8 +170,24 @@ export function useThreadFeeds(): void {
   }, [queryClient]);
 }
 
+/** 기록 줄 이벤트 하나. 줄을 쌓는 일과 그 줄이 마친 흐름을 지우는 일은 한 번에 한다 — 글이 겹치거나 비는 장면이 그려지지 않게. */
+export function receiveRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
+  mergeLines(thread, [line]);
+  finishFlow(thread, line);
+  if (isLoginRequired(line)) markLoginRequired();
+  followRecordLine(queryClient, thread, line);
+}
+
 /**
- * 기록 줄 하나가 쿼리 캐시에 미치는 것 — 줄을 스토어에 쌓는 것은 부르는 쪽(`useThreadFeeds`)이다.
+ * 흐르는 글 이벤트 하나. 앞 글이 빠져 잇지 못하면 Thread를 다시 읽는다 — 진행 글은 받은 글 전부라 뒤의 조각이 다시 이어진다. 조각마다 빠진 것을
+ * 보므로 도는 읽기는 끊지 않는다.
+ */
+export function receiveChunk(queryClient: QueryClient, { thread, chunk }: ThreadChunkEvent): void {
+  if (!addChunk(thread, chunk)) void queryClient.invalidateQueries({ queryKey: threadKey(thread) }, { cancelRefetch: false });
+}
+
+/**
+ * 기록 줄 하나가 쿼리 캐시에 미치는 것 — 줄을 스토어에 쌓는 것은 부르는 쪽(`receiveRecordLine`)이다.
  *
  * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
  *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.

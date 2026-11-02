@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { foldThread, type QuestionEntry } from "./fold";
+import { addChunk } from "./thread-store";
 import ThreadFlow, { AnsweredRow, DocPlace } from "./ThreadFlow";
 import { threadUiStore, turnKey } from "./thread-store";
 import type { RecordLine } from "./types";
@@ -373,5 +374,89 @@ describe("턴 끝 안내", () => {
     expect(markup).not.toContain("data-end-notice");
     expect(words(markup)).toContain("답하지 못했습니다. Claude Code가 끝났어요.");
     expect(markup).toContain("다시 시도");
+  });
+});
+
+// 흐르는 글(스펙 「01b — 스트리밍」) — 기록 줄이 아니라 접은 모델에 없다. 화면은 마지막 턴 꼬리에만 붙인다.
+describe("흐르는 글", () => {
+  const at = (second: number) => `2026-10-10T10:02:${String(second).padStart(2, "0")}.000+09:00`;
+  const sent = (seq: number, text: string): RecordLine => ({ seq, at: at(seq), kind: "sent", payload: { text } });
+  const update = (seq: number, sessionUpdate: string, text: string): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "update",
+    payload: { sessionId: "s", update: { sessionUpdate, messageId: `m${seq}`, content: { type: "text", text } } },
+  });
+  const said = (seq: number, text: string) => update(seq, "agent_message_chunk", text);
+  const thought = (seq: number, text: string) => update(seq, "agent_thought_chunk", text);
+  const ended = (seq: number): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "turn-end",
+    payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
+  });
+
+  let serial = 0;
+  /** 그 글이 흐르는 Thread 하나를 그린다 — 조각 이벤트가 쌓는 그 스토어에 넣는다. */
+  const flow = (lines: readonly RecordLine[], kind: "message" | "thought", text: string) => {
+    const thread = `흐름-${(serial += 1)}`;
+    addChunk(thread, { stream: 1, kind, offset: 0, text });
+    return renderToStaticMarkup(<ThreadFlow thread={thread} model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />);
+  };
+
+  it("턴의 첫 조각부터 글이 서고 작업 머리줄이 서며 「답하는 중」은 걷힌다", () => {
+    const markup = flow([sent(1, "물음")], "message", "흐르는답");
+    expect(markup).toContain("흐르는답");
+    expect(markup).toContain("동안 작업 중입니다");
+    expect(markup).not.toContain("data-answering");
+  });
+
+  it("글이 흐르는 낱말로 선다 — 끝난 줄은 다시 움직이지 않는다", () => {
+    const markup = flow([sent(1, "물음"), said(2, "앞선 글")], "message", "흐르는답");
+    expect(markup).toContain('class="word-in">흐르는답');
+    expect(markup).not.toContain('class="word-in">앞선');
+  });
+
+  it("마지막 턴의 줄들 뒤에 붙고 앞선 턴에는 붙지 않는다", () => {
+    const lines = [sent(1, "앞선 물음"), said(2, "앞선 답"), ended(3), sent(4, "물음"), said(5, "먼저 온 글")];
+    const markup = flow(lines, "message", "흐르는답");
+    const order = ["앞선 답", "먼저 온 글", "흐르는답"].map((text) => markup.indexOf(text));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order[0]).toBeGreaterThanOrEqual(0);
+    expect(markup.match(/흐르는답/g)).toHaveLength(1);
+  });
+
+  it("끝나지 않은 앞선 턴에는 붙지 않는다", () => {
+    const markup = flow([sent(1, "앞선 물음"), sent(2, "물음")], "message", "흐르는답");
+    expect(markup.match(/흐르는답/g)).toHaveLength(1);
+    expect(markup.indexOf("흐르는답")).toBeGreaterThan(markup.indexOf("물음</p>", markup.indexOf("앞선 물음") + 6));
+  });
+
+  it("끝난 턴의 꼬리에는 붙지 않는다 — 글은 기록 줄이 말한다", () => {
+    expect(flow([sent(1, "물음"), said(2, "끝난 답"), ended(3)], "message", "남은 조각")).not.toContain("남은 조각");
+  });
+
+  it("글이 빈 생각은 「생각 중」으로만 선다", () => {
+    const markup = flow([sent(1, "물음")], "thought", "");
+    expect(markup).toContain("생각 중");
+    expect(markup).not.toContain("data-answering");
+  });
+
+  it("생각에 글이 있으면 옅은 글로 함께 선다", () => {
+    const markup = flow([sent(1, "물음")], "thought", "살펴본다");
+    expect(markup).toContain("살펴본다");
+    expect(markup).toContain("text-fg-tertiary");
+    expect(markup).toContain("생각 중");
+  });
+
+  it("답이 흐르면 앞선 생각 줄이 끝이어도 「생각 중」이 서지 않는다", () => {
+    expect(flow([sent(1, "물음"), thought(2, "살폈다")], "message", "흐르는답")).not.toContain("생각 중");
+  });
+
+  it("흐르는 글이 없으면 기록 줄의 마지막 줄이 생각일 때 그대로 「생각 중」이다", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadFlow thread="흐름-없음" model={foldThread([sent(1, "물음"), thought(2, "")])} runtime="Claude Code" onRetry={() => {}} />,
+    );
+    expect(markup).toContain("생각 중");
   });
 });

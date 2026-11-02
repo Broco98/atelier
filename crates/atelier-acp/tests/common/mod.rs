@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use atelier_acp::{Agent, ConversationHost, EngineState, HostEvent, QueuedMessage, ShellSource, TranslatorCommand};
+use atelier_acp::{Agent, ConversationHost, EngineState, FlowChunk, HostEvent, QueuedMessage, ShellSource, TranslatorCommand};
 use serde_json::Value;
 
 /// 가짜 로그인 셸의 시나리오.
@@ -900,6 +900,17 @@ impl Events {
             .into_iter()
             .filter_map(|event| match event {
                 HostEvent::ThreadQueue { thread, queue } if thread == id => Some(queue),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 그 Thread의 화면 조각 이벤트들 — 온 차례대로.
+    pub fn thread_chunks(&self, id: &str) -> Vec<FlowChunk> {
+        self.all()
+            .into_iter()
+            .filter_map(|event| match event {
+                HostEvent::ThreadChunk { thread, chunk } if thread == id => Some(chunk),
                 _ => None,
             })
             .collect()
