@@ -276,7 +276,7 @@ test("범위 칩 — 메뉴에서 고른 Service는 흰 칩 + ×가 되어 범�
   await 입력칸(page).press("Enter");
   await expect(page).toHaveURL(`/threads/${FIXTURE_THREAD.id}`);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, mode: "edits", model: null, effort: null, service: { slug: SETTLEMENT.slug }, project: null },
+    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: { slug: SETTLEMENT.slug }, project: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -307,7 +307,7 @@ test("범위 메뉴 — Project를 고르면 앞의 Service가 빠지고 칩 · 
 
   await sendFirst(page, first.text, started);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, mode: "edits", model: null, effort: null, service: null, project: API_SERVER },
+    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: API_SERVER },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -508,24 +508,25 @@ test("씨앗 — `?project=`가 범위 칩에 그 Project를 고르고, `?new=wo
   await expect(이름칩(page, API_SERVER)).toBeVisible();
   await sendFirst(page, first.text, started);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: first.text, attachments: [], link: { kind: "new-work" }, mode: "edits", model: null, effort: null, service: null, project: API_SERVER },
+    { text: first.text, attachments: [], link: { kind: "new-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: API_SERVER },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("입력창 안은 + · 물어보는 정도 · 모델 칩 · 보내기뿐이다 — `@`를 쳐도 메뉴가 서지 않고, `/agent` · `/work` 명령도 없으며, 입력이 있으면 보내기가 짙어진다", async ({
+test("입력창 안은 + · 물어보는 정도 · Runtime 칩 · 모델 칩 · 보내기뿐이다 — `@`를 쳐도 메뉴가 서지 않고, `/agent` · `/work` 명령도 없으며, 입력이 있으면 보내기가 짙어진다", async ({
   page,
 }) => {
   await installFixtureBackend(page, TRAY_WORLD);
   await openHome(page);
 
   // 입력창 상자 안의 단추(F4-KitComposer 머리말 — 「입력창 안은 + · 물어보는 정도 · 모델 칩뿐」). `@` 단추는 없다 — 채팅은 Runtime 세션 하나라 부를 Agent가
-  // 없다(티켓 01a-2 · 01a-6).
+  // 없다(티켓 01a-2 · 01a-6). 새 채팅에서는 Runtime 칩이 모델 칩 앞에 선다(restart 01c-3 — 기본은 Claude Code, 고르는 일은 `thread-runtime`이 잰다).
   const buttons = 입력창(page).getByRole("button");
-  await expect(buttons).toHaveCount(4);
+  await expect(buttons).toHaveCount(5);
   expect(await buttons.evaluateAll((all) => all.map((one) => one.getAttribute("aria-label")))).toEqual([
     "파일 첨부",
     "물어보는 정도 편집 자동",
+    "Runtime: Claude Code",
     expect.stringMatching(/^모델과 생각 깊이 /),
     "보내기",
   ]);

@@ -53,7 +53,7 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, mode: "edits", model: null, effort: null, service: null, project: null },
+    { text: first.text, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   await expect(흐름(page).getByText(first.text, { exact: true })).toBeVisible();

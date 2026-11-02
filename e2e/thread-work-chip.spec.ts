@@ -70,7 +70,7 @@ for (const url of ["/", "/?new=thread"]) {
     await expect(정도칩(page, "편집 자동")).toBeVisible();
     await send(page, typed);
     expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-      { text: typed, attachments: [], link: { kind: "no-work" }, mode: "edits", model: null, effort: null, service: null, project: null },
+      { text: typed, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null },
     ]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -87,7 +87,7 @@ test("`?new=work`에 「새 작업공간」 칩과 빼기 단추가 서고 안�
 
   await send(page, typed);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: typed, attachments: [], link: { kind: "new-work" }, mode: "edits", model: null, effort: null, service: null, project: null },
+    { text: typed, attachments: [], link: { kind: "new-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -137,7 +137,7 @@ test("×가 칩을 빼고 주소를 `/?new=thread`로 바꾸며 고른 범위 ·
   // 뺀 뒤의 첫 말은 작업공간 없이, 고른 것과 함께 간다.
   await send(page, typed);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: typed, attachments: [], link: { kind: "no-work" }, mode: "plan", model: null, effort: null, service: { slug: PAYMENTS.slug }, project: null },
+    { text: typed, attachments: [], link: { kind: "no-work" }, runtime: "claude-code", mode: "plan", model: null, effort: null, service: { slug: PAYMENTS.slug }, project: null },
   ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -165,7 +165,7 @@ test("`?work=`에 그 작업공간의 잠긴 칩이 서서 누르면 그리로 �
   // 고르지 않은 정도는 `null`이다 — 엔진이 그 Work의 정도를 쓴다. 고르지 않은 범위도 `null`이다 — 이은 Work의 Service를 건드리지 않는다.
   await send(page, typed);
   expect(await ipcArgs(page, "thread_start", "text")).toEqual([
-    { text: typed, attachments: [], link: { kind: "work", slug: picked.slug }, mode: null, model: null, effort: null, service: null, project: null },
+    { text: typed, attachments: [], link: { kind: "work", slug: picked.slug }, runtime: "claude-code", mode: null, model: null, effort: null, service: null, project: null },
   ]);
   expect(await ipcCallArgs(page, "thread_set_mode", "thread")).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
