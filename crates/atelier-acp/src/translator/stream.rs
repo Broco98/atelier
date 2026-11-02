@@ -14,7 +14,7 @@
 //!   · 글이 빈 조각 · 서브에이전트의 조각(`parent_tool_use_id`).
 //! - **서브에이전트**(`Agent`, 워크플로 함정 10) — 그 안에서 일어난 일(`parent_tool_use_id`가 붙은 줄)과 `task_*` 이벤트는
 //!   대화의 흐름이 아니라 그 도구 줄의 `_meta`로 싣는다. 서브에이전트의 글이 대화의 답으로 섞이지 않고, 기록에는 평가의
-//!   재료로 남는다(three-axes 결정 18).
+//!   재료로 남는다(three-axes 결정 18). 화면은 이 원문에서 안쪽 도구를 모두 쥐어 그린다(`subagent.ts` — 표를 바꾸면 그쪽도 바꾼다).
 
 use std::collections::HashMap;
 
@@ -181,7 +181,7 @@ impl Stream {
 
     /// `result` → 사용량(`usage_update`). `used`는 `usage.iterations` **마지막 원소**의 네 칸 합이다 — `usage` 자체는 턴 안
     /// 모든 API 호출의 합이라 도구를 쓴 턴에서 몇 배로 부푼다(워크플로 함정 1). `size`는 답한 모델의 `contextWindow`다.
-    /// 모델을 부르지 않은 턴(내장 명령)은 `iterations`가 비어 있어 내지 않는다. 화면은 그리지 않고 기록만 한다.
+    /// 모델을 부르지 않은 턴(내장 명령)은 `iterations`가 비어 있어 내지 않는다. 화면은 답 아래 줄에 그린다.
     pub(super) fn usage(&self, result: &Value) -> Option<Value> {
         let last = result["usage"]["iterations"].as_array()?.last()?;
         let used: u64 = USED.iter().filter_map(|field| last[*field].as_u64()).sum();

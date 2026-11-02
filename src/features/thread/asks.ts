@@ -68,6 +68,7 @@ export function nextOf(request: PendingAsk): NextLine {
         toolCallId: text(call.toolCallId) ?? "",
         call,
         output: "",
+        inner: [],
         stop: null,
         cut: false,
         denied: false,

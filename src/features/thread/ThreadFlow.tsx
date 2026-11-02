@@ -14,6 +14,7 @@ import {
   keptFolded,
   runningHeadline,
   shownEntry,
+  usageText,
   workLine,
   type DecisionEntry,
   type Entry,
@@ -23,6 +24,7 @@ import {
   type ThreadModel,
   type ToolEntry,
   type Turn,
+  type Usage,
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
 import { DocCard } from "./DocCard";
@@ -65,7 +67,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
 // - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
 //   사이의 옅은 줄이다.
-// - 마지막으로 끝난 답 아래에만 응답 액션(복사)이 선다(`AnswerActions`). 「…」는 무엇을 둘지 정해지면(02 P1) 단다.
+// - 마지막으로 끝난 답 아래에만 응답 액션(복사)과 그 턴의 사용량이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」). 「…」는 무엇을 둘지
+//   정해지면(02 P1) 단다.
 // - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
 //   선다(턴의 일이 아니라 Work의 일이다).
 //
@@ -249,7 +252,8 @@ function TurnView({
   const unfolded = open && (stopped || failed || line?.unfolds === true);
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
-  const kept = turn.end && !unfolded ? turn.entries.filter((entry, at) => keptFolded(entry) && (!isToolChoice(entry) || at < from)) : [];
+  // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다.
+  const kept = turn.end ? turn.entries.filter((entry, at) => keptFolded(entry) && (at < from ? !unfolded : !isToolChoice(entry))) : [];
   return (
     <>
       {turn.sent !== null && (
@@ -301,7 +305,7 @@ function TurnView({
           {!stopped &&
             final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
           {turn.end && <CreatedDocs turn={turn} name={runtime} />}
-          {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} />}
+          {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} usage={turn.usage} />}
         </div>
       )}
     </>
@@ -491,12 +495,13 @@ function StopLine({ text, open, onToggle }: { text: string; open: boolean; onTog
 /**
  * 응답 액션(02 구현 스펙 §8 · Diff-Chat 「응답 액션」) — 마지막으로 끝난 답에만 선다(`TurnView`). 글리프 15 `fg-subtle`이고, 버튼(24)은
  * 글리프가 열 왼쪽 끝에 서도록 그 안쪽만큼 왼쪽으로 낸다. 위로 2를 당겨 답 글자 잉크 → 글리프가 Codex의 15.5다(턴 안 줄 사이 8 + 버튼
- * 안쪽이 그보다 2 길다). 「…」는 무엇을 둘지 정해지기 전이라(P1) 그리지 않고 복사 하나다.
+ * 안쪽이 그보다 2 길다). 「…」는 무엇을 둘지 정해지기 전이라(P1) 그리지 않고 복사 하나다. 그 옆에 사용량이 호버 없이 선다(Cards 보드 「답 아래
+ * 줄」 — 모양은 02b-6이 맞춘다). 모델을 부르지 않은 턴은 사용량이 없어 복사 하나다.
  */
-function AnswerActions({ text }: { text: string }) {
+function AnswerActions({ text, usage }: { text: string; usage: Usage | null }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="-mt-0.5 -ml-1 flex">
+    <div className="-mt-0.5 -ml-1 flex items-center">
       <button
         type="button"
         aria-label="답 복사"
@@ -507,6 +512,11 @@ function AnswerActions({ text }: { text: string }) {
       >
         {copied ? <Check className="size-3.75" aria-hidden /> : <Copy className="size-3.75" aria-hidden />}
       </button>
+      {usage && (
+        <span data-usage className="pl-2 text-xs text-fg-tertiary tabular-nums">
+          {usageText(usage)}
+        </span>
+      )}
     </div>
   );
 }

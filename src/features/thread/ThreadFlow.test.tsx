@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { foldThread, type QuestionEntry } from "./fold";
 import ThreadFlow, { AnsweredRow, DocPlace } from "./ThreadFlow";
+import { threadUiStore, turnKey } from "./thread-store";
 import type { RecordLine } from "./types";
 
 // 답한 카드(02 구현 스펙 §10 · 캔버스 v35 Components 「답한 카드」 · 02 코드 리뷰 S3) — 흐름에 물음마다 한 줄 카드로 남는다: **초록 ✓ 13** · 물은
@@ -138,5 +139,70 @@ describe("Runtime 이름으로 말하는 흐름", () => {
     );
     expect(markup).toContain("Claude Code가 만듦 · 27줄 · 같이 고칠 수 있어요");
     expect(markup).not.toContain("Host가 만듦");
+  });
+});
+
+// 답 아래 사용량 줄(01b-7 · 스토리 66 · 캔버스 Cards 보드 「답 아래 줄」) — 마지막 답에만 복사 단추 옆에 선다. 바탕은 엔진이 쓴 두 턴 기록이다.
+describe("답 아래 사용량", () => {
+  const lines = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-two-turns.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  const flow = (model: ReturnType<typeof foldThread>) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" onRetry={() => {}} />);
+  const shown = (markup: string) => [...markup.matchAll(/<span data-usage[^>]*>([^<]*)<\/span>/g)].map((match) => match[1]);
+
+  it("마지막 답 아래에만 그 턴의 토큰과 컨텍스트 사용량이 선다", () => {
+    expect(shown(flow(foldThread(lines)))).toEqual(["토큰 38.5k · 컨텍스트 4%"]);
+  });
+
+  it("턴이 도는 동안에는 서지 않는다 — 사용량을 받은 뒤 턴 끝 줄을 기다리는 때도 그렇다", () => {
+    expect(shown(flow(foldThread(lines.filter((line) => line.seq <= 18))))).toEqual([]);
+  });
+
+  it("사용량이 없는 턴은 복사 단추만 선다", () => {
+    const markup = flow(foldThread(lines.filter((line) => line.seq !== 18)));
+    expect(shown(markup)).toEqual([]);
+    expect(markup).toContain('aria-label="답 복사"');
+  });
+});
+
+// 체크리스트의 자리(01b-7) — 턴이 끝나 접혀도, 작업 구분선을 눌러 펼쳐도 서 있다. 도는 줄 뒤에 온 `plan`은 턴 끝 답과 같은 꼬리에 들어 펼친 로그
+// 밖이다. 한때 펼치면 사라졌다.
+describe("체크리스트의 자리", () => {
+  const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
+  const update = (seq: number, body: Record<string, unknown>): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "update",
+    payload: { sessionId: "s", update: body },
+  });
+  const lines: RecordLine[] = [
+    { seq: 1, at: at(1), kind: "sent", payload: { text: "말" } },
+    update(2, { sessionUpdate: "tool_call", toolCallId: "r", title: "Read a.rs", kind: "read", status: "completed", locations: [{ path: "/w/a.rs" }] }),
+    update(3, { sessionUpdate: "plan", entries: [{ content: "시험 돌리기", status: "in_progress" }] }),
+    update(4, { sessionUpdate: "agent_message_chunk", messageId: "m", content: { type: "text", text: "끝났어요" } }),
+    { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 4000 } },
+  ];
+  const flow = (rows: readonly RecordLine[]) =>
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" onRetry={() => {}} />);
+  const LIST = 'aria-label="계획 체크리스트"';
+
+  it("도는 턴에도, 접힌 턴에도 선다", () => {
+    expect(flow(lines.slice(0, 3))).toContain(LIST);
+    expect(flow(lines)).toContain(LIST);
+  });
+
+  it("펼친 턴에도 선다", () => {
+    threadUiStore.setState((state) => ({ ...state, expanded: { [turnKey("t", "t1")]: true } }));
+    try {
+      expect(flow(lines)).toContain(LIST);
+    } finally {
+      threadUiStore.setState((state) => ({ ...state, expanded: {} }));
+    }
+  });
+
+  it("`plan`이 없으면 서지 않는다", () => {
+    expect(flow(lines.filter((line) => line.seq !== 3))).not.toContain(LIST);
   });
 });
