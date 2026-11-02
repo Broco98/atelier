@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::seat::ends_turn;
 use crate::runtime::{RuntimeEvent, Sink};
-use crate::thread_tools::{app_tool, SERVER_NAME};
+use crate::thread_tools::{app_tool, mcp_call, SERVER_NAME};
 
 /// 도구 줄을 기다리는 한도 — 줄이 늦는 것은 부하 탓이라 보통은 곧바로 온다.
 const LIMIT: Duration = Duration::from_secs(5);
@@ -67,21 +67,19 @@ impl ToolLines {
     }
 }
 
-/// Thread 도구의 도구 줄이면 그 도구 이름 — 표준 값을 먼저 읽는다(restart 01c-2): 제목이 `mcp.<서버>.<도구>`이고 `rawInput`의 `server` ·
-/// `tool`이 그 둘이다(codex-acp 2.2.2). 없으면 Claude 변환기가 실은 도구 이름(`_meta.claudeCode.toolName`), 그것도 없으면 제목을
-/// `mcp__<서버>__<도구>`로 읽는다(Claude Code — 변환기는 MCP 도구의 제목을 도구 이름 그대로 짓는다).
+/// Thread 도구의 도구 줄이면 그 도구 이름 — 표준 값을 먼저 읽는다(restart 01c-2, [`mcp_call`]): 제목이 `mcp.<서버>.<도구>`이고
+/// `rawInput`의 `server` · `tool`이 그 둘이다(codex-acp 2.2.2). 없으면 Claude 변환기가 실은 도구 이름(`_meta.claudeCode.toolName`), 그것도
+/// 없으면 제목을 `mcp__<서버>__<도구>`로 읽는다(Claude Code — 변환기는 MCP 도구의 제목을 도구 이름 그대로 짓는다).
 ///
-/// 판정(`policy::Act::of`)은 이 길을 쓰지 않는다 — 제목과 입력은 모델이 쓴 글일 수 있고, 여기서 틀려도 차례만 어긋난다.
+/// Claude 판정(`policy::Act::of`)은 이 길을 쓰지 않는다 — 제목과 입력은 모델이 쓴 글일 수 있고, 여기서 틀려도 차례만 어긋난다. Codex
+/// 판정(`policy::Act::of_codex`)은 표준 값만 같은 규칙으로 읽는다.
 fn thread_tool(raw: &Value) -> Option<String> {
     let update = &raw["update"];
     if update["sessionUpdate"] != "tool_call" {
         return None;
     }
-    let input = &update["rawInput"];
-    if let (Some(server), Some(tool), Some(title)) = (input["server"].as_str(), input["tool"].as_str(), update["title"].as_str()) {
-        if title == format!("mcp.{server}.{tool}") {
-            return (server == SERVER_NAME).then(|| tool.to_owned());
-        }
+    if let Some((server, tool)) = mcp_call(update) {
+        return (server == SERVER_NAME).then(|| tool.to_owned());
     }
     let name = update["_meta"]["claudeCode"]["toolName"].as_str().or_else(|| update["title"].as_str())?;
     app_tool(name).map(str::to_owned)

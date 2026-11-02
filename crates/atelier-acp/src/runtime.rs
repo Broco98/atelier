@@ -270,6 +270,8 @@ pub(crate) struct TurnEnd {
     /// 그 턴에 우리가 `session/cancel`을 보냈나. Codex는 거부 선택지도 `cancelled`로 끝내므로 이 표지로 가른다
     /// (워크플로 함정 14).
     pub cancelled_by_us: bool,
+    /// 앱이 거절해 멈춘 턴이면 그 까닭(restart 01c-7) — 런타임은 늘 비워 넘기고, 판정을 쥔 Session의 손(`host/thread/seat.rs`)이 단다.
+    pub app_refusal: Option<String>,
 }
 
 /// 런타임의 일을 받는 곳. 수신 루프 · stderr 스레드 · 죽음을 지켜보는 스레드에서 불리므로 **이 안에서 런타임이나 호스트를 다시 부르지
@@ -935,7 +937,7 @@ impl Turns {
                 let result = result.map_err(|error| {
                     serde_json::to_value(&error).unwrap_or_else(|_| json!({"message": error.to_string()}))
                 });
-                sink(RuntimeEvent::TurnEnd(TurnEnd { result, cancelled_by_us: cancel_sent.load(Ordering::SeqCst) }));
+                sink(RuntimeEvent::TurnEnd(TurnEnd { result, cancelled_by_us: cancel_sent.load(Ordering::SeqCst), app_refusal: None }));
                 Ok(())
             })
             .map_err(|error| format!("에이전트에 말을 보내지 못했습니다: {error}"))

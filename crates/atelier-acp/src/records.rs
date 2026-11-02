@@ -153,6 +153,10 @@ pub(crate) struct TurnEndLine {
     /// 턴이 실패한 오류 원문(`{code, message, data?}`) — 말을 받지 않았거나 Runtime이 실패로 끝낸 턴이다. 글이 왔어도 실패다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Value>,
+    /// 앱이 거절해 멈춘 턴의 까닭(restart 01c-7) — 판정이 Runtime에게 준 거절 글이다. Codex는 앱의 거절도 거부 선택지로만 받아 턴을
+    /// `cancelled`로 끝내고 그 글을 읽지 않으므로, 사람이 거부한 턴과 이 칸으로 갈린다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_refusal: Option<String>,
 }
 
 /// 기록 하나의 쓰는 손 — Thread의 Session 하나(v1 티켓 04). 런타임이 넘긴 것과 턴 차례의 줄은 모두 이것으로 적는다.

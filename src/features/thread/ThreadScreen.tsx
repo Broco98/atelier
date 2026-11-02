@@ -699,6 +699,7 @@ function ThreadBody({
                       <ApprovalCard
                         thread={thread}
                         name={slot.name}
+                        runtime={view.runtime}
                         request={asking}
                         scope={view.work ? "work" : "thread"}
                         cwd={askingCwd}

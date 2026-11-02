@@ -21,6 +21,10 @@
 //! 3. 「다시 묻지 않기」 허락에 걸리면 허용한다.
 //! 4. 그 밖에는 물어보는 정도의 표([`by_level`])를 따른다.
 //!
+//! **Codex 채팅은 1 · 2칸만 같다**(스펙 「01c — Codex」 권한 판정, [`Rules`]) — 물어보는 정도와 허락은 작업공간의 채팅이 함께 쓰는 Claude의
+//! 값이라 읽지 않는다. 그 뒤로는 앱 기능 도구만 허용하고 나머지는 카드로 묻는다([`by_codex`]). 앱 기능 도구는 같은 `toolCallId`로 앞서 온 도구
+//! 줄의 MCP 서버로 가른다([`Act::of_codex`]).
+//!
 //! **허락의 이름** — `edit`(편집 전부) · `shell`(명령 전부) · `push` · `merge`, 그리고 명령 패턴 `Bash(…)`다. 「다시 묻지 않기」가 적는 것은
 //! `edit`과 `Bash(…)`이고, 나머지는 점 파일에 손으로 적어야 든다. `schema`와 모르는 이름은 아무것도 넘기지 않는다.
 //!
@@ -41,7 +45,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::thread_tools::app_tool;
+use crate::thread_tools::{app_tool, mcp_call, SERVER_NAME};
 use shell::{pieces, Piece};
 
 /// 물어보는 정도(스토리 84 · S18) — 입력창 칩이 고른다(v1 티켓 23). 저장 글자는 `always` · `edits` · `plan` · `auto`다.
@@ -112,11 +116,31 @@ pub(crate) enum Act {
 }
 
 impl Act {
-    /// ACP 도구 요지에서 읽는다. 편집의 경로는 `locations[].path`와 입력의 `file_path` · `notebook_path` · `path`다 — 상대 경로는
-    /// 그대로 둔다(엔진이 Session의 작업 폴더에서 푼다). 명령은 입력의 `command`(글 또는 낱말 목록)다. 앱 기능 도구는 종류가 없어
-    /// Claude 변환기가 실은 도구 이름으로 가른다 — 제목은 보지 않는다. `Task`의 제목은 모델이 쓴 글이다. codex-acp의 요청에는 제목도
-    /// 입력도 없어 표준 값으로 가를 수 없다 — 같은 `toolCallId`로 앞서 온 도구 줄을 읽는 것은 Codex 판정(restart 01c-7)의 몫이다.
+    /// Claude 변환기의 ACP 도구 요지에서 읽는다 — 종류로 가르고([`Act::of_kind`]), 종류가 없는 앱 기능 도구는 Claude 변환기가 실은 도구
+    /// 이름으로 가른다. 제목과 입력은 보지 않는다 — `Task`의 제목과 도구의 입력은 모델이 쓴 글이다(restart 01a-9).
     pub(crate) fn of(tool_call: &Value) -> Self {
+        Self::of_kind(tool_call).unwrap_or_else(|| {
+            let named = tool_call["_meta"]["claudeCode"]["toolName"].as_str().and_then(app_tool);
+            if named.is_some() { Act::App } else { Act::Other }
+        })
+    }
+
+    /// codex-acp의 ACP 도구 요지에서 읽는다(스펙 「01c — Codex」 앱 기능 도구 허용). MCP 승인 요청에는 서버 이름이 없어(id · 종류 `execute` ·
+    /// 상태뿐), 엔진이 같은 `toolCallId`로 앞서 온 `tool_call`의 제목 · 입력으로 빈 칸을 채운 요지를 받는다(`runtime.rs`). 그 둘이 MCP
+    /// 표준 값([`mcp_call`])이고 서버가 앱 서버일 때만 앱 기능 도구, 다른 서버면 그 밖의 도구다. 종류(`execute`)보다 먼저 본다.
+    /// `_meta.is_mcp_tool_approval`은 보지 않는다 — 다른 서버의 도구도 같은 표지를 단다. 그 밖은 종류로 가른다. Claude 도구 이름은 Claude
+    /// 변환기만 싣으므로 읽지 않는다. codex-acp의 제목과 입력은 codex가 지은 값이다 — 명령 줄의 입력은 `command` · `cwd`뿐이다.
+    pub(crate) fn of_codex(tool_call: &Value) -> Self {
+        match mcp_call(tool_call) {
+            Some((server, _)) if server == SERVER_NAME => Act::App,
+            Some(_) => Act::Other,
+            None => Self::of_kind(tool_call).unwrap_or(Act::Other),
+        }
+    }
+
+    /// ACP 도구 종류로 가른다 — 편집의 경로는 `locations[].path`와 입력의 `file_path` · `notebook_path` · `path`다. 상대 경로는 그대로
+    /// 둔다(엔진이 Session의 작업 폴더에서 푼다). 명령은 입력의 `command`(글 또는 낱말 목록)다. 종류로 가를 수 없으면 없다.
+    fn of_kind(tool_call: &Value) -> Option<Self> {
         let input = &tool_call["rawInput"];
         match tool_call["kind"].as_str() {
             Some("edit" | "delete" | "move") => {
@@ -128,15 +152,14 @@ impl Act {
                         paths.push(path.into());
                     }
                 }
-                Act::Edit(paths)
+                Some(Act::Edit(paths))
             }
-            Some("execute") => Act::Command(match &input["command"] {
+            Some("execute") => Some(Act::Command(match &input["command"] {
                 Value::Array(words) => words.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "),
                 command => command.as_str().unwrap_or_default().to_owned(),
-            }),
-            Some("switch_mode") => Act::Plan,
-            _ if tool_call["_meta"]["claudeCode"]["toolName"].as_str().and_then(app_tool).is_some() => Act::App,
-            _ => Act::Other,
+            })),
+            Some("switch_mode") => Some(Act::Plan),
+            _ => None,
         }
     }
 
@@ -161,13 +184,21 @@ pub(crate) enum Card {
     Question,
 }
 
+/// 그 채팅의 Runtime이 판정에서 읽는 것(스펙 「01c — Codex」 권한 판정) — 앱 경계와 쓰기 자리는 둘이 같고, 그 뒤가 갈린다.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Rules<'a> {
+    /// Claude 채팅 — 물어보는 정도와 「다시 묻지 않기」 허락(허락의 이름들). 작업공간의 채팅이 함께 쓰는 값이다.
+    Claude { level: AskLevel, grants: &'a [String] },
+    /// Codex 채팅 — 정도도 허락도 읽지 않는다. 앱 기능 도구만 허용하고 나머지는 카드로 묻는다([`by_codex`]).
+    Codex,
+}
+
 /// 판정이 받는 것(§9) — 엔진이 요청을 받은 그때 읽어 넘긴다.
 pub(crate) struct Case<'a> {
     /// 요청이 하는 일.
     pub act: &'a Act,
-    pub level: AskLevel,
-    /// 「다시 묻지 않기」 허락 — 허락의 이름들.
-    pub grants: &'a [String],
+    /// Runtime의 갈래 — Claude면 물어보는 정도와 허락이 든다.
+    pub rules: Rules<'a>,
     /// Work에 이은 Thread인가 — 허락의 까닭과 밖 편집의 글이 갈린다.
     pub in_work: bool,
     /// 고칠 수 있는 자리 — Work의 worktree들 · spec 폴더, 그리고 Thread 폴더의 `work/`. 절대 경로다.
@@ -203,11 +234,27 @@ pub(crate) fn judge(case: &Case) -> Verdict {
     if let (Act::Edit(_), Some(busy)) = (case.act, case.seat) {
         return Verdict::Refuse { message: busy.to_owned() };
     }
-    if granted(case.grants, case.act) {
+    let (level, grants) = match case.rules {
+        Rules::Claude { level, grants } => (level, grants),
+        Rules::Codex => return by_codex(case.act),
+    };
+    if granted(grants, case.act) {
         let reason = if case.in_work { "이 Work에서는 다시 묻지 않기" } else { "이 Thread에서는 다시 묻지 않기" };
         return Verdict::Allow { reason: reason.to_owned() };
     }
-    by_level(case)
+    by_level(case.act, level)
+}
+
+/// 앱 기능 도구가 묻지 않고 지나간 까닭 — 방패 줄 「자동으로 허용함」의 까닭으로 선다.
+const APP_TOOL_REASON: &str = "앱 기능 도구";
+
+/// Codex 채팅의 칸(스펙 「01c — Codex」 권한 판정) — 앱 기능 도구는 늘 지나가고(스토리 10), 그 밖에는 카드로 묻는다. Claude의 정도를
+/// 읽지 않으므로 까닭이 없고, 「다시 묻지 않기」로 줄 허락도 없다 — 다시 묻지 않게 하는 것은 Codex가 보낸 선택지(`allow_always`)다.
+fn by_codex(act: &Act) -> Verdict {
+    match act {
+        Act::App => Verdict::Allow { reason: APP_TOOL_REASON.to_owned() },
+        _ => Verdict::Ask { card: act.card(), policy: String::new(), grant: Vec::new() },
+    }
 }
 
 /// 앱 경계(스펙 「01a — 권한」의 둘째 표) — 앱에 온 요청에만 걸린다. 허락이 넘기지 못하므로 물음에 줄 허락이 없다.
@@ -247,12 +294,11 @@ fn app_boundary(case: &Case) -> Option<Verdict> {
 ///
 /// 표 밖의 것 — 계획 넘어가기는 늘 묻는다(넘어갈 때는 사람이 정한다, 스토리 20). 앱 기능 도구는 늘 지나간다(스토리 10). 질문은 판정이
 /// 받지 않는다 — 판정의 문이 판정 앞에서 곧바로 묻는다(`host::thread::gate`).
-fn by_level(case: &Case) -> Verdict {
-    let level = case.level;
-    let asked = Verdict::Ask { card: case.act.card(), policy: level.name().to_owned(), grant: remembered(case.act) };
+fn by_level(act: &Act, level: AskLevel) -> Verdict {
+    let asked = Verdict::Ask { card: act.card(), policy: level.name().to_owned(), grant: remembered(act) };
     let allowed = Verdict::Allow { reason: level.name().to_owned() };
-    match case.act {
-        Act::App => Verdict::Allow { reason: "앱 기능 도구".to_owned() },
+    match act {
+        Act::App => Verdict::Allow { reason: APP_TOOL_REASON.to_owned() },
         Act::Plan => asked,
         Act::Edit(_) if level == AskLevel::Edits => allowed,
         _ if level == AskLevel::Auto => allowed,
@@ -460,6 +506,8 @@ mod tests {
     /// 있고, 아무 허락도 없이 매번 묻는다.
     struct Given {
         act: Act,
+        /// Codex 채팅인가 — 그러면 정도와 허락(`level` · `grants`)을 판정에 넘기지 않는다.
+        codex: bool,
         level: AskLevel,
         grants: Vec<String>,
         in_work: bool,
@@ -474,6 +522,7 @@ mod tests {
         fn act(act: Act) -> Self {
             Self {
                 act,
+                codex: false,
                 level: AskLevel::Always,
                 grants: Vec::new(),
                 in_work: true,
@@ -486,10 +535,10 @@ mod tests {
         }
 
         fn judged(&self) -> Verdict {
+            let rules = if self.codex { Rules::Codex } else { Rules::Claude { level: self.level, grants: &self.grants } };
             judge(&Case {
                 act: &self.act,
-                level: self.level,
-                grants: &self.grants,
+                rules,
                 in_work: self.in_work,
                 roots: &self.roots,
                 kept: &self.kept,
@@ -589,6 +638,38 @@ mod tests {
     }
 
     #[test]
+    fn codex의_요청은_같은_도구_줄의_제목과_입력이_앱_서버를_가리킬_때만_앱_기능_도구다() {
+        use serde_json::json;
+        // 엔진이 요청의 빈 칸을 같은 `toolCallId`로 앞서 온 `tool_call`의 요지로 채운 꼴(`runtime.rs`의 `fill`) — codex-acp 2.2.2의 MCP 승인
+        // 요청은 id · 종류(`execute`) · 상태만 싣고, 그 도구 줄이 제목 `mcp.<서버>.<도구>`와 `rawInput{server, tool, arguments}`를 싣는다.
+        let filled = |title: &str, server: &str, tool: &str| {
+            json!({"toolCallId": "exec-1", "kind": "execute", "status": "pending", "title": title,
+                   "rawInput": {"server": server, "tool": tool, "arguments": {"title": "환불 API 버그"}}})
+        };
+        assert_eq!(Act::of_codex(&filled("mcp.atelier-thread.rename_thread", "atelier-thread", "rename_thread")), Act::App);
+        assert_eq!(Act::of_codex(&filled("mcp.github.delete_file", "github", "delete_file")), Act::Other, "다른 서버의 MCP 도구");
+        for (title, server, tool) in [
+            ("mcp.atelier-thread.rename_thread", "github", "rename_thread"),
+            ("mcp.atelier-thread.rename_thread", "atelier-thread", "get_work"),
+            ("mcp.atelier-thread-2.rename_thread", "atelier-thread-2", "rename_thread"),
+        ] {
+            assert_ne!(Act::of_codex(&filled(title, server, tool)), Act::App, "제목과 입력이 어긋나거나 이름만 비슷한 서버: {title} {server} {tool}");
+        }
+        // 앞선 도구 줄이 없어 채우지 못한 요청 — 무엇을 부르는지 모르므로 앱 기능 도구가 아니다.
+        assert_ne!(Act::of_codex(&json!({"toolCallId": "exec-1", "kind": "execute", "status": "pending"})), Act::App);
+        // Claude 도구 이름은 Claude 변환기만 싣는다 — Codex 요청에서는 읽지 않는다.
+        let named = json!({"kind": "other", "_meta": {"claudeCode": {"toolName": APP_TOOL}}});
+        assert_eq!(Act::of_codex(&named), Act::Other);
+        // Claude 요청은 거꾸로 표준 값을 읽지 않는다 — 제목과 입력은 모델이 쓴 글일 수 있다(01a-9).
+        assert_ne!(Act::of(&filled("mcp.atelier-thread.rename_thread", "atelier-thread", "rename_thread")), Act::App);
+        // 편집 · 명령은 종류로 가른다.
+        let edit_files = json!({"toolCallId": "exec-2", "title": "Edit files", "locations": [{"path": "/w/out/edit.txt"}], "kind": "edit"});
+        assert_eq!(Act::of_codex(&edit_files), edit("/w/out/edit.txt"));
+        let exec = json!({"kind": "execute", "title": "echo atelier", "rawInput": {"command": ["/bin/zsh", "-lc", "echo atelier"], "cwd": "/w"}});
+        assert_eq!(Act::of_codex(&exec), command("/bin/zsh -lc echo atelier"));
+    }
+
+    #[test]
     fn 앱_경계는_어떤_모드에서도_허락이_있어도_쓰기_자리보다_먼저_판정한다() {
         let judged = |act: Act, level: AskLevel| {
             let mut given = Given::act(act);
@@ -613,6 +694,37 @@ mod tests {
                 "{level:?} 기록 파일을 언급한 명령 — 작업 폴더 `work/`의 부모인 Thread 폴더의 것이다"
             );
         }
+    }
+
+    #[test]
+    fn codex는_정도와_허락을_읽지_않고_앱_경계와_쓰기_자리를_지난_요청_가운데_앱_기능_도구만_허용하고_나머지는_카드로_묻는다() {
+        // 작업공간의 Claude 채팅이 「묻지 않음」을 고르고 허락을 쌓아 두었어도 Codex의 판정은 그것을 읽지 않는다(스펙 「01c — Codex」 권한 판정).
+        let codex = |act: Act| {
+            let mut given = Given::act(act);
+            given.codex = true;
+            given.level = AskLevel::Auto;
+            given.grants = names(&["edit", "shell", "Bash(git push *)"]);
+            given
+        };
+        let judged = |act: Act| codex(act).judged();
+        // 까닭(정도의 이름)도 「다시 묻지 않기」로 줄 허락도 없는 물음이다 — 기억은 Codex의 선택지(`allow_always`)가 한다.
+        assert_eq!(judged(edit("/w/cart/trees/fe/src/cart.ts")), ask(Card::Edit, ""), "작업공간 안 편집");
+        assert_eq!(judged(command("git push origin main")), ask(Card::Command, ""), "명령");
+        assert_eq!(judged(Act::Other), ask(Card::Command, ""), "다른 MCP · 그 밖의 도구");
+        assert_eq!(judged(Act::App), allow("앱 기능 도구"), "앱 기능 도구는 카드 없이 지나간다");
+
+        // 앱 경계는 Codex에도 먼저 걸린다.
+        assert!(matches!(judged(edit("/etc/hosts")), Verdict::Refuse { message } if message.contains("밖의 파일")), "작업공간 밖 편집");
+        let kept = judged(edit("/t/20261023-101010/events.jsonl"));
+        assert!(matches!(kept, Verdict::Refuse { message } if message.starts_with("채팅 기록이라")), "기록 파일 편집");
+        assert_eq!(judged(Act::Edit(Vec::new())), ask(Card::Edit, "경로를 읽을 수 없는 편집이라 묻기"));
+        let mentioned = judged(command("rm ../../threads/20261023-101010/events.jsonl"));
+        assert_eq!(mentioned, ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"));
+
+        // 쓰기 자리를 다른 채팅이 쥔 편집은 거절한다.
+        let mut busy = codex(edit("/w/cart/trees/fe/src/cart.ts"));
+        busy.seat = Some(BUSY.to_owned());
+        assert_eq!(busy.judged(), refuse(BUSY));
     }
 
     #[test]

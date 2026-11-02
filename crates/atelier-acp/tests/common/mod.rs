@@ -351,6 +351,11 @@ impl Sandbox {
         json_lines(&self.acp_receipts().join(format!("{session_id}.prompts")))
     }
 
+    /// `replay`가 그 세션에서 녹음 속 MCP를 정말 부른 것들 — `{server, tools, tool, arguments, call}`, 부른 차례대로. 없으면 비었다.
+    pub fn acp_mcp(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join(format!("{session_id}.mcp")))
+    }
+
     // ── Thread(v1 티켓 04) ──────────────────────────────────────────────────────
 
     /// Thread 폴더 `threads/<id>`.

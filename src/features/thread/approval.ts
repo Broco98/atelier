@@ -3,6 +3,7 @@ import { type DecisionEntry, type PendingPermission, type PermissionOption } fro
 import { nonEmpty, type Json } from "./json";
 import { toolFields } from "./tool-fields";
 import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, type DiffPiece } from "./tool-view";
+import type { Runtime } from "./types";
 
 // 승인 카드의 화면 값(v1 티켓 24 · 02 구현 스펙 §10 · 캔버스 v35 Screen-Live 단계 4) — 답하지 않은 권한 요청(`PendingPermission`)을
 // 카드의 값(머리 한 줄 · 물음 · 어디서 한 줄 · 명령이나 diff), 선택지, 키 하나의 고르기로 옮기고, 사람이 고른 것(`DecisionEntry`)을
@@ -21,6 +22,8 @@ import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, type DiffPiece 
 //   Atelier가 한다: 허락 문구는 판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(앱 경계가 물었다 ·
 //   그 밖의 도구)에는 그 단추가 서지 않는다(허락은 앱 경계를 넘기지 못한다). 「아니요, 다르게」는 카드 안에 입력칸을 열고, 보내면
 //   거부와 그 말이 Agent에게 간다. **숫자 키는 없다**(S25 — 단추 줄의 눈 차례와 숫자 차례가 엇갈린다).
+// - **Codex는 보낸 선택지를 그대로 그린다**(01c-7 · 스펙 「01c — Codex」 권한 판정) — 「한 번만 허용」 · 「거부」 · `allow_always`는 Codex가 보낸 이름
+//   그대로다(`codexChoices`). 기억은 Codex가 하고, 거부에 남긴 말은 Codex에 닿지 않는다.
 // - **계획 넘어가기**(kind `switch_mode`, v1 티켓 26 · 스토리 88)는 번호 줄 그대로다 — 엔진의 두 선택지를 「계획대로 구현」 · 「계획 다시
 //   쓰기」로 부르고, 다시 쓰기가 고칠 점 입력칸을 연다 — 보내면 그 말이 고정 문구와 함께 Agent에게 간다(Claude 변환기). 허락 · 거부
 //   갈래를 고를 수 없는 요청이면 엔진의 선택지를 그대로 번호 줄로 보인다.
@@ -171,8 +174,11 @@ export interface CardChoices {
   choices: CardChoice[];
 }
 
-/** 선택지들. `scope`는 허락을 둘 자리(이은 Work, 없으면 이 Thread)다. */
-export function cardChoices(request: PendingPermission, scope: "work" | "thread"): CardChoices {
+/**
+ * 선택지들. `scope`는 허락을 둘 자리(이은 Work, 없으면 이 Thread), `runtime`은 그 채팅의 Runtime 값(`ThreadView.runtime`)이다 — Codex는 보낸 선택지를
+ * 그대로 그린다(`codexChoices`).
+ */
+export function cardChoices(request: PendingPermission, scope: "work" | "thread", runtime: string): CardChoices {
   const pick = (option: PermissionOption, label: string, more: Partial<CardChoice> = {}): CardChoice => ({
     option: option.optionId,
     label,
@@ -195,6 +201,7 @@ export function cardChoices(request: PendingPermission, scope: "work" | "thread"
       ),
     };
   }
+  if (runtime === CODEX) return codexChoices(request.options, pick);
   const allow = of("allow_once", "allow_always");
   const reject = of("reject_once", "reject_always");
   if (!allow || !reject) return { layout: "rows", choices: request.options.map((option) => pick(option, option.name)) };
@@ -205,6 +212,32 @@ export function cardChoices(request: PendingPermission, scope: "work" | "thread"
       pick(reject, "아니요, 다르게", { opensField: true, key: "escape" }),
       ...(request.grant.length > 0 ? [pick(allow, always, { remember: true })] : []),
       pick(allow, "이번만 허용", { key: "enter" }),
+    ],
+  };
+}
+
+/** Codex 채팅의 Runtime 값. */
+const CODEX: Runtime = "codex";
+
+/**
+ * Codex의 선택지(스펙 「01c — Codex」 권한 판정 · Cards 보드 「네트워크 · 샌드박스 밖」) — Codex가 보낸 것을 그대로 그린다. `allow_once`는 맨 오른쪽
+ * 「한 번만 허용」(↵), `reject_once`는 「거부」(esc), 그 밖(`allow_always` …)은 왼쪽 단추로 Codex가 보낸 `name` 그대로 보낸 차례다. Claude의 허락 문구는
+ * 없다 — Codex 채팅은 「다시 묻지 않기」를 읽지 않고, 다시 묻지 않게 하는 것은 Codex의 `allow_always`다. 거부는 입력칸을 열지 않는다 — codex-acp가
+ * 답의 `_meta.atelier`를 읽지 않아 남긴 말이 Codex에 닿지 않는다. 한 번만 허용이나 거부가 없으면 번호 줄로 이름 그대로다.
+ */
+function codexChoices(
+  options: readonly PermissionOption[],
+  pick: (option: PermissionOption, label: string, more?: Partial<CardChoice>) => CardChoice,
+): CardChoices {
+  const once = options.find((option) => option.kind === "allow_once");
+  const reject = options.find((option) => option.kind === "reject_once");
+  if (!once || !reject) return { layout: "rows", choices: options.map((option) => pick(option, option.name)) };
+  return {
+    layout: "buttons",
+    choices: [
+      ...options.filter((option) => option !== once && option !== reject).map((option) => pick(option, option.name)),
+      pick(reject, "거부", { key: "escape" }),
+      pick(once, "한 번만 허용", { key: "enter" }),
     ],
   };
 }

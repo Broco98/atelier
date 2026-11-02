@@ -82,6 +82,9 @@ pub(super) struct Writer {
     work: Mutex<Option<String>>,
     /// 사람에게 물은 요청 — 요청 id → 적어 둔 것. 턴이 끝나면 비운다(그 턴의 요청은 거둬졌다).
     asked: Mutex<HashMap<String, Noted>>,
+    /// 이 턴에 앱이 거절한 마지막 요청의 글(restart 01c-7) — 그 턴이 `cancelled`로 끝나면 끝 줄에 단다([`Writer::watching`]). 턴이
+    /// 끝나면 비운다.
+    refusal: Mutex<Option<String>>,
     /// 이 Session이 쓰는 문서를 적는 자리(v1 티켓 34) — 호스트에 하나다. 턴 끝을 보는 sink가 편집 도구의 갱신을 여기 적는다.
     docs: Docs,
 }
@@ -119,12 +122,22 @@ impl Writer {
             thread,
             work: Mutex::new(work),
             asked: Mutex::new(HashMap::new()),
+            refusal: Mutex::new(None),
             docs,
         })
     }
 
     fn lock_asked(&self) -> MutexGuard<'_, HashMap<String, Noted>> {
         self.asked.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_refusal(&self) -> MutexGuard<'_, Option<String>> {
+        self.refusal.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 앱이 요청 하나를 거부 선택지로 닫았다 — 판정의 거절(앱 경계 · 쓰기 자리)과, 사람이 허락한 사이에 다른 채팅이 쓰기 자리를 쥔 거절이다.
+    pub(super) fn refused(&self, reason: &str) {
+        *self.lock_refusal() = Some(reason.to_owned());
     }
 
     /// 이 Session이 열릴 때 이은 Work — 물어보는 정도를 함께 쓰는 Session들을 찾고(v1 티켓 23), 「다시 묻지 않기」 허락을 둘 자리다
@@ -186,23 +199,43 @@ impl Writer {
             Ok(true) => Grant::Took,
             Ok(false) => Grant::Unchanged,
             Err(owner) => match rejecting(&options) {
-                Some(reject) => Grant::Refused(Ruling { option_id: reject, reason: self.busy(&owner) }),
+                Some(reject) => {
+                    let reason = self.busy(&owner);
+                    self.refused(&reason);
+                    Grant::Refused(Ruling { option_id: reject, reason })
+                }
                 None => Grant::Unchanged,
             },
         }
     }
 
-    /// 이 Session이 쥔 쓰기 자리를 놓는다 — 쥐지 않았으면 아무 일도 하지 않는다. 물은 요청도 잊는다(그 턴의 요청은 거둬졌다).
+    /// 이 Session이 쥔 쓰기 자리를 놓는다 — 쥐지 않았으면 아무 일도 하지 않는다. 물은 요청 · 앱이 거절한 글도 잊는다(그 턴의 요청은
+    /// 거둬졌다).
     pub(super) fn release(&self) {
         self.seats.release(&self.thread);
         self.lock_asked().clear();
+        self.lock_refusal().take();
+    }
+
+    /// 앱이 거절해 멈춘 턴이면 그 끝에 까닭을 단다(스펙 「01c — Codex」 앱이 거절한 턴) — 우리가 멈추지 않았는데 `cancelled`로 끝난 턴에
+    /// 앱이 거절한 요청이 있었다. codex-acp는 앱의 거절도 거부 선택지로만 받아 턴을 끝내고 그 글을 읽지 않는다. Claude는 거절 글을 받아
+    /// 턴을 이어 가므로 이렇게 끝나지 않는다.
+    fn blame(&self, event: RuntimeEvent) -> RuntimeEvent {
+        let RuntimeEvent::TurnEnd(mut end) = event else { return event };
+        let cancelled = matches!(&end.result, Ok(answer) if answer["stopReason"] == "cancelled");
+        if cancelled && !end.cancelled_by_us {
+            end.app_refusal = self.lock_refusal().take();
+        }
+        RuntimeEvent::TurnEnd(end)
     }
 
     /// 턴이 끝나면 쓰기 자리를 놓는 sink — 받은 것을 `sink`에 넘기기 **전에** 놓는다. 그래서 턴 끝 줄이 기록에 설 때는 이미 놓였다.
-    /// 편집 도구의 갱신은 「문서 쓰는 중」으로 적고, 턴이 끝나면 그 Session의 것을 걷는다(v1 티켓 34).
+    /// 앱이 거절해 멈춘 턴이면 끝에 그 까닭을 단다([`Writer::blame`]). 편집 도구의 갱신은 「문서 쓰는 중」으로 적고, 턴이 끝나면 그
+    /// Session의 것을 걷는다(v1 티켓 34).
     pub(super) fn watching(self: &Arc<Self>, sink: Sink) -> Sink {
         let writer = Arc::clone(self);
         Arc::new(move |event| {
+            let event = writer.blame(event);
             if ends_turn(&event) {
                 writer.release();
                 writer.put_pens_down();

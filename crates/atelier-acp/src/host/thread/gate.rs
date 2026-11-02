@@ -2,8 +2,9 @@
 //! · 구현 스펙 §9).
 //!
 //! - **요청을 받은 그때 읽는다** — 물어보는 정도와 「다시 묻지 않기」 허락(S18: Work에 이은 Thread면 Work 폴더의 점 파일, 아니면
-//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 선 worktree · spec 폴더 · Thread 폴더의 `work/` —
-//!   Atelier만 쓰는 Thread 파일은 그 밖이다, 코드 리뷰 1차 A2 · restart 스펙 「01c — Codex」 작업 폴더), 등록된 Project,
+//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일 — Claude 채팅만 읽는다, restart 스펙 「01c — Codex」 권한 판정), 고칠 수 있는
+//!   자리(Work의 선 worktree · spec 폴더 · Thread 폴더의 `work/` — Atelier만 쓰는 Thread 파일은 그 밖이다, 코드 리뷰 1차 A2 · restart
+//!   스펙 「01c — Codex」 작업 폴더), 등록된 Project,
 //!   쓰기 자리 주인(§10). 칩이 바꾼 정도 · 카드가 준 허락 · 「Project 고치기 시작」이 세운 worktree(v1 티켓 32)가 다음 요청부터 든다.
 //!   자리 · Project는 편집일 때만 읽는다. Atelier만 쓰는 Thread 파일은 명령일 때도 읽는다 — 명령 글에 나오면 묻는다(코드 리뷰 2차 A3).
 //! - **아직 서지 않은 worktree의 자리는 고칠 수 있는 자리가 아니다**(S21 · v1 티켓 32) — 그 자리에 먼저 쓰면 git worktree가 아닌 폴더가
@@ -13,7 +14,8 @@
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
 //!   `..`는 링크를 푼 뒤에 접는다(코드 리뷰 2차 A2) — 링크 뒤의 `..`가 고칠 수 있는 자리 · Thread 기록 판정을 비켜 가지 않게.
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
-//!   **거절**은 거부 선택지로 닫고 글을 Runtime에게 준다. **물음**은 카드 종류 · 왜 묻는지 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
+//!   **거절**은 거부 선택지로 닫고 글을 Runtime에게 준다 — 그 글을 쓰기 자리 손에도 적어 두어, Codex가 읽지 않고 턴을 `cancelled`로
+//!   끝내면 그 끝 줄에 까닭으로 선다(restart 01c-7). **물음**은 카드 종류 · 왜 묻는지 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
 //!   달고, 선택지와 함께 적어 둔다(사람이 편집을 허락하면 쥐고, 다시 묻지 않기를 고르면 그 허락을 적는다 — v1 티켓 24). 고를 선택지가
 //!   없는 요청은 사람에게 묻는다.
 
@@ -23,7 +25,7 @@ use std::sync::Arc;
 use atelier_core::{PolicyPlace, Runtime};
 
 use super::seat::{allowing, options_of, rejecting, Writer};
-use crate::policy::{self, Act, AskLevel, Card, Case, Verdict};
+use crate::policy::{self, Act, AskLevel, Card, Case, Rules, Verdict};
 use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 
 /// Session 하나의 판정 문 — Session을 열 때마다 짓는다.
@@ -51,20 +53,24 @@ impl Gate {
             let question = Asking { card: Card::Question, policy: String::new(), grant: Vec::new() };
             return self.ask(asked, &Act::Other, options_of(&asked.request), question);
         }
-        let act = match Act::of(&asked.tool_call) {
+        let read = match self.runtime {
+            Runtime::ClaudeCode => Act::of(&asked.tool_call),
+            Runtime::Codex => Act::of_codex(&asked.tool_call),
+        };
+        let act = match read {
             Act::Edit(paths) => Act::Edit(paths.iter().map(|path| resolve(path, &self.cwd)).collect()),
             act => act,
         };
-        // Codex 채팅은 Claude의 판정 표를 지나지 않고 카드로 묻는다 — 표의 정도(「편집 자동」 · 「묻지 않음」)가 Codex의 요청을 저절로 허용하지
-        // 않게. 정도는 Claude 채팅만 읽으므로 까닭으로 달지 않고, 「다시 묻지 않기」로 줄 허락도 없다. Codex의 판정은 restart 01c-7이 짓는다.
-        if self.runtime == Runtime::Codex {
-            let card = Asking { card: act.card(), policy: String::new(), grant: Vec::new() };
-            return self.ask(asked, &act, options_of(&asked.request), card);
-        }
         let editing = matches!(act, Act::Edit(_));
         // 이은 Work는 쓰기 자리 손이 든다 — Work 만들기 카드로 턴 가운데 이어져도 다음 요청부터 그 Work다(v1 티켓 30).
         let work = self.writer.work();
-        let (level, grants) = asking(&self.data_root, &self.thread, work.as_deref());
+        // 물어보는 정도와 「다시 묻지 않기」 허락은 Claude 채팅만 읽는다 — 작업공간의 채팅이 함께 쓰는 값이라, Codex 채팅이 읽으면 Claude 채팅이
+        // 고른 「묻지 않음」이 Codex의 요청을 저절로 넘긴다(스펙 「01c — Codex」 권한 판정).
+        let claude = (self.runtime == Runtime::ClaudeCode).then(|| asking(&self.data_root, &self.thread, work.as_deref()));
+        let rules = match &claude {
+            Some((level, grants)) => Rules::Claude { level: *level, grants },
+            None => Rules::Codex,
+        };
         let roots = if editing { self.roots(work.as_deref()) } else { Vec::new() };
         let kept = if matches!(act, Act::Edit(_) | Act::Command(_)) { self.kept() } else { Vec::new() };
         let cwd = resolve(&self.cwd, &self.cwd);
@@ -78,8 +84,7 @@ impl Gate {
         let seat = if editing { self.writer.blocker() } else { None };
         let verdict = policy::judge(&Case {
             act: &act,
-            level,
-            grants: &grants,
+            rules,
             in_work: work.is_some(),
             roots: &roots,
             kept: &kept,
@@ -89,7 +94,8 @@ impl Gate {
         });
         let options = options_of(&asked.request);
         // 판정의 답으로 닫지 못해 묻는 것(고를 선택지가 없다) — 판정이 넘기지 않을 일이라 「다시 묻지 않기」를 주지 않는다.
-        let unsure = Asking { card: act.card(), policy: level.name().to_owned(), grant: Vec::new() };
+        let policy = claude.as_ref().map_or_else(String::new, |(level, _)| level.name().to_owned());
+        let unsure = Asking { card: act.card(), policy, grant: Vec::new() };
         match verdict {
             Verdict::Allow { reason } => {
                 let Some(option_id) = allowing(&options) else { return self.ask(asked, &act, options, unsure) };
@@ -105,10 +111,14 @@ impl Gate {
         }
     }
 
-    /// 거부 선택지로 닫는다 — 없으면 묻는다.
+    /// 거부 선택지로 닫는다 — 없으면 묻는다. 닫으면 그 글을 쓰기 자리 손에 적어 둔다 — Codex는 그 글을 읽지 않고 턴을 `cancelled`로
+    /// 끝내므로, 그 끝 줄에 까닭을 단다(restart 01c-7, [`super::seat::Writer::refused`]).
     fn refuse(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, message: String, unsure: Asking) -> Judgement {
         match rejecting(&options) {
-            Some(option_id) => Judgement::Decide(Ruling { option_id, reason: message }),
+            Some(option_id) => {
+                self.writer.refused(&message);
+                Judgement::Decide(Ruling { option_id, reason: message })
+            }
             None => self.ask(asked, act, options, unsure),
         }
     }

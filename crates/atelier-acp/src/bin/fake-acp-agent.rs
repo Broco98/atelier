@@ -38,6 +38,8 @@
 //!   쓴다. 호스트가 대화를 끄는 그 1초 사이에 닿은 명령을 잰다.
 //! - `FAKE_ACP_FIXTURE` — `replay`가 재생할 진짜 codex-acp의 녹음(`codex-acp-<판>/<이름>`). 고를 수 있는 것은 `src/fakes/codex_replay.rs`의
 //!   원문 표다(restart 티켓 01c-1).
+//! - `FAKE_ACP_MCP_CALL` — `replay`가 녹음의 MCP 도구 줄을 바꿔 낼 값 `{server?, tool?, arguments?}`(JSON). 준 칸만 바꾸고 제목
+//!   `mcp.<서버>.<도구>`를 그에 맞춘다 — 앱 서버가 아닌 서버의 도구, 다른 앱 기능 도구의 부르기를 녹음 하나로 잰다(restart 티켓 01c-7).
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -388,7 +390,8 @@ fn chunk_after_turn_end(fake: &mut Fake) {
 /// - **MCP.** 녹음의 도구 줄(`rawInput.server` · `tool` · `arguments`)의 서버가 받은 `mcpServers`에 있으면, 그 도구 줄이 끝나는 줄을
 ///   내기 전에 그 서버를 띄워 같은 인자로 정말 `tools/call`하고, 끝나는 줄의 `rawOutput.result`를 받은 답으로 바꿔 낸다. 그 도구를
 ///   거부로 답했으면 부르지 않는다. 부른 것은 `<세션 id>.mcp`에 `{server, tools, tool, arguments, call}` 한 줄로 남는다. 서버가 오류로
-///   답한 끝 줄의 꼴은 재지 않았다 — `status: "failed"`, `rawOutput: {result: null, error}`로 낸다.
+///   답한 끝 줄의 꼴은 재지 않았다 — `status: "failed"`, `rawOutput: {result: null, error}`로 낸다. `FAKE_ACP_MCP_CALL`이 있으면 녹음의
+///   도구 줄을 그 값으로 바꿔 낸 뒤 바꾼 서버 · 도구 · 인자로 부른다.
 /// - `FAKE_ACP_VERSION`이 있으면 `initialize` 답의 `agentInfo.version`을 그 값으로 바꾼다.
 fn replay(fake: &mut Fake) {
     let name = std::env::var("FAKE_ACP_FIXTURE").unwrap_or_default();
@@ -415,6 +418,8 @@ struct Play {
     servers: Value,
     /// 녹음의 MCP 도구 줄 — 도구 줄 id → (서버, 도구, 인자).
     calls: HashMap<String, (String, String, Value)>,
+    /// 녹음의 MCP 도구 줄을 바꿔 낼 값(`FAKE_ACP_MCP_CALL`) — 준 칸(`server` · `tool` · `arguments`)만 바꾼다.
+    swapped_call: Value,
     /// 사람이 거부로 답한 도구 줄 id.
     denied: HashSet<String>,
     /// 마지막으로 낸 권한 요청 — (도구 줄 id, 선택지).
@@ -431,6 +436,9 @@ impl Play {
             swaps: Vec::new(),
             servers: json!([]),
             calls: HashMap::new(),
+            swapped_call: std::env::var("FAKE_ACP_MCP_CALL")
+                .map(|text| serde_json::from_str(&text).expect("FAKE_ACP_MCP_CALL은 JSON이다"))
+                .unwrap_or(Value::Null),
             denied: HashSet::new(),
             permission: None,
             turn: None,
@@ -595,9 +603,20 @@ impl Play {
     fn call_tool(&mut self, fake: &mut Fake, update: &mut Value) {
         let call = update["toolCallId"].as_str().unwrap_or_default().to_owned();
         if update["sessionUpdate"] == "tool_call" {
-            if let (Some(server), Some(tool)) = (update["rawInput"]["server"].as_str(), update["rawInput"]["tool"].as_str()) {
-                self.calls.insert(call, (server.to_owned(), tool.to_owned(), update["rawInput"]["arguments"].clone()));
+            let (Some(server), Some(tool)) = (update["rawInput"]["server"].as_str(), update["rawInput"]["tool"].as_str()) else { return };
+            let (mut server, mut tool) = (server.to_owned(), tool.to_owned());
+            if self.swapped_call.is_object() {
+                let input = &mut update["rawInput"];
+                for key in ["server", "tool", "arguments"] {
+                    if let Some(value) = self.swapped_call.get(key) {
+                        input[key] = value.clone();
+                    }
+                }
+                server = input["server"].as_str().expect("바꾼 서버도 글이다").to_owned();
+                tool = input["tool"].as_str().expect("바꾼 도구도 글이다").to_owned();
+                update["title"] = json!(format!("mcp.{server}.{tool}"));
             }
+            self.calls.insert(call, (server, tool, update["rawInput"]["arguments"].clone()));
             return;
         }
         let ends = update["sessionUpdate"] == "tool_call_update" && matches!(update["status"].as_str(), Some("completed" | "failed"));

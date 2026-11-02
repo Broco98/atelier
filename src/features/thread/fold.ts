@@ -55,6 +55,8 @@ import { particle } from "@/lib/particle";
 //   가른다(`TurnEnd.cut`) — 그쪽은 다시 이을 일이다. 실패와 끝 까닭(거절 · 길이 제한 · 턴 한도)은 턴 끝의 안내 줄이 말한다(`endNotice`).
 // - **끊긴 턴은 사람이 다시 잇는다**(01b-6 · 스토리 55) — 턴을 끊은 Session이 다시 열리지 않은 동안이 `severed`이고 안내가 까닭과 「다시 잇기」를 말한다(`cutNotice`).
 //   쉬다 죽은 Session은 끊긴 턴이 없어 지금처럼 상태 줄이 말하고 다음 말에서 다시 띄운다.
+// - **앱이 거절해 멈춘 턴은 사람이 거부한 턴과 가른다**(01c-7) — Codex는 둘 다 `cancelled`로 끝내므로 엔진이 끝 줄에 단 까닭(`appRefusal`)으로 읽는다.
+//   구분선은 「앱이 막아서 멈췄어요」이고 안내가 까닭을 말한다(`endNotice`).
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -67,6 +69,11 @@ export interface TurnEnd {
   durationMs: number;
   /** 우리가 멈췄나 — `cancelled`가 사람의 멈춤인지 Runtime의 거부인지를 가른다. */
   cancelledByUs: boolean;
+  /**
+   * 앱이 거절해 멈춘 턴의 까닭(01c-7) — `turn-end` 줄의 `appRefusal`이다. Codex는 앱의 거절도 거부 선택지로만 받아 턴을 `cancelled`로 끝내므로,
+   * 사람이 거부한 턴과 이것으로 가른다. 없으면 null이다.
+   */
+  appRefusal: string | null;
   /** 실패한 까닭 — `turn-end` 줄의 `error`다. 글이 왔어도 실패다. 실패하지 않았으면 null이다. */
   error: string | null;
   /** 끝 줄 없이 Session이 사라진 까닭(죽음 · 닫힘 · 앱을 다시 켬). 실패한 턴과 가른다. 사라지지 않았으면 null이다. */
@@ -643,6 +650,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       stopReason: null,
       durationMs: Math.max(0, Date.parse(at) - Date.parse(open.startedAt)) || 0,
       cancelledByUs: false,
+      appRefusal: null,
       error: null,
       cut,
       cutReason,
@@ -788,6 +796,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           stopReason: text(payload.stopReason),
           durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
           cancelledByUs: payload.cancelledByUs === true,
+          appRefusal: text(payload.appRefusal),
           error,
           cut: null,
           cutReason: null,
@@ -1443,11 +1452,13 @@ export interface EndNotice {
 const sentence = (words: string): string => (/[.!?。]$/.test(words) ? words : `${words}.`);
 
 /**
- * 그 턴의 안내 줄(Cards 보드 「실패한 턴」 · 01b-5) — 실패는 까닭을 보이고 받은 글이 있으면 남아 있다고 말한다. 끝 까닭은 보드의 문장이다. 도는 턴 · 보통으로
- * 끝난 턴 · 멈춘 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 `cutNotice`다.
+ * 그 턴의 안내 줄(Cards 보드 「실패한 턴」 · 01b-5) — 실패는 까닭을 보이고 받은 글이 있으면 남아 있다고 말한다. 끝 까닭은 보드의 문장이다. 앱이 거절해 멈춘
+ * 턴(Cards 보드 「앱이 막음」 · 01c-7)은 엔진이 Runtime에게 준 거절 글을 까닭으로 보인다 — 앱이 거절하는 것은 편집뿐이다(앱 경계 · 쓰기 자리). 도는 턴 ·
+ * 보통으로 끝난 턴 · 멈춘 턴 · 사람이 거부한 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 `cutNotice`다.
  */
 export function endNotice(turn: Turn): EndNotice | null {
   if (turn.end === null) return null;
+  if (turn.end.appRefusal !== null) return { kind: "app-refused", title: "앱이 이 편집을 막았어요.", detail: sentence(turn.end.appRefusal) };
   if (turn.end.error !== null) {
     const received = turn.entries.some((entry) => entry.kind === "message");
     const detail = sentence(turn.end.error);
@@ -1493,12 +1504,16 @@ const plainEnd = (end: TurnEnd): boolean => end.stopReason === "end_turn" || END
 /**
  * 작업 구분선의 글(02 구현 스펙 §8 · Diff-Chat 「작업 구분선」). `end_turn`이면 「N초 동안 작업」(Codex 결 — v1은 「작업함」), 우리가 멈춘
  * `cancelled`면 「N초 후에 중단했습니다」, 실패면 「N초 후에 실패했습니다」, 그 밖은 까닭을 보인다. 안내 줄이 말하는 끝 까닭은 `end_turn`과 같다(Thread 보드 「길이 제한」).
+ * 우리가 멈추지 않은 `cancelled`는 앱이 거절했으면 「앱이 막아서 멈췄어요」(Tools 보드 「앱이 막아서 멈춤」 — 아래 안내가 까닭을 보인다), 아니면 사람의 거부다.
  */
 export function headline(end: TurnEnd): string {
   const took = spoken(end.durationMs);
   if (end.error !== null) return `${took} 후에 실패했습니다`;
   if (plainEnd(end)) return `${took} 동안 작업`;
-  if (end.stopReason === "cancelled") return end.cancelledByUs ? `${took} 후에 중단했습니다` : "거부해서 멈췄어요";
+  if (end.stopReason === "cancelled") {
+    if (end.cancelledByUs) return `${took} 후에 중단했습니다`;
+    return end.appRefusal !== null ? "앱이 막아서 멈췄어요" : "거부해서 멈췄어요";
+  }
   if (end.stopReason !== null) return `멈췄어요 — ${end.stopReason}`;
   return "멈췄어요";
 }

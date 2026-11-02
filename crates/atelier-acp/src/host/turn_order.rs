@@ -392,7 +392,8 @@ impl<H: TurnHands> Seat<'_, H> {
             }
         };
         let (started, before) = ours.map_or((None, None), |turn| (Some(turn.started), Some(turn.before)));
-        let line = finish(started, end.result, end.cancelled_by_us, false);
+        let mut line = finish(started, end.result, end.cancelled_by_us, false);
+        line.app_refusal = end.app_refusal;
         let closed = self.close(before, line).and_then(|now| {
             if lost_login {
                 self.hands.login_lost()?;
@@ -563,7 +564,8 @@ fn set_apart(block: &mut Value) {
     }
 }
 
-/// 턴 끝 줄 하나 — 끝 까닭은 답의 `stopReason`이고, 오류로 끝난 턴에는 끝 까닭이 없다. 걸린 시간은 시작을 못 봤으면 0이다.
+/// 턴 끝 줄 하나 — 끝 까닭은 답의 `stopReason`이고, 오류로 끝난 턴에는 끝 까닭이 없다. 걸린 시간은 시작을 못 봤으면 0이다. 앱이 거절한
+/// 까닭은 비워 두고 우리 턴의 끝이 단다([`Seat::turn_ended`]).
 fn finish(started: Option<Instant>, result: Result<Value, Value>, cancelled_by_us: bool, out_of_turn: bool) -> TurnEndLine {
     let (response, error) = match result {
         Ok(response) => (Some(response), None),
@@ -576,6 +578,7 @@ fn finish(started: Option<Instant>, result: Result<Value, Value>, cancelled_by_u
         out_of_turn,
         response,
         error,
+        app_refusal: None,
     }
 }
 
@@ -881,15 +884,15 @@ mod tests {
     }
 
     fn ended(stop_reason: &str) -> TurnEnd {
-        TurnEnd { result: Ok(json!({"stopReason": stop_reason})), cancelled_by_us: false }
+        TurnEnd { result: Ok(json!({"stopReason": stop_reason})), cancelled_by_us: false, app_refusal: None }
     }
 
     fn cancelled() -> TurnEnd {
-        TurnEnd { result: Ok(json!({"stopReason": "cancelled"})), cancelled_by_us: true }
+        TurnEnd { result: Ok(json!({"stopReason": "cancelled"})), cancelled_by_us: true, app_refusal: None }
     }
 
     fn login_lost() -> TurnEnd {
-        TurnEnd { result: Err(json!({"code": -32000, "message": "Authentication required"})), cancelled_by_us: false }
+        TurnEnd { result: Err(json!({"code": -32000, "message": "Authentication required"})), cancelled_by_us: false, app_refusal: None }
     }
 
     impl Rig {
