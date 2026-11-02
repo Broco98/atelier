@@ -37,6 +37,7 @@ import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import useResizableWidth from "./useResizableWidth";
+import { WorkToolsColumn, WorkToolsSlot } from "./WorkTools";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit, type QuitTally } from "./quit-request";
 import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
@@ -62,6 +63,8 @@ function AppShell() {
   const sidebarSize = useResizableWidth("sidebar-width", 290, 240, 400);
   // 머리 줄의 화면 자리 — 그려지면 받아 본문에 내린다(`ShellHeadSlot`). 설정 화면이 저장 버튼 자리를 내리는 그 길이다.
   const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
+  // 작업공간 도구 기둥의 spec 패널 몸 자리 — 그려지면 받아 본문에 내린다(`WorkToolsSlot`, restart 02a-14). 머리 줄 자리와 같은 길이다.
+  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
   const navigate = useNavigate();
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
@@ -428,15 +431,22 @@ function AppShell() {
             void navigate(appReturnTarget());
           }}
         />
-        {/* 카드 자리 — 겉이 없다. 화면의 카드들(본문 카드 · 작업 패널 카드 · 레일 카드 …)이 이 안에 8 틈으로 서고, 그 겉은 화면의
-            틀이 그린다(`Frame`의 `Card` · `PlainFrame`). 한때(02 구현 스펙 §3 S2) 여기 흰 판 한 장(둥글기 12 · 0.5 테두리 · 위 그림자)이
+        {/* 카드 자리 — 겉이 없다. 화면의 카드들(본문 카드 · 목록 칸 · 옆 칸 …)과 작업공간 도구(spec 패널 카드 · 레일 카드)가 이 안에 8
+            틈으로 서고, 그 겉은 화면의 틀(`Frame`의 `Card` · `PlainFrame`)과 기둥(`WorkToolsColumn`)이 그린다. 한때(02 구현 스펙 §3 S2) 여기 흰 판 한 장(둥글기 12 · 0.5 테두리 · 위 그림자)이
             서서 칸들이 그 안에 선으로 갈렸다 — restart 02a-2가 판을 걷었다. 넘침을 자르지 않는다 — 카드의 0.5 링(그림자)이 이 자리 끝에서
             잘리지 않게. 화면 뿌리가 드는 바닥(탭 줄 — `panel-layout`의 `TAB_ROW_COLUMN`)을 사이드바에게 알리는 것은 이 자리의
-            `min-w-min`이다. 본문의 글 폭은 바닥에 들지 않는다(`PlainFrame`의 본문 · 공용 틀의 본문 열이 격리한다). */}
+            `min-w-min`이다. 본문의 글 폭은 바닥에 들지 않는다(`PlainFrame`의 본문 · 공용 틀의 본문 열이 격리한다).
+
+            **화면 뒤(오른쪽 끝)에 작업공간 도구 기둥이 선다**(restart 02a-14 · `WorkToolsColumn` — spec 패널 상자와 레일 카드). 화면이 아니라
+            이 자리의 것이라 화면이 바뀌어도 그대로다 — 작업공간 화면이 서 있는 동안만 자라 서고, 떠나면 둘이 함께 500ms로 접힌다(시안 Motion
+            「레일이 들고 난다」). 패널의 몸은 작업공간 화면이 이 기둥의 자리로 그린다(`WorkToolsSlot`). */}
         <div data-slot="cards" className="flex min-h-0 min-w-min flex-1">
           <ShellHeadSlot.Provider value={headSlot}>
-            <Outlet />
+            <WorkToolsSlot.Provider value={toolsSlot}>
+              <Outlet />
+            </WorkToolsSlot.Provider>
           </ShellHeadSlot.Provider>
+          <WorkToolsColumn onSlot={setToolsSlot} />
         </div>
       </div>
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가

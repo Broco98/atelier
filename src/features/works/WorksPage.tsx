@@ -3,14 +3,13 @@ import { useMutationState } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { ChevronDown, MoreHorizontal, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import useResizableWidth from "@/components/shell/useResizableWidth";
 import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot } from "@/components/shell/Frame";
 import { togglesPanel } from "@/components/shell/PanelToggle";
 import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
-import { pickRail } from "@/components/shell/Rail";
 import { PathBar } from "@/components/shell/PathBar";
-import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { TAB_ROW_CARD } from "@/components/shell/panel-layout";
+import { WORK_PANEL_ID, WORK_PANEL_LABEL, WorkTools } from "@/components/shell/WorkTools";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
@@ -72,14 +71,14 @@ import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
 import type { BundleShown, ViewTab } from "@/routes/-work-search";
 import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 import { cwdRef, worktreeDirRef } from "./refs";
-import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
+import WorkPanel from "./WorkPanel";
 import { WorkContextMenu } from "./WorkContextMenu";
 import { StatusRadioItems, WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
 import { WORK_LIFECYCLE_KEY, useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
 import { openWorkFolder, useWorkMenuFlows } from "./work-menu-actions";
-import type { BundleTab, CodeTarget, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
+import type { BundleTab, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkView } from "./types";
 
 // 코드 보기는 따로 떼어 받는다(git-integration 결정 35) — 강조 라이브러리(`@pierre/diffs`)가 첫 로드에 붙지 않고 파일 탭이
@@ -259,23 +258,9 @@ function WorksPage({
   // 내려가도 입력칸이 마지막 그림의 값(고치던 work)으로 저장하고 끝을 알려 이 값을 비운다(`InlineRename`).
   const [renamingHead, setRenamingHead] = useState<string | null>(null);
   const setTitle = useSetWorkTitle();
-  // 레일에서 고른 칸(`spec` · `files`) — 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는 자리가 갈렸고, 둘을 함께 아는 것이
-  // 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다. info 칸은 걷었다(codex-ds 결정 25) — 칸이 둘이라 레일이 선다. 패널이 열렸나는
-  // 오른쪽 자리의 값이다(아래 `right` — restart 02a-9).
-  //
-  // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
-  // key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워졌기 때문이다. 그것은 코드가 아니라 **구조에서 나온
-  // 성질**이었고 되살리지 않는다. 이 화면은 작업을 옮겨도 같은 인스턴스라 이 값도 그대로 따라온다. 패널 접기는 언마운트가
-  // 아니라 폭 트랜지션이라 접었다 펴도, 본문 왕복(채팅 ↔ 셸)에도 유지된다.
-  const [panelView, setPanelView] = useState<PanelView>("spec");
-  // 작업 패널 카드의 폭. 칸(바깥 상자 · 틈 · 손잡이 · 접힘)은 공용 틀이 그리고 폭은 여기서 건넨다(ui-refresh 결정 27 — 목록 칸과
-  // 같은 나눔). 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 서고 왼쪽으로 끌면 넓어진다. 저장 키는 이 패널 전용이다: 목록
-  // 칸과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
-  //
-  // 기본 폭은 `WORK_PANEL_WIDTH`(340 — DS `size-panel`)다 — 그 수가 왜 그 값인지는 그쪽 머리말에 있다(spec 레이아웃 편집기의 트리
-  // 카드가 같은 수를 읽는다). 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`)는 spec 목록 패널과 한 벌이고 지금 것 그대로라(codex-ds
-  // 스펙 S4) 범위 안에 저장된 폭은 그대로 선다.
-  const panelSize = useResizableWidth("work-panel-width", WORK_PANEL_WIDTH, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, "right");
+  // spec 패널의 상자 · 폭 · 레일은 이 화면이 아니라 앱 셸의 작업공간 도구 기둥이 든다(restart 02a-14 · `WorkTools`) — 화면이 바뀌어도 그 자리에
+  // 남아 작업공간을 떠날 때 레일과 함께 접힌다. 이 화면은 서 있는 동안 기둥에 열림 · 여닫기 · 바쁨을 건네고 패널의 몸을 그 자리로 보낸다(아래
+  // `WorkTools`). 한때 레일의 칸(`spec` · `files`)을 이 화면이 골랐다 — files 칸이 걷혀 칸은 `spec` 하나다.
 
   // 끌고 있는 것. **드래그 중에만 값이 있다** — 그동안만 이 화면이 다시 그려진다.
   const drag = useStore(dragStore, (state) => state);
@@ -384,6 +369,10 @@ function WorksPage({
   });
   const { move: moveRight, panelOpen } = right;
 
+  // spec 패널을 여닫는다 — 머리 줄의 패널 토글 · 레일의 spec 칸 · ⌘Enter가 같은 일이다(SummarySheet 표 「레일의 spec을 누른다」 — 요약 카드가
+  // 서 있으면 걷고 패널을 연다). 칸이 하나라 레일도 여닫기 하나다 — 한때 칸이 둘이라 「켜진 칸을 다시 누르면 닫히고 다른 칸이면 바꾼다」였다.
+  const togglePanel = useCallback(() => moveRight({ kind: "toggle", place: "spec" }), [moveRight]);
+
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널(오른쪽 자리의 spec 패널)이 물려받는다 — 패널 토글과 같은 손짓이다.
   //
@@ -401,15 +390,6 @@ function WorksPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [moveRight]);
-
-  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). 켜진 칸을 다시 누르면 닫히고, 그 밖에는 그 칸으로 연다 — 규칙은 레일의 것이다
-  // (`pickRail`). 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다. 여는 것은 오른쪽 자리의 spec 패널이라 요약 카드가 서 있었으면 걷힌다
-  // (SummarySheet 표 「레일의 spec을 누른다」).
-  const pickPanelView = (next: PanelView) => {
-    const after = pickRail({ open: panelOpen, active: panelView }, next);
-    setPanelView(after.active);
-    moveRight(after.open ? { kind: "show", place: "spec" } : { kind: "hide", place: "spec" });
-  };
 
   /**
    * 탭 줄이 그리는 것 — **스토어를 구독하는 자리가 화면이다.** 줄 자체는 상태와 콜백만
@@ -641,33 +621,6 @@ function WorksPage({
   const currentDoc = currentFile !== null && specFiles.includes(currentFile) ? currentFile : null;
 
   /**
-   * files 트리에서 파일 행을 눌렀다 — 「파일 탭 열기」다(스토리 23 — replace: 트리 훑기는 뒤로가기 기록을 안 쌓는다, 스토리 59).
-   * 이미 열린 파일이면 그 탭으로 간다(스토리 24 — 묶음이 정체로 가른다).
-   *
-   * **다시 누르면 닫힌다**(git-integration 결정 30 — 사용자가 더한 UX). 누른 파일이 **지금 보이는 탭**(본문에 선 파일 탭)의 파일이면 그 탭을
-   * 닫는다. 닫는 길은 `×` · ⌘W와 같다 — 확인 없이 빼고, 이웃이 켜지고 주소가 따라오는 것은 묶음 → 주소가
-   * 한다. 열려 있어도 뒤에 있는 탭이면 그 탭으로 갈 뿐이다(스토리 34).
-   *
-   * **둘째 클릭은 닫기로 치지 않는다**(S15 — `clicks`는 연속 클릭의 몇 번째인가, 키보드로 누르면 0). 더블클릭의 첫 클릭이 연
-   * 탭을 둘째 클릭이 닫는 깜빡임이 없다 — 닫힌 파일을 두 번 누르면 열린 채 남는다. 탭 줄의 칸 자체를 다시 누르는 것은 여기를
-   * 지나지 않아 닫지 않는다(스토리 36).
-   */
-  const pressCode = useCallback(
-    (target: CodeTarget, clicks: number) => {
-      const shown = codeTarget !== null && code === codeRefOf(target);
-      // 보이는 파일 탭은 묶음의 지금 탭이다 — 주소를 따라 켜졌다(「주소 → 묶음」).
-      const visible = shown && clicks < 2 && tabOwner !== null ? activeTabOf(terminalStore.state, tabOwner) : null;
-      if (visible?.kind === "code") {
-        closeViewTab(visible.id);
-        return;
-      }
-      onOpenCode(target.project, target.path, false);
-    },
-    [codeTarget, code, tabOwner, onOpenCode],
-  );
-
-
-  /**
    * **묶음의 마지막 칸이 닫히면 새 채팅 탭이 선다**(restart 02a-8 — 한때 「묶음이 비면 spec」이었다, git-integration 결정 30). 세는 것은
    * 셸이 아니라 **묶음의 칸**이다 — 셸이든 파일 탭이든 채팅 탭이든 새 채팅 탭이든 마지막 칸이 빠지면 새 채팅 탭 하나를 세운다. 작업공간의
    * 묶음은 비지 않는다.
@@ -692,7 +645,7 @@ function WorksPage({
   // 코드 카드의 경로 줄(git-integration S17) — 문서의 경로 줄과 같은 줄이다: 캡슐 `<프로젝트> › 폴더 › 파일`과 끝의 경로 복사. 보기
   // 묶음은 없다 — 코드 카드의 몸은 늘 코드다. 복사하는 값은 그 파일의 워크트리 경로다 — 에이전트에게 그 파일을 그대로 넘긴다(스토리
   // 69). 워크트리 자리는 코어가 준 값에서 잇는다(`worktreeDirRef` — 뿌리를 여기서 짓지 않는다). 그 프로젝트의 워크트리가 이 work에
-  // 없으면 가리킬 파일이 없어 서지 않는다 — 프로젝트는 있는데 워크트리 폴더가 사라진 것(`exists`가 거짓 — files 칸이 「워크트리
+  // 없으면 가리킬 파일이 없어 서지 않는다 — 프로젝트는 있는데 워크트리 폴더가 사라진 것(`exists`가 거짓 — 워크트리 트리가 「워크트리
   // 없음」을 띄우는 그 상태)도 같다.
   //
   // 그 워크트리 자리는 코드 카드의 몸도 받는다 — 그림 파일은 같은 자리에 코어가 링크를 푼 실제 경로를 이어 건다(티켓 09). 뿌리를
@@ -1059,79 +1012,57 @@ function WorksPage({
 
   return (
     // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27 · restart 02a-2). 머리 줄에 ⚡ · 이름 | 상태 · ⋯ | 요약 카드 · 패널 토글이
-    // 서고, 카드 자리에 본문 카드(머리가 탭 줄)와 작업 패널 카드 · 레일 카드가 8 틈씩 두고 선다.
+    // 서고, 카드 자리에 본문 카드(머리가 탭 줄)가 선다. 그 뒤 spec 패널 카드 · 레일 카드는 앱 셸의 작업공간 도구 기둥이다(아래 `WorkTools`).
     //
     // 탭 줄의 바닥은 그 줄을 이는 카드가 들고(`TAB_ROW_CARD`), 모자라면 틀의 본문 열이 사이드바에게 자리를 요구한다
-    // (`TAB_ROW_COLUMN`) — 카드가 제 몸을 격리하므로 넓은 문서 · xterm이 그 바닥을 부풀리지 않고, 작업 패널은 카드 줄 안에서 제
-    // 최소 폭까지 본문 카드에 자리를 내준다(`Frame`의 패널 칸).
-    <Frame
-      head={head}
-      // 레일(ui-refresh 결정 9 · 10)의 칸 — `spec` · `files`. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도
-      // 머리 줄의 패널 토글(틀이 패널 칸에서 짓는다)도 없다. 칸이 둘이라 레일 열이 서고(codex-ds 결정 25 — `railStands`) 토글은 그
-      // 위 머리 줄에 선다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던 까닭(결정 11 — 그때 패널이 거기
-      // 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
-      rail={
-        panelWork
-          ? {
-              items: PANEL_VIEWS,
-              active: panelView,
-              onPick: pickPanelView,
-            }
-          : undefined
-      }
-      panel={
-        // **작업 패널을 그리는 유일한 자리다**(결정 49). 1판은 여기와 SpecViewer 둘에서
-        // 그려서 뷰 탭을 오갈 때마다 인스턴스가 갈렸다.
-        //
-        // **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 칸이 spec으로
-        // 리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
-        // 나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
-        // (a) 본문을 오가도(채팅 ↔ 셸) 고른 칸이 유지된다 — 칸이 둘 이상이면 다른 칸을
-        //     보던 채로 본문만 갈아탈 수 있다는 뜻이다(고른 칸은 이 화면이 든다 — 위 `panelView`).
-        // (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
-        //     전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
-        //     기본값(최신 판만 펼침)으로 뜬다.
-        //
-        // spec 트리에서 문서를 누르면 **넓힌 카드로 연다**(restart 02a-12 — `openDoc`). 한때 spec 탭으로 돌아가며 그 문서가 열렸다(restart
-        // 02a-13이 spec 탭을 걷었다). 트리의 「지금 이 문서」는 주소의 문서다(`currentDoc` — 기본 문서로 눕히지 않는다). 셸 · 파일
-        // 탭에서 누르면 켤 채팅 탭으로 옮기는 이동과 문서를 한 번에 적는다 — 탭과 파일을 따로 옮기면 두 navigate가 한 틱에 겹친다.
-        panelWork
-          ? {
-              open: panelOpen,
-              onToggle: () => moveRight({ kind: "toggle", place: "spec" }),
-              size: panelSize,
-              label: "작업공간 패널",
-              children: (
-                <WorkPanel
-                  work={panelWork}
-                  view={panelView}
-                  currentFile={currentDoc}
-                  onSelectFile={openDoc}
-                  currentCode={codeTarget}
-                  onPressCode={pressCode}
-                  onCopy={copyText}
-                  onOpenFolder={() => openWorkFolder(panelWork.slug, null)}
-                  open={panelOpen}
-                />
-              ),
-            }
-          : undefined
-      }
-      // 카드 줄 위를 덮는 것 둘(판 04 「덮는 것의 기준 상자」) — 토스트와 생애 겹판이다. 머리 줄은 카드 줄 밖이라 어느 것도 안 덮는다. 한때
-      // 탭 칸을 끄는 동안 본문 절반 둘(놓을 자리)이 카드 줄을 덮었다 — 분할이 걷혀(restart 02a-13) 놓을 곳은 탭 줄의 틈 하나다.
-      overlay={
-        <>
-          {/* 토스트의 자리 — **뷰 분기 밖**이라 본문이 셸이든 채팅이든 같은 자리에 뜬다(결정 47).
-              가운데는 본문 카드가 아니라 **카드 줄** 전체의 가운데인데, 이 표면이 패널에서
-              일어나는 일(트리 복사·⌘T 거절)까지 말하기 때문이다. Provider는 앱 루트에 하나고
-              자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면도 제 카드 줄 아래 가운데에 둔다. */}
-          <Toaster />
-          {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
-        </>
-      }
-    >
-      {body}
-    </Frame>
+    // (`TAB_ROW_COLUMN`) — 카드가 제 몸을 격리하므로 넓은 문서 · xterm이 그 바닥을 부풀리지 않고, spec 패널은 같은 카드 자리 줄에서 제
+    // 최소 폭까지 본문 카드에 자리를 내준다(`Frame`의 `PanelBox`).
+    <>
+      <Frame
+        head={head}
+        // 머리 줄 오른쪽 맨 끝의 패널 토글 — 앱 셸 기둥의 spec 패널을 가리킨다. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이
+        // 없어 토글도 레일도 없다. **두 본문 모두에** 선다(결정 11).
+        panelToggle={panelWork ? { name: WORK_PANEL_LABEL, open: panelOpen, onToggle: togglePanel, controls: WORK_PANEL_ID } : undefined}
+        // 카드 줄 위를 덮는 것 둘(판 04 「덮는 것의 기준 상자」) — 토스트와 생애 겹판이다. 머리 줄은 카드 줄 밖이라 어느 것도 안 덮는다. 한때
+        // 탭 칸을 끄는 동안 본문 절반 둘(놓을 자리)이 카드 줄을 덮었다 — 분할이 걷혀(restart 02a-13) 놓을 곳은 탭 줄의 틈 하나다.
+        overlay={
+          <>
+            {/* 토스트의 자리 — **뷰 분기 밖**이라 본문이 셸이든 채팅이든 같은 자리에 뜬다(결정 47).
+                가운데는 이 틀의 **카드 줄** 가운데다. 한때 그 줄에 spec 패널이 함께 서서 패널에서
+                일어나는 일(트리 복사)까지 말하는 토스트가 둘을 아우른 가운데에 떴다 — 패널이 앱 셸의
+                기둥으로 옮겨(restart 02a-14) 이제 본문 카드의 가운데다. Provider는 앱 루트에 하나고
+                자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면도 제 카드 줄 아래 가운데에 둔다. */}
+            <Toaster />
+            {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
+          </>
+        }
+      >
+        {body}
+      </Frame>
+      {/* **spec 패널과 레일 — 앱 셸의 작업공간 도구 기둥**(restart 02a-14 · 스토리 80 · 82 · 83 · `WorkTools`). 이 화면이 서 있는 동안 기둥을
+          세우고(열림 · 여닫기 · 바쁨) 패널의 몸을 그 자리로 보낸다. 내려가면(작업공간을 떠나면) 레일과 패널이 함께 500ms로 접힌다. 한때 둘은
+          이 틀의 칸이었다 — 화면과 함께 내려가 접힘 없이 사라졌다. 바쁨은 생애 겹판 몫이다 — 겹판은 카드 줄을 덮고, 그 밖 기둥의 몸은 바쁨이 막는다.
+
+          **작업 패널을 그리는 유일한 자리다**(결정 49). 1판은 여기와 SpecViewer 둘에서 그려서 뷰 탭을 오갈 때마다 인스턴스가 갈렸다.
+          **`key`를 주지 않는다** — 앞 판 결정 4(「작업을 옮기면 패널 칸이 spec으로 리셋된다」)는 `key={slug}`가 붙은 SpecViewer 아래에 있어서
+          공짜로 나오던 성질이었고, 결정 49가 그것을 뒤집는다. 트리 접힘은 패널을 여닫아도(restart 02a-14 · 스토리 83), 본문을 오가도(채팅 ↔
+          셸), 작업을 옮겨도 남는다 — 마지막은 **감수한다**: 접힘 기억의 키가 판 폴더의 전체 이름이라 이름이 완전히 같을 때만 물려받는다.
+
+          spec 트리에서 문서를 누르면 **넓힌 카드로 연다**(restart 02a-12 — `openDoc`). 트리의 「지금 이 문서」는 주소의 문서다(`currentDoc` —
+          기본 문서로 눕히지 않는다). 셸 · 파일 탭에서 누르면 켤 채팅 탭으로 옮기는 이동과 문서를 한 번에 적는다 — 탭과 파일을 따로 옮기면 두
+          navigate가 한 틱에 겹친다. */}
+      {panelWork && (
+        <WorkTools open={panelOpen} busy={running !== null} onToggle={togglePanel}>
+          <WorkPanel
+            work={panelWork}
+            currentFile={currentDoc}
+            onSelectFile={openDoc}
+            onCopy={copyText}
+            onOpenFolder={() => openWorkFolder(panelWork.slug, null)}
+          />
+        </WorkTools>
+      )}
+    </>
   );
 }
 
@@ -1141,8 +1072,9 @@ function WorksPage({
 // 하지 않으면 **버튼이 안 눌린 것처럼 보이고**, 사이드바에는 그 작업이 아직 그대로 있어
 // 더 그렇다. 덮는 것 자체도 목적이다 — 진행 중에 같은 작업을 다시 겨누지 못하게 한다.
 //
-// 공용 틀의 `overlay` 칸이라 카드 줄(본문 카드와 그 머리의 탭 줄 + 패널)을 덮고 머리 줄은 덮지 않는다(판 04 「덮는 것의 기준
-// 상자」) — 치워지는 작업에 셸을 새로 열 길도 함께 막힌다. 머리 줄의 ⋯는
+// 공용 틀의 `overlay` 칸이라 카드 줄(본문 카드와 그 머리의 탭 줄)을 덮고 머리 줄은 덮지 않는다(판 04 「덮는 것의 기준
+// 상자」) — 치워지는 작업에 셸을 새로 열 길도 함께 막힌다. spec 패널은 카드 줄 밖 앱 셸의 기둥이라(restart 02a-14) 덮지 않고, 같은 동안
+// 그 몸을 바쁨이 막는다(`WorkTools`의 `busy`). 머리 줄의 ⋯는
 // 진행 중 `disabled`이고 우클릭 메뉴도 안 열려(`useWorkMenuFlows`의 `busy`) 다시 같은 조작을 겨눌 수 없다. 사이드바는 덮지 않는다 —
 // 막이 서는 것은 본문이 보여 주는 work의 조작일 때뿐이다(위 `lifecycle`).
 function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {

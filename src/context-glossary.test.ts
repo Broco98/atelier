@@ -91,6 +91,7 @@ describe("말의 사전", () => {
         "경로 줄",
         "레일",
         "패널 토글",
+        "spec 패널",
         "터미널",
         "머리 줄",
         "카드",
@@ -408,17 +409,31 @@ describe("말의 사전", () => {
     expect(bodyOf("고친 곳")).toContain("요약 카드가 git으로 본다");
   });
 
-  // codex-ds 결정 25 · 스펙 §10. info 칸을 걷어 레일 칸이 `spec` 하나가 됐다가 `files`가 더해져(git-integration 결정 29) 둘이 됐고,
-  // 레일은 칸이 둘 이상일 때만 선다. three-axes가 그 사이에 `chat`을 더했다가 v1 티켓 08이 걷었다. 사전이 옛 칸(`info` · `chat`)을 들거나
-  // 「늘 선다」고 말하면 다음 사람이 칸 하나짜리 레일을 되세우거나 걷힌 칸을 되살린다. 토글이 레일 위가 아니라 머리 줄에 선다는 것도
-  // 레일 항목이 말한다 — 레일이 서는지에 따라 토글이 어디 있는지를 레일을 찾아온 사람이 안다.
-  it("「레일」이 칸이 둘 이상일 때만 서고 레일 칸이 `spec` · `files`라 말하며, `info` · `chat`을 어디서도 들지 않는다", () => {
-    expect(bodyOf("레일")).toContain("**칸이 둘 이상일 때만");
-    expect(bodyOf("레일")).toContain("레일 칸(`spec` · `files`)");
+  // restart 02a-14 · 스토리 80 · 81 · 82 · 시안 Shell 「레일」 · Motion 「레일이 들고 난다」. 레일은 작업공간의 도구다 — 칸은 `spec` 하나(둥근 문서
+  // 아이콘)이고 작업공간에서만 서며, 떠나면 spec 패널과 함께 접힌다. 한때 칸이 `spec` · `files` 둘이었고 「칸이 둘 이상일 때만 선다」였다(codex-ds
+  // 결정 25 · git-integration 결정 29). 사전이 옛 칸(`files` · `info` · `chat`)을 지금 칸으로 들거나 「칸이 둘 이상일 때만」을 말하면 다음 사람이
+  // 칸을 되살리거나 칸 하나짜리 레일을 걷는다. 토글이 레일 위가 아니라 머리 줄에 선다는 것도 레일 항목이 말한다.
+  it("「레일」이 작업공간에서만 서고 칸이 `spec` 하나라 말하며, 떠나면 spec 패널과 함께 접힌다고 말한다", () => {
+    for (const piece of ["작업공간에서만 선다", "칸은 `spec` 하나", "둥근 문서 아이콘", "spec 패널과 함께 접힌다", "넓힌 카드의 Project 트리"]) {
+      expect(bodyOf("레일"), piece).toContain(piece);
+    }
+    expect(bodyOf("레일")).not.toContain("칸이 둘 이상일 때만");
+    expect(bodyOf("레일")).not.toContain("레일 칸(`spec` · `files`)");
     expect(doc).not.toContain("`chat`");
-    expect(bodyOf("레일")).toContain("`files`가 더해져 다시 선다");
     expect(bodyOf("레일")).toContain("패널 토글은 레일 위가 아니라 머리 줄에 선다");
     expect(doc).not.toContain("`info`");
+  });
+
+  // restart 02a-14 · 스토리 82 · 83 · 시안 Shell 「규칙」. spec 패널은 레일과 함께 작업공간에서만 서고, 닫아도 몸이 그대로라 다시 열면 접어 둔
+  // 폴더가 그대로다. 사전이 이것을 「작업 패널」로 부르면 화면 글자(「작업공간 패널」) · 구현 스펙(「spec 패널」)과 세 이름이 된다 — 한 이름으로
+  // 모으고 옛 말을 거부한다. 거부어는 그 줄 하나에만 남는다.
+  it("「spec 패널」이 작업공간에서만 서고 접어 둔 폴더가 그대로라 말하며, 「작업 패널」을 거부한다", () => {
+    for (const piece of ["작업공간에서만", "레일과 함께 접힌다", "접어 둔 폴더가 그대로", "「작업공간 패널」", "오른쪽 자리"]) {
+      expect(bodyOf("spec 패널"), piece).toContain(piece);
+    }
+    expect(bodyOf("spec 패널")).toContain("_피할 말_: 작업 패널");
+    expect(refused).toContain("작업 패널");
+    expect(doc.split("\n").filter((line) => line.includes("작업 패널"))).toEqual(["_피할 말_: 작업 패널"]);
   });
 
   // codex-ds 스펙 §4 · §10 · 02 구현 스펙 §2 · §3 S2. 한때 창 맨 위 줄에 흰 카드(머리 카드)가 떠 화면의 이름 · 할 일을 들었고, 패널 토글은
@@ -460,7 +475,7 @@ describe("말의 사전", () => {
     // 열려 있으면 본문 카드 왼쪽 끝과 같은 자리였다 — 사전이 그 자리를 말하면 다음 사람이 이름을 사이드바 끝에 되세운다.
     expect(bodyOf("머리 줄")).toContain("셸 컨트롤 바로 뒤 세로선 하나 다음에서 시작한다");
     expect(bodyOf("머리 줄")).not.toContain("본문 카드 왼쪽 끝과 같은 자리");
-    for (const piece of ["8 틈", "둥근", "본문 카드", "작업 패널 카드", "레일 카드", "네 모서리가 모두 보인다"]) {
+    for (const piece of ["8 틈", "둥근", "본문 카드", "spec 패널 카드", "레일 카드", "네 모서리가 모두 보인다"]) {
       expect(bodyOf("카드"), piece).toContain(piece);
     }
     expect(bodyOf("카드")).toContain("사이드바만 카드가 아니라 창 바탕에 놓이고, 머리 줄 왼쪽 칸과 한 기둥으로 선다");
@@ -705,10 +720,11 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(notation).toContain("레일 칸");
   });
 
-  it("소문자 가족이 레일 칸의 `spec` · `files`를 든다", () => {
-    // three-axes 티켓 17이 탭 줄과 레일 칸에 `chat`을 세웠고 v1 티켓 08이 걷었다. restart 02a-13이 탭 줄의 `spec` 칸을 걷었다. 예시가 걷힌
-    // 칸을 들면 「한 가족」을 지금 화면에서 확인할 수 없다.
-    expect(uppercase).toContain("레일 칸 — `spec` · `files`");
+  it("소문자 라벨의 예가 레일 칸의 `spec`이다", () => {
+    // three-axes 티켓 17이 탭 줄과 레일 칸에 `chat`을 세웠고 v1 티켓 08이 걷었다. restart 02a-13이 탭 줄의 `spec` 칸을, 02a-14가 레일의 `files`
+    // 칸을 걷었다. 예시가 걷힌 칸을 지금 것으로 들면 「소문자 라벨」을 지금 화면에서 확인할 수 없다.
+    expect(uppercase).toContain("레일 칸 — `spec`.");
+    expect(uppercase).not.toContain("레일 칸 — `spec` · `files`");
     expect(uppercase).not.toContain("탭 줄과 레일 칸");
   });
 

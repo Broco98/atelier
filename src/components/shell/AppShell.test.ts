@@ -121,6 +121,21 @@ describe("틀 하나 — 머리 줄과 카드 자리", () => {
     expect(classes).toEqual(expect.arrayContaining(["pr-2", "pb-2"]));
     expect(classes.filter((one) => /^p[xl]-/.test(one))).toEqual([]);
   });
+
+  // restart 02a-14 · 스토리 80 · 82 · 시안 Shell 「어디에 서나」 · Motion 「레일이 들고 난다」 — 레일과 spec 패널은 작업공간에서만 서고 떠나면 함께
+  // 접힌다. 둘은 화면이 아니라 **카드 자리에 늘 서 있는 기둥**이라(`WorkToolsColumn`) 화면이 바뀌어도 그 자리에서 접힌다 — 화면 안에 두면 화면과
+  // 함께 내려가 접힘 없이 사라진다. 기둥은 화면 뒤(오른쪽 끝)에 하나 서고, 화면은 패널 몸의 자리를 셸에게서 받는다(`WorkToolsSlot`).
+  it("작업공간 도구 기둥이 카드 자리 안, 화면 뒤에 하나 서고, 화면이 패널 몸의 자리를 셸에게서 받는다", () => {
+    const [cards, outlet, column] = ['data-slot="cards"', "<Outlet />", "<WorkToolsColumn"].map(at);
+    expect([cards, outlet, column].every((one) => one > -1)).toBe(true);
+    expect(countOf(source, "<WorkToolsColumn")).toBe(1);
+    expect(column).toBeGreaterThan(outlet);
+    // 카드 자리를 닫기 전이다 — 기둥은 카드 자리의 한 줄에 화면과 나란히 선다.
+    const cardsEnd = source.indexOf("</div>", source.indexOf("</ShellHeadSlot.Provider>"));
+    expect(column).toBeLessThan(cardsEnd);
+    expect(source.slice(cards, outlet)).toContain("<WorkToolsSlot.Provider value={toolsSlot}>");
+    expect(source).toContain("<WorkToolsColumn onSlot={setToolsSlot} />");
+  });
 });
 
 // 02 구현 스펙 §4 · 스토리 10 · 11. **⌘N이 새 Thread를 연다 — 사이드바 위 칸 「새 채팅」과 같은 함수다.** 둘이 따로 `navigate`하면 한쪽의

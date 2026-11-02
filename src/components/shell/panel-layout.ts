@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
-// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `SIDEBAR_MOTION` · `foldingInnerClass`)과 접힐 때의
+// 패널(사이드바 · 오른쪽 패널 — spec 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `SIDEBAR_MOTION` · `foldingInnerClass` · `clippingInnerClass`)과 접힐 때의
 // 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
 // 카드 사이 틈을 스크립트가 읽는 길(`cardGapPx`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
 // 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
@@ -51,7 +51,7 @@ export const TAB_ROW_COLUMN = "min-w-min [&>:not(:has([data-tab-row]))]:contain-
  *
  * **값은 DS 패널 폭 `size-panel`(340)이다**(codex-ds 스펙 S4 — 「폭 기본은 DS, 범위는 지금 것」). 그래서 저장된 폭은 범위(아래 `PANEL_MIN_WIDTH` ·
  * `PANEL_MAX_WIDTH`) 안이면 그대로 선다 — 기본만 바뀐다. 수로 적는 것은 폭 훅이 수를 받아서다(`--size-panel`과 같은 값 — 그려진 기본 폭을 e2e
- * `frame.spec`이 그 토큰과 맞댄다). 레일의 L3 진열대(`e2e/rail-fixture.tsx`)도 이 수를 읽는다. 앞의 330은 사용자가 끌어서
+ * `frame.spec`이 그 토큰과 맞댄다). 작업공간 도구 기둥(`WorkTools`)의 폭 훅이 이 수를 읽는다. 앞의 330은 사용자가 끌어서
  * 고른 폭이었다(2026-08-17, 실측 326.38px을 반올림 — 296은 좁아 경로와 파일 이름의 꼬리가 잘렸고, 한 번 420으로 올렸다가 사람이
  * 다시 줄였다). DS 값이 그 자리를 이었다.
  */
@@ -121,13 +121,27 @@ export const SIDEBAR_MOTION = "duration-sidebar ease-spring motion-reduce:transi
  * 곧장 걷힌다. 걷힌 값이 `none`이 아니라 `100vw`인 것은 `none`과 백분율은 보간할 수 없는 쌍이라 지연 자체가
  * 안 걸려서다. 상한이 둘 모두 바깥 폭 그대로인 것은 어느 바깥 상자에도 오른쪽 경계선이 없어서다(ui-refresh 결정 4).
  *
- * **사이드바는 내용을 그대로 둔 채 잘리며 옅어진다**(Codex — 02 구현 스펙 §12 · Diff-Tokens). 폭과 같은 박자로 열 때 옅음에서 서고 닫을
- * 때 옅어진다 — 오른쪽 패널은 닫을 때 기본 전환(`duration-basic`)으로 먼저 걷힌다.
+ * **사이드바는 내용을 그대로 둔 채 잘리며 옅어진다**(Codex — 02 구현 스펙 §12 · Diff-Tokens · 시안 `.ra-side-in`). 폭과 같은 박자로 열 때
+ * 옅음에서 서고 닫을 때 옅어진다 — Archive의 spec 목록 패널은 닫을 때 기본 전환(`duration-basic`)으로 먼저 걷힌다. 작업공간의 spec 패널은
+ * 옅어지지 않는다(아래 `clippingInnerClass`).
  */
 export function foldingInnerClass(open: boolean, beat: "panel" | "sidebar" = "panel"): string {
   const { opening, closing, curve } = FOLD_BEATS[beat];
   const fold = open ? `max-w-full transition-[opacity,max-width] opacity-100 ${opening}` : `max-w-[100vw] opacity-0 transition-opacity ${closing}`;
   return `${fold} ${curve}`;
+}
+
+/**
+ * **잘리기만 하는 안쪽 열**의 클래스 — 작업공간의 spec 패널(restart 02a-14c · 시안 `.ra-panelwrap` — 상자의 폭만 500 spring으로 옮긴다). 안은
+ * 옅어지지 않고 상자에 그대로 잘린다 — 작업공간 안에서 여닫을 때도, 떠나고 들어올 때도 같다(떠나는 동안은 마지막 몸이 보인다 — `held-body`).
+ * 고정 폭 · 펴진 뒤에만 받는 상한은 위 `foldingInnerClass`와 같은 장치다: 펼 때 상한은 바깥 길이(`duration-panel-open`)만큼 늦게 한 번에
+ * 넘어가고, 접을 때는 곧장 걷힌다. 한때(02a-2 · 02a-14b) 이 패널도 펼 때 0.5s · 접을 때 0.15s 옅어졌다 — 사이드바와 장치를 나눠 쓴다는
+ * 것이 까닭이었다.
+ */
+export function clippingInnerClass(open: boolean): string {
+  return open
+    ? "max-w-full transition-[max-width] delay-[var(--duration-panel-open)] duration-0 motion-reduce:transition-none"
+    : "max-w-[100vw]";
 }
 
 /**
@@ -161,9 +175,9 @@ export const SIDEBAR_ID = "app-sidebar";
  * 앞에서 다시 시작한다(⌘B · ⌘Enter로 접은 자리). 토글은 상자의 id를 `aria-controls`로 가리키는 첫 요소다 — 오른쪽 패널은 레일 칸도
  * 같은 id를 가리키는데 패널 토글이 DOM에서 앞이다.
  *
- * **blur를 기다리지 않고 접힌 그 커밋에서 옮긴다**(레이아웃 이펙트). 포커스가 이벤트 없이 떨어지는 길이 있다 — 작업 패널은 접힐 때
- * 트리를 새로 세워(`WorkPanel`의 `treeGeneration`) 포커스를 쥔 행이 문서에서 빠지고, 빠진 요소는 blur를 쏘지 않는다. 접힌 커밋의
- * 레이아웃 이펙트에서는 그 행이 아직 문서에 있고 포커스도 쥐고 있다(`inert`가 포커스를 빼는 것은 다음 그리기 때다). 포커스가 상자
+ * **blur를 기다리지 않고 접힌 그 커밋에서 옮긴다**(레이아웃 이펙트). 포커스가 이벤트 없이 떨어지는 길이 있다 — 한때 작업 패널은 접힐
+ * 때 트리를 새로 세워(`treeGeneration` — restart 02a-14가 걷었다) 포커스를 쥔 행이 문서에서 빠졌고, 빠진 요소는 blur를 쏘지 않는다. 접힌
+ * 커밋의 레이아웃 이펙트에서는 포커스를 쥔 행이 아직 포커스를 쥐고 있다(`inert`가 포커스를 빼는 것은 다음 그리기 때다). 포커스가 상자
  * 밖에 있었으면(토글을 눌러 접었거나 셸에서 ⌘Enter) 그대로 둔다. L3 `keyboard.spec`이 두 패널에서 잰다.
  */
 export function useFoldedFocus<T extends HTMLElement>(open: boolean): RefObject<T | null> {

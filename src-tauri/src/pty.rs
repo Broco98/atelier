@@ -2835,8 +2835,10 @@ mod tests {
             let inner = Scene::ALL.into_iter().find(|s| inner.to_str() == Some(s.name()));
             return pool_side(inner.expect("모르는 장면이다"));
         }
-        // **한 번에 한 장면씩.** 안쪽의 세대는 셸을 처음 띄운 ms라, 나란히 뜬 안쪽 둘이 같은 세대를 받는다(실측 —
-        // 넷을 나란히 돌리니 셋이 서로를 남의 것으로 봤다). 그러면 종료 장면이 형제 장면의 자식까지 끝낸다.
+        // **한 번에 한 장면씩.** 세대가 ms뿐이던 때는 나란히 뜬 안쪽 둘이 같은 세대를 받아(실측 — 넷을 나란히 돌리니 셋이
+        // 서로를 남의 것으로 봤다) 종료 장면이 형제 장면의 자식까지 끝냈다. 이제 세대가 pid를 물어 안 겹친다(`shell_key::generation`)
+        // — 다른 바이너리 · 다른 worktree의 장면과도 나란히 돈다. 이 바이너리 안에서 하나씩 도는 것은 부하를 줄이려는 것이다: 장면마다
+        // 진짜 zsh와 자식을 띄우고 유예(2초) · 버팀(500ms)을 시각으로 잰다.
         static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
         let home = std::env::temp_dir()
@@ -2972,8 +2974,9 @@ mod tests {
 
         // **거두기 전에 이 세대의 키가 이 검사의 것뿐인지 본다.** 닫기 · 새로고침은 이 기계의 표 전체를 판정해 그
         // 셸 키를 문 것을, 앱 종료는 이 세대의 키를 문 것 전부를 끝낸다 — 구현 세션도 사용자의 셸도 같은 표에
-        // 있다. 세대는 이 프로세스가 셸을 처음 띄운 시각(ms)이라 실제 세대와 겹칠 일이 없지만, 겹치면 남을
-        // 끝낸다. 그때는 판정 없이 이 셸 그룹만 거둔 뒤 멈춘다.
+        // 있다. 세대는 이 프로세스가 셸을 처음 띄운 시각(ms)과 이 프로세스의 pid라 떠 있는 다른 실행과 겹칠 일이 없지만
+        // (`shell_key::generation` — ms뿐이던 때는 다른 worktree의 검사와 같은 때 돌면 겹쳤다), 겹치면 남을 끝낸다. 그때는 판정 없이
+        // 이 셸 그룹만 거둔 뒤 멈춘다.
         let generation = format!("{}-", crate::processes::shell_key::generation());
         let table = take(EnvScope::All);
         let parents: HashMap<u32, u32> = table.procs.iter().map(|p| (p.id.pid, p.ppid)).collect();

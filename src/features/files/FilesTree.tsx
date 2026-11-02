@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { FolderGit2, RotateCw } from "lucide-react";
-import { Hint } from "@/components/ui/tooltip";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { FolderGit2 } from "lucide-react";
 import { useProjects } from "@/features/projects/hooks";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
 import {
@@ -13,7 +12,7 @@ import {
 } from "@/features/works/SpecTree";
 import type { WorktreeView, WorkView } from "@/features/works/types";
 import { foldsOf, rememberFolds, type Folds } from "./folds";
-import { refreshWorktrees, worktreeFolderQuery, worktreeTreeQuery } from "./hooks";
+import { worktreeFolderQuery, worktreeTreeQuery } from "./hooks";
 import type { WorktreeEntry, WorktreeTree } from "./types";
 
 // 걸린 행이 덧붙여 말하는 것 — 흐린 글자의 뜻을 화면 읽기로도 듣는다(스토리 88).
@@ -24,13 +23,13 @@ const SUBMODULE_NOTE = "하위 모듈";
 const NOTE = "px-2 py-1.5 text-chat-meta text-fg-tertiary";
 
 /**
- * files 몸 — 이 work의 워크트리 트리(git-integration 판 01, 결정 37). 프로젝트마다 구획이 하나다.
+ * 워크트리 트리 — 이 work의 워크트리(git-integration 판 01, 결정 37). 프로젝트마다 구획이 하나다. 넓힌 카드의 Project 보기가 그
+ * Project 하나를 건네 쓴다(`ExpandedViewer`). 한때 작업 패널 files 칸의 몸이었다 — restart 02a-14가 그 칸을 걷었다.
  *
- * **돌려주는 스크롤 영역이 패널 몸(WorkPanel 뿌리)의 직계 flex 자식이다** — spec 몸(`SpecTab`)과 같은 계약이다. 머리는 카드에
- * 고정되고 트리만 세로로 스크롤한다. 표식(`data-files-tree`)은 이 칸 범위의 토큰(흐린 글자 — `index.css`)이 서는 자리다.
+ * **돌려주는 스크롤 영역이 그 몸의 직계 flex 자식이다** — spec 패널의 몸(`SpecTab`)과 같은 계약이다. 머리는 카드에
+ * 고정되고 트리만 세로로 스크롤한다. 표식(`data-files-tree`)은 이 트리 범위의 토큰(흐린 글자 — `index.css`)이 서는 자리다.
  *
- * `visible`은 「files 칸이 열려 보이는가」다(S9) — 쿼리를 그것으로 켠다. 몸은 숨어도 마운트된 채라 그 값을 몸이 스스로 알 길이
- * 없어 화면이 내려 준다.
+ * `visible`은 「트리가 보이는가」다(S9) — 쿼리를 그것으로 켠다. 부르는 쪽이 내려 준다.
  *
  * `current`는 **본문에 선 파일 탭**이다 — 트리가 그 파일 행을 강조하고, 바뀌면 그 행을 보이는 자리로 데려온다(스토리 14 · 15).
  * 파일 행을 누르면 `onPress`가 그 파일과 클릭 횟수를 받는다 — 열지 닫을지(결정 30 — 다시 누르면 닫힘)는 화면이 정한다: 지금
@@ -295,27 +294,6 @@ function scrollToRow(row: HTMLElement): void {
   const at = row.getBoundingClientRect();
   if (at.top < view.top) box.scrollTop -= view.top - at.top;
   else if (at.bottom > view.bottom) box.scrollTop += at.bottom - view.bottom;
-}
-
-/**
- * 새로고침 버튼(스토리 16) — files 칸 머리에 선다. 무언가 낡아 보이면 손으로 그 work의 워크트리를 다시 읽는다. 머리 컨트롤의
- * 규격(DS `.at-ib` 28 · `fg-secondary`)은 `spec` 칸 머리의 spec 폴더 열기와 같다(`WorkPanel`). Tab 정류장임을 `tabIndex`로
- * 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
- */
-export function FilesRefresh({ slug }: { slug: string }) {
-  const queryClient = useQueryClient();
-  return (
-    <Hint
-      text="새로고침"
-      announce="name"
-      type="button"
-      tabIndex={0}
-      onClick={() => void refreshWorktrees(queryClient, slug)}
-      className="icon-button-quiet text-fg-secondary focus-ring"
-    >
-      <RotateCw className="size-4" />
-    </Hint>
-  );
 }
 
 export default FilesTree;
