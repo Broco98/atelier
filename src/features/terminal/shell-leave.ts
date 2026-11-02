@@ -7,7 +7,7 @@ import type { ShellOwner, ShellsState } from "./shell-registry";
  *
  * **떠남 = 그 셸의 owner 화면(work · Terminal)에서 다른 owner의 화면이나 owner 없는 화면으로
  * 옮기는 것이다.** 재는 자리는 앱 루트 한 곳 — 라우터의 현재 owner가 바뀌는 순간이다(`ShellReclaim`).
- * 터미널 패인이 내려가는 것에 걸지 않는다: 같은 work 안에서 spec 탭으로 바꿀 때도 패인이 내려가는데,
+ * 터미널 패인이 내려가는 것에 걸지 않는다: 같은 work 안에서 채팅 탭으로 바꿀 때도 패인이 내려가는데,
  * 그것은 떠남이 아니다. 탭은 주소의 search에 있어 owner가 그대로다.
  *
  * 이 모듈은 시간을 모른다. 「입력이 있었나」는 칸에 앉은 값(`Shell.firstInput`)만 본다.
@@ -32,7 +32,7 @@ export function screenOwner(pathname: string): ShellOwner | null {
 /**
  * `from`을 떠나 `to`로 갈 때 닫을 셸의 id. **자동으로 떴고 사람 입력이 없는 `from`의 셸**이다.
  *
- * - 같은 owner에 머물면 떠남이 아니다 — spec 탭 전환이 그렇다.
+ * - 같은 owner에 머물면 떠남이 아니다 — 채팅 탭 전환이 그렇다.
  * - owner 없는 화면에서 오면 떠난 셸이 없다.
  * - `+` · ⌘T로 연 셸과 한 번이라도 입력을 받은 셸은 안 나온다. 한 번이라도 쓴 셸은 건드리지 않는다.
  * - **도는 셸만이다.** 못 뜬 칸 · 이유가 있어 끝난 칸은 이유를 적고 남는 칸이라(in-app-terminal 결정 22 · 23) 닫을

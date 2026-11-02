@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Folder } from "lucide-react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Card, Frame, type PanelSlot } from "./Frame";
 
 // **앱 틀이 8 틈으로 뜬 둥근 카드들로 나뉜다**(restart 스펙 「02a」 · 스토리 79 · 티켓 02a-2 · 시안 Shell · Main). 흰 판 한 장과 칸 사이
-// 선이 걷히고, 사이드바 밖의 영역(본문 · 작업 패널 · 옆 칸 · 분할의 열 · 레일)이 저마다 카드로 선다. seam은 그린 꼴(markup)이다 —
+// 선이 걷히고, 사이드바 밖의 영역(본문 · 작업 패널 · 옆 칸 · 레일)이 저마다 카드로 선다. seam은 그린 꼴(markup)이다 —
 // 카드의 겉(면 · 둥글기 · 0.5 링)과 카드 사이 틈을 누가 드는지를 잰다. 칠해진 상자의 자리 · 수는 시안 비교와 L3가 잰다.
 
 /** 공용 틀 화면 하나 — 본문 카드만, 또는 그 곁에 오른쪽 패널. */
@@ -60,41 +60,6 @@ describe("옆 칸 카드", () => {
     expect(box).toContain("flex-basis:calc(340px + var(--space-2))");
     expect(classOf(box)).toContain("pl-2");
     expect(classOf(box).filter((one) => one.startsWith("after:"))).toEqual([]);
-  });
-});
-
-// 분할(`spec ▏ 묶음` — 02a-13이 걷는다)의 두 열도 저마다 카드이고 8 틈으로 갈린다. 틈은 왼쪽 열 상자의 오른쪽 안이고, 폭 손잡이가 그
-// 틈을 덮는다(`seat="gap"`). 비율은 틈을 뺀 폭에 걸어 반반이면 두 카드가 같은 폭이다.
-describe("분할의 열 카드", () => {
-  beforeEach(() => {
-    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("두 열이 저마다 카드이고, 그 사이는 손잡이가 덮는 8 틈이다", () => {
-    const markup = renderToStaticMarkup(
-      <Frame
-        head={{ icon: Folder, name: "atelier" }}
-        split={{
-          ratioKey: "probe-split",
-          columns: [
-            { label: "문서", children: <p>문서</p> },
-            { label: "셸", tone: "terminal", children: <p>셸</p> },
-          ],
-        }}
-      />,
-    );
-    for (const label of ["문서", "셸"]) {
-      const card = classOf(tagOf(markup, new RegExp(`<section[^>]*aria-label="${label}"[^>]*>`)));
-      expect(card, label).toEqual(expect.arrayContaining(["rounded-card", "shadow-hairline"]));
-    }
-    const left = tagOf(markup, /<div[^>]*>(?=<section[^>]*aria-label="문서")/);
-    expect(classOf(left)).toContain("pr-2");
-    expect(left).toContain("calc((100% - var(--space-2)) * 0.5 + var(--space-2))");
-    expect(markup).toContain('data-seat="gap"');
-    expect(markup).not.toContain("after:bg-border-heavy");
   });
 });
 

@@ -77,7 +77,8 @@ describe("오른쪽 자리의 손짓", () => {
     expect(nextSeat(spec, { kind: "toggle", place: "spec" })).toEqual({ place: null, opened: null });
   });
 
-  it("분할을 켤 때 패널을 접는 것은 spec 패널만 걷는다 — 서 있는 요약 카드는 그대로다", () => {
+  // 한때 분할을 켤 때 이 손짓으로 패널을 접었다(restart 02a-13이 분할을 걷었다) — 레일의 켜진 칸을 다시 누를 때도 같은 손짓이다.
+  it("spec 패널을 걷는 손짓은 spec 패널만 걷는다 — 서 있는 요약 카드는 그대로다", () => {
     expect(nextSeat(firstSeat("spec"), { kind: "hide", place: "spec" })).toEqual({ place: null, opened: null });
     const summary = nextSeat(firstSeat("spec"), { kind: "show", place: "summary" });
     expect(nextSeat(summary, { kind: "hide", place: "spec" })).toBe(summary);

@@ -15,7 +15,7 @@ import { blankCssComments, blankedSources, type Place, placesOf, type Source, wh
 //   - **변수를 읽는 간격**(`p-(--card-pad)` · 타입을 단 `p-(length:--x)`). 값이 변수 뒤로 숨어 임의 값과 같은 일을 한다. 읽어도 되는
 //     변수는 아래 `VARIABLES`의 짧은 목록이다(창 컨트롤 인셋 · DS 크기 토큰) — 이름과 까닭을 한 줄씩 적는다.
 //   - **걷은 여백 변수**(`--gap` · `--card-pad` · `--term-inset` · `--row-gap` · `--glyph-gap` — ui-refresh 때의 이름이고 DS 2판에
-//     없다). 이름을 걷었으니 쓰면 CSS가 안 나와 그 여백이 조용히 0이 된다. 분할의 폭 셈처럼 CSS 변수가 있어야 하는 자리는 DS 이름
+//     없다). 이름을 걷었으니 쓰면 CSS가 안 나와 그 여백이 조용히 0이 된다. 작업 패널 칸의 폭 셈처럼 CSS 변수가 있어야 하는 자리는 DS 이름
 //     `--space-*`(`index.css`)를 읽는다.
 //   - **테마의 간격 이름**(`@theme`의 `--spacing-card` · `--space-2` …). 테마에 오른 이름은 유틸리티(`p-card` · `space-x-2`)가 되어
 //     눈금 밖의 값을 이름 뒤로 들인다. `--space-*`는 `:root`에 선다.
@@ -250,10 +250,6 @@ describe("임의 간격", () => {
       name: "--titlebar-control-gap",
       why: "셸 컨트롤 사이 — Codex 머리 줄 6(02 구현 스펙 §3). 컨트롤 묶음의 폭 셈(`--titlebar-controls-width`)이 같은 값을 읽는다",
     },
-    {
-      name: "--size-tab-row",
-      why: "분할 끌기 겹판의 위끝 — 탭 줄(카드 머리) 아래에서 시작한다. 간격이 아니라 그 줄의 높이 토큰(restart 02a-5 — 시안 탭 줄 40)을 읽는다",
-    },
   ];
 
   it("변수를 읽는 꼴이 변형 · 음수까지 잡고, 크기는 잡지 않는다", () => {
@@ -486,7 +482,7 @@ describe("눈금의 사분 단", () => {
 });
 
 describe("간격 토큰", () => {
-  // **`--space-*`는 Tailwind 눈금과 한 값이다.** 유틸리티는 눈금(`p-2`)으로 적고, CSS 변수가 있어야 하는 자리(분할의 폭 셈 · 손잡이의
+  // **`--space-*`는 Tailwind 눈금과 한 값이다.** 유틸리티는 눈금(`p-2`)으로 적고, CSS 변수가 있어야 하는 자리(작업 패널 칸의 폭 셈 · 손잡이의
   // 자리 · 스크립트 · L3)만 이 이름을 읽는다 — 두 벌이 갈리면 같은 「틈」이 그 두 자리에서 다른 길이가 된다. 눈금은 Tailwind에서
   // 읽는다(`--spacing: 0.25rem` — 앱은 뿌리 글자 크기를 바꾸지 않아 4px다).
   const tailwindTheme = readFileSync(join(root, "node_modules/tailwindcss/theme.css"), "utf8");

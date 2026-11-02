@@ -563,7 +563,7 @@ describe("앱으로 돌아가기", () => {
   it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
     const { router, history } = setup(["/works/work-b"]);
     await router.load();
-    rememberView("work-b", { tab: "terminal", split: null, file: null, code: null, thread: null });
+    rememberView("work-b", { tab: "terminal", file: null, code: null, thread: null });
 
     await router.navigate({ to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });
@@ -756,8 +756,9 @@ describe("문서 전환의 히스토리 의미론", () => {
 
 });
 
-// 화면 탭(`spec｜terminal`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
-// 새로고침이 늘 spec으로 떨어지고, 그 어긋남은 화면에서 "왜 spec이 열리지"로만 보인다.
+// 화면 탭(`chat｜terminal｜code`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
+// 새로고침이 늘 처음 여는 규칙으로 떨어지고, 그 어긋남은 화면에서 "왜 이 탭이 열리지"로만 보인다. 한때 `spec`도 화면 탭이었다
+// (restart 02a-13이 걷었다).
 //
 // **여기서 보는 것은 갱신 방식이다.** 이 라우터는 `search`에 객체를 주면 기존 search를
 // 통째로 버려서, 가장 자연스럽게 쓰는 형태가 보던 문서를 조용히 떨어뜨린다(결정 15).
@@ -783,8 +784,9 @@ describe("화면 탭의 주소", () => {
   });
 
   // restart 02a-12 — 한때 「보던 문서가 탭을 왕복해도 그대로 남는다」였다. `file`은 이제 넓힌 카드의 문서라 셸로 가는 주소에 남지 않는다 — 남으면
-  // 셸로 가는 주소가 채팅 탭과 넓힌 카드로 떨어진다. 문서 탭(임시)으로 가는 주소는 그 문서를 보인다.
-  it("셸로 가는 주소에 보던 문서가 남지 않고, 문서 탭으로 가는 주소에는 남는다", async () => {
+  // 셸로 가는 주소가 채팅 탭과 넓힌 카드로 떨어진다. 카드가 서는 채팅 탭으로 가는 주소는 그 문서를 넓힌 카드에 보인다(한때 임시 문서 탭
+  // `tab=spec`이 이 자리였다 — restart 02a-13이 걷었다).
+  it("셸로 가는 주소에 보던 문서가 남지 않고, 채팅 탭으로 가는 주소에는 남는다", async () => {
     const { router } = setup(["/works/work-a"]);
     await router.load();
     const withDoc = { to: "/works/$slug", params: { slug: "work-a" }, search: { file: "overview.md" }, replace: true } as const;
@@ -794,9 +796,8 @@ describe("화면 탭의 주소", () => {
     expect(router.state.location.search).toEqual({ tab: "terminal" });
 
     await router.navigate(withDoc);
-    await router.navigate(pick("work-a", "spec"));
-    // 문서 탭은 **임시로** `tab=spec`이라 적는다(restart 02a-4 — 값이 없는 주소는 이제 채팅이다. 02a-13이 문서 탭을 걷는다).
-    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "spec" });
+    await router.navigate(pick("work-a", "chat"));
+    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "chat" });
   });
 
   it("`?tab=terminal`로 들어오면 그대로 열린다", async () => {
@@ -814,7 +815,7 @@ describe("화면 탭의 주소", () => {
   // **검증기는 주소를 청소하지 않는다.** 이 라우터는 검증기의 결과를 부모의 raw search
   // 위에 얹는데 루트에는 검증기가 없어서, 모르는 키가 주소에도 컴포넌트에도 그대로 온다
   // (`?file=`도 예전부터 같은 성질이다 — 이 판이 만든 것이 아니다). 그래서 「모르는 값은
-  // spec」은 여기가 아니라 `-work-search.ts`의 `viewTab`이 정하고, 그쪽에서 검사한다.
+  // 채팅」은 여기가 아니라 `-work-search.ts`의 `viewTab`이 정하고, 그쪽에서 검사한다.
   // 이 줄은 그 사실을 못박는다 — 검증기를 넓히면 주소가 깨끗해질 것이라 믿지 않도록.
   it("모르는 값은 주소에 그대로 남는다 — 읽는 규칙이 따로 있다", async () => {
     const { router } = setup(["/works/work-a?tab=zzz"]);

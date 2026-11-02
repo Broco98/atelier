@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import ShellTabs from "./ShellTabs";
-import type { FixedTab, SpecTab } from "./ShellTabs";
+import type { FixedTab } from "./ShellTabs";
 import {
   markExited,
   markFailed,
@@ -30,7 +30,7 @@ import {
 import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import type { Attention } from "./shell-attention";
 
-// work 화면 본문 카드의 머리 — **탭 줄이다**(결정 7 · codex-ds 스펙 §4). `[spec][셸…][+]`가 서고, 조작이 있으면
+// work 화면 본문 카드의 머리 — **탭 줄이다**(결정 7 · codex-ds 스펙 §4). `[묶음의 칸…][+]`가 서고, 조작이 있으면
 // 오른쪽 끝에 고정된다(결정 10). 셸을 고르는 자리가 사이드바에서 화면 안으로 돌아온 것이라, 여기서
 // 보는 것은 「무엇이 어느 순서로 서고 각 칸이 무엇을 적는가」다.
 //
@@ -70,14 +70,11 @@ function opened(
   return { state, ids };
 }
 
-const SPEC = { on: false, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} };
-
 function render(
   state: ShellsState,
   {
     owner = WORK as ShellOwner,
     projects = [] as string[],
-    spec = SPEC as SpecTab | null,
     fixed = [] as readonly FixedTab[],
     showing = true,
     actions = undefined as React.ReactNode,
@@ -91,7 +88,6 @@ function render(
       owner={owner}
       projects={projects}
       defaultCwd={null}
-      spec={spec}
       fixed={fixed}
       showing={showing}
       actions={actions}
@@ -134,14 +130,15 @@ const shellCellsOf = (markup: string) =>
 const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열기"[^>]*>/)![0];
 
 describe("줄에 서는 것과 그 순서", () => {
-  it("맨 앞이 `spec`이고 그 뒤로 셸, 마지막이 `+`다", () => {
-    // 결정 7. **새 순서를 발명하는 것이 아니다** — ⌘1~9가 이미 이 순서를 센다(work 화면은
-    // ⌘1이 spec, ⌘2~9가 셸). 화면에 보이는 순서와 키가 고르는 것이 어긋나면 이 판이 한 일이 없다.
-    expect(kindsOf(render(opened(3).state))).toEqual(["spec", "shell", "shell", "shell", "new"]);
+  it("맨 앞부터 묶음의 칸이 서고, 마지막이 `+`다", () => {
+    // 결정 7. **새 순서를 발명하는 것이 아니다** — ⌘1~9가 이미 이 순서를 센다(⌘1이 첫 칸). 화면에 보이는 순서와 키가 고르는
+    // 것이 어긋나면 이 판이 한 일이 없다. 한때 work 화면은 맨 앞에 `spec` 칸이 서서 ⌘1이 spec, ⌘2~9가 묶음이었다 — restart
+    // 02a-13이 그 칸을 걷어 두 화면의 줄이 같은 모양이다.
+    expect(kindsOf(render(opened(3).state))).toEqual(["shell", "shell", "shell", "new"]);
   });
 
   it("셸 순서가 `shellsOf` 순서 그대로다", () => {
-    // ⌘2가 첫 칸, ⌘3이 둘째 칸이다 — `shellForNav(shells, …, nav, 2)`가 세는 것이 이
+    // ⌘1이 첫 칸, ⌘2가 둘째 칸이다 — `shellForNav(shells, …, nav, 1)`이 세는 것이 이
     // 목록이라, 화면이 다른 순서로 그리면 ⌘몇이 어느 칸인지가 화면과 갈린다.
     const { state, ids } = opened(3);
     const named = ids.reduce((acc, id, at) => setTitle(acc, id, `셸${at + 1}`), state);
@@ -152,11 +149,8 @@ describe("줄에 서는 것과 그 순서", () => {
     expect(cells[2]).toContain("셸3");
   });
 
-  it("`spec`에는 닫는 버튼이 없고 셸 칸에는 있다", () => {
-    // 결정 7·13. 고정 탭이라 `×`가 없고, 그래서 ⌘W도 거기서는 아무 일을 안 한다.
-    const cells = cellsOf(render(opened(2).state));
-    expect(cells[0].kind).toBe("spec");
-    expect(cells[0].markup).not.toContain("닫기");
+  it("셸 칸에는 닫는 버튼이 있다", () => {
+    // 결정 13. `×`와 ⌘W가 같은 길이다.
     for (const cell of shellCellsOf(render(opened(2).state))) {
       expect(cell).toMatch(/aria-label="[^"]*닫기"/);
     }
@@ -173,16 +167,9 @@ describe("줄에 서는 것과 그 순서", () => {
     expect(shellCellsOf(render(나.state, { owner: ownerFor("나") }))).toHaveLength(3);
   });
 
-  it("셸이 0개여도 `spec`과 `+`는 선다", () => {
-    // 마지막 칸을 `×`로 닫은 화면이 실재한다(판 02) — 그때도 문서로 돌아갈 자리와 새 셸을
-    // 여는 자리가 남아야 한다.
-    expect(kindsOf(render(NO_SHELLS))).toEqual(["spec", "new"]);
-  });
-
-  it("`spec`이 없는 화면에서는 셸부터 선다", () => {
-    // 결정 8. `/terminal`에는 문서가 없어 ⌘1부터가 셸이다 — **화면마다 갈리는 것은 맨 앞
-    // 한 칸뿐**이라는 성질을 이 줄이 그대로 진다.
-    expect(kindsOf(render(opened(2).state, { spec: null }))).toEqual(["shell", "shell", "new"]);
+  it("셸이 0개여도 `+`는 선다", () => {
+    // 마지막 칸을 `×`로 닫은 화면이 실재한다(판 02) — 그때도 새 탭을 여는 자리가 남아야 한다.
+    expect(kindsOf(render(NO_SHELLS))).toEqual(["new"]);
   });
 });
 
@@ -195,19 +182,19 @@ describe("채팅 탭", () => {
     const { state } = opened(1);
     const withChat = opened(1, undefined, openChatTab(state, WORK, X)).state;
     const cells = cellsOf(render(withChat, { chatTitle: (thread) => (thread === X ? "실패 신호 구현" : "?") }));
-    expect(cells.map((cell) => cell.kind)).toEqual(["spec", "shell", "chat", "shell", "new"]);
-    expect(cells[2].markup).toContain("실패 신호 구현");
+    expect(cells.map((cell) => cell.kind)).toEqual(["shell", "chat", "shell", "new"]);
+    expect(cells[1].markup).toContain("실패 신호 구현");
   });
 
-  it("본문이 그 채팅이면 켜진 칸이 그 채팅 하나다 — 문서를 보는 동안은 꺼진다", () => {
+  it("본문이 그 채팅이면 켜진 칸이 그 채팅 하나다 — 본문이 묶음의 칸이 아닌 동안은 꺼진다", () => {
     const state = openChatTab(opened(2).state, WORK, X);
     const on = (markup: string) => cellsOf(markup).filter((cell) => cell.markup.includes('aria-pressed="true"'));
     expect(on(render(state)).map((cell) => cell.kind)).toEqual(["chat"]);
-    expect(on(render(state, { spec: { ...SPEC, on: true }, showing: false })).map((cell) => cell.kind)).toEqual(["spec"]);
+    expect(on(render(state, { showing: false }))).toEqual([]);
   });
 
   it("말풍선 글리프가 서고, 닫는 버튼이 그 채팅의 이름으로 선다", () => {
-    const cell = cellsOf(render(openChatTab(NO_SHELLS, WORK, X), { chatTitle: () => "실패 신호 구현" }))[1];
+    const cell = cellsOf(render(openChatTab(NO_SHELLS, WORK, X), { chatTitle: () => "실패 신호 구현" }))[0];
     expect(cell.kind).toBe("chat");
     expect(cell.markup).toContain(renderToStaticMarkup(<MessageSquare className="x" />).match(/<path[^>]*>/)![0]);
     expect(cell.markup).toContain('aria-label="실패 신호 구현 닫기"');
@@ -496,80 +483,51 @@ describe("칸이 `memo` 경계다", () => {
   });
 });
 
-// 결정 25 — `spec` 칸이 셸 칸과 **다른 종류**로 읽혀야 한다. 그 칸이 지는 사실 넷(늘 맨 앞 ·
-// `×`가 없음 · 스크롤 상자 밖 · 프로세스가 아님) 중 어느 것도 모양에 없었다.
-//
-// **말하는 것은 세로선 하나다.** 칸 자체는 셸 칸과 같은 알약으로 둔다 — 규격을 가르는 안
-// (눌린 자리)은 실물에서 접었다.
-describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
-  const spec = (markup: string) => markup.match(/<button[^>]*data-tab="spec"[^>]*>/)![0];
-  const firstShell = (markup: string) => markup.match(/<div[^>]*data-tab="shell"[^>]*>/)![0];
+// three-axes 결정 9 · S21 — 줄 맨 앞에 화면이 넘기는 고정 칸이 설 수 있다. 이 줄이 지는 것은 자리 하나와 「아무것도 밀지 않는다」는
+// 약속이다: ⌘1~9는 묶음의 칸 그대로이고, 셸 번호는 셸끼리만 센다. 그 칸이 무엇을 그리는지는 화면이 정한다 — 여기서는 받은 칸 하나로
+// 잰다. 한때 그 자리는 `spec` 칸 바로 뒤였다(restart 02a-13이 `spec` 칸을 걷었다).
+describe("맨 앞에 넘겨받는 칸", () => {
+  const chat = (on = false): FixedTab => ({ id: "chat", label: "chat", icon: MessageSquare, on, onSelect: () => {} });
 
-  it("셸 칸과 같은 알약이다", () => {
-    // 눌린 자리로 종류를 가르는 안은 실물에서 접었다(결정 25) — 그 칸만 규격이 갈리면
-    // 줄에서 튄다. 되살아나면 여기가 빨개진다.
-    const markup = render(opened(2).state, { spec: { ...SPEC, on: false } });
-    expect(spec(markup)).not.toContain("bg-inset");
-    expect(spec(markup)).toContain("rounded-ctl");
-    expect(firstShell(markup)).toContain("rounded-ctl");
+  it("맨 앞, 세로선과 셸 상자 앞에 선다", () => {
+    // 셸 상자 안에 들면 셋이 깨진다 — 켜진 칸 `scrollIntoView`가 상자 안 `aria-pressed`를 집고, 틈 번호와 기하가 상자 안
+    // 셸 칸만 세고, 줄어드는 몫을 상자 하나가 받는다(결정 20). 그래서 자리는 상자 **밖**이다.
+    const markup = render(opened(2).state, { fixed: [chat()] });
+    expect(kindsOf(markup)).toEqual(["chat", "shell", "shell", "new"]);
+    const at = markup.indexOf('data-tab="chat"');
+    expect(at).toBeLessThan(markup.indexOf("data-tab-rule"));
+    expect(markup.indexOf("data-tab-rule")).toBeLessThan(markup.indexOf("data-tab-strip"));
   });
 
-  it("세로선이 `spec`와 스크롤 상자 **사이**에 선다", () => {
-    // 순서가 곧 뜻이다 — 상자 뒤에 서면 「셸 칸들과 `+` 사이」를 가르는 선이 된다.
-    const markup = render(opened(2).state);
-    const rule = markup.indexOf("data-tab-rule");
-    expect(rule).toBeGreaterThan(-1);
-    expect(markup.indexOf('data-tab="spec"')).toBeLessThan(rule);
-    expect(markup.indexOf("data-tab-strip")).toBeGreaterThan(rule);
-  });
-
-  it("`/terminal`에는 세로선이 없다", () => {
-    // 그 화면에는 `spec` 칸이 없어(결정 8) 가를 것이 없다 — 조건 없이 두면 줄 맨 앞에
-    // 이유 없는 선 하나가 남는다.
-    expect(render(opened(2).state, { spec: null })).not.toContain("data-tab-rule");
+  // 세로선은 넘겨받은 칸과 묶음을 가른다(결정 25) — 넘겨받은 칸이 없으면 가를 것이 없어, 조건 없이 두면 줄 맨 앞에 이유 없는 선
+  // 하나가 남는다. 한때 `spec` 칸이 그 선 앞에 섰다.
+  it("넘겨받은 칸이 없으면 세로선도 없다", () => {
+    expect(render(opened(2).state)).not.toContain("data-tab-rule");
   });
 
   it("세로선은 읽히지 않는다", () => {
     // 묶음을 가르는 그림일 뿐이라 화면 읽기에 이름 없는 요소 하나로 끼면 안 된다.
-    const tag = render(opened(2).state).match(/<span[^>]*data-tab-rule[^>]*>/)![0];
+    const tag = render(opened(2).state, { fixed: [chat()] }).match(/<span[^>]*data-tab-rule[^>]*>/)![0];
     expect(tag).toContain("aria-hidden");
   });
-});
 
-// three-axes 결정 9 · S21 — `spec` **바로 뒤에** 화면이 넘기는 고정 칸이 선다(`chat` 탭이 그 첫 손님이다).
-// 이 줄이 지는 것은 자리 하나와 「아무것도 밀지 않는다」는 약속이다: ⌘1은 `spec`, ⌘2~9는 셸 그대로이고, 셸 번호는 셸끼리만
-// 세고, 분할은 늘 `spec ▏ 묶음의 지금 탭`이다. 그 칸이 무엇을 그리는지는 화면이 정한다 — 여기서는 받은 칸 하나로 잰다.
-describe("`spec` 뒤에 넘겨받는 칸", () => {
-  const chat = (on = false): FixedTab => ({ id: "chat", label: "chat", icon: MessageSquare, on, onSelect: () => {} });
-
-  it("`spec` 바로 뒤, 세로선과 셸 상자 앞에 선다", () => {
-    // 셸 상자 안에 들면 셋이 깨진다 — 켜진 칸 `scrollIntoView`가 상자 안 `aria-pressed`를 집고, 틈 번호와 기하가 상자 안
-    // 셸 칸만 세고, 줄어드는 몫을 상자 하나가 받는다(결정 20). 그래서 자리는 `spec`과 함께 상자 **밖**이다.
-    const markup = render(opened(2).state, { fixed: [chat()] });
-    expect(kindsOf(markup)).toEqual(["spec", "chat", "shell", "shell", "new"]);
-    const at = markup.indexOf('data-tab="chat"');
-    expect(markup.indexOf('data-tab="spec"')).toBeLessThan(at);
-    expect(at).toBeLessThan(markup.indexOf("data-tab-rule"));
-    expect(at).toBeLessThan(markup.indexOf("data-tab-strip"));
-  });
-
-  it("⌘ 숫자와 셸 번호를 밀지 않는다 — ⌘2는 여전히 첫 셸 칸이다", () => {
-    // 넘겨받은 칸은 숫자 키를 받지 않는다(S21). 키가 세는 목록은 `shellForNav(shells, …, 2)`의 셸뿐이라, 화면에 선
-    // 셸 칸의 순서가 그 목록과 같으면 ⌘N이 고르는 셸과 N-1번째 셸 칸이 맞는다 — 칸 하나가 끼어도 그대로다.
+  it("⌘ 숫자와 셸 번호를 밀지 않는다 — ⌘1은 여전히 첫 셸 칸이다", () => {
+    // 넘겨받은 칸은 숫자 키를 받지 않는다(S21). 키가 세는 목록은 `shellForNav(shells, …, 1)`의 셸뿐이라, 화면에 선
+    // 셸 칸의 순서가 그 목록과 같으면 ⌘N이 고르는 셸과 N번째 셸 칸이 맞는다 — 칸 하나가 끼어도 그대로다.
     const { state, ids } = opened(3);
     const named = ids.reduce((acc, id, at) => setTitle(acc, id, `셸${at + 1}`), state);
     const cells = shellCellsOf(render(named, { fixed: [chat()] }));
     expect(cells).toHaveLength(3);
-    for (const n of [2, 3, 4]) {
-      const id = shellForNav(shellsOf(named, WORK), null, { kind: "index", n }, 2);
-      expect(cells[n - 2], `⌘${n}`).toContain(`셸${ids.indexOf(id!) + 1}`);
+    for (const n of [1, 2, 3]) {
+      const id = shellForNav(shellsOf(named, WORK), null, { kind: "index", n }, 1);
+      expect(cells[n - 1], `⌘${n}`).toContain(`셸${ids.indexOf(id!) + 1}`);
     }
   });
 
-  it("분할에 들지 않는다 — 끄는 자리가 없다", () => {
-    // 분할은 늘 `spec ▏ 묶음의 지금 탭`이다(결정 87 · S21). 끌기는 칸의 `onPointerDown`이 거는데(위 「칸을 본문 위로 끄는 자리」)
-    // 그 배선은 마크업에 안 나온다 — 그래서 소스에서 그 칸을 자른다. 칸의 `data-tab`은 넘겨받은 값이라 표식이 `data-tab={`다.
-    // 표식 하나에서 **그 칸의 `<button`부터 `</button>`까지**를 자른다 — 표식 뒤만 보면 표식 앞 속성에 단 끌기가 샌다.
+  it("끄는 자리가 없다", () => {
+    // 끌기는 칸의 `onPointerDown`이 거는데(아래 「칸을 끄는 자리」) 그 배선은 마크업에 안 나온다 — 그래서 소스에서 그 칸을 자른다.
+    // 칸의 `data-tab`은 넘겨받은 값이라 표식이 `data-tab={`다. 표식 하나에서 **그 칸의 `<button`부터 `</button>`까지**를 자른다 —
+    // 표식 뒤만 보면 표식 앞 속성에 단 끌기가 샌다.
     const src = readFileSync(fileURLToPath(new URL("./ShellTabs.tsx", import.meta.url)), "utf8");
     expect(countOf(src, "data-tab={")).toBe(1);
     const at = src.indexOf("data-tab={");
@@ -579,8 +537,8 @@ describe("`spec` 뒤에 넘겨받는 칸", () => {
     expect(cell).not.toContain("onDragTab");
   });
 
-  it("`spec` 칸과 같은 말로 켜짐을 말하고, `×`가 없다", () => {
-    // 켜진 칸이 둘일 수 있는 줄이라(결정 12) `role="tab"` 대신 `aria-pressed`와 흰 면이다. 고정 칸이라 닫는 자리도 없다.
+  it("셸 칸과 같은 말로 켜짐을 말하고, `×`가 없다", () => {
+    // `role="tab"` 대신 `aria-pressed`와 옅은 면이다(아래 「켜짐을 말하는 법」). 고정 칸이라 닫는 자리도 없다.
     const markup = render(opened(1).state, { fixed: [chat(true)] });
     const cell = cellsOf(markup).find((one) => one.kind === "chat")!;
     expect(cell.markup).toMatch(/^chat"[^>]*aria-pressed="true"/);
@@ -590,16 +548,15 @@ describe("`spec` 뒤에 넘겨받는 칸", () => {
   });
 
   it("넘기지 않으면 지금 줄 그대로다", () => {
-    // 이 장(three-axes 티켓 01)에서는 아무것도 넘기지 않는다 — 보이는 변화가 없어야 한다.
     expect(render(opened(2).state, { fixed: [] })).toBe(render(opened(2).state));
   });
 });
 
 describe("켜짐을 말하는 법", () => {
   it("`aria-pressed`와 켜짐 면(`tab-on`)으로 말한다 — `role=\"tab\"`을 쓰지 않는다", () => {
-    // 분할이면 **켜진 탭이 둘**이다(결정 12) — tablist에서 `aria-selected`가 둘이면 잘못된
-    // ARIA다. 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고 있어서(분할
-    // 토글·소스 토글), 새 어휘를 들이지 않는 쪽이 화면 전체와 한 말을 쓴다.
+    // 넘겨받은 칸과 묶음의 칸이 함께 켜질 수 있다(결정 12 — 한때는 분할이 켜진 탭 둘의 근거였다) — tablist에서 `aria-selected`가
+    // 둘이면 잘못된 ARIA다. 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고 있어서(요약 카드 토글 · 소스 토글), 새
+    // 어휘를 들이지 않는 쪽이 화면 전체와 한 말을 쓴다.
     const markup = render(opened(2).state);
     expect(markup).not.toMatch(/role="tab/);
     expect(markup).not.toMatch(/aria-selected/);
@@ -615,19 +572,11 @@ describe("켜짐을 말하는 법", () => {
     expect(cells.filter((cell) => cell.markup.includes("toggle-on"))).toHaveLength(0);
   });
 
-  it("본문이 문서면 켜진 칸이 `spec` 하나다", () => {
+  it("본문이 묶음의 칸이 아니면 켜진 칸이 없다", () => {
     // `activeIdOf`는 그 work의 **기억**이지 지금 화면이 아니다(걷힌 셸 목록의 `showing`과 같은
-    // 계약) — 문서를 읽는 중에 셸 칸까지 켜져 있으면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
-    const cells = cellsOf(render(opened(3).state, { spec: { ...SPEC, on: true }, showing: false }));
-    const on = cells.filter((cell) => cell.markup.includes('aria-pressed="true"'));
-    expect(on).toHaveLength(1);
-    expect(on[0].kind).toBe("spec");
-  });
-
-  it("분할이면 켜진 칸이 둘이다", () => {
-    // 결정 12. 이 상태가 실재하는 것이 `role="tab"`을 안 쓰는 근거다.
-    const cells = cellsOf(render(opened(3).state, { spec: { ...SPEC, on: true } }));
-    expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"'))).toHaveLength(2);
+    // 계약) — 다른 것을 보는 중에 셸 칸까지 켜져 있으면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
+    const cells = cellsOf(render(opened(3).state, { showing: false }));
+    expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"'))).toEqual([]);
   });
 
   it("한 요소에 hover 규칙이 두 벌 얹히지 않는다", () => {
@@ -652,9 +601,9 @@ describe("칸 하나의 규격", () => {
     openCodeTab(openChatTab(opened(1).state, WORK, "20261010-100000"), WORK, { project: "fe", path: "src/a.ts" });
   const openTagOf = (cell: string) => cell.slice(0, cell.indexOf(">"));
 
-  it("칸의 둥글기는 틀 안의 4다 — 문서 칸 · 셸 · 파일 · 채팅 칸이 같다", () => {
+  it("칸의 둥글기는 틀 안의 4다 — 셸 · 파일 · 채팅 칸이 같다", () => {
     const cells = cellsOf(render(mixed())).filter((cell) => cell.kind !== "new");
-    expect(cells.map((cell) => cell.kind)).toEqual(["spec", "shell", "chat", "code"]);
+    expect(cells.map((cell) => cell.kind)).toEqual(["shell", "chat", "code"]);
     for (const cell of cells) {
       expect(openTagOf(cell.markup), cell.kind).toContain("rounded-ctl");
       expect(openTagOf(cell.markup), cell.kind).not.toContain("rounded-lg");
@@ -663,7 +612,7 @@ describe("칸 하나의 규격", () => {
 
   it("묶음의 칸은 이름 글자 폭이다 — 정해 둔 폭이 없고 최대 200 · 바닥 44이며, 폭을 재는 글자(`data-fit`)가 그 칸의 이름이다", () => {
     const cells = cellsOf(render(mixed(), { chatTitle: () => "실패 신호 구현" })).filter(
-      (cell) => cell.kind !== "spec" && cell.kind !== "new",
+      (cell) => cell.kind !== "new",
     );
     for (const cell of cells) {
       const tag = openTagOf(cell.markup);
@@ -810,16 +759,6 @@ describe("좁아질 때 줄어드는 순서", () => {
   });
 });
 
-// 결정 12 — **분할을 탭에서 만든다.** 사이드바 행이 하던 몸짓의 출발점이 이 줄로 옮겨 왔고
-// (adr-03이 그 행을 걷으므로) 놓일 자리도 분할 계산도 그대로다.
-//
-// **배선은 마크업에 안 나온다** — React는 핸들러를 직렬화하지 않아 `renderToStaticMarkup`이
-// 낸 글자에는 `onPointerDown`이 한 글자도 없다. 그래서 칸을 **소스에서** 자른다: 자르는
-// 표식이 화면과 같은 `data-tab`이라 「어느 칸에 붙었나」를 그대로 묻고, 리터럴 split이라
-// 파서가 샐 자리가 없다(`cellsOf`와 같은 근거).
-//
-// **실제로 끌리는지는 L3가 잰다**(e2e/works-split.spec.ts) — 포인터 제스처는 이 층에
-// 아예 없다. 여기가 보는 것은 **어느 칸이** 끄는 자리를 갖는가다.
 describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   // 결정 20. 칸이 최소 폭까지 고르게 줄고(위 describe), **그 아래로는 스크롤한다**.
   // 티켓 #143이 처음 요구한 「좁은 창에서도 한 줄에 다 들어간다」는 산술로 불가능했다 —
@@ -829,20 +768,17 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   // **여기서 보는 것은 구조뿐이다.** 실제로 안 넘치는지는 폭을 재야 알고 그것은
   // e2e(terminal-tabs.spec.ts)의 `spill`이 든다 — 이 seam에는 DOM이 없어 겹침을 못 본다.
 
-  const specTagOf = (markup: string) => markup.match(/<button[^>]*data-tab="spec"[^>]*>/)![0];
   const stripTagOf = (markup: string) => {
     const chunk = markup.split("<div").find((one) => one.slice(0, one.indexOf(">")).includes("data-tab-strip"));
     if (!chunk) throw new Error("셸 칸 상자가 없다");
     return chunk.slice(0, chunk.indexOf(">"));
   };
 
-  it("셸 칸만 그 상자에 들어간다 — `spec`·`+`·조작은 밖이다", () => {
-    // 스크롤되는 것이 셸 칸뿐이라는 뜻이다. `spec`이 함께 밀려가면 「맨 앞 고정 칸」이
-    // 아니게 되고(결정 9), `+`가 밀려가면 셸을 여는 유일한 자리가 사라진다(결정 19).
+  it("셸 칸만 그 상자에 들어간다 — `+`·조작은 밖이다", () => {
+    // 스크롤되는 것이 셸 칸뿐이라는 뜻이다. `+`가 밀려가면 셸을 여는 유일한 자리가 사라진다(결정 19).
     const markup = render(opened(3).state, { actions: "조작" });
     const strip = markup.indexOf("data-tab-strip");
     expect(strip).toBeGreaterThan(-1);
-    expect(markup.indexOf('data-tab="spec"')).toBeLessThan(strip);
     expect(markup.indexOf('data-tab="shell"')).toBeGreaterThan(strip);
     expect(markup.lastIndexOf('data-tab="shell"')).toBeLessThan(markup.indexOf('data-tab="new"'));
     expect(markup.indexOf('data-tab="new"')).toBeLessThan(markup.indexOf("조작"));
@@ -866,7 +802,6 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
     // 그 그림이었다(조작이 창 밖으로 379px 밀려나 있었다).
     const markup = render(opened(2).state, { actions: "조작" });
     expect(stripTagOf(markup)).toContain("basis-[max-content]");
-    expect(specTagOf(markup)).toContain("shrink-0");
     expect(plusOf(markup)).toContain("shrink-0");
   });
 
@@ -888,22 +823,32 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
     expect(stripTagOf(markup)).toContain(`w-[${floor[1]}px]`);
     expect(stripTagOf(markup)).not.toContain("w-max");
 
-    // 칸이 없는 줄(문서만 본 work)에는 `+` 앞에 빈 44px이 서면 안 된다.
+    // 칸이 없는 줄(아직 셸을 안 연 work)에는 `+` 앞에 빈 44px이 서면 안 된다.
     expect(stripTagOf(render(NO_SHELLS, { actions: "조작" }))).toContain("min-w-0");
   });
 });
 
-describe("칸을 본문 위로 끄는 자리", () => {
+// 결정 12 — 탭을 끌어 순서를 바꾼다(UI개선 결정 11). 한때 탭을 본문 위로 끌어 분할도 만들었다 — restart 02a-13이 분할을 걷어
+// 놓일 자리는 탭 줄의 틈 하나다.
+//
+// **배선은 마크업에 안 나온다** — React는 핸들러를 직렬화하지 않아 `renderToStaticMarkup`이
+// 낸 글자에는 `onPointerDown`이 한 글자도 없다. 그래서 칸을 **소스에서** 자른다: 자르는
+// 표식이 화면과 같은 `data-tab`이라 「어느 칸에 붙었나」를 그대로 묻고, 리터럴 split이라
+// 파서가 샐 자리가 없다(`cellsOf`와 같은 근거).
+//
+// **실제로 끌리는지는 L3가 잰다**(e2e/tab-order.spec.ts) — 포인터 제스처는 이 층에
+// 아예 없다. 여기가 보는 것은 **어느 칸이** 끄는 자리를 갖는가다.
+describe("칸을 끄는 자리", () => {
   const sourceCells = () =>
     cellsOf(readFileSync(fileURLToPath(new URL("./ShellTabs.tsx", import.meta.url)), "utf8"));
   const cellOf = (kind: string) => sourceCells().find((cell) => cell.kind === kind)!.markup;
 
-  it("문서 칸과 셸 칸이 끄는 자리를 갖는다", () => {
-    // 맨 앞 문서 칸은 셸이 아니라는 뜻으로 `null`을 낸다 — `DragSource`가 `shellId`로
-    // 이미 그 둘을 가르고 있어(「`kind`가 `shell`일 때만 있다」) 갈래를 새로 만들지 않는다.
-    expect(cellOf("spec")).toContain("onPointerDown={(event) => onDragTab(null, event)}");
-    // 셸 칸에서는 **이름 버튼**이 끄는 자리다 — 형제인 `×`가 끌리면 닫으려다 분할이 켜진다.
+  it("셸 칸이 끄는 자리를 갖는다 — 문서 칸은 없다", () => {
+    // 셸 칸에서는 **이름 버튼**이 끄는 자리다 — 형제인 `×`가 끌리면 닫으려다 칸이 옮겨진다.
     expect(cellOf("shell")).toContain("onPointerDown={(event) => onDragTab(shell.id, event)}");
+    // 한때 맨 앞 문서 칸이 셸이 아니라는 뜻으로 `null`을 냈다(restart 02a-13이 그 칸을 걷었다).
+    expect(sourceCells().map((cell) => cell.kind)).not.toContain("spec");
+    expect(countOf(readFileSync(fileURLToPath(new URL("./ShellTabs.tsx", import.meta.url)), "utf8"), "onDragTab(null")).toBe(0);
   });
 
   // restart 02a-5 — 채팅 탭은 셸 탭과 같은 규칙으로 끌린다. 끄는 자리는 셸 칸처럼 이름 버튼이다.
@@ -914,9 +859,8 @@ describe("칸을 본문 위로 끄는 자리", () => {
 
   it("두 화면 다 끈다 — 조건 없이 붙는다", () => {
     // 한때 「콜백이 없으면 안 끌린다」였다 — 떨굴 자리인 분할이 work 화면의 것이라 `/terminal`은
-    // 콜백을 안 줬다. 이제 그 화면도 **순서를 바꾸려고** 끈다(UI개선 결정 11) — 조건부가 남으면 한
+    // 콜백을 안 줬다. 이제 두 화면 다 **순서를 바꾸려고** 끈다(UI개선 결정 11) — 조건부가 남으면 한
     // 화면이 콜백을 빼먹어도 컴파일되고 조용히 안 끌린다. prop이 필수인 것은 L0가 잰다.
-    expect(cellOf("spec")).not.toContain("onDragTab && ");
     expect(cellOf("shell")).not.toContain("onDragTab && ");
     expect(cellOf("shell")).not.toContain("onDragTab?.");
   });
@@ -942,7 +886,7 @@ describe("카드의 머리", () => {
   });
 
   // restart 02a-5 — 탭 줄의 높이는 40이다(시안 Shell · 구현 지도 「탭 줄」). 카드 머리(`--card-head` 46)와 따로 서서 이 줄의 토큰을
-  // 읽는다 — 값은 `tokens.test.ts`가, 칠해진 높이는 L3가 잰다. 분할 끌기 겹판의 위끝도 같은 토큰이다(`WorksPage`).
+  // 읽는다 — 값은 `tokens.test.ts`가, 칠해진 높이는 L3가 잰다.
   it("높이는 탭 줄 토큰이다 — 카드 머리 토큰이 아니다", () => {
     const root = rootOf(render(opened(2).state));
     expect(root).toContain("h-(--size-tab-row)");
@@ -976,7 +920,8 @@ describe("카드의 머리", () => {
   });
 
   it("조작이 없으면 오른쪽 묶음도 없다", () => {
-    // 상태 · ⋯ · 분할은 머리 카드에 선다(`WorksPage`) — 이 줄에 조작이 서는 것은 분할의 터미널 열(그 열을 닫는 `×`)뿐이다.
+    // 상태 · ⋯ 은 머리 줄에 선다(`WorksPage`). 한때 이 줄에 조작이 서는 것은 분할의 터미널 열(그 열을 닫는 `×`)뿐이었다 —
+    // restart 02a-13이 분할을 걷어 지금은 어느 화면도 건네지 않는다(자리는 남았다).
     expect(render(opened(2).state)).not.toContain("data-tab-actions");
     expect(render(opened(2).state, { actions: "조작" })).toContain("data-tab-actions");
   });
@@ -1048,10 +993,10 @@ describe("새 채팅 탭", () => {
   it("묶음의 차례 그대로 「새 채팅」으로 서고, 켜지면 켜진 칸이 그것 하나다", () => {
     const state = openNewChatTab(opened(1).state, WORK);
     const cells = cellsOf(render(state, chatting));
-    expect(cells.map((cell) => cell.kind)).toEqual(["spec", "shell", "new-chat", "new"]);
-    expect(cells[2].markup).toContain(">새 채팅<");
-    expect(cells[2].markup).toContain(renderToStaticMarkup(<MessageSquare className="x" />).match(/<path[^>]*>/)![0]);
-    expect(cells[2].markup).toContain('aria-label="새 채팅 닫기"');
+    expect(cells.map((cell) => cell.kind)).toEqual(["shell", "new-chat", "new"]);
+    expect(cells[1].markup).toContain(">새 채팅<");
+    expect(cells[1].markup).toContain(renderToStaticMarkup(<MessageSquare className="x" />).match(/<path[^>]*>/)![0]);
+    expect(cells[1].markup).toContain('aria-label="새 채팅 닫기"');
     expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"')).map((cell) => cell.kind)).toEqual(["new-chat"]);
   });
 

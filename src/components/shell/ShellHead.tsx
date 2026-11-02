@@ -79,9 +79,9 @@ export const HEAD_GLYPH = "size-4";
 
 /**
  * 머리 줄의 아이콘 단추 — 28 · `radius-lg`(아이콘 버튼 기본 — `--size-control`), 글리프 `fg-titlebar`(#898a8b — 크롬 위 글리프). 쉴 때
- * hover는 버튼 hover(`quiet-hover`)이고, 펼친 메뉴의 트리거(`open` — 「…」 · ⋯)는 hover와 같은 면, 켜진 토글(`on` — 요약 단추 · 분할)은
+ * hover는 버튼 hover(`quiet-hover`)이고, 펼친 메뉴의 트리거(`open` — 「…」 · ⋯)는 hover와 같은 면, 켜진 토글(`on` — 요약 단추)은
  * 크롬 위 켜진 면(`fill-toggle-on` #ebebec)이다. 둘 다 글리프가 `fg`로 진해진다. hover는 쉴 때의 가지에만 둔다(`quiet-hover` 머리말).
- * Thread의 「…」 · 요약 단추와 공용 틀의 ⋯ · 분할 · 패널 토글 · 돌아가기가 이 한 벌이다.
+ * Thread의 「…」 · 요약 단추와 공용 틀의 ⋯ · 패널 토글 · 돌아가기가 이 한 벌이다.
  */
 export function headButton(state: "rest" | "open" | "on" = "rest") {
   return cn(

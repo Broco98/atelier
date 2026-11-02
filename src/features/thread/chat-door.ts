@@ -12,7 +12,7 @@ import type { ThreadSummary } from "./types";
 export type ChatPlace = Pick<ThreadSummary, "id" | "work" | "readOnly">;
 
 /**
- * 그 채팅으로 간다. 작업공간 화면으로 갈 때는 그 작업공간의 기억을 씨앗으로 삼고(`recallSearch` — 보던 문서 · 분할이 남는다) 채팅 탭을
+ * 그 채팅으로 간다. 작업공간 화면으로 갈 때는 그 작업공간의 기억을 씨앗으로 삼고(`recallSearch` — 넓힌 카드로 보던 문서가 남는다) 채팅 탭을
  * 그 채팅으로 세운다(`chatSearch`). 묶음에 그 탭이 없으면 작업공간 화면이 주소를 받아 연다(주소 → 묶음). `replace`는 주소만 고치는
  * 자리(`/threads/:id`의 보내기)가 쓴다.
  */

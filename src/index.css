@@ -70,7 +70,7 @@
        **유틸리티는 눈금으로 적는다**(`p-2` · `px-5` · `pt-6`) — 이 이름은 `@theme`이 아니라 `:root`에 선언해 유틸리티를 내지
        않는다. Tailwind 4.3.3에서 `--space-*`는 `space-x-*` · `space-y-*`의 테마 이름공간이라, `@theme`에 올리면 `space-x-2` 같은
        유틸리티가 이 값으로 선다 — 테마에 간격 이름이 오르는 것은 `spacing-guard.test.ts`가 막는다. 이 변수를 읽는 것은 CSS
-       변수가 있어야 하는 자리뿐이다: 틈(`--space-2`)을 더하는 폭 셈(`Frame`의 작업 패널 칸 · 분할 · 옆 칸,
+       변수가 있어야 하는 자리뿐이다: 틈(`--space-2`)을 더하는 폭 셈(`Frame`의 작업 패널 칸 · 옆 칸,
        `useResizableWidth`의 그린 폭)과 머리 줄의 왼쪽 여백(아래 `--titlebar-inset-head`), 그리고 길이를 토큰에서
        읽어 맞대는 e2e다. 나머지는 선언만 있다(DS 이름을 통째로 선언한다 — 스펙 S2와 같은 손버릇).
        식으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(`useResizableWidth`의 그린 폭 · e2e)가 수로
@@ -648,8 +648,8 @@
    - **restart 시안의 움직임**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · Motion 보드 「바뀜」 · 「새로 추가」 · 티켓 02a-1). Motion 보드의
      나머지 줄은 위 토큰 그대로다(보드 「앱 그대로」). 괄호 안은 쓰는 · 쓰게 될 티켓이다.
        panel-open  500ms  오른쪽 패널 여닫기 · 레일이 들고 남 · 카드 넓힘 — Codex spring {duration .5, bounce .1}, 곡선은 `ease-spring`.
-                          `panel-layout.ts`의 `PANEL_MOTION`이 읽는다 — 작업 패널 · Thread 화면의 넓힘 · 목록 칸 · 분할의 기본 폭
-                          되돌림(02a-2). 레일(02a-14)
+                          `panel-layout.ts`의 `PANEL_MOTION`이 읽는다 — 작업 패널 · Thread 화면의 넓힘 · 목록 칸의 기본 폭
+                          되돌림(02a-2 — 한때 분할의 기본 폭 되돌림도). 레일(02a-14)
        rail        220ms  레일 켜짐 표시가 칸 사이를 옮겨 감 — 곡선 `ease-panel`(02a-14)
        rise        320ms  보낸 말 말풍선이 아래 12 · .985배에서 자리에 섬 — 곡선 `ease-enter-snappy`(02b-7)
        bar         400ms  Processes의 막대 · 쌓인 막대가 폭만 옮겨 감 — 곡선 `ease-panel`(시안 ProcessSheet 「보기와 움직임」 · 03-11)
@@ -751,8 +751,8 @@
                          신호등은 y 24다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다(진짜 앱 —
                          macOS 27, 44 줄 — 에서 셋의 가운데가 y 22로 섰다, 02 티켓 13c). 이 값을 고치면 y도 함께 고친다
          send-chat 28    입력창 보내기 원 — 앱과 Codex 실측(02b-2). 지금 원은 `--size-control`을 읽는다
-         tab-row   40    작업공간 · Terminal 카드 머리의 탭 줄(02a-5 — 시안 `.ra-tabs`, 구현 지도 「탭 줄」). `ShellTabs`가 높이로,
-                         작업공간 화면의 분할 끌기 겹판이 위끝으로 읽는다. 다른 카드 머리(`--card-head` — 패널 머리)는 `size-toolbar` 46 그대로다
+         tab-row   40    작업공간 · Terminal 카드 머리의 탭 줄(02a-5 — 시안 `.ra-tabs`, 구현 지도 「탭 줄」). `ShellTabs`가 높이로 읽는다(한때
+                         작업공간 화면의 분할 끌기 겹판이 위끝으로도 읽었다). 다른 카드 머리(`--card-head` — 패널 머리)는 `size-toolbar` 46 그대로다
        레일 카드 폭 32는 지금 `--size-prail`이다(위 머리말 — `--size-rail` 52와 이름이 갈린다). */
     --size-rail: 52px;
     --size-sidebar: 290px;
@@ -1427,7 +1427,7 @@
    - **키보드로 왔을 때만 선다**(`:focus-visible`) — 누르는 손에는 링이 없다. 글자칸은 브라우저가 늘 `:focus-visible`로 친다.
    - **상자가 링을 입는 칸**(검색칸 `InputGroup`)은 바로 안의 입력칸에 포커스가 있을 때 선다(`:has(> input:focus-visible)`).
    - **우클릭 메뉴가 열린 대상**도 같은 링을 입는다(`[data-menu-target]`, codex-ds 결정 11 「대상 테두리」) — 「이것의 메뉴다」를
-     말한다. 그 메뉴가 열린 동안만 대상에 서는 표식이라(`WorkContextMenu` · 셸 탭 · spec 탭의 `ShellTabs` · 입력칸의 편집 메뉴
+     말한다. 그 메뉴가 열린 동안만 대상에 서는 표식이라(`WorkContextMenu` · 탭 줄 칸의 `ShellTabs` · 입력칸의 편집 메뉴
      `EditMenu` · 목록 행 · 문서 글의 `TargetMenu`) 닫히면 걷히고, 닫힌 화면의 마크업에는 없다. 상자가 링을 입는 칸은 표식이 안의
      입력칸에 서도 상자가 입는다(`:has(> input[data-menu-target])`).
    - **카드 끝까지 차는 상자는 링을 안쪽에 입는다**(`data-ring-inset` — 문서 글 `DocTextBox`). 바깥 링은 그 상자를 자르는 카드에
@@ -1495,9 +1495,9 @@
 }
 
 /* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 줄
-   **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의
-   닫기 — spec 열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 머리 줄의 단추는 이 단이
-   아니라 기본 28이다 — 셸 컨트롤(`[data-titlebar]`의 `--titlebar-control-size`)도 화면 것(작업 ⋯ · 분할 · 패널 토글 · 편집기의
+   **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창)가 쓴다 — 줄 높이
+   (28 · 30 · 32) 안에 들어앉는다. 머리 줄의 단추는 이 단이
+   아니라 기본 28이다 — 셸 컨트롤(`[data-titlebar]`의 `--titlebar-control-size`)도 화면 것(작업 ⋯ · 요약 카드 · 패널 토글 · 편집기의
    「설정으로 돌아가기」 — `ShellHead`의 `headButton`)도 Codex 머리 줄 값이다(02 결정 「머리 줄은 한 결이다(03 뒤)」 — 한때 화면 것은 머리
    카드의 24였다). */
 @utility icon-button-xs {

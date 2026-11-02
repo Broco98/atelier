@@ -100,7 +100,7 @@ export function useSeeWhileLooking(site: LookSite, now: ReadonlyArray<string>): 
 
 /**
  * 앱 창이 포커스를 쥐고 있나 — 터미널의 「봤다」와 **같은 판정 하나**다(`windowFocused` — S41 「띠와 같은 규칙」): `document.hasFocus()`가
- * 판정이고 `focus`/`blur`는 신호일 뿐이다. 분할에서 spec 프레임을 누르면 `blur`만 오는데 그때도 앱은 앞에 있다.
+ * 판정이고 `focus`/`blur`는 신호일 뿐이다. 문서 프레임(html 문서)을 누르면 `blur`만 오는데 그때도 앱은 앞에 있다.
  */
 function useWindowFocused(): boolean {
   const [focused, setFocused] = useState(windowFocused);

@@ -138,7 +138,7 @@ function AppShell() {
   }, []);
 
   // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 자리만
-  // 제 메뉴를 연다 — work 대상(work 행 · 띠 줄 · 머리 줄 이름)과 셸 탭 · spec 탭은 제 `ContextMenuTrigger`가, 그 밖의 대상(프로젝트 ·
+  // 제 메뉴를 연다 — work 대상(work 행 · 띠 줄 · 머리 줄 이름)과 탭 줄의 칸은 제 `ContextMenuTrigger`가, 그 밖의 대상(프로젝트 ·
   // Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행 · 문서 글)은 그 자리의 `TargetMenu`가, 입력칸 · 터미널은 편집
   // 메뉴(`EditMenu`)가 연다. 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
   // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.

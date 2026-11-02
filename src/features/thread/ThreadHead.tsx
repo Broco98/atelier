@@ -99,7 +99,7 @@ export function ThreadMenuItems({ rename }: { rename: (() => void) | null }) {
 /**
  * 머리 줄 이름 바로 뒤의 「…」(02 §6 · restart 02a-7 시안 MainLoose — 28 · `radius-lg`, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
  * 연다. 열린 동안은 hover와 같은 면이다. 여닫이 · 줄 옮기기 · Esc · 바깥 누르기는 메뉴 부품이 한다(work 메뉴 ⋯와 같다). 모양은 머리 줄의
- * 아이콘 단추 한 벌이다(`ShellHead`의 `headButton` — 공용 틀 화면의 ⋯ · 분할 · 패널 토글도 같은 것을 쓴다).
+ * 아이콘 단추 한 벌이다(`ShellHead`의 `headButton` — 공용 틀 화면의 ⋯ · 패널 토글도 같은 것을 쓴다).
  *
  * **「이름 바꾸기」로 닫히면 포커스를 「…」로 돌리지 않는다**(`finalFocus`) — 머리 줄 이름 자리에 막 선 입력칸이 포커스를 받는데,
  * 「…」로 돌아가면 입력칸이 곧바로 blur되어 「다른 곳 = 저장」으로 닫힌다(work 메뉴 ⋯와 같은 까닭 — 구현 노트 Q7). 그 밖의 닫힘은

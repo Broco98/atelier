@@ -31,9 +31,9 @@ describe("접히는 패널의 박자", () => {
   });
 
   // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — `Frame.tsx`에 산다.
-  // 공용 틀의 여백(머리 줄 · 카드 줄)과 분할 열(한때 `WorksPage.tsx`가 그렸다 — 이제 공용 틀의 `split`)도 패널과 함께 움직여
-  // 같은 박자를 읽는다. 사이드바는 접는 장치(안쪽 고정 폭 · 펴진 뒤의 상한)는 같고 박자만 제 것이다(아래 「사이드바 열고 닫기」).
-  it("사이드바와 공용 틀의 칸(목록 · 작업 패널 · 분할)이 이 규격을 쓴다", () => {
+  // 공용 틀의 여백(머리 줄 · 카드 줄)도 패널과 함께 움직여 같은 박자를 읽는다(한때 분할 열도 그랬다 — restart 02a-13이 분할을 걷었다).
+  // 사이드바는 접는 장치(안쪽 고정 폭 · 펴진 뒤의 상한)는 같고 박자만 제 것이다(아래 「사이드바 열고 닫기」).
+  it("사이드바와 공용 틀의 칸(목록 · 작업 패널)이 이 규격을 쓴다", () => {
     const frame = readFileSync("src/components/shell/Frame.tsx", "utf8");
     expect(frame).toContain("foldingInnerClass(open)");
     expect(frame).toContain("PANEL_MOTION");
@@ -43,15 +43,15 @@ describe("접히는 패널의 박자", () => {
     expect(sidebar).not.toContain("PANEL_MOTION");
   });
 
-  // 패널과 함께 움직이는 자리 넷 — 사이드바 · 공용 틀(목록 · 작업 패널 · 분할 · 머리 줄 여백), 사이드바 끝을 따르고 전체화면에 들고
-  // 날 때 옮겨 가는 머리 줄의 왼쪽 칸(셸 컨트롤 · 이름 자리의 시작 — `ShellHead`), 분할의 되돌림을 끝내는 타이머. 박자를 제 리터럴로
-  // 다시 적지 않는다 — 셸 컨트롤의 `duration-[220ms]`가 한때 이 검사 밖이라 지나갔다.
+  // 패널과 함께 움직이는 자리 셋 — 사이드바 · 공용 틀(목록 · 작업 패널 · 머리 줄 여백), 사이드바 끝을 따르고 전체화면에 들고
+  // 날 때 옮겨 가는 머리 줄의 왼쪽 칸(셸 컨트롤 · 이름 자리의 시작 — `ShellHead`). 박자를 제 리터럴로
+  // 다시 적지 않는다 — 셸 컨트롤의 `duration-[220ms]`가 한때 이 검사 밖이라 지나갔다. 한때 분할의 되돌림을 끝내는 타이머
+  // (`useSplitRatio`)도 넷째였다(restart 02a-13이 분할을 걷었다).
   it("패널과 함께 움직이는 자리가 박자를 제 리터럴로 다시 적지 않는다", () => {
     for (const path of [
       "src/components/shell/Sidebar.tsx",
       "src/components/shell/Frame.tsx",
       "src/components/shell/ShellHead.tsx",
-      "src/components/shell/useSplitRatio.tsx",
     ]) {
       const source = readFileSync(path, "utf8");
       // 긴 클래스 문자열 **안**에 묻힌 사본도 잡는다 — 따옴표로 감싼 그 문자열만 보던 때 두 사본이 지나갔다. 타이머의 수(`= 220`)도 같다.
@@ -59,7 +59,6 @@ describe("접히는 패널의 박자", () => {
       expect(source, path).not.toMatch(/delay-\[0s,\d+m?s\]/);
     }
     expect(readFileSync("src/components/shell/ShellHead.tsx", "utf8")).toContain("SIDEBAR_MOTION");
-    expect(readFileSync("src/components/shell/useSplitRatio.tsx", "utf8")).toContain("panelMotionMs()");
   });
 });
 
