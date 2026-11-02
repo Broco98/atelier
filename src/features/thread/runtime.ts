@@ -19,6 +19,11 @@ export const RUNTIMES: readonly { value: Runtime; name: string; description: str
 
 const NAMES: Readonly<Record<string, string>> = Object.fromEntries(RUNTIMES.map((one) => [one.value, one.name]));
 
+/** 이 판이 아는 Runtime인가 — 다른 판이 쓴 채팅의 값은 글자다(`ThreadView.runtime`). */
+export function isRuntime(value: string): value is Runtime {
+  return value in NAMES;
+}
+
 /** 그 채팅의 Runtime 이름. 표에 없는 값은 글자 그대로 보인다. */
 export function runtimeNameOf({ runtime }: Pick<ThreadView, "runtime">): string {
   return NAMES[runtime] ?? runtime;

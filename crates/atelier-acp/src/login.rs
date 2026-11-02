@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::discovery::{Agent, EngineCheck, FoundProgram};
+use crate::discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 use crate::host::{Emit, HostEvent};
 use crate::login_env::AgentEnv;
 use crate::process::{self, Exit};
@@ -41,12 +41,15 @@ pub(crate) const AUTH_REQUIRED: i32 = -32000;
 #[serde(rename_all = "camelCase")]
 pub struct EngineState {
     pub agent: Agent,
-    /// 에이전트를 띄우는 데 드는 실행 파일을 다 찾았나. 빠진 것과 설치 명령은 엔진 확인의 답에 실린다.
+    /// 에이전트를 띄우는 데 드는 실행 파일을 다 찾았나.
     pub found: bool,
     /// 로그인돼 있나. 모르면 `None`이다 — 못 찾았거나, 로그인 명령이 도는 중이다.
     pub logged_in: Option<bool>,
     /// 로그인 명령의 진행. 도는 것도 막 끝난 것도 없으면 `None`이다.
     pub login: Option<LoginProgress>,
+    /// 못 찾았으면 빠진 것마다 이름과 설치 명령 — 찾았으면 비었다. 세션을 열다 못 찾은 때도 화면의 안내 카드가 설치 명령을 보이게 싣는다
+    /// (restart 01c-9 — 선 채팅은 세션을 열 때 확인한다).
+    pub missing: Vec<MissingProgram>,
 }
 
 /// 로그인 명령의 진행.
@@ -221,7 +224,13 @@ impl LoginDesk {
         let mut runs = self.lock_runs();
         if let Some(run) = runs.get(&agent) {
             // 엔진마다 한 번에 하나 — 두 번째 「로그인」은 도는 것의 진행을 다시 알릴 뿐이다.
-            self.announce(EngineState { agent, found: true, logged_in: None, login: Some(LoginProgress::Running { url: run.url.clone() }) });
+            self.announce(EngineState {
+                agent,
+                found: true,
+                logged_in: None,
+                login: Some(LoginProgress::Running { url: run.url.clone() }),
+                missing: Vec::new(),
+            });
             return Ok(());
         }
         let mut command = Command::new(program);
@@ -242,7 +251,13 @@ impl LoginDesk {
         let stderr = child.stderr.take().expect("stderr를 파이프로 띄웠다");
         runs.insert(agent, Run { pgid, url: None, cancelled: false, _stdin: child.stdin.take() });
         // 잠금 안에서 알린다 — 링크 · 끝의 알림이 이보다 앞서지 않는다.
-        self.announce(EngineState { agent, found: true, logged_in: None, login: Some(LoginProgress::Running { url: None }) });
+        self.announce(EngineState {
+            agent,
+            found: true,
+            logged_in: None,
+            login: Some(LoginProgress::Running { url: None }),
+            missing: Vec::new(),
+        });
         drop(runs);
 
         for stream in [Box::new(stdout) as Box<dyn Read + Send>, Box::new(stderr)] {
@@ -277,7 +292,13 @@ impl LoginDesk {
         let mut runs = self.lock_runs();
         let Some(run) = runs.get_mut(&agent).filter(|run| run.pgid == pgid && run.url.is_none()) else { return };
         run.url = Some(url.clone());
-        self.announce(EngineState { agent, found: true, logged_in: None, login: Some(LoginProgress::Running { url: Some(url) }) });
+        self.announce(EngineState {
+            agent,
+            found: true,
+            logged_in: None,
+            login: Some(LoginProgress::Running { url: Some(url) }),
+            missing: Vec::new(),
+        });
     }
 
     /// 로그인 명령의 리더가 끝났다 — 거두기 전에 그룹째 끄고(남은 후손) 표에서 뺀다. 취소였나를 돌려준다.
@@ -353,11 +374,11 @@ impl LoginDesk {
 
     /// 엔진 확인의 답을 엔진 상태로 알린다 — 도는 로그인 명령이 있으면 그 진행도 싣는다.
     pub(crate) fn announce_check(&self, agent: Agent, check: &EngineCheck) {
-        let (found, logged_in) = match check {
-            EngineCheck::Found { logged_in, .. } => (true, Some(*logged_in)),
-            EngineCheck::Missing { .. } => (false, None),
+        let (found, logged_in, missing) = match check {
+            EngineCheck::Found { logged_in, .. } => (true, Some(*logged_in), Vec::new()),
+            EngineCheck::Missing { missing } => (false, None, missing.clone()),
         };
-        self.announce(EngineState { agent, found, logged_in, login: self.progress(agent) });
+        self.announce(EngineState { agent, found, logged_in, login: self.progress(agent), missing });
     }
 
     /// 그 자리가 로그인을 기다린다 — 에이전트가 `-32000`으로 답했다. 쥐고, 엔진 상태(찾음 · 안 됨)를 알린다.
@@ -369,7 +390,7 @@ impl LoginDesk {
                 waiting.push(Waiting { agent, thread });
             }
         }
-        self.announce(EngineState { agent, found: true, logged_in: Some(false), login });
+        self.announce(EngineState { agent, found: true, logged_in: Some(false), login, missing: Vec::new() });
     }
 
     /// 그 자리가 로그인을 기다리면 그 엔진.

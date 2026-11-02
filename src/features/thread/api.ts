@@ -21,6 +21,7 @@ import type {
   QuestionAnswer,
   QuitCounts,
   RecordLine,
+  Runtime,
   ServiceAnswer,
   StartPicks,
   ThreadChunkEvent,
@@ -39,10 +40,10 @@ import type {
 // **인자 객체가 평평해야 한다** — 객체 인자는 IPC 검사가 칸을 못 잰다. 이어 갈 곳(`link`)처럼 객체를 싣는 날에는 먼저 짓고 이름으로
 // 넘긴다. 이 명령들은 L4 다리로 탈 수 없다(엔진이 앱 프로세스의 상태다) — 다리는 거절한다.
 export const threadApi = {
-  /** Claude Code를 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 확인」이다(로그인 환경을 새로 읽는다). */
-  checkEngine: (reread: boolean) => invoke<EngineCheck>("thread_check_engine", { reread }),
-  startLogin: () => invoke<void>("thread_start_login"),
-  cancelLogin: () => invoke<void>("thread_cancel_login"),
+  /** 그 Runtime을 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 찾기」 · 「다시 확인」이다(로그인 환경을 새로 읽는다). */
+  checkEngine: (runtime: Runtime, reread: boolean) => invoke<EngineCheck>("thread_check_engine", { runtime, reread }),
+  startLogin: (runtime: Runtime) => invoke<void>("thread_start_login", { runtime }),
+  cancelLogin: (runtime: Runtime) => invoke<void>("thread_cancel_login", { runtime }),
   /** 앱 종료 확인 창의 셈 — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 메모리만 읽는다. */
   quitCounts: () => invoke<QuitCounts>("thread_quit_counts"),
   /** 모든 Thread의 요약 — 새것이 먼저다. 깨진 Thread도 줄이 선다. */

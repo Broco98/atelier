@@ -4,6 +4,7 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown } from "lucide-react";
 import { PANEL_MOTION } from "@/components/shell/panel-layout";
+import { Toaster } from "@/components/ui/toast";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
 import { workChangesKey } from "@/features/files/hooks";
@@ -24,7 +25,7 @@ import { askTurn, nextOf } from "./asks";
 import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
 import { chipLists, newThreadChips, newThreadLevel, pickRuntime, threadChips, type NewThreadPicks } from "./chips";
-import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
+import { awaitingLogin, checkEngineOnce, engineOf, guideKind, threadEngineStore } from "./engine-store";
 import { foldOf, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
 import GuideCard from "./GuideCard";
@@ -48,7 +49,7 @@ import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
-import { DEFAULT_RUNTIME, runtimeNameOf } from "./runtime";
+import { DEFAULT_RUNTIME, isRuntime, runtimeNameOf } from "./runtime";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, FollowTail, TURN_GAP, UserMessage, type FlowActions } from "./ThreadFlow";
@@ -56,7 +57,7 @@ import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
-import type { AskLevel, Attachment, ThreadView } from "./types";
+import type { AskLevel, Attachment, Runtime, ThreadView } from "./types";
 import type { ComposerTray, ModeChoice, ModelChoice, ScopeChoice } from "./ComposerChips";
 import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
 import { HeadWork, ServiceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
@@ -95,7 +96,8 @@ import { lockedWork, startLink, startPlaceholder } from "./work-chip";
 //   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 선다.
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
 //   Project · Service 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
-// - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
+// - **로그인 · 설치 안내**(`GuideCard`, restart 01c-9)는 입력창 자리에 선다 — 흐름은 그대로 보이고, 쓰던 말은 카드가 걷히면 다시 선다. 상태는
+//   Runtime마다다. 새 채팅은 고른 Runtime의 것이고 첫 말 전에는 다른 Runtime으로 바꾸는 단추가 선다. 선 채팅은 그 채팅의 Runtime 것이다.
 // - **말은 Runtime 이름으로 선다**(`runtimeNameOf`) — 채팅은 Runtime 세션 하나라 흐름과 카드에 얼굴도 이름 줄도 없다. 모델 칩은 채팅의
 //   값이다(§14).
 // - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
@@ -173,9 +175,12 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
   const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel, runtime);
   // 칩은 Runtime대로 선다 — 첫 말 전 Codex는 모델 칩 없이 기본 모드만 메뉴 없이 선다(Composer 「첫 말 전 Codex」).
   const chips = newThreadChips(runtime, picks, level);
-  const engine = useStore(threadEngineStore, (state) => state);
-  useEffect(() => checkEngineOnce(), []);
+  // 고른 Runtime을 쓸 수 있나(restart 01c-9 · 스토리 37 · 40) — 고른 순간에 확인한다(앱이 도는 동안 Runtime마다 한 번). 쓸 수 없으면 입력창
+  // 자리에 그 Runtime의 카드가 선다. 확인은 최대 20초가 걸리고 그동안 보내기를 잠근다 — 보내면 Runtime이 잠겨 바꾸는 단추가 사라진다.
+  const engine = useStore(threadEngineStore, (state) => engineOf(state, runtime));
+  useEffect(() => checkEngineOnce(runtime), [runtime]);
   const guide = guideKind(engine, false);
+  const pick = (next: Runtime) => setPicks((now) => pickRuntime(now, next));
 
   const start = async (text: string, attachments: readonly Attachment[]) => {
     setStarting({ text, attachments });
@@ -215,9 +220,19 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
       commands={[]}
       running={false}
       busy={starting !== null}
+      checking={engine.checking}
       onSend={start}
       onNewThread={() => {}}
-      runtime={{ value: runtime, onPick: (next) => setPicks((now) => pickRuntime(now, next)) }}
+      runtime={{ value: runtime, onPick: pick }}
+      card={
+        guide && (
+          // 첫 말 전에는 다른 Runtime으로 바꾸는 단추가 선다 — 입력창의 칩이 카드에 가려져 있다(스토리 40). 바꾼 Runtime도 쓸 수 없으면 그
+          // Runtime의 카드로 갈아 선다. 쓰던 말은 입력창의 것이라 그대로다.
+          <Arriving key={`guide-${runtime}-${guide}`} motion="card-rise">
+            <GuideCard runtime={runtime} kind={guide} view={engine} onSwitch={starting === null ? pick : undefined} />
+          </Arriving>
+        )
+      }
       // 트레이는 첫 말 전에 상자 아래에서 범위를 고르고, 씨앗이 있으면 그 앞에 Work 칩이 선다. 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의
       // 입력창처럼 상자 위에서 잠긴다. 범위 칩은 첫 말 뒤에 서지 않는다.
       tray={starting === null ? { at: "below", work: seeded, scope } : { at: "above", work: locked }}
@@ -227,11 +242,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
   return (
     <PlainFrame label="새 채팅">
       <ArrivalScope>
-        {guide ? (
-          <GuidePlace>
-            <GuideCard kind={guide} view={engine} />
-          </GuidePlace>
-        ) : (
+        {
           // 첫 화면과 첫 말을 보낸 뒤가 한 틀이다 — 입력창은 같은 자리(둘째 칸)에 남아 갈아 서지 않는다. 그래야 보내기 원이 ↑에서 스피너로
           // 모핑하고(02 §9 · Screen-Live 단계 1) 입력칸이 포커스를 지킨다. 첫 칸만 물음 ↔ 보낸 말로 바뀐다.
           // - 첫 화면: 가운데 묶음 — 물음 아래 28에 입력창 · 트레이다. 아래 210을 비우고 가운데에 선다: F1-Home의 아래 88(`main{padding:0
@@ -240,7 +251,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
           // - 첫 말을 보낸 뒤: Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 서고, 입력창은 바닥으로 내려간다.
           <div
             className={cn(
-              "flex min-h-0 flex-1 flex-col",
+              "relative flex min-h-0 flex-1 flex-col",
               starting === null && "items-center justify-center overflow-y-auto px-4 pb-52.5 scroll-quiet",
             )}
           >
@@ -257,8 +268,10 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
             <div className={starting === null ? "w-full" : "px-5 pb-4"}>
               <div className={COLUMN}>{composer}</div>
             </div>
+            {/* 안내 카드의 「설치 안내」 · 「명령 복사」가 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
+            {guide && <Toaster />}
           </div>
-        )}
+        }
       </ArrivalScope>
     </PlainFrame>
   );
@@ -284,7 +297,6 @@ export function ThreadScreen({ thread }: { thread: string }) {
   const rename = useRenameThread();
   const [renaming, setRenaming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => checkEngineOnce(), []);
   const name = view?.title || "채팅";
   const work = view?.work ?? null;
   // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 「보관됨」이며, 지워진 Work에는 카드가 없다.
@@ -384,7 +396,14 @@ export function ThreadScreen({ thread }: { thread: string }) {
             style={{ width: expanded ? THREAD_BESIDE : "100%" }}
           >
             <DocPlace.Provider value={docPlace}>
-              <ThreadBody key={thread} view={view} problem={problem} beside={hasCard && cardOpen} onShowChanges={showChanges} />
+              <ThreadBody
+                key={thread}
+                view={view}
+                problem={problem}
+                beside={hasCard && cardOpen}
+                toasts={!expanded}
+                onShowChanges={showChanges}
+              />
             </DocPlace.Provider>
           </div>
           {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
@@ -510,12 +529,15 @@ function ThreadBody({
   view,
   problem,
   beside,
+  toasts,
   onShowChanges,
 }: {
   view: ThreadView;
   problem: string | null;
   /** 요약 카드가 열려 있나 — 흐름 · 입력창의 열이 카드를 비켜난다(`Beside`). */
   beside: boolean;
+  /** 안내 카드의 토스트가 이 본문 아래에 서나 — 넓힌 카드가 서 있으면 그 보기의 토스트 자리(`ExpandedViewer`)가 받는다. */
+  toasts: boolean;
   onShowChanges: (pr: PrLine) => void;
 }) {
   const navigate = useNavigate();
@@ -531,8 +553,10 @@ function ThreadBody({
   const reconnect = useReconnect(thread);
   const [chipProblem, setChipProblem] = useState<string | null>(null);
   const queue = useQueue(view);
-  const engine = useStore(threadEngineStore, (state) => state);
-  const guide = guideKind(engine, awaitingLogin(lines));
+  // 그 채팅의 Runtime을 쓸 수 없으면 입력창 자리에 안내 카드가 선다(restart 01c-9) — Runtime마다의 상태라 다른 Runtime의 로그인 끊김은 이 채팅에
+  // 카드를 세우지 않는다. 확인은 세션을 열 때 Host가 하고 이벤트로 알린다. 읽기만인 채팅에는 열 세션이 없다.
+  const engine = useStore(threadEngineStore, (state) => engineOf(state, view.runtime));
+  const guide = view.readOnly ? null : guideKind(engine, awaitingLogin(lines));
   const { data: works } = useWorks();
   const linked = view.work ? (works?.find((one) => one.slug === view.work) ?? null) : null;
   // 트레이(03 §5) — 상자 위에 서고 Work 칩은 잠겨 있다. 이은 Work의 제목은 목록에서 읽는다(아직 없으면 slug). 범위는 대화로 바꾼다(스토리 14).
@@ -564,18 +588,18 @@ function ThreadBody({
   useLayoutEffect(follow, [follow, lines]);
 
   // 읽은 자리(S38) — 요약이 정본이고(Thread 화면 밖에서도 요약 이벤트가 고친다), 방금 적으러 보낸 자리는 답이 오기 전에도 다시 보내지
-  // 않는다. 안내 카드가 본문을 대신하면 흐름이 보이지 않는다.
+  // 않는다. 안내 카드는 입력창 자리에 서므로 흐름은 그대로 보인다.
   const { data: threads } = useThreads();
   const lastRead = Math.max(view.lastRead, threads?.find((one) => one.id === thread)?.lastRead ?? 0);
   const { mutate: markRead } = useMarkRead();
   const marked = useRef(0);
   const read = useCallback(() => {
-    const seq = guide || !stuck.current ? null : readMark(lines, Math.max(lastRead, marked.current));
+    const seq = !stuck.current ? null : readMark(lines, Math.max(lastRead, marked.current));
     if (seq === null) return;
     marked.current = seq;
     // 적지 못했으면 다음 기회(새 줄 · 바닥까지 굴림)에 다시 적는다 — 곧바로 다시 보내지 않는다.
     markRead({ thread, seq }, { onError: () => (marked.current = 0) });
-  }, [guide, lines, lastRead, markRead, thread]);
+  }, [lines, lastRead, markRead, thread]);
   useEffect(read, [read]);
 
   // 흐름이 부드럽게 내려간다 — 동작 줄이기면 곧바로다(부드러운 굴림은 CSS의 동작 줄이기 갈래가 끄지 못한다).
@@ -652,17 +676,10 @@ function ThreadBody({
     onEffort: (value) => chip({ field: "effort", value }),
   };
 
-  if (guide) {
-    return (
-      <GuidePlace>
-        <GuideCard kind={guide} view={engine} />
-      </GuidePlace>
-    );
-  }
   // 화면이 선 뒤에 새로 선 줄 · 칩 · 카드만 들어서며 움직인다(v1 티켓 43 — `ArrivalScope`). 이 본문은 Thread마다 새로 선다(`key`).
   return (
     <ArrivalScope>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={scroller}
           onScroll={(event) => {
@@ -740,6 +757,12 @@ function ThreadBody({
                     running={model.running}
                     onStop={() => void threadApi.stop(thread).catch((error: unknown) => setChipProblem(String(error)))}
                   />
+                ) : guide && isRuntime(view.runtime) ? (
+                  // 안내 카드도 입력창 자리를 빌린다 — 쓰던 말은 입력창의 것이라 카드가 걷히면 그대로 다시 선다. 턴이 시작된 채팅이라 Runtime을
+                  // 바꾸는 단추는 없다(스토리 31).
+                  <Arriving key={`guide-${guide}`} motion="card-rise">
+                    <GuideCard runtime={view.runtime} kind={guide} view={engine} />
+                  </Arriving>
                 ) : null
               }
               above={
@@ -791,6 +814,8 @@ function ThreadBody({
             />
           </Beside>
         </div>
+        {/* 안내 카드의 「설치 안내」 · 「명령 복사」가 알리는 자리 — 카드가 설 때만 둔다(화면마다 토스트 자리는 하나다, S14). */}
+        {guide && toasts && <Toaster />}
       </div>
     </ArrivalScope>
   );
