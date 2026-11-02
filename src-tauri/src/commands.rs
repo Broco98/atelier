@@ -961,6 +961,12 @@ pub async fn thread_send_now(
     to_host(&engine, "지금 전하지 못했습니다", move |host| host.send_thread_now(&thread, &queued)).await
 }
 
+/// 다시 잇기 — 말을 보내지 않고 재개 차례로 Session만 연다. 끊긴 턴은 다시 보내지 않고, 대기 줄은 맨 앞부터 간다.
+#[tauri::command]
+pub async fn thread_reconnect(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>, thread: String) -> CmdResult<()> {
+    to_host(&engine, "다시 잇지 못했습니다", move |host| host.reconnect_thread(&thread)).await
+}
+
 /// 권한 답 — 그 Thread의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다. 승인 카드(v1 티켓 24)의 「다시 묻지
 /// 않기」면 `remember`, 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
 #[tauri::command]

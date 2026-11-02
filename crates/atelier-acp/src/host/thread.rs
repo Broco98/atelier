@@ -519,6 +519,26 @@ impl ConversationHost {
         conv.seat(&mut state).send_now(queued).map_err(|refused| refused.into_host(thread))
     }
 
+    /// 다시 잇기(restart 01b-6) — 말을 보내지 않고 재개 차례(`session/resume` → `session/load` → 새 세션)로 Session만 연다. 끊긴 턴은 다시
+    /// 보내지 않는다 — 부작용이 반복될 수 있다.
+    ///
+    /// - 떠 있는 Session에는 아무것도 하지 않는다 — 산 턴을 끊지 않는다. 읽기만 된 Thread는 거절한다.
+    /// - 세션이 열리면 대기 줄이 맨 앞부터 간다 — 사람이 이미 보낸 말이다.
+    /// - 새 세션으로 떨어지면 다음 말의 첫 블록들에 머리말과 지난 말이 붙는다(보내기와 같은 길이다).
+    /// - 로그인이 필요하면 실패가 아니다 — 로그인 필요 줄이 서고 로그인 창구가 그 Thread를 쥔다. 이미 쥐고 있으면 아무것도 하지 않는다.
+    ///
+    /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다.
+    pub fn reconnect_thread(&self, thread: &str) -> Result<(), HostError> {
+        self.writable(thread)?;
+        self.close_lost_service(thread)?;
+        if self.logins.waiting_for(thread).is_some() {
+            return Ok(());
+        }
+        self.revive_session(thread, Revive::IfNotRunning)?;
+        self.send_queue_head(thread);
+        Ok(())
+    }
+
     /// 권한 답 — 그 Thread의 Session에 걸린 요청에 고른 선택지로 답한다. 기다리지 않는다. 승인 카드의 셋째 · 넷째 것(다시 묻지 않기 ·
     /// 남긴 말)은 [`Self::reply_thread_permission`]이다.
     pub fn answer_thread_permission(&self, thread: &str, request: &str, option: &str) -> Result<(), HostError> {
@@ -873,12 +893,17 @@ impl ConversationHost {
             Err(HostError::ThreadNotFound(_)) => return Ok(()),
             revived => revived?,
         }
+        self.send_queue_head(thread);
+        Ok(())
+    }
+
+    /// 다시 띄운 Session의 대기 줄을 맨 앞부터 보낸다 — 걸림이 있거나 Session이 뜨지 않았으면 아무것도 하지 않는다.
+    fn send_queue_head(&self, thread: &str) {
         if let Some(conv) = self.threads.find(thread) {
             if let Some(mut state) = conv.lock_found() {
                 conv.seat(&mut state).resume();
             }
         }
-        Ok(())
     }
 
     /// Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
@@ -931,8 +956,8 @@ impl ConversationHost {
         moved(&file, &place)
     }
 
-    /// 떠 있지 않거나 죽은 Session을 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 Session과 죽은 Session은 말을 보낼 때 띄운다
-    /// (three-axes 결정 19). `thread.json`의 Session id로 resume → load → 새로 순이고, 떠 있던(죽은) Session은 쓰는 손과 대기 줄을
+    /// 떠 있지 않거나 죽은 Session을 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 Session과 죽은 Session은 말을 보낼 때와 사람이
+    /// 다시 이을 때 띄운다(three-axes 결정 19 · restart 01b-6). `thread.json`의 Session id로 resume → load → 새로 순이고, 떠 있던(죽은) Session은 쓰는 손과 대기 줄을
     /// 그대로 이어 쓴다. 다시 뜨지 못하면 대기 줄은 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
     ///
     /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다. Session마다 하나씩 돈다 — 앞선 것이 되살렸으면 아무것도 하지 않는다.

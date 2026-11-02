@@ -80,6 +80,11 @@ export const threadApi = {
   /** 지금 보내기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. */
   sendNow: (thread: string, queued: string) => invoke<void>("thread_send_now", { thread, queued }),
   /**
+   * 다시 잇기(01b-6) — 말을 보내지 않고 재개 차례로 Session만 연다. 세션이 열릴 때까지 기다린다. 끊긴 턴은 다시 보내지 않고, 대기 줄은 맨 앞부터 간다.
+   * 로그인이 필요하면 실패가 아니라 기록의 로그인 필요 줄로 온다.
+   */
+  reconnect: (thread: string) => invoke<void>("thread_reconnect", { thread }),
+  /**
    * 권한 답 — 세션이 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 허락 문구면 `remember`, 「아니요,
    * 다르게」의 입력칸에 쓴 말이 있으면 `words`다.
    */

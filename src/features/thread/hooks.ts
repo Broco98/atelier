@@ -244,6 +244,14 @@ export function useMarkRead() {
   });
 }
 
+/**
+ * 다시 잇기(01b-6) — 세션이 열릴 때까지 돈다. 열리면 기록 줄이 안내를 걷고, 대기 줄 바뀜은 이벤트로 온다. 변수는 끊긴 턴의 열쇠다 — 거절의 까닭은 그 턴의
+ * 안내에만 선다. 뒤에 또 끊긴 턴에 앞의 까닭이 남지 않는다.
+ */
+export function useReconnect(thread: string) {
+  return useMutation({ mutationFn: (_cutTurn: string) => threadApi.reconnect(thread) });
+}
+
 /** 칩의 바꾸기 하나 — 모델 또는 생각 깊이. */
 export type ChipChange = { field: "model"; value: string } | { field: "effort"; value: string };
 

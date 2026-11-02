@@ -166,7 +166,7 @@ impl<S> TurnOrder<S> {
     /// 세션이 열렸다(되살림 · 로그인 뒤 다시 띄움) — 어느 단계든 쉬는 것으로 돌리고, 다음 말에 머리말을 붙일지를 이 값으로 한다.
     /// `heard_service`는 그 세션이 앞서 들은 머리말의 Service 줄이다(이어 연 세션 — 기록에서 읽는다). 대기 줄은 그대로다 — 죽은 대화의
     /// 대기 줄은 되살린 대화가 이어 쥔다(S13). 대기 줄을 보내지 않는다: 무엇을 먼저 보낼지는 그 뒤의 보내기 · 지금 보내기 · 다시
-    /// 띄움이 정한다.
+    /// 띄움 · 다시 잇기가 정한다.
     pub(super) fn opened(&mut self, needs_preamble: bool, heard_service: Option<String>) {
         self.phase = Phase::Idle { after_last: None };
         self.needs_preamble = needs_preamble;
@@ -334,7 +334,7 @@ impl<H: TurnHands> Seat<'_, H> {
         Ok(())
     }
 
-    /// 로그인 걸림이 풀렸다 — 다시 띄운 대화가 맨 앞부터 보낸다(S13, three-axes 티켓 12). 턴 앞은 새로 찍는다.
+    /// 로그인 걸림이 풀렸거나(three-axes 티켓 12) 사람이 다시 이었다(restart 01b-6) — 다시 띄운 대화가 맨 앞부터 보낸다(S13). 턴 앞은 새로 찍는다.
     pub(super) fn resume(mut self) {
         self.release(None);
     }

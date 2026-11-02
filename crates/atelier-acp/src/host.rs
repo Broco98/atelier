@@ -974,7 +974,7 @@ fn find_programs(agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundPro
 /// 되살리기를 언제 하나(three-axes 티켓 10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Revive {
-    /// 떠 있지 않거나 죽었을 때만 — 보내기.
+    /// 떠 있지 않거나 죽었을 때만 — 보내기 · 다시 잇기. 산 턴을 끊지 않는다.
     IfNotRunning,
     /// 떠 있어도 끄고 다시 — 로그인이 「됨」으로 바뀐 뒤(three-axes 티켓 12) · 생각 깊이를 바꾼 뒤(v1 티켓 05).
     EvenIfRunning,

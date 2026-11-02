@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
   answeringLine,
+  continueAsk,
+  cutNotice,
   endNotice,
   finalFrom,
   finalMessages,
@@ -354,12 +356,108 @@ describe("실패한 턴", () => {
     expect(workLine(foldThread(failed).turns[0])).toBeNull();
   });
 
-  it("Session이 사라진 턴은 실패한 턴과 갈라 읽는다 — 까닭은 `cut`이고 안내가 서지 않는다", () => {
+  it("Session이 사라진 턴은 실패한 턴과 갈라 읽는다 — 까닭은 `cut`이고 실패 안내가 서지 않는다", () => {
     const died: RecordLine = { seq: 4, at: at(4), kind: "session", payload: { state: "died", reason: "signal 9" } };
     const [turn] = foldThread([sent, said(2, "고치는 중"), died]).turns;
-    expect(turn.end).toMatchObject({ stopReason: null, error: null, cut: "Claude Code가 끝났어요" });
+    expect(turn.end).toMatchObject({ stopReason: null, error: null, cut: "Claude Code가 끝났어요", cutReason: "signal 9" });
     expect(endNotice(turn)).toBeNull();
-    expect(workLine(turn)?.text).toBe("멈췄어요 — Claude Code가 끝났어요");
+  });
+});
+
+// 끊긴 턴(01b-6 · 스토리 55, 56 · Cards 보드 「연결 끊김」 · 「다시 잇지 못함」 · Thread 보드의 끊긴 턴) — 끝 줄 없이 Session이 사라지면 사람이 다시 잇기를 고른다.
+describe("끊긴 턴", () => {
+  const REASON = "에이전트 프로세스가 끝났습니다 (종료 코드 137)";
+  const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "고쳐 줘" } };
+  const said = update(2, 2, { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "고치는 중" } });
+  const session = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(seq), kind: "session", payload });
+  const died = (seq: number, reason = REASON) => session(seq, { state: "died", reason });
+  const spawning = (seq: number) => session(seq, { state: "spawning" });
+  const opened = (seq: number, how = "resumed") => session(seq, { state: "opened", how });
+  const CUT = [sent, said, died(3)];
+
+  it("턴을 끊은 Session은 다시 이을 때를 기다린다", () => {
+    expect(foldThread(CUT).severed).toEqual({ failed: null });
+  });
+
+  it("앱이 꺼지며 끊긴 턴도 같다", () => {
+    expect(foldThread([sent, said], 2).severed).toEqual({ failed: null });
+  });
+
+  it("Session이 다시 열리면 걷힌다", () => {
+    expect(foldThread([...CUT, spawning(4), opened(5)]).severed).toBeNull();
+    expect(foldThread([...CUT, spawning(4), opened(5, "fresh")]).severed).toBeNull();
+  });
+
+  it("다음 턴이 섰으면 걷힌다", () => {
+    expect(foldThread([...CUT, { ...sent, seq: 4 }]).severed).toBeNull();
+  });
+
+  it("다시 여는 동안은 `connecting`이고 까닭이 없으면 그대로 기다린다", () => {
+    const model = foldThread([...CUT, spawning(4)]);
+    expect(model.connecting).toBe(true);
+    expect(model.severed).toEqual({ failed: null });
+  });
+
+  it("쉬다 죽은 Session은 턴을 끊지 않았다 — 지금처럼 상태 줄이 말하고 다음 말에서 다시 띄운다", () => {
+    const ended: RecordLine = { seq: 2, at: at(2), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 1000 } };
+    const model = foldThread([sent, ended, died(3)]);
+    expect(model.severed).toBeNull();
+    expect(model.notices.map((notice) => notice.text)).toEqual([`${REASON} · 다음 말에서 다시 띄워요`]);
+  });
+
+  it("턴을 끊은 죽음은 안내가 까닭을 말한다 — 상태 줄이 겹쳐 서지 않는다", () => {
+    expect(foldThread(CUT).notices).toEqual([]);
+  });
+
+  it("다시 열다 죽으면 그 까닭이 남고 상태 줄이 겹쳐 서지 않는다", () => {
+    const model = foldThread([...CUT, spawning(4), died(5, "판 어긋남")]);
+    expect(model.connecting).toBe(false);
+    expect(model.severed).toEqual({ failed: "판 어긋남" });
+    expect(model.notices).toEqual([]);
+  });
+
+  it("안내는 까닭을 말하고 받은 글이 있으면 남아 있다고 말한다(Thread 보드)", () => {
+    const [turn] = foldThread(CUT).turns;
+    expect(cutNotice(turn, "Claude Code", { failed: null })).toEqual({
+      kind: "cut",
+      title: "Claude Code와 연결이 끊겼어요.",
+      detail: `${REASON}. 받은 글은 남아 있고, 다시 이으면 이 채팅을 이어서 쓸 수 있어요.`,
+    });
+  });
+
+  it("받은 글이 없으면 다시 이을 수 있다고만 말한다(Cards 보드)", () => {
+    const [turn] = foldThread([sent, died(2)]).turns;
+    expect(cutNotice(turn, "Claude Code", { failed: null })?.detail).toBe(`${REASON}. 다시 이으면 이 채팅을 이어서 쓸 수 있어요.`);
+  });
+
+  it("까닭이 없는 끊김은 끊긴 자리를 말한다", () => {
+    const [turn] = foldThread([sent, said], 2).turns;
+    expect(cutNotice(turn, "Claude Code", { failed: null })?.detail).toContain("앱이 꺼지며 끊겼어요.");
+  });
+
+  it("다시 잇지 못하면 까닭을 말한다(Cards 보드 「다시 잇지 못함」)", () => {
+    const [turn] = foldThread(CUT).turns;
+    expect(cutNotice(turn, "Claude Code", { failed: "Runtime을 시작할 수 없어요" })).toEqual({
+      kind: "reconnect-failed",
+      title: "다시 잇지 못했어요.",
+      detail: "Runtime을 시작할 수 없어요. 기록은 그대로 남아 있어요.",
+    });
+  });
+
+  it("다시 이은 뒤의 끊긴 턴은 지난 일이다 — 다시 잇자고 말하지 않는다", () => {
+    const [turn] = foldThread([...CUT, spawning(4), opened(5)]).turns;
+    expect(cutNotice(turn, "Claude Code", null)?.detail).toBe(`${REASON}. 받은 글까지는 남아 있어요.`);
+  });
+
+  it("끊기지 않은 턴에는 없다", () => {
+    expect(cutNotice(foldThread(blessed).turns[0], "Claude Code", null)).toBeNull();
+    expect(cutNotice(foldThread([sent]).turns[0], "Claude Code", null)).toBeNull();
+  });
+
+  it("까닭은 안내가 말하므로 구분선은 펼칠 일이 있을 때만 「N초 동안 작업」이다", () => {
+    const tool = update(2, 2, { sessionUpdate: "tool_call", toolCallId: "t1", title: "pnpm test", kind: "execute", status: "completed" });
+    expect(workLine(foldThread(CUT).turns[0])).toBeNull();
+    expect(workLine(foldThread([sent, tool, { ...said, seq: 3 }, died(9)]).turns[0])).toEqual({ text: "8초 동안 작업", unfolds: true });
   });
 });
 
@@ -381,6 +479,14 @@ describe("끝 까닭의 안내 줄", () => {
     expect(endNotice(usedUp)).toEqual({ kind: "max_turn_requests", title: "요청 수 한도에 닿았어요.", detail: "이어서 시킬 수 있어요." });
   });
 
+  it("길이 제한과 턴 한도에는 입력창에 채울 말이 있다 — 거절과 실패에는 없다", () => {
+    expect(continueAsk(limited)).toEqual({ label: "이어서 쓰기", text: "이어서 써 줘" });
+    expect(continueAsk(usedUp)).toEqual({ label: "이어서 하기", text: "이어서 해 줘" });
+    expect(continueAsk(refused)).toBeNull();
+    expect(continueAsk(foldThread(record("thread-failed")).turns[0])).toBeNull();
+    expect(continueAsk(foldThread(blessed).turns[0])).toBeNull();
+  });
+
   it("까닭은 안내가 말하므로 구분선은 펼칠 일이 있을 때만 「N초 동안 작업」이다", () => {
     expect(workLine(refused)).toBeNull();
     expect(workLine(limited)).toBeNull();
@@ -392,7 +498,7 @@ describe("끝 까닭의 안내 줄", () => {
   });
 
   it("멈춘 턴과 거부로 멈춘 턴은 안내가 아니라 구분선이 말한다", () => {
-    const end = { durationMs: 1000, error: null, cut: null, at: at(1) };
+    const end = { durationMs: 1000, error: null, cut: null, cutReason: null, at: at(1) };
     expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: true })).toBe("1초 후에 중단했습니다");
     expect(headline({ ...end, stopReason: "cancelled", cancelledByUs: false })).toBe("거부해서 멈췄어요");
   });

@@ -9,6 +9,8 @@ import { decisionText } from "./approval";
 import { useArrival } from "./arrival";
 import {
   answeringLine,
+  continueAsk,
+  cutNotice,
   endNotice,
   finalFrom,
   headline,
@@ -23,6 +25,7 @@ import {
   type Entry,
   type Notice,
   type QuestionEntry,
+  type Severed,
   type SystemLine,
   type ThreadModel,
   type ToolEntry,
@@ -70,9 +73,10 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   스트리밍」). 같은 흐름의 기록 줄이 오면 꼬리가 걷히고 글이 턴의 줄로 선다 — 끝난 글은 다시 움직이지 않는다. 답을 기다리는 동안은 「생각 중」에
 //   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12). 대화를 정리하는 동안은 같은 자리의 「대화를 정리하는 중」이다
 //   (01b-4 · Tools 보드 — 정리 신호가 오는 동안만, `compacting`). 정리 줄은 작업 로그에 서지 않는다.
-// - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
-//   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다. 실패한 턴과 거절 · 길이 제한 · 턴 한도는 받은 글 뒤의 안내 줄이 말한다(01b-5 · Cards 보드 ·
-//   `EndNoticeLine`) — 글이 있어도 그렇다. 끝난 답이 아니라 동작 줄이 없다. 모양은 02b-5가 맞춘다.
+// - **오류와 중단은 색 대신 문장이다** — 우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다. 실패한 턴과 거절 · 길이 제한 · 턴 한도, 끊긴 턴은 받은 글 뒤의 안내 줄이
+//   말한다(01b-5 · 01b-6 · Cards 보드 · `EndNoticeLine`) — 글이 있어도 그렇다. 끝난 답이 아니라 동작 줄이 없다. 모양은 02b-5가 맞춘다.
+// - **안내의 단추는 지금의 턴에만 선다**(01b-6 · `FlowActions`) — 「다시 잇기」는 말을 보내지 않고 Session만 열어, 끊긴 턴이 저절로 다시 돌지 않는다. 「이어서
+//   쓰기」 · 「이어서 하기」는 입력창을 채울 뿐이고 보내는 것은 사람이다. 읽기만인 채팅에는 어느 단추도 없다.
 // - **시스템 줄**(이름 바꾸기 · 정도 바꿈 · Work · Service)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴
 //   사이의 옅은 줄이다.
 // - 마지막으로 끝난 답 아래에만 응답 액션(복사)과 그 턴의 사용량이 선다(`AnswerActions` — 01b-7 · Cards 보드 「답 아래 줄」). 「…」는 무엇을 둘지
@@ -122,11 +126,23 @@ interface ThreadFlowProps {
   model: ThreadModel;
   /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 「답하는 중」과 문서 카드의 말이 이 이름으로 선다. */
   runtime: string;
-  /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 붙인 첨부와 함께 다시 보낸다. */
-  onRetry: (text: string, attachments: readonly Attachment[]) => void;
+  /** 안내 줄의 단추가 하는 일 — 읽기만인 채팅에는 없다. */
+  actions?: FlowActions | null;
 }
 
-function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
+/** 안내 줄의 단추가 하는 일(01b-6) — Thread 본문이 준다. */
+export interface FlowActions {
+  /** 입력창에 말을 채운다 — 보내는 것은 사람이다. */
+  fill: (text: string) => void;
+  /** 말을 보내지 않고 Session만 다시 연다. */
+  reconnect: () => void;
+  /** 다시 잇기가 도는 중인가. */
+  reconnecting: boolean;
+  /** 다시 잇기 명령이 거절된 까닭 — 기록에 줄이 서기 전에 막힌 때(찾지 못함 · 로그인 셸)도 든다. */
+  reconnectFailure: string | null;
+}
+
+function ThreadFlow({ thread, model, runtime, actions = null }: ThreadFlowProps) {
   const expanded = useStore(threadUiStore, (state) => state.expanded);
   // PR 카드의 병합한 때(「어제 오후 6:12」)를 견줄 지금 — 흐름을 다시 그릴 때마다 읽는다.
   const now = Date.now();
@@ -157,7 +173,9 @@ function ThreadFlow({ thread, model, runtime, onRetry }: ThreadFlowProps) {
               waiting={turn.end === null ? waitingFor(model) : null}
               compacting={turn.end === null && model.compacting}
               last={turn === last}
-              onRetry={onRetry}
+              actions={turn === last ? actions : null}
+              severed={model.severed}
+              connecting={model.connecting}
               lead={model.system
                 .filter((line) => line.turn === turn.key)
                 .map((line) => (
@@ -280,7 +298,9 @@ function TurnView({
   waiting,
   compacting,
   last,
-  onRetry,
+  actions,
+  severed,
+  connecting,
   lead,
 }: {
   turn: Turn;
@@ -292,7 +312,12 @@ function TurnView({
   /** 이 턴이 대화를 정리하는 중인가 — 「생각 중」 자리에 「대화를 정리하는 중」이 선다. */
   compacting: boolean;
   last: boolean;
-  onRetry: (text: string, attachments: readonly Attachment[]) => void;
+  /** 안내 줄의 단추가 하는 일 — 지금의 턴에만 온다. */
+  actions: FlowActions | null;
+  /** 턴을 끊은 Session이 아직 다시 열리지 않았나(`ThreadModel.severed`). */
+  severed: Severed | null;
+  /** Session을 띄우는 중인가(`ThreadModel.connecting`). */
+  connecting: boolean;
   /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, 답의 줄 앞이다(화면 2 보드). */
   lead: ReactNode[];
 }) {
@@ -302,13 +327,15 @@ function TurnView({
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isToolChoice(entry)) : [];
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
-  // 받은 글 없이 Session이 사라진 턴 — 실패한 턴과 다르다(`TurnEnd.cut`).
-  const cut = turn.end !== null && turn.end.cut !== null && final.length === 0;
-  const notice = endNotice(turn);
+  // 다시 이을 수 있을 때만 다시 잇자고 말한다 — 지난 턴과 읽기만인 채팅은 지난 일이다(`cutNotice`).
+  const reconnectable = actions && severed && { failed: actions.reconnectFailure ?? severed.failed };
+  const cut = cutNotice(turn, runtime, reconnectable);
+  const notice = endNotice(turn) ?? cut;
+  const reconnecting = cut !== null && actions !== null && reconnectable !== null && (connecting || actions.reconnecting);
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
   // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴에는 없다. 구분선이 없거나 펼칠 것이 없는 턴은 늘 접힌 모양이다.
-  const line = turn.end && !cut && !stopped ? workLine(turn) : null;
-  const unfolded = open && (stopped || cut || line?.unfolds === true);
+  const line = turn.end && !stopped ? workLine(turn) : null;
+  const unfolded = open && (stopped || line?.unfolds === true);
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다.
@@ -324,12 +351,7 @@ function TurnView({
       {lead}
       {turn.end ? (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
-          {cut ? (
-            <ErrorLine
-              error={turn.end.cut}
-              retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "", turn.attachments)}
-            />
-          ) : stopped ? (
+          {stopped ? (
             // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
             <>
               <OpenedLog entries={before} open={unfolded} />
@@ -355,7 +377,7 @@ function TurnView({
           ))}
           {!stopped && final.map((entry) => <EntryView key={entry.key} entry={entry} />)}
           <CreatedDocs turn={turn} name={runtime} />
-          {notice && <EndNoticeLine notice={notice} />}
+          {reconnecting ? <ReconnectingLine /> : notice && <EndNoticeLine notice={notice} action={noticeAction(turn, cut, reconnectable, actions)} />}
           {last && !stopped && !notice && finalText !== "" && <AnswerActions text={finalText} usage={turn.usage} />}
         </div>
       ) : (
@@ -559,29 +581,44 @@ export function UserMessage({
   );
 }
 
-/** 오류 줄(보드 `.errl`) — 원 안의 느낌표 · 문장 · 테두리 버튼 「다시 시도」(그림 없이 28 · 10 반경). 끊긴 까닭은 문장 뒤에 붙는다. */
-function ErrorLine({ error, retry }: { error: string | null; retry: (() => void) | null }) {
+/** 안내 줄의 단추 — 끊긴 턴은 「다시 잇기」이고, 길이 제한과 턴 한도는 입력창을 채우는 「이어서」다. */
+function noticeAction(
+  turn: Turn,
+  cut: EndNotice | null,
+  reconnectable: Severed | null,
+  actions: FlowActions | null,
+): { label: string; run: () => void } | null {
+  if (actions === null) return null;
+  if (cut !== null) return reconnectable && { label: "다시 잇기", run: actions.reconnect };
+  const ask = continueAsk(turn);
+  return ask && { label: ask.label, run: () => actions.fill(ask.text) };
+}
+
+/**
+ * 턴 끝의 안내 줄(Cards 보드 `.ra-notice` — 「실패한 턴」 · 「거절」 · 「턴 한도」 · 「연결 끊김」 · 「다시 잇지 못함」, Thread 보드 「길이 제한」). 끝에 단추
+ * 하나가 설 수 있다. 모양은 02b-5가 맞춘다.
+ */
+function EndNoticeLine({ notice, action }: { notice: EndNotice; action: { label: string; run: () => void } | null }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm text-fg-secondary">
-      <CircleAlert className="size-4 shrink-0 text-fg" aria-hidden />
-      <span>답하지 못했습니다. {error ? `${error}.` : "Claude Code와 연결이 끊겼어요."}</span>
-      {retry && (
-        <Button variant="outline" className="h-7" onClick={retry}>
-          다시 시도
+    <div data-end-notice={notice.kind} className="flex w-full items-start gap-2 text-sm text-fg-secondary">
+      <CircleAlert className="mt-0.5 size-4 shrink-0 text-fg" aria-hidden />
+      <span className="min-w-0 flex-1 wrap-anywhere">
+        <b className="font-medium text-fg">{notice.title}</b> {notice.detail}
+      </span>
+      {action && (
+        <Button variant="outline" size="top" onClick={action.run}>
+          {action.label}
         </Button>
       )}
     </div>
   );
 }
 
-/** 턴 끝의 안내 줄(Cards 보드 `.ra-notice` — 「실패한 턴」 · 「거절」 · 「턴 한도」, Thread 보드 「길이 제한」). 모양은 02b-5가 맞춘다. */
-function EndNoticeLine({ notice }: { notice: EndNotice }) {
+/** 다시 잇는 중(Cards 보드 「다시 잇는 중」) — 안내 줄의 자리에 선다. 모양은 02b-5가 맞춘다. */
+function ReconnectingLine() {
   return (
-    <p data-end-notice={notice.kind} className="flex items-start gap-2 text-sm text-fg-secondary">
-      <CircleAlert className="mt-0.5 size-4 shrink-0 text-fg" aria-hidden />
-      <span className="min-w-0 wrap-anywhere">
-        <b className="font-medium text-fg">{notice.title}</b> {notice.detail}
-      </span>
+    <p data-end-notice="reconnecting" className="text-sm">
+      <span className="chat-shimmer">다시 잇는 중</span>
     </p>
   );
 }

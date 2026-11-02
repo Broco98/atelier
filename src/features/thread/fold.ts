@@ -51,6 +51,8 @@ import { particle } from "@/lib/particle";
 //   앞뒤의 답을 끊지 않는다(`lastWork`). 그래서 대화를 막지 않는다.
 // - **실패한 턴은 글 유무가 아니라 `turn-end`의 `error`로 읽는다**(01b-5 · 스토리 67) — 글이 일부 왔어도 실패다. 끝 줄 없이 Session이 사라진 턴은 실패한 턴과
 //   가른다(`TurnEnd.cut`) — 그쪽은 다시 이을 일이다. 실패와 끝 까닭(거절 · 길이 제한 · 턴 한도)은 턴 끝의 안내 줄이 말한다(`endNotice`).
+// - **끊긴 턴은 사람이 다시 잇는다**(01b-6 · 스토리 55) — 턴을 끊은 Session이 다시 열리지 않은 동안이 `severed`이고 안내가 까닭과 「다시 잇기」를 말한다(`cutNotice`).
+//   쉬다 죽은 Session은 끊긴 턴이 없어 지금처럼 상태 줄이 말하고 다음 말에서 다시 띄운다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -67,6 +69,8 @@ export interface TurnEnd {
   error: string | null;
   /** 끝 줄 없이 Session이 사라진 까닭(죽음 · 닫힘 · 앱을 다시 켬). 실패한 턴과 가른다. 사라지지 않았으면 null이다. */
   cut: string | null;
+  /** 죽음 줄이 적은 까닭(「… 종료 코드 137」) — 안내가 말한다. `cut`은 목록의 짧은 글이다. 적지 않았으면 null이다. */
+  cutReason: string | null;
   /** 끝난 때 — 턴 끝 줄(또는 Session이 사라진 줄)의 시각. 함께 돈 턴들의 말한 차례를 가른다(사이드바의 마지막 말). */
   at: string;
 }
@@ -342,12 +346,20 @@ export type ResultAction = "project-added" | "project-edited" | "service-created
 
 const RESULT_ACTIONS: readonly ResultAction[] = ["project-added", "project-edited", "service-created", "service-edited"];
 
+/** 턴을 끊고 사라진 Session — 다시 열리지 않은 동안이다(01b-6). */
+export interface Severed {
+  /** 다시 열다 죽은 까닭 — 다시 열어 보지 않았으면 null이다. */
+  failed: string | null;
+}
+
 export interface ThreadModel {
   turns: Turn[];
   /** 도는 턴이 있나. */
   running: boolean;
   /** Session을 띄우거나 되살리는 중인가 — 띄우는 중 줄 뒤로 열림 · 죽음 · 닫힘 · 로그인 필요가 아직 오지 않았다. */
   connecting: boolean;
+  /** 턴을 끊은 Session이 아직 다시 열리지 않았으면 그 모양 — 「다시 잇기」가 설 때다. */
+  severed: Severed | null;
   /** 대화를 정리하는 중인가 — 도는 턴에 끝나지 않은 정리 줄이 있다. 턴이 끝나면 끝나지 않은 줄도 닫힌 것이다. */
   compacting: boolean;
   notices: Notice[];
@@ -562,6 +574,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const planReviews = new Set<string>();
   // 끝나지 않은 대화 정리 줄 id들 — 도는 턴의 것이다.
   const compacts = new Set<string>();
+  let severed = null as Severed | null;
   const start = (
     key: string,
     sent: string | null,
@@ -582,6 +595,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     };
     turns.push(turn);
     open = turn;
+    severed = null;
     return turn;
   };
   const close = (turn: Turn) => {
@@ -615,7 +629,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       turnsBefore: turns.length,
     });
   // 세션의 프로세스가 사라졌다 — 열린 턴은 끝났고, 걸린 권한 요청에는 답할 곳이 없고, 끝을 받지 못한 도구 줄은 끊겼다.
-  const vanish = (at: string, cut: string) => {
+  const vanish = (at: string, cut: string, cutReason: string | null = null) => {
     for (const id of pending.keys()) dropAsk(id);
     connecting = false;
     for (const turn of turns) {
@@ -628,9 +642,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       cancelledByUs: false,
       error: null,
       cut,
+      cutReason,
       at,
     };
     close(open);
+    severed = { failed: null };
   };
   let gone = goneThrough === null;
   let lastAt = "";
@@ -771,6 +787,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           cancelledByUs: payload.cancelledByUs === true,
           error,
           cut: null,
+          cutReason: null,
           at: line.at,
         };
         if (turn.end.stopReason === "cancelled" && turn.end.cancelledByUs) {
@@ -924,6 +941,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             break;
           case "opened":
             connecting = false;
+            severed = null;
             if (payload.how === "fresh") notice(line.seq, "fresh", FRESH_NOTICE);
             break;
           case "login-required":
@@ -933,10 +951,17 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             notice(line.seq, "version", versionNotice(text(payload.agentVersion), payload.supportedMajor));
             break;
           case "died":
-          case "closed":
-            vanish(line.at, payload.state === "closed" ? "Session이 닫혔어요" : "Claude Code가 끝났어요");
-            if (payload.state === "died") notice(line.seq, "died", diedNotice(text(payload.reason)));
+          case "closed": {
+            const reason = text(payload.reason);
+            const cutting = open !== null;
+            const reopening = connecting && severed !== null;
+            vanish(line.at, payload.state === "closed" ? "Session이 닫혔어요" : DIED, reason);
+            if (payload.state !== "died") break;
+            // 턴을 끊은 죽음과 다시 열다 죽은 것은 끊긴 턴의 안내가 말한다 — 상태 줄이 겹쳐 서지 않는다.
+            if (reopening) severed = { failed: reason ?? DIED };
+            else if (!cutting) notice(line.seq, "died", diedNotice(reason));
             break;
+          }
           default:
             break;
         }
@@ -1033,6 +1058,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     turns,
     running: open !== null,
     connecting,
+    severed,
     compacting: compacts.size > 0,
     notices,
     system,
@@ -1067,8 +1093,11 @@ export const GONE_WITH_APP = "앱이 꺼지며 끊겼어요";
 /** 「새로 시작함」 상태 줄. */
 const FRESH_NOTICE = "새로 시작함 — 앞의 맥락을 잇지 못해 새 Session으로 열었어요";
 
+/** 죽음 줄이 까닭을 적지 않았을 때의 글. */
+const DIED = "Claude Code가 끝났어요";
+
 function diedNotice(reason: string | null): string {
-  return `${reason ?? "Claude Code가 끝났어요"} · 다음 말에서 다시 띄워요`;
+  return `${reason ?? DIED} · 다음 말에서 다시 띄워요`;
 }
 
 function versionNotice(version: string | null, major: unknown): string {
@@ -1366,7 +1395,13 @@ const END_NOTICES = new Map([
   ["max_turn_requests", { title: "요청 수 한도에 닿았어요.", detail: "이어서 시킬 수 있어요." }],
 ]);
 
-/** 턴 끝의 안내 줄 — 실패한 턴과 끝 까닭이 있는 턴이다. `kind`는 `failed`이거나 그 끝 까닭이다. */
+/** 끝 까닭의 「이어서」 단추 — 단추의 글과 입력창에 채울 말(Thread 보드 「길이 제한」 · Cards 보드 「턴 한도」). */
+const CONTINUES = new Map([
+  ["max_tokens", { label: "이어서 쓰기", text: "이어서 써 줘" }],
+  ["max_turn_requests", { label: "이어서 하기", text: "이어서 해 줘" }],
+]);
+
+/** 턴 끝의 안내 줄 — 실패한 턴과 끝 까닭이 있는 턴, 끊긴 턴이다. `kind`는 `failed`, `cut`, `reconnect-failed`이거나 그 끝 까닭이다. */
 export interface EndNotice {
   kind: string;
   title: string;
@@ -1378,7 +1413,7 @@ const sentence = (words: string): string => (/[.!?。]$/.test(words) ? words : `
 
 /**
  * 그 턴의 안내 줄(Cards 보드 「실패한 턴」 · 01b-5) — 실패는 까닭을 보이고 받은 글이 있으면 남아 있다고 말한다. 끝 까닭은 보드의 문장이다. 도는 턴 · 보통으로
- * 끝난 턴 · 멈춘 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 「다시 잇기」다(01b-6).
+ * 끝난 턴 · 멈춘 턴 · 끊긴 턴은 없다. 끊긴 턴의 안내는 `cutNotice`다.
  */
 export function endNotice(turn: Turn): EndNotice | null {
   if (turn.end === null) return null;
@@ -1392,8 +1427,37 @@ export function endNotice(turn: Turn): EndNotice | null {
   return notice ? { kind: reason, ...notice } : null;
 }
 
-/** 까닭을 구분선이 말하지 않아도 되는 끝 — 보통의 끝과 안내 줄이 말하는 끝 까닭이다. */
-const plainEnd = (end: TurnEnd): boolean => end.stopReason === "end_turn" || END_NOTICES.has(end.stopReason ?? "");
+/**
+ * 끊긴 턴의 안내(Cards 보드 「연결 끊김」 · 「다시 잇지 못함」 · Thread 보드 · 01b-6). `severed`는 이 턴에서 끊긴 Session을 아직 다시 이을 수 있을 때의 모양이고,
+ * 다시 이은 뒤의 지난 턴이나 읽기만인 채팅이면 null이다 — 그때는 다시 잇자고 말하지 않는다. 끊기지 않은 턴은 없다.
+ */
+export function cutNotice(turn: Turn, runtime: string, severed: Severed | null): EndNotice | null {
+  if (turn.end === null || turn.end.cut === null) return null;
+  if (severed?.failed) {
+    return { kind: "reconnect-failed", title: "다시 잇지 못했어요.", detail: `${sentence(severed.failed)} 기록은 그대로 남아 있어요.` };
+  }
+  const received = turn.entries.some((entry) => entry.kind === "message");
+  const after = severed
+    ? `${received ? "받은 글은 남아 있고, 다시" : "다시"} 이으면 이 채팅을 이어서 쓸 수 있어요.`
+    : received
+      ? "받은 글까지는 남아 있어요."
+      : "";
+  const why = sentence(turn.end.cutReason ?? turn.end.cut);
+  return {
+    kind: "cut",
+    title: `${runtime}${particle(runtime, "과", "와")} 연결이 끊겼어요.`,
+    detail: after === "" ? why : `${why} ${after}`,
+  };
+}
+
+/** 그 턴의 안내에 붙는 「이어서」 단추 — 입력창에 말을 채울 뿐 보내지 않는다. 실패한 턴과 다른 끝에는 없다. */
+export function continueAsk(turn: Turn): { label: string; text: string } | null {
+  if (turn.end === null || turn.end.error !== null) return null;
+  return CONTINUES.get(turn.end.stopReason ?? "") ?? null;
+}
+
+/** 까닭을 구분선이 말하지 않아도 되는 끝 — 보통의 끝과 안내 줄이 말하는 끝 까닭, 끊긴 턴이다. */
+const plainEnd = (end: TurnEnd): boolean => end.stopReason === "end_turn" || END_NOTICES.has(end.stopReason ?? "") || end.cut !== null;
 
 /**
  * 작업 구분선의 글(02 구현 스펙 §8 · Diff-Chat 「작업 구분선」). `end_turn`이면 「N초 동안 작업」(Codex 결 — v1은 「작업함」), 우리가 멈춘
@@ -1405,7 +1469,7 @@ export function headline(end: TurnEnd): string {
   if (plainEnd(end)) return `${took} 동안 작업`;
   if (end.stopReason === "cancelled") return end.cancelledByUs ? `${took} 후에 중단했습니다` : "거부해서 멈췄어요";
   if (end.stopReason !== null) return `멈췄어요 — ${end.stopReason}`;
-  return end.cut ? `멈췄어요 — ${end.cut}` : "멈췄어요";
+  return "멈췄어요";
 }
 
 /** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 질문에 답한 줄 · 카드의 결정 줄 · 결과 카드는 다시 보는 것이라 접어도 선다. 접으면 숨는 경고는 경고가 아니라서 Runtime 경고도 남는다. */

@@ -32,6 +32,7 @@ import {
   useChangeChip,
   useMarkRead,
   useQueue,
+  useReconnect,
   useRenameThread,
   useSetMode,
   useThread,
@@ -504,6 +505,7 @@ function ThreadBody({
   const lists = useMemo(() => chipLists(lines), [lines]);
   const change = useChangeChip();
   const setMode = useSetMode();
+  const reconnect = useReconnect(thread);
   const [chipProblem, setChipProblem] = useState<string | null>(null);
   const queue = useQueue(view);
   const engine = useStore(threadEngineStore, (state) => state);
@@ -631,8 +633,16 @@ function ThreadBody({
                       thread={thread}
                       model={model}
                       runtime={runtime}
-                      onRetry={(text, attachments) =>
-                        void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+                      // 읽기만인 채팅(v1 티켓 38)에는 채울 입력창도 다시 이을 Session도 없다.
+                      actions={
+                        view.readOnly
+                          ? null
+                          : {
+                              fill: (text) => fillDraft(thread, text),
+                              reconnect: () => reconnect.mutate(last?.key ?? ""),
+                              reconnecting: reconnect.isPending,
+                              reconnectFailure: reconnect.error && reconnect.variables === last?.key ? String(reconnect.error) : null,
+                            }
                       }
                     />
                   </FollowTail.Provider>

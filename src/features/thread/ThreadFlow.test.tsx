@@ -5,9 +5,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { foldThread, type QuestionEntry } from "./fold";
 import { addChunk } from "./thread-store";
-import ThreadFlow, { AnsweredRow, DocPlace } from "./ThreadFlow";
+import ThreadFlow, { AnsweredRow, DocPlace, type FlowActions } from "./ThreadFlow";
 import { threadUiStore, turnKey } from "./thread-store";
 import type { RecordLine } from "./types";
+
+const ACTIONS: FlowActions = { fill: () => {}, reconnect: () => {}, reconnecting: false, reconnectFailure: null };
 
 // 답한 카드(02 구현 스펙 §10 · 캔버스 v35 Components 「답한 카드」 · 02 코드 리뷰 S3) — 흐름에 물음마다 한 줄 카드로 남는다: **초록 ✓ 13** · 물은
 // 제목 · 오른쪽 끝 고른 답. 무엇이 서는지(물음마다의 줄 · 나중에)는 `question.test.ts`의 `answeredCards`가 재고, 여기서는 그 줄의 표지를 잰다 —
@@ -54,7 +56,7 @@ describe("흐름의 물음 자리", () => {
   const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
   const flow = (lines: readonly RecordLine[]) =>
     renderToStaticMarkup(
-      <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />,
+      <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />,
     );
   /** 그 속성이 선 줄의 글 — 태그를 걷고 이어 읽는다. */
   const rowText = (markup: string, attribute: string) => {
@@ -111,7 +113,7 @@ describe("Runtime 이름으로 말하는 흐름", () => {
     payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
   });
   const flow = (lines: readonly RecordLine[]) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />);
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />);
   const answeringRow = (markup: string) => /<p data-answering.*?<\/p>/.exec(markup)?.[0] ?? "";
   const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
 
@@ -135,7 +137,7 @@ describe("Runtime 이름으로 말하는 흐름", () => {
       .map((line) => JSON.parse(line) as RecordLine);
     const markup = renderToStaticMarkup(
       <DocPlace.Provider value={{ specRoot: "~/.atelier/works/refund-partial-amount/spec", open: () => {} }}>
-        <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />
+        <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />
       </DocPlace.Provider>,
     );
     expect(markup).toContain("Claude Code가 만듦 · 27줄 · 같이 고칠 수 있어요");
@@ -150,7 +152,7 @@ describe("답 아래 사용량", () => {
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as RecordLine);
   const flow = (model: ReturnType<typeof foldThread>) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" onRetry={() => {}} />);
+    renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" />);
   const shown = (markup: string) => [...markup.matchAll(/<span data-usage[^>]*>([^<]*)<\/span>/g)].map((match) => match[1]);
 
   it("마지막 답 아래에만 그 턴의 토큰과 컨텍스트 사용량이 선다", () => {
@@ -186,7 +188,7 @@ describe("체크리스트의 자리", () => {
     { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 4000 } },
   ];
   const flow = (rows: readonly RecordLine[]) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" onRetry={() => {}} />);
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" />);
   const LIST = 'aria-label="계획 체크리스트"';
 
   it("도는 턴에도, 접힌 턴에도 선다", () => {
@@ -218,7 +220,7 @@ describe("대화 정리 안내", () => {
     .map((line) => JSON.parse(line) as RecordLine);
   const through = (seq: number) => lines.filter((line) => line.seq <= seq);
   const flow = (rows: readonly RecordLine[]) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" onRetry={() => {}} />);
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" />);
   const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
   const update = (seq: number, body: Record<string, unknown>): RecordLine => ({
     seq,
@@ -278,7 +280,7 @@ describe("Runtime 경고의 자리", () => {
   const ended: RecordLine = { seq: 5, at: at(5), kind: "turn-end", payload: { stopReason: "end_turn", durationMs: 4000 } };
   const inTurn = [sent, warned(2, "앱 기능 도구에 연결하지 못했어요"), warned(3, "둘째 줄")];
   const flow = (rows: readonly RecordLine[]) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" onRetry={() => {}} />);
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" />);
   const opened = (key: string, rows: readonly RecordLine[]) => {
     threadUiStore.setState((state) => ({ ...state, expanded: { [turnKey("t", key)]: true } }));
     try {
@@ -334,7 +336,7 @@ describe("Runtime 경고의 자리", () => {
   it("경고 뒤에도 입력창을 막을 물음이 서지 않고 답은 그대로 흐른다", () => {
     const model = foldThread([...inTurn, said]);
     expect(model.asks).toEqual([]);
-    expect(renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" onRetry={() => {}} />)).toContain("끝났어요");
+    expect(renderToStaticMarkup(<ThreadFlow thread="t" model={model} runtime="Claude Code" />)).toContain("끝났어요");
   });
 });
 
@@ -347,7 +349,7 @@ describe("턴 끝 안내", () => {
       .map((line) => JSON.parse(line) as RecordLine);
   const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
   const flow = (lines: readonly RecordLine[]) =>
-    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />);
+    renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" />);
   const words = (markup: string) => markup.replace(/<[^>]*>/g, "");
 
   it("실패한 턴은 받은 글 뒤에 안내가 서고 「다시 시도」도 복사 줄도 없다", () => {
@@ -365,15 +367,93 @@ describe("턴 끝 안내", () => {
     expect(flow(record("thread-limits"))).toContain('data-end-notice="max_turn_requests"');
   });
 
-  it("끊긴 턴은 실패 안내가 아니라 끊김 줄이다", () => {
-    const at = "2026-10-10T10:01:00.000+09:00";
-    const markup = flow([
-      { seq: 1, at, kind: "sent", payload: { text: "고쳐 줘" } },
-      { seq: 2, at, kind: "session", payload: { state: "died", reason: "signal 9" } },
-    ]);
-    expect(markup).not.toContain("data-end-notice");
-    expect(words(markup)).toContain("답하지 못했습니다. Claude Code가 끝났어요.");
-    expect(markup).toContain("다시 시도");
+  it("길이 제한과 턴 한도의 단추는 지금의 턴에만 선다 — 지난 안내는 지나간 일이다", () => {
+    const lines = record("thread-limits");
+    const ends = lines.filter((line) => line.kind === "turn-end").map((line) => line.seq);
+    const shown = (rows: readonly RecordLine[]) =>
+      renderToStaticMarkup(<ThreadFlow thread="t" model={foldThread(rows)} runtime="Claude Code" actions={ACTIONS} />);
+    expect(shown(through(lines, ends[1]))).toContain("이어서 쓰기");
+    expect(shown(through(lines, ends[0]))).not.toContain("이어서 쓰기");
+    const finished = shown(lines);
+    expect(finished).toContain("이어서 하기");
+    expect(finished).not.toContain("이어서 쓰기");
+  });
+
+  it("읽기만인 채팅에는 채울 입력창이 없어 단추가 서지 않는다", () => {
+    expect(flow(record("thread-limits"))).not.toContain("이어서 하기");
+  });
+});
+
+// 끊긴 턴(01b-6 · Cards 보드 「연결 끊김」 · 「다시 잇는 중」 · 「다시 잇지 못함」) — 문장은 `fold.test.ts`의 `cutNotice`가 재고, 여기서는 자리와 단추를 잰다.
+describe("끊긴 턴의 안내", () => {
+  const at = "2026-10-10T10:01:00.000+09:00";
+  const session = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at, kind: "session", payload });
+  const said: RecordLine = {
+    seq: 2,
+    at,
+    kind: "update",
+    payload: { update: { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "고치는 중" } } },
+  };
+  const cut: RecordLine[] = [{ seq: 1, at, kind: "sent", payload: { text: "고쳐 줘" } }, said, session(3, { state: "died", reason: "signal 9" })];
+  const drawn = (lines: readonly RecordLine[], actions: Partial<FlowActions> | null = {}) =>
+    renderToStaticMarkup(
+      <ThreadFlow thread="t" model={foldThread(lines)} runtime="Claude Code" actions={actions && { ...ACTIONS, ...actions }} />,
+    );
+  const shown = (markup: string) => markup.replace(/<[^>]*>/g, " ");
+
+  it("받은 글 뒤에 안내와 「다시 잇기」가 서고 복사 줄은 없다", () => {
+    const markup = drawn(cut);
+    expect(markup.indexOf("고치는 중")).toBeGreaterThan(-1);
+    expect(markup.indexOf('data-end-notice="cut"')).toBeGreaterThan(markup.indexOf("고치는 중"));
+    expect(shown(markup)).toContain("Claude Code와 연결이 끊겼어요.");
+    expect(shown(markup)).toContain("다시 잇기");
+    expect(markup).not.toContain("답 복사");
+    expect(markup).not.toContain("다시 시도");
+  });
+
+  it("도구까지 한 턴은 구분선을 펼쳐 끊기기 전의 일을 볼 수 있다", () => {
+    const tool: RecordLine = {
+      seq: 2,
+      at: "2026-10-10T10:01:05.000+09:00",
+      kind: "update",
+      payload: { update: { sessionUpdate: "tool_call", toolCallId: "t1", title: "pnpm test", kind: "execute", status: "completed" } },
+    };
+    const lines = [cut[0], tool, { ...session(3, { state: "died", reason: "signal 9" }), at: "2026-10-10T10:01:09.000+09:00" }];
+    expect(shown(drawn(lines))).toContain("9초 동안 작업");
+  });
+
+  it("다시 잇는 동안은 단추 대신 「다시 잇는 중」이다", () => {
+    for (const markup of [drawn(cut, { reconnecting: true }), drawn([...cut, session(4, { state: "spawning" })])]) {
+      expect(shown(markup)).toContain("다시 잇는 중");
+      expect(markup).not.toContain("<button");
+      expect(markup).not.toContain('data-end-notice="cut"');
+    }
+  });
+
+  it("다시 잇지 못하면 까닭이 서고 단추가 남는다 — 명령의 거절도 기록의 죽음도 같다", () => {
+    for (const markup of [
+      drawn(cut, { reconnectFailure: "Runtime을 시작할 수 없어요" }),
+      drawn([...cut, session(4, { state: "spawning" }), session(5, { state: "died", reason: "Runtime을 시작할 수 없어요" })]),
+    ]) {
+      expect(shown(markup)).toContain("다시 잇지 못했어요.");
+      expect(shown(markup)).toContain("Runtime을 시작할 수 없어요.");
+      expect(shown(markup)).toContain("다시 잇기");
+    }
+  });
+
+  it("다시 이은 뒤에는 지난 일이다 — 단추가 없고 다시 잇자고 말하지 않는다", () => {
+    const markup = drawn([...cut, session(4, { state: "spawning" }), session(5, { state: "opened", how: "resumed" })]);
+    expect(shown(markup)).toContain("Claude Code와 연결이 끊겼어요.");
+    expect(shown(markup)).toContain("받은 글까지는 남아 있어요.");
+    expect(markup).not.toContain("다시 이으면");
+    expect(markup).not.toContain("<button");
+  });
+
+  it("읽기만인 채팅은 다시 잇지 못한다 — 단추가 없고 다시 잇자고 말하지 않는다", () => {
+    const markup = drawn(cut, null);
+    expect(shown(markup)).toContain("Claude Code와 연결이 끊겼어요.");
+    expect(markup).not.toContain("다시 이으면");
+    expect(markup).not.toContain("<button");
   });
 });
 
@@ -401,7 +481,7 @@ describe("흐르는 글", () => {
   const flow = (lines: readonly RecordLine[], kind: "message" | "thought", text: string) => {
     const thread = `흐름-${(serial += 1)}`;
     addChunk(thread, { stream: 1, kind, offset: 0, text });
-    return renderToStaticMarkup(<ThreadFlow thread={thread} model={foldThread(lines)} runtime="Claude Code" onRetry={() => {}} />);
+    return renderToStaticMarkup(<ThreadFlow thread={thread} model={foldThread(lines)} runtime="Claude Code" />);
   };
 
   it("턴의 첫 조각부터 글이 서고 작업 머리줄이 서며 「답하는 중」은 걷힌다", () => {
@@ -455,7 +535,7 @@ describe("흐르는 글", () => {
 
   it("흐르는 글이 없으면 기록 줄의 마지막 줄이 생각일 때 그대로 「생각 중」이다", () => {
     const markup = renderToStaticMarkup(
-      <ThreadFlow thread="흐름-없음" model={foldThread([sent(1, "물음"), thought(2, "")])} runtime="Claude Code" onRetry={() => {}} />,
+      <ThreadFlow thread="흐름-없음" model={foldThread([sent(1, "물음"), thought(2, "")])} runtime="Claude Code" />,
     );
     expect(markup).toContain("생각 중");
   });
