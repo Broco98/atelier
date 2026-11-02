@@ -29,13 +29,14 @@ const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => 
  *   접기」 ×가 선다(스토리 117).
  * - **문서**는 작업 화면의 문서 보기 그대로다(`SpecViewer` — 렌더 · 원문 보기 묶음, 링크 따라가기, 문서 글 메뉴). 다시 읽은 글에서 바뀐
  *   줄만 잠깐 칠하고(스토리 118 · Motion 보드 — `freshLines` · `doc-flash`), 구르는 자리는 그대로다(같은 쿼리의 새 값이 같은 상자에
- *   들어간다). 글을 고르면 「❝ 이 자리를 두고 말하기」가 떠 그 자리를 지금 Thread의 입력창에 인용으로 붙인다(S41 · `setQuote`).
+ *   들어간다). 글을 고르면 「❝ 이 자리를 두고 말하기」가 떠 그 자리를 지금 입력창(`draftKey` — 채팅이면 그 채팅, 작업공간의 새 채팅 탭이면
+ *   그 탭의 글 열쇠, restart 02a-11)에 인용으로 붙인다(S41 · `setQuote`).
  * - **변경**은 그 파일의 diff다(`DiffView` — `read_work_diff`, 숨긴 줄 펼치기).
  * - **Project**는 그 worktree의 파일 트리다(`FilesTree`). 트리에서 바뀐 파일을 누르면 그 diff가, 다른 파일을 누르면 강조된 코드가 열린다
  *   (보드 — 트리의 `schema.prisma`가 그 diff를 연다). Project 줄을 다시 누르면 트리로 돌아온다.
  */
 export function ExpandedViewer({
-  thread,
+  draftKey,
   work,
   opened,
   changes,
@@ -43,7 +44,8 @@ export function ExpandedViewer({
   onOpen,
   onClose,
 }: {
-  thread: string;
+  /** 문서 인용이 가는 입력창의 글 열쇠. */
+  draftKey: string;
   work: WorkView;
   opened: Opened;
   changes: ChangeSummary | null;
@@ -80,7 +82,7 @@ export function ExpandedViewer({
       {opened.kind === "doc" ? (
         <DocBody
           key={opened.path}
-          thread={thread}
+          draftKey={draftKey}
           work={work}
           path={opened.path}
           source={source}
@@ -171,7 +173,7 @@ function ViewerNote({
  * 다시 달아 애니메이션을 처음부터 돌린다(`index.css`). 처음 연 글은 칠하지 않는다(`freshLines`).
  */
 function DocBody({
-  thread,
+  draftKey,
   work,
   path,
   source,
@@ -179,7 +181,7 @@ function DocBody({
   onCopyPath,
   onNavigate,
 }: {
-  thread: string;
+  draftKey: string;
   work: WorkView;
   path: string;
   source: boolean;
@@ -209,7 +211,7 @@ function DocBody({
         onNavigate={onNavigate}
         onCopy={copyText}
         docMenu={{ view, onCopyPath }}
-        onQuote={(quote) => setQuote(thread, quote)}
+        onQuote={(quote) => setQuote(draftKey, quote)}
       />
     </div>
   );

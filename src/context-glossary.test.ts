@@ -175,6 +175,18 @@ describe("말의 사전", () => {
     }
   });
 
+  // restart 02a-11 · 구현 스펙 「02a — 오른쪽 자리」 — 새 채팅 탭에도 요약 카드와 넓힌 카드가 선다. 아직 채팅이 없어 카드는 작업공간의 것이고(소스는
+  // 그 작업공간의 읽는 범위), 넓힌 카드의 문서 인용은 그 탭의 입력창으로 가고 첫 말과 함께 간다. 「첫 말 전에는 카드가 없다」는 이제 홈의 새
+  // 채팅만의 말이다.
+  it("새 채팅 탭에도 요약 카드와 넓힌 카드가 선다고 말한다", () => {
+    expect(bodyOf("오른쪽 자리")).toContain("채팅 탭과 새 채팅 탭에 선다");
+    for (const piece of ["요약 카드와 넓힌 카드", "작업공간의 읽는 범위", "그 탭의 입력창", "첫 말과 함께 간다"]) {
+      expect(bodyOf("새 채팅 탭"), piece).toContain(piece);
+    }
+    expect(bodyOf("요약 카드")).toContain("작업공간의 새 채팅 탭");
+    expect(bodyOf("요약 카드")).not.toMatch(/첫 말을 보내기 전의 새\s+Thread에는 카드도 단추도 없다/);
+  });
+
   it("「레일」 · 「패널 토글」이 등재돼 있고, 「레일」이 「패널 탭」을 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["레일", "패널 토글"]));
     expect(bodyOf("레일")).toContain("_피할 말_: 패널 탭");
