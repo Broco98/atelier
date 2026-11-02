@@ -1126,44 +1126,53 @@ impl ConversationHost {
         self.threads.find(thread).filter(|conv| conv.lock_found().is_some_and(|state| state.order.contains(queued)))
     }
 
-    /// Thread의 작업 폴더(v1 구현 스펙 S11)와 함께 여는 폴더(03 구현 스펙 §7).
+    /// Thread의 작업 폴더(v1 구현 스펙 S11)와 함께 여는 폴더(03 구현 스펙 §7). 함께 여는 폴더는 Runtime마다 다르다.
     ///
-    /// | 이어진 곳 | cwd | 함께 여는 폴더 |
-    /// |---|---|---|
-    /// | Work 없음 | Thread 폴더의 `work/` | 읽는 범위 |
-    /// | worktree가 선 Project가 없는 Work | spec 폴더 | 읽는 범위 |
-    /// | worktree 하나 | 그 worktree | spec 폴더 + 읽는 범위 |
-    /// | worktree 여럿 | `trees/` | spec 폴더 + 읽는 범위 |
+    /// | 이어진 곳 | cwd | Claude의 함께 여는 폴더 | Codex의 추가 폴더 |
+    /// |---|---|---|---|
+    /// | Work 없음 | Thread 폴더의 `work/` | 읽는 범위 | 없음 |
+    /// | worktree가 선 Project가 없는 Work | spec 폴더 | 읽는 범위 | 없음 |
+    /// | worktree 하나 | 그 worktree | spec 폴더 + 읽는 범위 | spec 폴더 + 그 worktree의 git 자리 넷 |
+    /// | worktree 여럿 | `trees/` | spec 폴더 + 읽는 범위 | spec 폴더 + worktree마다의 git 자리 넷 |
     ///
+    /// - **Codex는 추가 폴더를 쓸 수 있는 자리로 받는다**(restart 스펙 「01c — Codex」 추가 폴더) — 고칠 수 있는 자리만 넘긴다. git 자리는
+    ///   [`atelier_core::worktree_git_places`]가 worktree의 포인터 파일에서 읽는다. 없으면 샌드박스가 `index.lock`을 막아 커밋이 실패한다. 읽는
+    ///   범위는 넘기지 않는다 — 읽기에는 필요 없고 머리말이 알린다. 여기서 거르므로 `thread.json`에 적는 값과 견주는 재개 판단이 말마다 같다.
     /// - **읽는 범위는 함수 하나다**([`atelier_core::reading_scope`] — §7 규칙 1–4). Service가 있으면 그 Service의 Project, Project 범위면 그 Project
     ///   하나, 없으면 등록된 Project 전부, 그리고 worktree가 아직 없는 Work의 Project와 Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project(S22)다. worktree가 선
     ///   Project와 폴더가 사라진 Project는 빠진다. Work 없는 Thread가 Work를 제안하기 전에 어느 Project의 일인지 보려고 저장소를 읽던 것(끝
     ///   점검 39(a))이 Work 안에서도 같다 — 옆 저장소를 카드 없이 읽는다(`F4-WorkNoSpace`).
-    /// - **읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 · Thread 폴더의
-    ///   `work/`). 범위가 바뀌면(Service · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]).
+    /// - **Claude의 함께 여는 폴더는 읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 ·
+    ///   Thread 폴더의 `work/`). 자리가 바뀌면(Service · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]) —
+    ///   두 Runtime이 같다. Codex도 바뀐 `cwd`와 추가 폴더로 `session/resume`한다.
     /// - **Work 없는 Thread는 Thread 폴더 안 `work/`에서 일한다**(restart 스펙 「01c — Codex」 작업 폴더) — Codex는 작업 폴더 안을 묻지
     ///   않고 쓰므로 기록 파일과 뗀다. 두 Runtime이 같다. 그 폴더는 Session을 열 때 선다([`Self::open_session`]). 옛 자리(Thread 폴더)에서
     ///   연 Session은 다음 말에서 `work/`로 옮겨 연다.
     fn thread_place(&self, thread: &str, file: &ThreadFile) -> Result<SessionPlace, HostError> {
-        let (mut place, work) = match &file.work {
+        let runtime = runtime_of(thread, file)?;
+        let (mut place, work, trees) = match &file.work {
             None => {
                 let cwd = atelier_core::thread_work_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
-                (SessionPlace { cwd, additional_directories: Vec::new() }, None)
+                (SessionPlace { cwd, additional_directories: Vec::new() }, None, Vec::new())
             }
             Some(slug) => {
                 let work_at = self.open_work(slug)?;
-                let trees: Vec<&PathBuf> = work_at.places.worktrees.iter().filter(|tree| tree.is_dir()).collect();
+                let trees: Vec<PathBuf> = work_at.places.worktrees.iter().filter(|tree| tree.is_dir()).cloned().collect();
                 let place = match trees.as_slice() {
                     [] => SessionPlace { cwd: work_at.places.spec.clone(), additional_directories: Vec::new() },
-                    [tree] => SessionPlace { cwd: (*tree).clone(), additional_directories: vec![work_at.places.spec.clone()] },
+                    [tree] => SessionPlace { cwd: tree.clone(), additional_directories: vec![work_at.places.spec.clone()] },
                     _ => SessionPlace { cwd: work_at.places.trees.clone(), additional_directories: vec![work_at.places.spec.clone()] },
                 };
-                (place, Some(work_at.meta))
+                (place, Some(work_at.meta), trees)
             }
         };
-        for project in self.scope_of(file, work.as_ref()).projects {
-            if !place.additional_directories.contains(&project.folder) {
-                place.additional_directories.push(project.folder);
+        let more: Vec<PathBuf> = match runtime {
+            Runtime::ClaudeCode => self.scope_of(file, work.as_ref()).projects.into_iter().map(|project| project.folder).collect(),
+            Runtime::Codex => trees.iter().flat_map(|tree| atelier_core::worktree_git_places(tree)).collect(),
+        };
+        for dir in more {
+            if !place.additional_directories.contains(&dir) {
+                place.additional_directories.push(dir);
             }
         }
         Ok(place)

@@ -302,13 +302,14 @@ api-server를 읽어요」(셋을 넘으면 「web-app · api-server 외 2개를
 「등록된 Project가 없어요 · Project 추가」가 경고 색으로 서고 「Project 추가」는 Project 추가 창을 연다 — 어느 쪽이든 대화는 막지 않는다.
 
 **읽는 범위**:
-Thread가 읽는 Project들 — 함수 하나가 정하고, Session이 읽기로 함께 여는 폴더 · Runtime이 받는 머리말의 「- Service:」 줄 · 요약 카드
-「소스」 · 범위 줄이 모두 그 값을 쓴다. Work에 이은 Thread는 그 Work의 Service를, Work 없는 Thread는 그 Thread의 Service나 Project 범위를 따른다(그
+Thread가 읽는 Project들 — 함수 하나가 정하고, Claude Session이 읽기로 함께 여는 폴더 · Runtime이 받는 머리말의 「- Service:」 줄 · 요약 카드
+「소스」 · 범위 줄이 모두 그 값을 쓴다. Codex Session에는 함께 여는 폴더로 넘기지 않는다 — Codex는 추가 폴더를 쓸 수 있는 자리로 받고, 읽기에는
+추가 폴더가 필요 없다. Work에 이은 Thread는 그 Work의 Service를, Work 없는 Thread는 그 Thread의 Service나 Project 범위를 따른다(그
 Service 파일이 없으면 Service가 없는 것이고, 등록되지 않은 Project면 Project 범위가 없는 것이다). Project 범위는 Work 밖 Thread의 값이고 Service와
 함께 서지 않는다 — Work에 이으면 지우고, Service를 고르면 지운다. 바탕은 Service가 있으면 그 Service의 등록된 Project, Project 범위면 그 Project 하나,
 없으면 등록된 Project 전부다. 여기에 Work의 아직 worktree가 없는
 Project와 「읽기만 하기」로 허락한 Project를 더하고, 폴더를 찾을 수 없는 Project와 그 Work에 worktree가 있는 Project(그 Project는 worktree에서
-일한다)를 뺀다. 고칠 수 있는 곳은 바뀌지 않는다 — 읽는 범위의 폴더에 쓰려 하면 Work 밖 Project 카드가 선다. 범위가 바뀌면 떠 있는 Session은
+일한다)를 뺀다. 고칠 수 있는 곳은 바뀌지 않는다 — 읽는 범위의 폴더에 쓰려 하면 Work 밖 Project 카드가 선다. 범위가 바뀌면 떠 있는 Claude Session은
 다음 말을 보낼 때 새 폴더로 다시 열린다. 돌고 있는 턴은 끊기지 않는다.
 _피할 말_: 스코프
 

@@ -99,7 +99,7 @@ pub use layout::{
     SpecTreeItem, TemplateVerdict, WorkWithSpecTree,
 };
 pub use project::{parse_project, render_project, Project, ProjectView};
-pub use git::{detect as detect_git, origin_head, GitInfo, RemoteBranches};
+pub use git::{detect as detect_git, origin_head, worktree_git_places, GitInfo, RemoteBranches};
 pub use store::{
     add_project, create_project, get_project, inspect_folder, list_projects, new_project, new_project_place, project_folders,
     relocate_project, update_project, AddProject, FolderLook, NewProjectPlace, ProjectPatch,
