@@ -95,6 +95,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("streams-then-holds", streams_then_holds),
     ("streams-then-asks", streams_then_asks),
     ("streams-then-dies", streams_then_dies),
+    ("streams-then-discards", streams_then_discards),
     ("streams-steadily", streams_steadily),
     ("thinks-then-holds", thinks_then_holds),
     ("chunk-after-turn-end", chunk_after_turn_end),
@@ -265,6 +266,26 @@ fn stream_answer(fake: &mut Fake, session_id: &str) {
 fn streams_then_holds(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| {
         stream_answer(fake, session_id);
+        if fake.await_cancel() {
+            fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        }
+    };
+    fake.converse();
+}
+
+/// 조각을 보낸 뒤 그 메시지를 버리라는 변환기의 표지를 보내고 멈출 때까지 턴을 쥔다(restart 티켓 01b-10) — claude가 끊긴 메시지를
+/// 다시 받기 전의 자리다. 표지 줄은 `stream_answer`의 표지보다 앞서 간다.
+fn streams_then_discards(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        for text in ["끊긴 ", "답"] {
+            fake.update(
+                session_id,
+                json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_cut",
+                       "content": {"type": "text", "text": text}}),
+            );
+        }
+        fake.update(session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"discardMessage": "msg_fake_cut"}}}));
+        fake.wire.notify("_auth/status_update", json!({"authStatus": {"kind": "chatgpt"}}));
         if fake.await_cancel() {
             fake.wire.reply(id, json!({"stopReason": "cancelled"}));
         }

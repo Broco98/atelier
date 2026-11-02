@@ -251,6 +251,52 @@ fn claude가_끊긴_메시지를_다시_받으면_화면에_그_흐름을_지우
 }
 
 #[test]
+fn 버린_흐름은_진행_글에도_다시_읽은_기록에도_없고_멈춰도_기록되지_않는다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, events) = watched_on_agent(&sandbox, "streams-then-discards");
+    wait_received(&sandbox, &thread);
+
+    // 다시 그린 화면이 읽는 것 — 진행 글과 기록.
+    assert_eq!(host.thread(&thread).unwrap().flowing, None, "버린 글은 진행 글로 이어지지 않는다");
+    let read: Vec<Value> =
+        host.read_thread_record(&thread, 0).unwrap().iter().map(|line| serde_json::to_value(line).unwrap()).collect();
+    assert!(chunk_lines(&read).is_empty(), "{}", common::lines_text(&read));
+    let gone = FlowChunk { stream: 1, kind: FlowKind::Message, offset: 0, text: String::new(), discarded: true };
+    let chunks = wait_until("지우는 조각이 나가지 않았다", || {
+        let chunks = events.thread_chunks(&thread);
+        if chunks.contains(&gone) {
+            Ok(chunks)
+        } else {
+            Err(format!("{chunks:#?}"))
+        }
+    });
+    assert_eq!(chunks.last(), Some(&gone), "지우는 조각 뒤로 그 흐름의 조각은 없다");
+
+    host.stop_thread(&thread).expect("멈추기");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    assert!(chunk_lines(&record).is_empty(), "턴이 끝나도 버린 글은 쓰지 않는다: {}", common::lines_text(&record));
+    host.shut_down();
+}
+
+#[test]
+fn 끊긴_메시지를_다시_부른_뒤_끝내_실패한_턴은_받은_글_없이_실패로_적힌다() {
+    let sandbox = Sandbox::new();
+    let (host, thread) = thread_on(&sandbox, "2.1.316/stream-retry-failed");
+
+    let record = run_turns(&sandbox, &host, &thread, 3);
+
+    let text = |words: &str| ("agent_message_chunk".to_owned(), words.to_owned());
+    let end = ("turn-end".to_owned(), String::new());
+    let retried = "첫째 문장이 흐른다. 둘째 문장이 흐른다. 셋째 문장이 온전히 끝난다.";
+    assert_eq!(skeleton(&record), [end.clone(), text(retried), end.clone(), text("ok"), end], "기록:\n{}", common::lines_text(&record));
+    let ends = of_kind(&record, "turn-end");
+    let why = ends[0]["payload"]["error"]["message"].as_str();
+    assert!(why.is_some_and(|why| why.starts_with("API Error: 500")), "실패의 까닭은 다시 부른 호출의 오류다: {}", ends[0]);
+    assert!(ends[1]["payload"]["error"].is_null(), "{}", ends[1]);
+    host.shut_down();
+}
+
+#[test]
 fn 조각이_권한_줄보다_앞서_기록된다() {
     let sandbox = Sandbox::new();
     let (host, thread) = thread_on_agent(&sandbox, "streams-then-asks");

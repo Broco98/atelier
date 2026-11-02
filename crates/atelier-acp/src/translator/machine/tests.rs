@@ -1071,6 +1071,105 @@ fn 끊긴_메시지를_claude가_다시_받으면_그_메시지를_버리라는_
     assert!(bench.stderr().is_empty(), "다시 받은 글의 합은 완성 글과 같다: {:?}", bench.stderr());
 }
 
+/// `stream-retry-failed`의 API 오류 — 다시 부른 호출이 받은 500이다.
+const RETRY_FAILED: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8125).";
+
+#[test]
+fn 끊긴_메시지를_다시_부른_뒤_끝내_실패하면_그_메시지를_버리고_턴은_실패로_끝난다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-retry-failed"));
+
+    let failed = bench.prompt("RETRYFAIL stream");
+
+    let step = |what, message: &str| (what, message.to_owned());
+    assert_eq!(retry_steps(&bench.turn_updates(failed)), [step("조각", "msg_stub_1"), step("버림", "msg_stub_1")]);
+    let error = bench.error(failed);
+    assert_eq!((error["code"].clone(), error["message"].as_str()), (json!(-32603), Some(RETRY_FAILED)));
+    let next = bench.prompt("EARLY500 stream");
+    assert_eq!(bench.result(next)["stopReason"], "end_turn", "끝내 실패한 턴 뒤에도 claude는 살아 있다");
+}
+
+#[test]
+fn 조각이_없던_첫_호출을_다시_부르면_아무것도_버리지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-retry-failed"));
+    bench.prompt("RETRYFAIL stream");
+
+    // 녹음의 둘째 턴은 `api_retry`가 조각보다 먼저 온다 — 첫 호출이 조각 없이 500을 받았다.
+    let retried = bench.prompt("EARLY500 stream");
+
+    assert_eq!(retry_steps(&bench.turn_updates(retried)), [("조각", "msg_stub_4".to_owned())]);
+    assert_eq!(answers_of(&bench.turn_updates(retried)).concat(), RETRIED);
+}
+
+/// 메시지를 끝내는 `message_delta` — 진짜 claude는 완성 줄 뒤에 낸다.
+fn message_ended(message: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}},
+        "parent_tool_use_id": null,
+        "api_message_id": message,
+    })
+}
+
+/// claude가 API를 다시 부른다는 줄 — 녹음(`stream-retry`)의 꼴이다.
+fn api_retry() -> Value {
+    json!({"type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10, "retry_delay_ms": 600, "error_status": null, "error": "unknown"})
+}
+
+/// 내장 명령이 내는 조각 없는 `<synthetic>` 답.
+fn synthetic_text(message: &str, text: &str) -> Value {
+    json!({
+        "type": "assistant",
+        "message": {"id": message, "model": "<synthetic>", "content": [{"type": "text", "text": text}]},
+        "parent_tool_use_id": null,
+    })
+}
+
+#[test]
+fn 끝난_메시지_뒤의_api_retry나_조각_없는_완성_줄은_아무것도_버리지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = bench.updates().len();
+
+    bench.claude_says(text_piece("msg_done", "끝난 답"));
+    bench.claude_says(finished_text("msg_done", "끝난 답"));
+    bench.claude_says(message_ended("msg_done"));
+    // 끝난 메시지 뒤의 호출을 다시 부른다 — 도구 결과를 보낸 다음 호출 같은 것이다.
+    bench.claude_says(api_retry());
+    bench.claude_says(finished_text("msg_next", "조각 없이 온 다음 메시지"));
+    bench.claude_says(synthetic_text("synthetic_1", "내장 명령의 답"));
+
+    let updates = &bench.updates()[before..];
+    assert_eq!(
+        retry_steps(updates),
+        [("조각", "msg_done".to_owned()), ("조각", "msg_next".to_owned()), ("조각", "synthetic_1".to_owned())]
+    );
+    assert_eq!(answers_of(updates), ["끝난 답", "조각 없이 온 다음 메시지", "내장 명령의 답"]);
+}
+
+#[test]
+fn 끝나지_않은_메시지_뒤의_synthetic_답은_그_메시지를_버리지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = bench.updates().len();
+
+    bench.claude_says(text_piece("msg_open", "흐르던 답"));
+    bench.claude_says(synthetic_text("synthetic_1", "내장 명령의 답"));
+    bench.claude_says(text_piece("msg_open", " 이어서"));
+
+    let steps = retry_steps(&bench.updates()[before..]);
+    assert_eq!(steps, [("조각", "msg_open".to_owned()), ("조각", "synthetic_1".to_owned()), ("조각", "msg_open".to_owned())]);
+}
+
+#[test]
+fn 끝나지_않은_메시지를_두고_다른_id의_완성_줄이_오면_그_메시지를_버린다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = bench.updates().len();
+
+    bench.claude_says(text_piece("msg_cut", "끊긴 "));
+    bench.claude_says(finished_text("msg_again", "다시 받은 답"));
+
+    let step = |what, message: &str| (what, message.to_owned());
+    assert_eq!(retry_steps(&bench.updates()[before..]), [step("조각", "msg_cut"), step("버림", "msg_cut"), step("조각", "msg_again")]);
+}
+
 /// 글에서 계정 정보처럼 보이는 것들.
 fn account_traces(text: &str) -> Vec<String> {
     let mut traces = Vec::new();
