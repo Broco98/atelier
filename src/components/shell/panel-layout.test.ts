@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { cssBlocks } from "@/css-tokens";
-import { foldingInnerClass, PANEL_MOTION, SIDEBAR_MOTION } from "./panel-layout";
+import { clippingInnerClass, foldingInnerClass, PANEL_MOTION, SIDEBAR_MOTION } from "./panel-layout";
 
 // 접히는 패널의 바깥 폭 트랜지션 길이와 안쪽 열 `max-width`의 지연이 **같은 값**인가(`panel-layout.ts`).
 // 두 수가 네 리터럴로 두 파일에 흩어져 있던 때는 서로를 가리키는 주석만이 그 같음을 들었다. 이제 둘 다 Atelier 토큰
@@ -85,6 +85,27 @@ describe("사이드바 열고 닫기", () => {
     expect(closed).toEqual(expect.arrayContaining(["opacity-0", "transition-opacity", "duration-sidebar", "ease-spring"]));
     expect(closed).toContain("motion-reduce:transition-none");
     expect(closed).not.toContain("max-w-full");
+  });
+});
+
+// **작업공간의 spec 패널은 옅어지지 않고 잘리기만 한다**(restart 02a-14c · 시안 `.ra-panelwrap` — 상자의 폭만 500 spring으로 옮긴다).
+// 안쪽 열은 접히는 동안 고정 폭이고 펴진 뒤에만 바깥 폭을 상한으로 받는 장치(`foldingInnerClass`)를 그대로 두고, 옅음만 뺀다 — 펼 때 상한은
+// 바깥 길이만큼 늦게 한 번에 넘어가고, 접을 때는 곧장 걷힌다. 한때(02a-2) 이 패널도 펼 때 0.5s · 접을 때 0.15s 옅어졌다.
+describe("잘리기만 하는 안쪽 열 — spec 패널", () => {
+  const classes = (open: boolean) => clippingInnerClass(open).split(" ").sort();
+  it("펴면 상한이 바깥 길이만큼 늦게 넘어가고, 옅음은 없다 · 동작 줄이기면 곧바로다", () => {
+    expect(classes(true)).toEqual(
+      [
+        "max-w-full",
+        "transition-[max-width]",
+        "delay-[var(--duration-panel-open)]",
+        "duration-0",
+        "motion-reduce:transition-none",
+      ].sort(),
+    );
+  });
+  it("접으면 상한만 곧장 걷힌다 — 옅어지지 않는다", () => {
+    expect(classes(false)).toEqual(["max-w-[100vw]"]);
   });
 });
 

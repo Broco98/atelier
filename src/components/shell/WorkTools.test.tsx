@@ -126,19 +126,22 @@ describe("작업공간 도구의 기둥", () => {
     expect(classOf(asideTag(markup))).toContain("max-w-[calc(100%-var(--panel-reserve)-var(--panel-trail,0px))]");
   });
 
-  it("작업공간을 떠나 접힐 때 패널 카드는 옅어지지 않고 잘리기만 한다 — 작업공간 안에서 닫으면 옅어진다", () => {
-    // 시안 `.ra-panelwrap` — 상자가 접히며 잘린다. 떠나는 동안 마지막 몸(`held-body`)이 500ms 내내 보여야 하므로 안쪽을 옅게 하지 않는다.
-    // 작업공간 안의 여닫기는 앞 판의 접힘 장치(`foldingInnerClass` — 닫을 때 0.15s 옅어짐, 02a-2)를 그대로 쓴다.
+  it("패널 카드는 옅어지지 않고 상자에 잘리기만 한다 — 작업공간 안에서 닫을 때도, 떠날 때도, 펼 때도", () => {
+    // 시안 `.ra-panelwrap` — 상자의 폭만 500 spring으로 옮기고 안은 그대로 잘린다. 떠나는 동안은 마지막 몸(`held-body`)이 500ms 내내 보인다.
+    // 한때(02a-2 · 02a-14b) 작업공간 안의 여닫기는 앞 판의 접힘 장치대로 안쪽이 옅어졌다(펼 때 0.5s · 접을 때 0.15s).
     const inner = (markup: string) => classOf(markup.match(/<aside[^>]*>\s*<div[^>]*>/)?.[0].replace(/^<aside[^>]*>\s*/, "") ?? "");
+    const fades = (names: string[]) => names.filter((name) => name.startsWith("opacity") || name.includes("opacity"));
     stand(false);
-    expect(inner(column()), "작업공간 안에서 닫은 패널").toEqual(expect.arrayContaining(["opacity-0", "transition-opacity"]));
+    const closed = inner(column());
+    expect(closed, "패널 안쪽을 찾지 못했다").toContain("pl-2");
+    expect(fades(closed), "작업공간 안에서 닫은 패널").toEqual([]);
+    expect(closed).toContain("max-w-[100vw]");
     foldWorkTools();
-    const left = inner(column());
-    expect(left, "패널 안쪽을 찾지 못했다").toContain("pl-2");
-    expect(left).not.toContain("opacity-0");
-    expect(left.some((name) => name.startsWith("transition"))).toBe(false);
+    expect(fades(inner(column())), "떠난 뒤").toEqual([]);
     stand(true);
-    expect(inner(column())).toContain("opacity-100");
+    const open = inner(column());
+    expect(fades(open), "편 패널").toEqual([]);
+    expect(open).toEqual(expect.arrayContaining(["max-w-full", "transition-[max-width]", "delay-[var(--duration-panel-open)]"]));
   });
 
   it("작업공간의 일(아카이브 · 삭제)이 도는 동안 패널의 몸은 누를 수 없다", () => {

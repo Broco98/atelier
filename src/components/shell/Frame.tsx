@@ -17,7 +17,7 @@ import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
+import { clippingInnerClass, foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
@@ -316,8 +316,9 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  *
  * **이 상자를 두 자리가 쓴다** — Archive의 spec 목록 패널은 이 틀의 카드 줄에, 작업공간의 spec 패널은 앱 셸의 작업공간 도구 기둥에 선다
  * (`WorkTools` — 화면이 바뀌어도 그 자리에 남아 작업공간을 떠날 때 접힘이 보인다, restart 02a-14). 기둥에서는 패널 뒤에 레일 카드가 한 줄로
- * 서서, 남길 폭에서 그 몫(`trail` — 레일 폭 + 틈)을 더 뺀다. 작업공간을 떠나 접힐 때는 안쪽이 옅어지지 않고 잘리기만 한다(`fade` — 시안
- * `.ra-panelwrap`, restart 02a-14b) — 접히는 동안 남긴 마지막 몸이 보인다.
+ * 서서, 남길 폭에서 그 몫(`trail` — 레일 폭 + 틈)을 더 뺀다. 작업공간의 spec 패널은 안쪽이 옅어지지 않고 상자에 잘리기만 한다(`fade` 끔 —
+ * 시안 `.ra-panelwrap`, restart 02a-14c `clippingInnerClass`) — 여닫을 때도, 떠나며 접히는 동안 남긴 마지막 몸이 보일 때도 같다. Archive의
+ * spec 목록 패널은 앞 판의 접힘 장치대로 옅어진다.
  */
 export function PanelBox({
   id,
@@ -331,7 +332,7 @@ export function PanelBox({
   reserve?: number;
   /** 같은 줄에서 패널 뒤(오른쪽)에 서는 것의 폭(CSS 길이) — 남길 폭을 잴 때 함께 뺀다. 없으면 0이다. */
   trail?: string;
-  /** 닫힐 때 안쪽이 옅어지나(`foldingInnerClass`) — 아니면 상자가 접히며 잘리기만 한다. 펼 때는 늘 같은 장치다. */
+  /** 여닫을 때 안쪽이 옅어지나(`foldingInnerClass`) — 아니면 상자에 잘리기만 한다(`clippingInnerClass`). */
   fade?: boolean;
 }) {
   const { open, size, label, children } = slot;
@@ -364,12 +365,12 @@ export function PanelBox({
       )}
     >
       {/* 접히는 동안 글이 되흐르지 않게 안쪽은 고정 폭(틈 + 카드)이고, **펴진 뒤에만** 바깥 폭을 상한으로 받는다 — 좁게 선 칸에서 카드
-          오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass`에 있다. 틈은 안쪽 왼쪽 여백이다. */}
+          오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass` · `clippingInnerClass`에 있다. 틈은 안쪽 왼쪽 여백이다. */}
       <div
         inert={!open}
         className={cn(
           "flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2",
-          open || fade ? foldingInnerClass(open) : "max-w-[100vw]",
+          fade ? foldingInnerClass(open) : clippingInnerClass(open),
         )}
       >
         <Card label={label} className="flex-1">
