@@ -1,6 +1,8 @@
 import { MessageSquare } from "lucide-react";
 import { askThenEnd } from "./actions";
 import { chatProcessLabel, chatRowLabel, endableIn, isRuntimeNode, type ChatGroup } from "./chat-tree";
+import { markOf } from "./endings";
+import { useEndMarks } from "./endings-store";
 import { foldKey, type Folds } from "./folds";
 import { endAsk } from "./process-groups";
 import { exceptionName, identityKey, processLabel, shownNodes, subtreeAt } from "./process-tree";
@@ -36,6 +38,7 @@ function ChatSection({ groups, share, folds }: { groups: ReadonlyArray<ChatGroup
  */
 function ChatRows({ group, share, folds }: { group: ChatGroup; share: ReadonlySet<string>; folds: Folds }) {
   const fold = folds.row(foldKey.chat(group.thread), group.name);
+  const ends = useEndMarks();
   return (
     <>
       <TreeRow
@@ -64,6 +67,7 @@ function ChatRows({ group, share, folds }: { group: ChatGroup; share: ReadonlySe
               metrics={row.metrics}
               fold={parent ? folds.row(foldKey.process(row.id), processLabel(row)) : undefined}
               menu={endable ? exceptionName(row) : undefined}
+              end={markOf(ends, row.id)?.state}
               actions={
                 endable && (
                   // 넘기는 신원은 누른 순간 화면에 보인 표본의 그 줄과 그 밑이다(셸의 자손 줄과 같다).

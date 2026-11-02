@@ -20,7 +20,7 @@ import type {
 } from "@/features/thread/types";
 import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
-import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
+import type { CleanupEvent, EndResult, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
   LayoutPreview,
   SaveAnswer,
@@ -1125,9 +1125,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 요약 카드의 추이(티켓 30) — `Processes` 화면이 열려 있는 동안 요약이 올 때마다 한 번 부른다. 답은 위 `PROCESS_TREND`(빈 고리)이고,
   // 스파크라인을 재는 검사가 덮어쓴다.
   processes_trend: PROCESS_TREND,
-  // 신원 목록 끝내기(티켓 31) — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리]가 부른다. 값은 안 쓰인다(신호까지 보내고
-  // 돌아온다). 검사가 보는 것은 나갔는가와 그 인자(화면에 보인 신원)다(IPC 기록).
-  processes_end: null,
+  // 신원 목록 끝내기(티켓 31) — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리]가 부른다. 답은 대상마다의 결과다(restart 03-10).
+  // **기본은 빈 답이다** — 아무것도 안 맡았다: 누른 줄은 「끝내는 중」 뒤 표시 없이 돌아온다. 검사가 보는 것은 나갔는가와 그
+  // 인자(화면에 보인 신원)다(IPC 기록). 결과가 줄에 서는 것을 재는 검사가 덮어쓴다.
+  processes_end: [] satisfies EndResult[],
   // 정리 기록 읽기(티켓 32) — `Processes` 화면이 스냅샷이 올 때마다 한 번 부른다. 답은 위 `CLEANUP_LOG`(빈 기록)이다.
   processes_cleanup_log: CLEANUP_LOG,
   pty_kill: null,

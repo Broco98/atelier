@@ -614,13 +614,14 @@ pub async fn processes_cleanup_log(
 }
 
 // 사람이 고른 프로세스를 끝낸다 — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리](프로세스 결정 6 · 티켓 31). 받는 것은
-// **화면이 보인 신원(pid, 시작 시각) 목록**이다 — 여기서 다시 판정하지 않는다. 신호까지 보내고 돌아오며(S5) 유예와 SIGKILL은
-// 풀의 뒤 스레드가 돈다. 정리 기록에 까닭 「손으로」로 적힌다. 신호 전에 표 한 장을 찍으니 blocking 풀에서 돌린다.
+// **화면이 보인 신원(pid, 시작 시각) 목록**이다 — 여기서 다시 판정하지 않는다. **유예와 SIGKILL까지 기다려 대상마다 결과를
+// 돌려준다**(restart 03-10 — 화면이 줄에 끝남 · 강제로 끝냄 · 못 끝냄 · 이미 없음을 세운다). 정리 기록에 까닭 「손으로」로 적힌다.
+// 신호 전에 표 한 장을 찍고 최악 2초 남짓 기다리니 blocking 풀에서 돌린다.
 #[tauri::command]
 pub async fn processes_end(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     targets: Vec<crate::processes::Identity>,
-) -> CmdResult<()> {
+) -> CmdResult<Vec<crate::processes::ending::EndResult>> {
     let pool = Arc::clone(&pool);
     tauri::async_runtime::spawn_blocking(move || pty::end_by_hand(&pool, &targets))
         .await
@@ -1309,8 +1310,8 @@ mod tests {
     /// - `processes_snapshot`(티켓 26): 화면이 열려 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms).
     /// - `processes_summary`(티켓 29): 답은 대개 배경 표본이 앉힌 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 표 한 장과
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
-    /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
-    ///   돈다(`pty::end_by_hand`).
+    /// - `processes_end`(티켓 31 · restart 03-10): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍고, 대상마다 결과를 돌려주려
+    ///   유예와 SIGKILL까지 기다린다 — 최악 2초 남짓(`pty::end_by_hand`).
     /// - `read_worktree_file`(git-integration 판 01): 디스크에서 파일 하나를 읽고 실제 경로를 두 번 푼다 — 파일 탭이 보일 때만 오지만
     ///   큰 파일이면 그 읽기가 ms 단위다.
     /// - `list_work_changes`(v1 티켓 33): Project마다 git을 세 번 기다린다(갈라진 커밋 · 증감 · 아직 모르는 파일). Work 카드가

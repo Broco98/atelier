@@ -235,6 +235,16 @@ export type { CleanupReason };
 export type CleanupOutcome = "ended" | "forced" | "survived" | "gone";
 
 /**
+ * **신원 목록 끝내기의 답 한 줄**(restart 03-10 · Rust `ending::EndResult`) — 대상 하나와 그 결과. 끝내기 IPC가 그 끝내기가 맡은 대상마다
+ * 돌려준다 — 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 답에 없다(그 결과는 그것을 맡은 끝내기의 것이다). 와이어 모양은 Rust 쪽
+ * 검사(`an_end_result_crosses_the_wire_in_the_shape_the_screen_reads`)가 글자로 못박는다.
+ */
+export interface EndResult {
+  id: ProcessIdentity;
+  outcome: CleanupOutcome;
+}
+
+/**
  * 정리 기록의 대상 하나(Rust `cleanup_log::Target`). 셸 자신은 안 든다 — 끝내기의 대상이 아니다. 셸 도우미는 적는 사건이면 함께
  * 든다(도우미만 끝난 사건은 안 적는다 — 프로세스 스펙 P1).
  */
