@@ -8,6 +8,7 @@ import type {
   ProjectChoiceEntry,
   ServiceChoiceEntry,
   ServiceOption,
+  UnansweredEntry,
   WorkChoiceEntry,
   WorkProjectChoice,
 } from "./fold";
@@ -175,6 +176,19 @@ export function cardOfChoice(entry: Pick<Entry, "kind">): ToolCard | null {
 /** Thread 도구 카드의 결정 줄인가 — 접힌 턴에도 남고, 턴 끝 답 사이에서는 그 자리에 함께 선다. */
 export function isToolChoice(entry: Entry): entry is ToolChoiceEntry {
   return cardOfChoice(entry) !== null;
+}
+
+/**
+ * 카드가 남긴 결정 줄인가 — 사람이 고른 것(`ToolChoiceEntry`)이거나 답이 없어 닫힌 것(`UnansweredEntry`, 01c-8). 그 카드를 낸 도구 줄 자리를 대신하고, 접힌
+ * 턴에도 남고, 턴 끝 답 사이에서는 그 자리에 함께 선다.
+ */
+export function isCardDecision(entry: Entry): entry is ToolChoiceEntry | UnansweredEntry {
+  return isToolChoice(entry) || entry.kind === "unanswered";
+}
+
+/** 카드가 남긴 결정 줄의 카드 갈래. */
+export function cardOfDecision(entry: ToolChoiceEntry | UnansweredEntry): ToolCard | null {
+  return entry.kind === "unanswered" ? entry.card : cardOfChoice(entry);
 }
 
 /** Project 추가 카드 줄(`question` `asked`, `card: project-add`) → 카드. 하위 폴더가 아니면 git이 아닌 폴더다. */

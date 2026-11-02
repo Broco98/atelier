@@ -24,6 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use atelier_core::Runtime;
 use serde_json::{json, Value};
 
 use crate::host::TranslatorCommand;
@@ -149,16 +150,35 @@ const PROPOSE_WORK_GUIDE: &str = "이 Thread의 일을 Work로 묶자고 사람�
 Work는 사람이 설치한 atelier MCP의 atelier_start_work가 아니라 이 도구로 만든다 — 그래야 이 Thread가 그 Work에 이어진다. 이미 \
 Work에 이어진 Thread에서는 부를 수 없다(get_work로 그 Work를 읽는다).";
 
-/// 「Project 고치기 시작」의 쓰는 법 — 언제 부르고, Work에 없는 Project면 사람이 무엇을 고르고, 작업 폴더가 언제 바뀌는지(S42).
-const START_EDITING_GUIDE: &str = "Work의 Project를 고치기 시작한다 — 그 Project의 파일을 처음 고치기 전에 부른다. Work의 Project는 \
+/// 「Project 고치기 시작」의 쓰는 법 — 언제 부르고, Work에 없는 Project면 사람이 무엇을 고르고, 작업 폴더가 언제 바뀌는지(S42). 언제부터 worktree를
+/// 고치는지와 「읽기만 하기」의 뜻은 Runtime마다 다르다([`start_editing_guide`]).
+const START_EDITING_HEAD: &str = "Work의 Project를 고치기 시작한다 — 그 Project의 파일을 처음 고치기 전에 부른다. Work의 Project는 \
 처음 고칠 때까지 읽기만이라 worktree가 없다. 이 도구가 그 Project에만 worktree를 Work의 브랜치로 만들고 그 경로를 돌려준다(이미 \
-있으면 그 경로).\n\n\
-- 이번 턴에는 돌려받은 worktree 안을 절대 경로로 고친다. 다음 턴부터는 작업 폴더가 Work의 자리(worktree)로 바뀐다.\n\
-- 이 Work에 없는 Project면 사람에게 카드로 묻고 고를 때까지 기다린다 — 「붙이고 고치기」면 그 Project를 Work에 붙이고 worktree를 \
-만든다. 「읽기만 하기」면 다음 턴부터 그 Project 폴더를 읽을 수 있지만 고치지 않는다. 「아니요」면 고치지 않고 이 Work의 \
-Project에서만 고친다. 같은 턴에 곧바로 다시 묻지 않는다.\n\
-- Work에 이어지지 않은 Thread에서는 부를 수 없다 — 먼저 propose_work로 Work를 만든다.\n\n\
-Project의 원래 폴더(list_projects의 path)는 고치지 않는다 — 판정이 거절한다.";
+있으면 그 경로).\n\n";
+
+/// 「Project 고치기 시작」의 쓰는 법 — Claude Code는 이번 턴에도 돌려받은 worktree를 고칠 수 있다(판정이 Work의 자리를 허락한다). Codex의 쓸 수
+/// 있는 자리는 세션을 열 때 정해져 이번 턴에 만든 worktree는 그 밖이다 — 다음 턴에 그 worktree를 작업 폴더로 이어 연다(스펙 「01c — Codex」).
+fn start_editing_guide(runtime: Runtime) -> String {
+    let (when, read_only) = match runtime {
+        Runtime::ClaudeCode => (
+            "이번 턴에는 돌려받은 worktree 안을 절대 경로로 고친다. 다음 턴부터는 작업 폴더가 Work의 자리(worktree)로 바뀐다.",
+            "다음 턴부터 그 Project 폴더를 읽을 수 있지만 고치지 않는다",
+        ),
+        Runtime::Codex => (
+            "이번 턴에는 돌려받은 worktree를 고치지 않는다 — 쓸 수 있는 자리는 세션을 열 때 정해져 이번 턴에 만든 worktree는 그 밖이다. \
+             이번 턴을 마치면 다음 턴부터 작업 폴더가 그 worktree로 바뀌어 거기서 고친다.",
+            "그 Project 폴더를 읽기만 하고 고치지 않는다",
+        ),
+    };
+    format!(
+        "{START_EDITING_HEAD}- {when}\n\
+         - 이 Work에 없는 Project면 사람에게 카드로 묻고 고를 때까지 기다린다 — 「붙이고 고치기」면 그 Project를 Work에 붙이고 worktree를 \
+         만든다. 「읽기만 하기」면 {read_only}. 「아니요」면 고치지 않고 이 Work의 Project에서만 고친다. 같은 턴에 곧바로 다시 묻지 \
+         않는다.\n\
+         - Work에 이어지지 않은 Thread에서는 부를 수 없다 — 먼저 propose_work로 Work를 만든다.\n\n\
+         Project의 원래 폴더(list_projects의 path)는 고치지 않는다 — 판정이 거절한다."
+    )
+}
 
 /// 받기에 실패한 뒤 다시 받기까지 쉬는 틈 — 파일 기술자가 바닥난 때처럼 곧바로 다시 실패하는 오류에 헛돌지 않게.
 const ACCEPT_RETRY: Duration = Duration::from_millis(10);
@@ -454,8 +474,8 @@ pub(crate) enum Unread {
     Bad(String),
 }
 
-/// `tools/list`의 답 — 도구들과 그 인자 꼴. 설명은 Agent가 읽는 쓰는 법이다(S42).
-pub(crate) fn list() -> Value {
+/// `tools/list`의 답 — 도구들과 그 인자 꼴. 설명은 Agent가 읽는 쓰는 법이다(S42). 그 채팅의 Runtime에 맞춘 말이다(`start_editing`).
+pub(crate) fn list(runtime: Runtime) -> Value {
     json!({"tools": [
         {
             "name": RENAME_THREAD,
@@ -524,7 +544,7 @@ pub(crate) fn list() -> Value {
         {
             "name": START_EDITING,
             "title": "Project 고치기 시작",
-            "description": START_EDITING_GUIDE,
+            "description": start_editing_guide(runtime),
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -854,7 +874,7 @@ mod tests {
             call(json!({"name": "delete_thread", "arguments": {}})),
             Err(Unread::Unknown(Fault::new(-32602, "모르는 도구입니다: delete_thread")))
         );
-        let listed: Vec<Value> = list()["tools"].as_array().unwrap().iter().map(|tool| tool["name"].clone()).collect();
+        let listed: Vec<Value> = list(Runtime::ClaudeCode)["tools"].as_array().unwrap().iter().map(|tool| tool["name"].clone()).collect();
         assert_eq!(
             listed,
             [

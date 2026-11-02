@@ -140,6 +140,10 @@ fn work에_있는_project를_처음_고치면_묻지_않고_그_project에만_wo
     let answer = &answers(&sandbox, &thread)[0];
     assert_ne!(answer["isError"], true, "{answer}");
     assert!(said(answer).contains(&tree(&sandbox, "api-server").display().to_string()), "도구가 그 worktree 경로를 돌려준다: {answer}");
+    // Claude Code는 이번 턴에도 Work의 자리를 고칠 수 있다(판정이 허락한다). Codex의 말은 `thread_codex.rs`가 잰다(01c-8).
+    assert!(said(answer).contains("이번 턴에는 이 절대 경로로 고친다"), "{answer}");
+    let guide = sandbox.claude_tool_guide(&sandbox.thread_session_id(&thread), "start_editing");
+    assert!(guide.contains("이번 턴에는 돌려받은 worktree 안을 절대 경로로 고친다"), "{guide}");
 }
 
 #[test]

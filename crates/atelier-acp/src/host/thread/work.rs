@@ -18,9 +18,11 @@
 //!   이어 연다(v1 티켓 32, [`ConversationHost::move_if_needed`]).
 
 use std::collections::HashMap;
-use std::sync::{mpsc, Mutex, MutexGuard};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
-use atelier_core::{PolicyPlace, ProjectView, RecordKind};
+use atelier_core::{PolicyPlace, ProjectView, RecordKind, Runtime};
 use serde_json::{json, Value};
 
 use super::project::Outside;
@@ -96,6 +98,19 @@ pub(super) enum Settled {
 
 /// 「작업공간 없이 계속」의 도구 결과(S13 표 「사용자가 Work 없이 계속하기로 함」).
 const CONTINUED: &str = "사용자가 Work 없이 계속하기로 함 — Work를 만들지 않고 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.";
+
+/// 한도가 찬 뒤 사람의 답이 카드를 쥐고 있으면 다시 꺼내 보기까지의 틈 — 답이 실패해 카드가 다시 서면 그때 닫는다.
+const CARD_RECHECK: Duration = Duration::from_millis(50);
+
+/// 카드를 기다린 끝.
+enum Waited {
+    /// 카드가 닫혔다 — 사람이 골랐거나 Thread를 멈췄다.
+    Settled(Settled),
+    /// 사람이 답하기 전에 그 Session이 끝났다.
+    Closed,
+    /// 한도가 차 앱이 카드를 꺼내 닫았다(Codex 채팅).
+    Unanswered,
+}
 
 impl Asked {
     /// 기다리던 도구 호출에 닫힘을 건넨다 — 이미 떠났으면(그 Session이 끝났다) 받을 이가 없다.
@@ -295,17 +310,54 @@ impl ConversationHost {
             self.threads.proposals.take(thread, &request, kind);
             return thread_tools::said(&format!("{label}를 세우지 못했다 — {why}"), true);
         }
-        match waiting.recv() {
-            Ok(Settled::Said { text, refused }) => thread_tools::said(&text, refused),
-            Ok(Settled::Stopped) => {
+        match self.wait_card(thread, &request, kind, &waiting) {
+            Waited::Settled(Settled::Said { text, refused }) => thread_tools::said(&text, refused),
+            Waited::Settled(Settled::Stopped) => {
                 self.withdraw_card(thread, &request, kind, "stopped");
                 thread_tools::said(&format!("사람이 멈춤 — 사람이 이 Thread를 멈춰 {label}를 거뒀다"), true)
             }
-            Err(_) => {
+            Waited::Closed => {
                 self.withdraw_card(thread, &request, kind, "closed");
                 thread_tools::said(&format!("{label}가 닫혔다 — 사람이 답하기 전에 이 Session이 끝났다"), true)
             }
+            Waited::Unanswered => {
+                self.withdraw_card(thread, &request, kind, "timeout");
+                thread_tools::said(
+                    &format!(
+                        "사람이 답하지 않았다 — Codex가 도구를 5분까지만 기다려서 그 전에 {label}를 닫았다. 아무것도 바뀌지 않았다. 사람이 \
+                         자리에 없을 수 있으니 같은 것을 다시 묻지 않는다 — 카드 없이 할 수 있는 일을 이어 가고, 정할 것은 답에 적어 사람이 \
+                         돌아와 말로 답하게 한다."
+                    ),
+                    true,
+                )
+            }
         }
+    }
+
+    /// 카드가 닫히기를 기다린다. Codex 채팅이면 한도가 찬 때 카드를 꺼낼 수 있으면 꺼내 닫는다. 꺼낼 수 없으면 사람의 답이 카드를 쥐고
+    /// Work나 worktree를 만드는 중이다 — 그 답이 끝나기를 기다린다. 그러지 않으면 작업공간이 생겼는데 Runtime은 답이 없다고 받는다. 답이
+    /// 실패해 카드가 다시 서면 그때 꺼내 닫는다. Claude 채팅은 한도 없이 기다린다 — Claude Code는 도구를 끊지 않는다.
+    fn wait_card(&self, thread: &str, request: &str, kind: &str, waiting: &mpsc::Receiver<Settled>) -> Waited {
+        let Some(mut wait) = self.card_limit_of(thread) else {
+            return waiting.recv().map_or(Waited::Closed, Waited::Settled);
+        };
+        loop {
+            match waiting.recv_timeout(wait) {
+                Ok(settled) => return Waited::Settled(settled),
+                Err(RecvTimeoutError::Disconnected) => return Waited::Closed,
+                Err(RecvTimeoutError::Timeout) => {
+                    if self.threads.proposals.take(thread, request, kind).is_some() {
+                        return Waited::Unanswered;
+                    }
+                    wait = CARD_RECHECK;
+                }
+            }
+        }
+    }
+
+    /// 그 채팅에서 카드를 기다리는 한도 — Codex 채팅에만 있다(스펙 「01c — Codex」 「도구 제한 시간」).
+    fn card_limit_of(&self, thread: &str) -> Option<Duration> {
+        (self.thread_runtime(thread) == Runtime::Codex).then_some(self.card_limit)
     }
 
     /// 사람이 Thread를 멈췄다 — 그 Thread에 서 있는 카드를 거둔다(기다리던 도구 호출이 `withdrawn` 줄을 적는다).

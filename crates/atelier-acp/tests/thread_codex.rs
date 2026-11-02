@@ -11,7 +11,10 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use atelier_acp::{Agent, AskLevel, ConversationHost, EngineCheck, EngineState, HostError, Runtime, ServiceChoice, StartPicks, ThreadLink};
+use atelier_acp::{
+    Agent, AskLevel, ConversationHost, EngineCheck, EngineState, HostError, ProjectChoice, Runtime, ServiceChoice, StartPicks,
+    ThreadLink,
+};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
@@ -833,6 +836,189 @@ fn 사람이_거부한_codex_턴은_앱이_거절한_까닭_없이_끝난다() {
     let end = &of_kind(&record, "turn-end")[0]["payload"];
     assert_eq!((&end["stopReason"], &end["cancelledByUs"]), (&json!("cancelled"), &json!(false)), "{end}");
     assert!(end.get("appRefusal").is_none(), "사람의 거부에는 앱의 까닭이 없다: {end}");
+}
+
+// ── `start_editing`(01c-8) ───────────────────────────────────────────────────────────
+//
+// Codex의 쓸 수 있는 자리는 세션을 열 때 정해진다 — 이번 턴에 만든 worktree는 그 밖이다. 그래서 Codex 채팅의 설명과 결과는 「이번 턴을 마치면 다음
+// 턴부터 worktree에서 고친다」다. Claude 채팅의 말(「이번 턴에는 돌려받은 worktree 안을 절대 경로로 고친다」)은 `thread_project.rs`가 잰다.
+
+/// 그 도구 목록에서 그 도구의 설명.
+fn guide_of(tools: &Value, tool: &str) -> String {
+    let found = tools.as_array().expect("도구 목록").iter().find(|one| one["name"] == tool).expect("그 도구");
+    found["description"].as_str().expect("설명").to_owned()
+}
+
+#[test]
+fn codex_채팅의_start_editing은_이번_턴을_마치면_다음_턴부터_worktree에서_고친다고_말한다() {
+    let sandbox = Sandbox::new();
+    sandbox.register_project("api");
+    let root = sandbox.data_root();
+    let (works, archive, projects) = (atelier_core::works_in(&root), atelier_core::archive_in(&root), atelier_core::projects_in(&root));
+    atelier_core::start_work_deferred(&works, &archive, &projects, "카트", Some("cart"), &["api".to_owned()], Some("fix/cart"))
+        .expect("worktree 없는 작업공간");
+    let call = json!({"tool": "start_editing", "arguments": {"project": "api"}});
+    let (host, thread) = mcp_thread(&sandbox, Some(call), ThreadLink::Work { slug: "cart".into() });
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let called = sandbox.acp_mcp(&sandbox.thread_session_id(&thread));
+    let guide = guide_of(&called[0]["tools"], "start_editing");
+    assert!(guide.contains("이번 턴을 마치면 다음 턴부터"), "{guide}");
+    assert!(!guide.contains("이번 턴에는 돌려받은 worktree 안을 절대 경로로 고친다"), "Codex에는 틀린 말이다: {guide}");
+    let said = called[0]["call"]["content"][0]["text"].as_str().unwrap();
+    assert!(said.starts_with("`api`에 worktree를 만들었다"), "{said}");
+    assert!(said.contains("이번 턴을 마치면 다음 턴부터"), "{said}");
+    assert!(!said.contains("이번 턴에는 이 절대 경로로 고친다"), "Codex에는 틀린 말이다: {said}");
+}
+
+#[test]
+fn codex_채팅이_연_작업_폴더의_worktree면_start_editing은_이번_턴에도_고친다고_말한다() {
+    let sandbox = Sandbox::new();
+    sandbox.register_project("api");
+    work_with_trees(&sandbox, "cart", &["api"]);
+    let call = json!({"tool": "start_editing", "arguments": {"project": "api"}});
+    let (host, thread) = mcp_thread(&sandbox, Some(call), ThreadLink::Work { slug: "cart".into() });
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let said = tool_results(&sandbox, &thread)[0]["content"][0]["text"].as_str().unwrap().to_owned();
+    assert!(said.starts_with("`api` worktree가 이미 있다"), "{said}");
+    assert!(said.contains("이번 턴에도 이 자리에서 고친다"), "세션을 연 작업 폴더라 쓸 수 있는 자리다: {said}");
+}
+
+#[test]
+fn codex_채팅에서_읽기만_하기를_고르면_다음_턴을_기다리거나_읽을_때_묻는다고_말하지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.register_project("api");
+    sandbox.register_project("web");
+    work_with_trees(&sandbox, "cart", &["api"]);
+    let call = json!({"tool": "start_editing", "arguments": {"project": "web"}});
+    let (host, thread) = mcp_thread(&sandbox, Some(call), ThreadLink::Work { slug: "cart".into() });
+    let asked = sandbox.wait_thread_record(&thread, |record| !card_lines(record, "project", "asked").is_empty());
+    let request = card_lines(&asked, "project", "asked")[0]["payload"]["requestId"].as_str().unwrap().to_owned();
+    host.answer_project(&thread, &request, ProjectChoice::ReadOnly).expect("읽기만 하기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let said = tool_results(&sandbox, &thread)[0]["content"][0]["text"].as_str().unwrap().to_owned();
+    assert!(said.starts_with("사람이 `web`을 읽기만 하기로 했다"), "{said}");
+    assert!(!said.contains("다음 턴부터") && !said.contains("사람에게 묻는다"), "Codex에는 그 폴더를 넘기지 않고 읽을 때 묻지 않는다: {said}");
+}
+
+// ── 사람을 기다리는 카드의 한도(01c-8) ─────────────────────────────────────────────────
+//
+// Codex는 MCP 도구를 300초에서 끊는다. Codex 채팅에서 카드로 사람을 기다리는 앱 기능 도구는 그 전에 카드를 닫고 사람이 답하지 않았다는 결과를
+// 돌려준다. 앱의 한도는 280초이고, 시험은 짧은 한도로 잰다.
+
+/// 시험의 카드 한도.
+const CARD_LIMIT: Duration = Duration::from_millis(300);
+
+/// 녹음 `mcp`의 부르기를 `call`로 바꿔 재생하는 Codex 채팅의 첫 말 — 카드 한도가 `limit`인 호스트다.
+fn waiting_thread(sandbox: &Sandbox, call: Value, link: ThreadLink, limit: Duration) -> (ConversationHost, String) {
+    let call = call.to_string();
+    let shell = sandbox.codex_login_shell("codex-acp-2.2.2/mcp", &[("FAKE_ACP_MCP_CALL", &call)]);
+    let host = sandbox.host_builder(shell, |_| {}).card_limit(limit).build();
+    let thread = host.start_thread_picking("환불이 두 번 빠져요", &[], link, codex()).expect("Codex 채팅의 첫 말");
+    (host, thread)
+}
+
+/// Host가 내미는 Work 만들기 제안 — Project 없이 기획만이다.
+fn plan_proposal() -> Value {
+    json!({"tool": "propose_work", "arguments": {"title": "환불 API 버그 수정", "slug": "refund-api", "reason": "여러 파일을 고쳐요"}})
+}
+
+/// 그 카드 갈래의 그 상태 줄들.
+fn card_lines<'a>(record: &'a [Value], card: &str, state: &str) -> Vec<&'a Value> {
+    of_kind(record, "question").into_iter().filter(|line| line["payload"]["card"] == card && line["payload"]["state"] == state).collect()
+}
+
+/// 그 채팅의 Codex가 부른 앱 기능 도구의 결과 — 부른 차례대로.
+fn tool_results(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
+    sandbox.acp_mcp(&sandbox.thread_session_id(thread)).into_iter().map(|call| call["call"].clone()).collect()
+}
+
+/// 기록 축복 — 작업공간 제안 카드가 한도에 닫힌 Codex 턴(녹음 `mcp`의 부르기를 `propose_work`로 바꿨다). 화면의 L2가 이 기록으로 카드가 걷힌
+/// 자리의 결정 줄 「답이 없어 닫음 · Codex는 5분까지만 기다려요」를 본다.
+#[test]
+fn codex_채팅의_작업공간_제안_카드는_한도에_닫히고_사람이_답하지_않았으니_다시_묻지_말라는_결과를_돌려준다() {
+    let sandbox = Sandbox::new();
+    let (host, thread) = waiting_thread(&sandbox, plan_proposal(), ThreadLink::NoWork, CARD_LIMIT);
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let asked = card_lines(&record, "work", "asked");
+    let withdrawn = card_lines(&record, "work", "withdrawn");
+    assert_eq!((asked.len(), withdrawn.len()), (1, 1), "카드가 서고 닫힌다:\n{}", common::lines_text(&record));
+    assert_eq!(
+        withdrawn[0]["payload"],
+        json!({"state": "withdrawn", "requestId": asked[0]["payload"]["requestId"], "card": "work", "reason": "timeout"}),
+        "닫힌 까닭은 한도다 — 화면이 카드를 걷고 결정 줄을 남긴다"
+    );
+    let results = tool_results(&sandbox, &thread);
+    assert_eq!(results.len(), 1, "{results:?}");
+    assert_eq!(results[0]["isError"], true, "{}", results[0]);
+    let said = results[0]["content"][0]["text"].as_str().unwrap();
+    assert!(said.starts_with("사람이 답하지 않았다"), "{said}");
+    assert!(said.contains("다시 묻지 않는다"), "280초마다 카드가 다시 서지 않게: {said}");
+    assert!(!sandbox.work_dir("refund-api").exists(), "아무것도 만들지 않았다");
+    assert!(sandbox.thread_json(&thread).get("work").is_none_or(Value::is_null));
+
+    let (session, request) = (sandbox.thread_session_id(&thread), asked[0]["payload"]["requestId"].as_str().unwrap().to_owned());
+    let settled = common::commands_after_each_opened(&record);
+    let fixed = common::fix_thread_record(&settled, &sandbox.data_root(), &thread, &[&session]);
+    let fixed: Vec<Value> =
+        fixed.iter().map(|line| serde_json::from_str(&line.to_string().replace(&request, "fake-request")).unwrap()).collect();
+    common::assert_record("thread-codex-unanswered", &fixed);
+}
+
+/// 놓일 때 그 문 파일을 세운다.
+struct Opens<'a>(&'a Path);
+
+impl Drop for Opens<'_> {
+    fn drop(&mut self) {
+        let _ = std::fs::write(self.0, "");
+    }
+}
+
+#[test]
+fn 사람이_답해_worktree를_만드는_중에_한도가_차면_카드를_닫지_않고_그_답이_끝나기를_기다린다() {
+    let limit = Duration::from_secs(1);
+    let sandbox = Sandbox::new();
+    sandbox.register_project("api");
+    let web = sandbox.register_project("web");
+    work_with_trees(&sandbox, "cart", &["api"]);
+    // 「붙이고 고치기」의 worktree 짓기를 git 훅이 문 파일이 설 때까지 붙잡는다.
+    let (began, gate) = (web.join("checkout-began"), web.join("checkout-gate"));
+    let hook = web.join(".git/hooks/post-checkout");
+    common::write_script(&hook, &format!("#!/bin/sh\ntouch '{}'\nwhile [ ! -e '{}' ]; do sleep 0.05; done\n", began.display(), gate.display()));
+    std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let call = json!({"tool": "start_editing", "arguments": {"project": "web", "reason": "주문 화면의 환불 버튼"}});
+    let (host, thread) = waiting_thread(&sandbox, call, ThreadLink::Work { slug: "cart".into() }, limit);
+
+    let asked = sandbox.wait_thread_record(&thread, |record| !card_lines(record, "project", "asked").is_empty());
+    let request = card_lines(&asked, "project", "asked")[0]["payload"]["requestId"].as_str().unwrap().to_owned();
+    let making = std::thread::scope(|scope| {
+        // 시험이 어디서 실패해도 문을 연다 — 붙잡힌 답을 기다리느라 시험이 멈추지 않게.
+        let _open = Opens(&gate);
+        let answering = scope.spawn(|| host.answer_project(&thread, &request, ProjectChoice::Attach));
+        common::wait_until("worktree 짓기가 시작된다", || if began.exists() { Ok(()) } else { Err(String::new()) });
+        std::thread::sleep(limit + Duration::from_millis(500));
+        let making = sandbox.thread_record(&thread);
+        std::fs::write(&gate, "").unwrap();
+        answering.join().unwrap().expect("붙이고 고치기");
+        making
+    });
+    assert!(card_lines(&making, "project", "withdrawn").is_empty(), "만드는 중에는 닫지 않는다:\n{}", common::lines_text(&making));
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    assert!(card_lines(&record, "project", "withdrawn").is_empty(), "{}", common::lines_text(&record));
+    assert_eq!(card_lines(&record, "project", "answered").len(), 1);
+    let results = tool_results(&sandbox, &thread);
+    assert_ne!(results[0]["isError"], true, "사람이 답한 결과다: {}", results[0]);
+    let said = results[0]["content"][0]["text"].as_str().unwrap();
+    assert!(said.starts_with("사람이 `web`을 이 Work에 붙였다. worktree를 만들었다"), "{said}");
 }
 
 // ── 로그인 ─────────────────────────────────────────────────────────────────────────

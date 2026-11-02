@@ -377,6 +377,9 @@ _피할 말_: 설문, 질문 팝업
 한 Thread에서 사람의 답을 기다리는 물음(승인 · 질문)들의 줄 — 먼저 온 것 하나만 입력창 자리에 카드로 서고, 카드가 「1 / 2」와 아래
 「다음 · … 실행을 기다려요」 한 줄로 차례를 말한다. 답하면 다음 것이 선다. 카드 안 입력칸에 쓴 말은 그 요청을 건너뛰고(거부)
 Runtime에게 간다.
+Codex 채팅에서 Thread 도구가 세운 카드(Work 만들기 · Work 밖 Project · Service 질문 · Project 추가)는 280초 안에 답이 없으면 닫히고, 흐름의 그 도구 줄
+자리에 「답이 없어 닫음 · Codex는 5분까지만 기다려요」 결정 줄이 남는다 — Codex가 도구를 5분에서 끊기 때문이다. 사람이 고른 답이 작업공간이나
+worktree를 만드는 중이면 그 답을 끝까지 기다린다. Claude 채팅의 카드는 닫히지 않는다.
 _피할 말_: 승인 큐, 권한 대기열
 
 **Work 만들기 카드**:
@@ -390,7 +393,8 @@ _피할 말_: Work 생성 모달, Work 마법사
 **Work 밖 Project 카드**:
 Runtime이 이은 Work에 없는 Project를 고치려 할 때 입력창 자리 · 물음 차례에 서는 카드 — 고치려는 Project와 까닭, 「이 작업공간에 붙어 있지
 않음」을 보이고 「web-app을 이 작업공간에 붙이고 고치기」 · 「읽기만 하기」 · 「아니요, api-server에서만 고쳐 주세요」를 숫자 · Enter · Esc로
-고른다. 붙이면 그 Project에 worktree가 생기고, 읽기만 하기는 Work에 붙이지 않고 다음 턴부터 그 폴더를 읽게만 한다. 고르면 흐름에
+고른다. 붙이면 그 Project에 worktree가 생기고, 읽기만 하기는 Work에 붙이지 않고 다음 턴부터 그 폴더를 읽게만 한다(Codex 채팅은 곧바로 읽는다).
+Codex 채팅은 이번 턴에 생긴 worktree를 이번 턴에 고치지 못하고 다음 턴부터 그 worktree에서 고친다. 고르면 흐름에
 「web-app을 이 작업공간에 붙임」 같은 결정 줄이 남는다. Work에 있는 Project는 묻지 않는다 — Runtime이 처음 고치기 전에 그 Project에만
 worktree가 생기고 흐름에 「api-server에 worktree를 만듦 · fix/refund-api」 한 줄이 남는다.
 _피할 말_: Project 추가 팝업
