@@ -17,7 +17,7 @@ import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { clippingInnerClass, foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
+import { clippingInnerClass, foldingInnerClass, PANEL_MOTION, STILL, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
@@ -326,6 +326,7 @@ export function PanelBox({
   reserve,
   trail,
   fade = true,
+  still = false,
 }: {
   id: string;
   slot: PanelSlot;
@@ -334,6 +335,8 @@ export function PanelBox({
   trail?: string;
   /** 여닫을 때 안쪽이 옅어지나(`foldingInnerClass`) — 아니면 상자에 잘리기만 한다(`clippingInnerClass`). */
   fade?: boolean;
+  /** 이번 그림은 움직이지 않고 선다 — 상자와 안쪽 열의 트랜지션을 끈다(`STILL` — 작업공간 도구 기둥이 처음 그려질 때). */
+  still?: boolean;
 }) {
   const { open, size, label, children } = slot;
   const box = useFoldedFocus<HTMLElement>(open);
@@ -348,6 +351,7 @@ export function PanelBox({
           "--panel-min": `${size.min}px`,
           "--panel-reserve": `${reserve ?? size.min}px`,
           ...(trail === undefined ? {} : { "--panel-trail": trail }),
+          ...(still ? STILL : {}),
         } as CSSProperties
       }
       className={cn(
@@ -368,6 +372,7 @@ export function PanelBox({
           오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass` · `clippingInnerClass`에 있다. 틈은 안쪽 왼쪽 여백이다. */}
       <div
         inert={!open}
+        style={still ? STILL : undefined}
         className={cn(
           "flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2",
           fade ? foldingInnerClass(open) : clippingInnerClass(open),

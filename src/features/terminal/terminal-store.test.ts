@@ -117,6 +117,7 @@ import {
   closeQuietShells,
   closeShellsOf,
   holdOwner,
+  onWorkReclaimed,
   openNewShell,
   openShellRunning,
   recalledShell,
@@ -439,6 +440,26 @@ describe("사라진 work의 파일 탭 — 스토어를 거쳐", () => {
     closeShellsOf(gone);
     expect(terminalStore.state.bundles).not.toHaveProperty(gone);
     expect(activeIdOf(terminalStore.state, gone)).toBeNull();
+  });
+
+  // restart 02a-15c — 회수는 화면이 목록에서 그 작업공간을 잃기 **전에** 돈다(아카이브는 재조회를 기다리지 않는다). 그 화면에게 걷힌 빈 묶음은
+  // 「마지막 칸이 닫혔다」가 아니라 「작업공간이 떠났다」다 — 그것을 회수가 알린다. 알림은 묶음이 걷히기 전에 온다: 듣는 쪽이 그 변화를 읽을 때
+  // 이미 안다.
+  it("회수는 그 작업공간이 떠났다고 알린다 — 묶음이 걷히기 전에, 그 owner 하나만", async () => {
+    await openShellSpawned({ owner: gone, project: null, cwd: "~/gone" });
+    showCodeTab(gone, file);
+    const heard: Array<{ owner: string; tabs: number }> = [];
+    const stop = onWorkReclaimed((owner) => heard.push({ owner, tabs: bundleOf(terminalStore.state, owner).length }));
+    try {
+      closeShellsOf(gone);
+    } finally {
+      stop();
+    }
+    expect(heard).toEqual([{ owner: gone, tabs: 2 }]);
+    expect(terminalStore.state.bundles).not.toHaveProperty(gone);
+
+    closeShellsOf(gone);
+    expect(heard, "끊은 뒤에도 들었다").toHaveLength(1);
   });
 
   it("MCP로 사라진 work의 파일 탭은 목록이 앉을 때 묻지 않고 빠진다 — 셸 없이 파일 탭만 선 묶음도", async () => {
