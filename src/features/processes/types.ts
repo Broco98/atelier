@@ -134,6 +134,8 @@ export interface ProcessSnapshot {
   recordHead: number | null;
   /** 이 장을 잰 시각(에포크 ms) — 머리의 「…에 잰 값」(restart 03-5 · 스토리 129). */
   measuredAt: number;
+  /** 이 장에서 지표를 못 읽은 것의 수 — 까닭마다(restart 03-9 · 스토리 133). 그 몫은 시스템 · 못 읽음에 든다. */
+  unread: Unread;
   /**
    * 맥 전체 — 줄과 같은 순간에 읽었다(restart 03-5 「한 표본」). macOS 밖이면 `null`이다 — 화면이 「측정 안 됨」으로 말한다.
    */
@@ -144,6 +146,19 @@ export interface ProcessSnapshot {
   body: BodyRows;
   /** 맥 전체의 나눔 — 다른 앱의 줄, 시스템 · 못 읽음, 합계(restart 03-6). 아틀리에의 몫은 `atelier`다. */
   breakdown: Breakdown;
+}
+
+/**
+ * **못 읽은 것의 수 — 까닭마다**(restart 03-9 · 스토리 133) — Rust `processes::metrics::Unread`. 우리 트리와 다른 앱 가운데 지표를 못 읽은
+ * 것이다. 그 몫은 맥 전체에서 읽은 합을 뺀 「시스템 · 못 읽음」에 든다. macOS 밖은 아무것도 안 읽어 늘 0이다.
+ */
+export interface Unread {
+  /** 커널이 읽기를 거절했다 — 남의 uid(`sudo` 밑의 것). */
+  denied: number;
+  /** 그사이 끝났다 — 표를 찍은 뒤 읽기 전에 끝난 것, 좀비, pid가 남에게 넘어간 것. */
+  gone: number;
+  /** 그 밖의 까닭 — 커널이 다른 오류를 줬다. */
+  other: number;
 }
 
 /**
@@ -233,6 +248,16 @@ export type { CleanupReason };
 
 /** 끝낸 것의 결과 — Rust `ending::Outcome`의 와이어 글자다. 끝남(TERM) · 강제(KILL) · 못 끝냄 · 이미 없음. */
 export type CleanupOutcome = "ended" | "forced" | "survived" | "gone";
+
+/**
+ * **신원 목록 끝내기의 답 한 줄**(restart 03-10 · Rust `ending::EndResult`) — 대상 하나와 그 결과. 끝내기 IPC가 그 끝내기가 맡은 대상마다
+ * 돌려준다 — 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 답에 없다(그 결과는 그것을 맡은 끝내기의 것이다). 와이어 모양은 Rust 쪽
+ * 검사(`an_end_result_crosses_the_wire_in_the_shape_the_screen_reads`)가 글자로 못박는다.
+ */
+export interface EndResult {
+  id: ProcessIdentity;
+  outcome: CleanupOutcome;
+}
 
 /**
  * 정리 기록의 대상 하나(Rust `cleanup_log::Target`). 셸 자신은 안 든다 — 끝내기의 대상이 아니다. 셸 도우미는 적는 사건이면 함께

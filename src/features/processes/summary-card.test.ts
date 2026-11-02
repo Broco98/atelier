@@ -154,14 +154,15 @@ describe("요약 카드의 머리 값 — 한 표본(restart 03-5)", () => {
     expect(cardFigures(over).cpu).toBe("22%");
   });
 
-  // **첫 표본은 CPU를 모른다** — 두 표본의 차이라 두 번 재야 안다(시안 「첫 표본」). 메모리는 첫 장부터 선다.
+  // **첫 표본은 CPU를 모른다** — 두 표본의 차이라 두 번 재야 안다(시안 「첫 표본」 · 스토리 130). 무엇을 기다리는지와 곧 채워진다는 것을
+  // 말한다. 메모리는 첫 장부터 선다.
   it("첫 표본의 CPU는 「—」이고 무엇을 기다리는지 말한다", () => {
     const first = snapshotFixture({
       mac: macOf(null, 12 * GiB),
       atelier: { total: 1.5 * GiB, cpu: null, app: 610 * MiB, webviewExcluded: false },
     });
     const figures = cardFigures(first);
-    expect([figures.cpu, figures.cpuNote, figures.memory]).toEqual([NOT_READ, "두 번 재야 알 수 있어요", "1.5GB"]);
+    expect([figures.cpu, figures.cpuNote, figures.memory]).toEqual([NOT_READ, "두 번 재야 알 수 있어요 · 곧 채워져요", "1.5GB"]);
   });
 
   // **macOS 밖은 맥 전체를 재지 않는다**(스펙 「Out of Scope」) — 숫자 대신 「측정 안 됨」으로 말하고, 깨지지 않는다.
@@ -170,11 +171,12 @@ describe("요약 카드의 머리 값 — 한 표본(restart 03-5)", () => {
     expect([figures.cpu, figures.cpuNote, figures.memory]).toEqual([NOT_READ, "측정 안 됨", NOT_READ]);
   });
 
-  // 첫 스냅샷 전에는 아무것도 모른다 — 10초 요약으로 메우지 않는다(같은 표본이 아니다).
-  it("첫 스냅샷 전에는 재는 중이다", () => {
+  // 첫 스냅샷 전에는 아무것도 모른다 — 10초 요약으로 메우지 않는다(같은 표본이 아니다). 무엇을 기다리는지 말한다(스토리 130 — 「재는 중」은
+  // 머리의 표본 상태가 말한다, `beatText`).
+  it("첫 스냅샷 전에는 첫 표본을 기다린다고 말한다", () => {
     expect(cardFigures(undefined)).toEqual({
       cpu: NOT_READ,
-      cpuNote: "재는 중",
+      cpuNote: "첫 표본을 찍는 중이에요",
       memory: NOT_READ,
       app: NOT_READ,
       webviewExcluded: false,

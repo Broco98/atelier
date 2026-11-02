@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
+import { Spinner } from "@/components/ui/spinner";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { keepAsException } from "./actions";
 import { activityMonitorTip } from "./breakdown";
+import { endText, type EndState } from "./endings";
 import type { RowFold, SectionFold } from "./folds";
 import { PORT_SEPARATOR, formatCpu, formatMemory, formatPort, formatPorts } from "./metrics";
 import type { ProcessMetrics } from "./types";
@@ -179,6 +181,10 @@ const KIND: Record<RowKind, string> = {
  * 자손 줄의 명령줄 전체는 **이름 글자의** `title`이다(줄이 아니다 — 줄 안의 ⋯가 앱 툴팁을 들어 줄에 걸면 둘이 겹친다). 앱
  * 툴팁(`Hint`)이 아닌 것은 `sidebar-active-band` S29의 「버튼이 아닌 자리」와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에
  * 포커스와 역할이 새로 생긴다(spec 레이아웃 편집기의 잘린 경로가 같은 선택을 했다).
+ *
+ * **끝내기를 누른 줄은 그 상태가 동작 칸에 늘 선다**(`end` — restart 03-10 · 시안 ProcessSheet 「끝내기」). 「끝내는 중」(돌기)이거나 결과
+ * (끝남 · 강제로 끝냄 · 못 끝냄 · 이미 없음)다. 그동안 동작([끝내기])은 안 선다. 끝남 · 강제로 끝냄 · 이미 없음은 그 프로세스가 없다는
+ * 말이라 줄이 옅어지고(`data-ended` — 시안의 45%) 행 메뉴도 안 선다. 못 끝냄은 기다림의 잉크다. 줄의 접근성 이름 끝에 그 글이 붙는다.
  */
 export function TreeRow({
   level,
@@ -190,6 +196,7 @@ export function TreeRow({
   fold,
   actions,
   menu,
+  end,
   className,
   children,
   ...rest
@@ -208,21 +215,28 @@ export function TreeRow({
   actions?: React.ReactNode;
   /** 행 메뉴가 서는 줄이면 「예외로 두기」가 더할 이름(`exceptionName`). 없으면 ⋯도 우클릭 메뉴도 없다. */
   menu?: string;
+  /** 끝내기를 누른 줄의 상태(`endings.ts`). 없으면 누르지 않은 줄이다. */
+  end?: EndState;
 } & React.HTMLAttributes<HTMLDivElement>) {
+  const ended = end === "ended" || end === "forced" || end === "gone";
+  const rowMenu = ended ? undefined : menu;
   return (
     <div
       role="treeitem"
       aria-level={level}
-      aria-label={label}
+      aria-label={end === undefined ? label : `${label}, ${endText(end)}`}
       aria-expanded={fold?.open}
-      data-row-menu={menu}
+      data-row-menu={rowMenu}
+      data-end={end}
+      data-ended={ended || undefined}
       className={cn(
         "group/row",
         COLUMNS,
         ROW_RULE,
         "items-center px-3 hover:bg-fill-soft",
         KIND[kind],
-        menu !== undefined && "focus-ring",
+        rowMenu !== undefined && "focus-ring",
+        ended && "opacity-45",
         className,
       )}
       {...rest}
@@ -243,17 +257,41 @@ export function TreeRow({
           <span />
         </>
       )}
-      <span
-        className={cn(
-          "flex items-center justify-end gap-0.5",
-          kind === "process" &&
-            "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-menu-target/row:opacity-100 has-[[aria-expanded=true]]:opacity-100",
-        )}
-      >
-        {actions}
-        {menu !== undefined && <RowMenu name={menu} />}
+      {/* 끝내기 상태의 글은 오른쪽 끝에 늘 선다 — 결과마다 같은 자리다. 손이 닿을 때만 보이는 동작은 그 앞이다. */}
+      <span className="flex items-center justify-end gap-1.5">
+        <span
+          className={cn(
+            "flex items-center gap-0.5 empty:hidden",
+            kind === "process" &&
+              "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-menu-target/row:opacity-100 has-[[aria-expanded=true]]:opacity-100",
+          )}
+        >
+          {end === undefined && actions}
+          {rowMenu !== undefined && <RowMenu name={rowMenu} />}
+        </span>
+        {end !== undefined && <EndMarkText state={end} />}
       </span>
     </div>
+  );
+}
+
+/**
+ * **끝내기 상태의 글** — 동작 칸 오른쪽 끝에 늘 선다(시안 ProcessSheet 「끝내기」 — 12 `fg-tertiary`). 끝내는 중은 앞에 도는 표시(12)가
+ * 서고 보드의 「회전」 박자(0.9초 — `spin-thread`, 시안의 `ra-spin`)로 돈다. 못 끝냄은 기다림의 잉크다. 도는 표시는 글이 같은 상태를 말하니
+ * 감춘다.
+ */
+function EndMarkText({ state }: { state: EndState }) {
+  return (
+    <span
+      data-end-mark=""
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap spin-thread",
+        state === "survived" ? "text-warning" : "text-fg-tertiary",
+      )}
+    >
+      {state === "ending" && <Spinner aria-hidden className="size-3" />}
+      {endText(state)}
+    </span>
   );
 }
 
@@ -297,6 +335,12 @@ function Guide() {
 export const CoresContext = createContext<number | null>(null);
 
 /**
+ * **멈춘 숫자는 옅다**(restart 03-9 · 시안 `.pr-root[data-stale="true"] .pr-num, .pr-mem` — 50%). 화면의 구르는 몸이 멈춤이면 `data-stale`을 단다
+ * (`ProcessesPage` · `group/sample`). 줄의 메모리 · CPU 칸과 요약 타일의 큰 수가 이것을 입는다 — 포트 · 이름은 그대로다.
+ */
+export const STALE_FIGURE = "group-data-stale/sample:opacity-50";
+
+/**
  * 줄의 숫자 칸 — 메모리 · CPU · 포트(프로세스 결정 10 · 티켓 28). 글자는 표기 함수의 결과 그대로다(`formatMemory` · `formatCpu` ·
  * `formatPorts` — nav 메타와 다른 묶음도 같은 함수를 읽는다). 숫자 열은 오른쪽 맞춤이다.
  *
@@ -325,7 +369,7 @@ function Figures({
     <>
       <span className="flex items-center justify-end gap-2 whitespace-nowrap">
         {share !== null && <MemoryBar share={share} />}
-        <span data-cell="memory" className="tabular-nums">
+        <span data-cell="memory" className={cn("tabular-nums", STALE_FIGURE)}>
           {formatMemory(metrics.memory)}
         </span>
       </span>
@@ -334,7 +378,7 @@ function Figures({
       <span
         data-cell="cpu"
         title={tip && cores !== null ? activityMonitorTip(metrics.cpu, cores) : undefined}
-        className="text-right whitespace-nowrap tabular-nums"
+        className={cn("text-right whitespace-nowrap tabular-nums", STALE_FIGURE)}
       >
         {formatCpu(metrics.cpu)}
       </span>
@@ -365,11 +409,14 @@ export function LedgerRow({
   kind,
   name,
   note,
+  noteTip,
   metrics,
 }: {
   kind: "system" | "total";
   name: string;
   note: string;
+  /** 말의 툴팁 — 시스템 · 못 읽음 줄이 못 읽은 것의 까닭을 든다(restart 03-9). `title`이다(`Figures`의 포트 칸과 같은 까닭). */
+  noteTip?: string;
   metrics: ProcessMetrics;
 }) {
   return (
@@ -388,7 +435,9 @@ export function LedgerRow({
       <span className="flex min-w-0 items-center gap-1.5 self-stretch">
         <FoldSlot />
         <span className="shrink-0">{name}</span>
-        <span className="min-w-0 truncate text-xs font-normal text-fg-tertiary">{note}</span>
+        <span title={noteTip} className="min-w-0 truncate text-xs font-normal text-fg-tertiary">
+          {note}
+        </span>
       </span>
       <Figures metrics={metrics} ports={false} share={null} tip={false} />
       <span />

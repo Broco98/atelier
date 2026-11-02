@@ -1,5 +1,6 @@
 import { AppWindow, CircleAlert, CircleQuestionMark, ShieldCheck } from "lucide-react";
 import { askThenEnd, endProcesses } from "./actions";
+import { useEndMark } from "./endings-store";
 import { foldKey, type Folds } from "./folds";
 import { instanceRowLabel, tidyUnknownAsk, type InstanceGroup, type Strays } from "./process-groups";
 import {
@@ -112,6 +113,7 @@ const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 /**
  * 묶음의 프로세스 한 줄 — 셸의 자손 행과 같은 모양이다: 부른 이름(명령줄은 이름 글자의 툴팁 — 줄 안의 ⋯가 앱 툴팁을 들어 줄에 걸면
  * 둘이 겹친다), 숫자 칸, 접근성 이름 「이름, 메모리」. `menu`면 행 메뉴(「예외로 두기」)가 선다. 밑에 줄이 있으면 접힌다(키는 신원).
+ * [정리]로 끝낸 줄에는 「끝내는 중」과 결과가 선다(`end` — restart 03-10).
  */
 function StrayRow({
   shown: { row, parent },
@@ -124,6 +126,7 @@ function StrayRow({
   folds: Folds;
   menu?: boolean;
 }) {
+  const end = useEndMark(row.id)?.state;
   return (
     <TreeRow
       level={level}
@@ -132,6 +135,7 @@ function StrayRow({
       metrics={row.metrics}
       fold={parent ? folds.row(foldKey.process(row.id), processLabel(row)) : undefined}
       menu={menu ? exceptionName(row) : undefined}
+      end={end}
     >
       <span title={row.command ?? undefined} className="min-w-0 truncate">
         {processLabel(row)}
