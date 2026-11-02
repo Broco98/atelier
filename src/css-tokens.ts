@@ -50,8 +50,12 @@ export interface CssBlock {
 
 export function cssBlocks(css: string): CssBlock[] {
   const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  // 머리는 마지막 `;` 뒤다 — 상자 앞의 문장(`@custom-variant …;` · `@import …;`)이 셀렉터에 붙으면 그 상자가 어느 범위도 아니게 된다.
   return [...code.matchAll(/([^{}]*)\{([^{}]*)\}/g)].map(([, head, body]) => ({
-    head: head.split(",").map((one) => one.trim()),
+    head: head
+      .slice(head.lastIndexOf(";") + 1)
+      .split(",")
+      .map((one) => one.trim()),
     decls: new Map([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(([, name, value]) => [name, value.trim()])),
   }));
 }

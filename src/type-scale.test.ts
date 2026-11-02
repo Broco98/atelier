@@ -157,12 +157,16 @@ describe("반경 단계", () => {
   it("Codex의 반경 이름이 `@theme`에 있다", () => {
     // 02가 Codex 실측 일곱을 더했다(크기 차례에 끼운다) — 인라인 코드 `codespan` · 사이드바 줄 `row` · 요약 카드 `summary` · 트레이 `tray` ·
     // 사람 말풍선 `speech` · 입력창 자리 카드 `slot` · 입력창 `prompt`. 값과 쓰임은 `index.css`의 반경 머리말이 든다.
+    // restart 02a-1이 앱 틀의 셋을 더했다(같은 값의 이름 뒤에 끼운다) — 틀 안 `ctl` 4 · 레일 카드 `rail` 6 · 앱 틀 카드 `card` 8.
     expect(radii).toEqual([
       "2xs",
       "xs",
+      "ctl",
       "sm",
       "codespan",
+      "rail",
       "md",
+      "card",
       "lg",
       "row",
       "xl",
@@ -324,6 +328,8 @@ describe("cn이 DS 단계를 안다", () => {
       ...["basic", "relaxed", "chip", "dropdown", "pulse", "tip", "peek-close", "panel"],
       ...["card", "swap", "jump", "flash", "shimmer", "spin"],
       ...["sidebar", "think", "arrive", "wave", "morph"],
+      // restart 02a-1이 더한 Motion 보드의 시간 셋 — 패널 여닫기 · 레일 켜짐 표시 · 보낸 말.
+      ...["panel-open", "rail", "rise"],
     ]);
     expect(eases).toEqual([
       ...["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"],

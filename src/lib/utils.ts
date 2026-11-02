@@ -23,6 +23,8 @@ import { createCn } from "cn/config";
 // `speech` · `slot` · `prompt`, 그림자 `panel` · `menu` · `summary` · `prompt`, 시간 `sidebar` · `think` · `arrive` · `wave` · `morph`, 곡선
 // `spring` · `shimmer` · `arrive` · `wave`. 값과 쓰임은 `index.css`의 그 머리말들이 든다.
 //
+// **restart 시안의 이름도 같은 목록이다**(restart 티켓 02a-1) — 반경 `ctl` · `rail` · `card`, 시간 `panel-open` · `rail` · `rise`.
+//
 // **색 이름은 알려 주지 않는다**(codex-ds 결정 27). 합치기는 모르는 이름(`text-fg-tertiary` · `bg-fill-hover` ·
 // `border-border-heavy` …)을 색으로 읽는다 — 위의 글자 단계와 그림자를 알려야 하는 까닭이 그것이고, 같은 까닭으로
 // Codex 색은 알리지 않아도 색으로 합쳐진다. 같은 갈래의 색끼리는 뒤의 것이 이기고, 단계와는 함께 남는다(`type-scale.test.ts`의 「단계와 글자색을
@@ -56,7 +58,7 @@ export const cn = createCn({
         "codespan",
         "home",
       ],
-      radius: ["codespan", "row", "summary", "tray", "speech", "slot", "bubble", "prompt", "composer"],
+      radius: ["ctl", "codespan", "rail", "card", "row", "summary", "tray", "speech", "slot", "bubble", "prompt", "composer"],
       shadow: [
         "hairline",
         "100",
@@ -99,6 +101,9 @@ export const cn = createCn({
             "arrive",
             "wave",
             "morph",
+            "panel-open",
+            "rail",
+            "rise",
           ],
         },
       ],

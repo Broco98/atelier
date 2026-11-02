@@ -157,11 +157,12 @@ describe("Codex 토큰", () => {
     }
   });
 
-  // 다크는 shadcn 기본값이 아니라 DS 다크 값이다 — 대표 넷이 `.dark`에 제 값으로 선다(물려받은 라이트 값이 아니다).
+  // 다크는 shadcn 기본값이 아니라 DS 다크 값이다 — 대표 넷이 `.dark`에 제 값으로 선다(물려받은 라이트 값이 아니다). 창 바탕
+  // `surface-shell`은 restart 시안이 DS #343434에서 #090909로 바꿔 아래 「restart 시안 토큰」이 잰다.
   it(".dark가 DS 다크 값을 든다", () => {
     const DARK: Record<string, string> = {
       surface: "#181818",
-      "surface-shell": "#343434",
+      "surface-sidebar": "#222222",
       fg: "#ffffff",
       "fill-hover": "rgba(255, 255, 255, 0.12)",
       "shadow-hairline": "0 0 0 0.5px #ffffff1f",
@@ -201,7 +202,8 @@ describe("Codex 토큰", () => {
 // **Codex 실측 값이 토큰으로 선다**(02 구현 스펙 §3~§12 · 티켓 01). DS 2판 표에 없는 값 — Codex 화면을 재어 시안(캔버스 v35)이 적은
 // 것이다. 쓰는 화면은 02~12가 짓는다. 쓰는 자리가 아직 없어 L3가 못 재므로, 값과 유틸리티를 여기서 잰다.
 describe("Codex 실측 색", () => {
-  // 스펙 그대로다 — 이름 → 라이트 값. 다크는 적지 않는다(라이트만, v1 S34 — `.dark`에서는 라이트 값을 물려받는다).
+  // 스펙 그대로다 — 이름 → 라이트 값. 다크는 대개 적지 않는다(라이트만, v1 S34 — `.dark`에서는 라이트 값을 물려받는다). restart 시안이
+  // 다크 값을 준 다섯은 아래 「restart 시안 토큰」이 잰다.
   const COLORS: Record<string, string> = {
     "fg-bubble": "#0c274a",
     "fg-placeholder": "#c7c7c8",
@@ -624,5 +626,99 @@ describe("모션 토큰", () => {
     const open = css.indexOf("{", queries[0].index);
     const body = bodyAt(css, open) ?? "";
     expect(css.slice(open + body.length + 2).trim(), "동작 줄이기 블록 뒤의 CSS").toBe("");
+  });
+});
+
+// **restart 시안의 토큰이 선다**(restart 스펙 「02a」 · 스토리 106 · 티켓 02a-1). 값은 구현 지도 「토큰 — src/index.css」 표와 표 밖의 시안 값
+// 셋(`bubble-user-fg` · `size-send-chat` · 라이트 `fg-sidebar`)이고 시안의 `restart-tokens.css`(Version 92)와 맞댄 것이다. 쓰는 화면은
+// 02a-2부터 짓는다 — 쓰는 자리가 아직 없어 L3가 못 재므로, 값과 유틸리티를 여기서 잰다.
+describe("restart 시안 토큰", () => {
+  // 앱 틀의 둥글기 — Air 실측. 카드 8(지금은 흰 판 하나 12) · 레일 카드 6 · 틀 안의 버튼 · 선택 줄 · 입력칸 · 탭 4.
+  const RADII: Record<string, string> = { card: "8px", rail: "6px", ctl: "4px" };
+
+  it("앱 틀의 둥글기 셋이 @theme에 서고, 반경 유틸리티가 그 변수를 읽는다", async () => {
+    for (const [name, value] of Object.entries(RADII)) expect(themed(`radius-${name}`), name).toBe(value);
+    const built = await utilities(Object.keys(RADII).map((name) => `rounded-${name}`));
+    for (const name of Object.keys(RADII)) expect(ruleOf(built, `rounded-${name}`), name).toContain(`border-radius: var(--radius-${name})`);
+  });
+
+  // 카드 사이 · 창 끝 틈 8, 창 머리 줄 44, 입력창 보내기 원 28(앱과 Codex 실측), 레일 카드 폭 32(지금 토큰 그대로).
+  const SIZES: Record<string, string> = { gap: "8px", titlebar: "44px", "send-chat": "28px", prail: "32px" };
+
+  it("틈 · 창 머리 · 보내기 원 · 레일 폭의 크기가 @theme에 선다", async () => {
+    for (const [name, value] of Object.entries(SIZES)) expect(themed(`size-${name}`), name).toBe(value);
+    expect(ruleOf(await utilities(["size-send-chat"]), "size-send-chat")).toContain("width: var(--size-send-chat)");
+  });
+
+  // 창 머리 줄은 값이 같고 토큰으로 뺀 것이다 — 지금 머리 줄이 읽는 `--titlebar-height`와 어긋나지 않는다.
+  it("창 머리 줄 토큰은 지금 머리 줄 높이와 같다", () => {
+    expect(declared(blocks, "light", "titlebar-height")).toBe(themed("size-titlebar"));
+  });
+
+  // Motion 보드의 「바뀜」 · 「새로 추가」 시간 — 오른쪽 패널 · 레일 · 카드 넓힘의 여닫기 500(Codex spring .5, 지금 패널은 220), 레일 켜짐
+  // 표시가 칸 사이를 옮겨 가는 220, 보낸 말이 자리에 서는 320.
+  const DURATIONS: Record<string, string> = { "panel-open": "500ms", rail: "220ms", rise: "320ms" };
+
+  it("Motion의 새 시간이 @theme에 서고, 시간 유틸리티가 그 변수를 읽는다", async () => {
+    for (const [name, value] of Object.entries(DURATIONS)) expect(themed(`duration-${name}`), name).toBe(value);
+    const built = await utilities(Object.keys(DURATIONS).map((name) => `duration-${name}`));
+    for (const name of Object.keys(DURATIONS))
+      expect(ruleOf(built, `duration-${name}`), name).toContain(`transition-duration: var(--duration-${name})`);
+    // 지금 패널 박자는 그대로다 — 화면이 새 시간으로 옮기는 것은 02a-2다.
+    expect(themed("duration-panel")).toBe("220ms");
+  });
+
+  // 새 색 — 이름 → [라이트, 다크]. 레일 켜짐 면(다크는 Air 실측)과 사람 말풍선의 글자(표 밖의 시안 값).
+  const NEW_COLORS: Record<string, [string, string]> = {
+    "tool-rail-on": ["#eff0f0", "#2c2d2f"],
+    "bubble-user-fg": ["#0c264a", "#f6fafe"],
+  };
+
+  it("새 색이 라이트와 다크에 제 값으로 서고, 그 이름의 유틸리티가 변수를 읽는다", async () => {
+    for (const [name, [light, dark]] of Object.entries(NEW_COLORS)) {
+      expect(declared(blocks, "light", name), `${name} 라이트`).toBe(light);
+      expect(declared(blocks, "dark", name), `${name} 다크`).toBe(dark);
+    }
+    const built = await utilities(Object.keys(NEW_COLORS).map((name) => `bg-${name}`));
+    for (const name of Object.keys(NEW_COLORS)) expect(ruleOf(built, `bg-${name}`), name).toContain(`background-color: var(--${name})`);
+  });
+
+  // 지금 토큰의 값이 시안 값이 되는 자리 — 이름 → [라이트, 다크].
+  //   - 다크 창 바탕은 DS #343434(카드보다 밝다)가 아니라 Air 실측 #090909다 — 둥근 카드가 뜨려면 바탕이 카드(#181818)보다 어두워야 한다.
+  //     디자인 시스템과 어긋나는 결정이다(구현 지도 표).
+  //   - 「Codex 실측 색」 가운데 다크 값이 없던 다섯이 다크에서 같은 무게로 보이게 제 값을 든다(구현 지도 표).
+  //   - 라이트의 사이드바 글자는 본문 글자와 같은 #1a1c1f다(표 밖의 시안 값). 시안의 사이드바는 고른 줄을 글자가 아니라 면으로 가른다.
+  const CHANGED: Record<string, [string, string]> = {
+    "surface-shell": ["#f6f6f6", "#090909"],
+    "fg-thinking": ["#aeaeae", "rgba(255, 255, 255, 0.42)"],
+    "fg-placeholder": ["#c7c7c8", "rgba(255, 255, 255, 0.36)"],
+    "shimmer-band": ["rgba(255, 255, 255, 0.75)", "rgba(255, 255, 255, 0.9)"],
+    "accent-solid-pending": ["#a9c9fb", "#2d5aa8"],
+    "surface-tray": ["#f4f4f4", "#1f1f1f"],
+    "fg-sidebar": ["#1a1c1f", "#dddddd"],
+  };
+
+  it("다크 창 바탕 · 다크 값이 없던 다섯 · 라이트 사이드바 글자가 시안 값이다", () => {
+    for (const [name, [light, dark]] of Object.entries(CHANGED)) {
+      expect(declared(blocks, "light", name), `${name} 라이트`).toBe(light);
+      expect(declared(blocks, "dark", name), `${name} 다크`).toBe(dark);
+    }
+  });
+
+  // 구현 지도 표의 「바꾸지 않음」 — 이미 시안과 같은 값이다.
+  it("표의 「바꾸지 않음」 값이 시안 그대로다", () => {
+    const SAME: Record<string, string> = {
+      "radius-prompt": "22px",
+      "radius-bubble": "22px",
+      "size-panel": "340px",
+      "size-stream-fade": "240px",
+      "duration-sidebar": "300ms",
+    };
+    for (const [name, value] of Object.entries(SAME)) expect(themed(name), name).toBe(value);
+  });
+
+  // 턴 사이 48 — 간격 이름(`--gap-*`)이라 `@theme`에 올리지 않고 `:root`에 선다(`spacing-guard.test.ts`).
+  it("턴 사이 48이 :root에 수로 선다", () => {
+    expect(declared(blocks, "light", "gap-turn")).toBe("48px");
   });
 });

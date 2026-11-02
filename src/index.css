@@ -101,6 +101,10 @@
        L3(13)가 이 이름을 읽어 잉크 사이를 맞댄다. 눈금의 칸 이름(`--space-<수>`)이 아니라 자리 이름이다(`spacing-guard.test.ts`가 잰다). */
     --space-reply: 51.5px;
     --space-turn: 52px;
+    /* **restart 시안의 턴 사이**(restart 구현 지도 「토큰」 표 · 티켓 02a-1) — 시안 `restart-chat.css`의 턴 상자 사이 48이다. 위 둘과
+       달리 상자 사이의 간격이다. 대화 흐름(`ThreadFlow`)이 이 값으로 옮겨 가는 것은 02b-1이다 — 그때까지 화면은 위 둘을 읽는다. 간격
+       이름(`--gap-*`)이라 `@theme`에 올리지 않는다(`spacing-guard.test.ts`). */
+    --gap-turn: 48px;
 
     /* 카드 머리 높이 — DS 2판 `--size-toolbar`(46)를 읽는다. 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
        넓은 화면의 폭 상한 `--measure-wide`(1120 — Processes · 넓게 보는 문서)는 ui-refresh 때의 값을 잇는다(Codex가 말하지 않는다).
@@ -311,6 +315,9 @@
     --color-surface-empty-mark: var(--surface-empty-mark);
     --color-graph-edge: var(--graph-edge);
     --color-graph-edge-muted: var(--graph-edge-muted);
+    /* **restart 시안 색**(restart 티켓 02a-1) — 쓰임은 아래 `:root`의 같은 머리말이 든다. */
+    --color-tool-rail-on: var(--tool-rail-on);
+    --color-bubble-user-fg: var(--bubble-user-fg);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -390,6 +397,9 @@
     --transition-duration-arrive: var(--duration-arrive);
     --transition-duration-wave: var(--duration-wave);
     --transition-duration-morph: var(--duration-morph);
+    --transition-duration-panel-open: var(--duration-panel-open);
+    --transition-duration-rail: var(--duration-rail);
+    --transition-duration-rise: var(--duration-rise);
     /* **모델 피커가 커지며 뜬다**(`animate-menu-enter` — 02 구현 스펙 §12 · Codex 모델 피커 .32s · cubic-bezier(.23,1,.32,1) · 30ms ·
        .98 → 1). 앱의 다른 메뉴 · 팝오버 · 툴팁 · 다이얼로그는 움직이지 않는다 — 한 프레임에 서고 곧바로 걷힌다(Codex, 02 티켓 12가 그
        움직임과 닫힘의 `animate-menu-exit`를 걷었다). tw-animate의 `animate-in`을 쓰지 않는다 — 그 키프레임(`enter`)은 늘
@@ -558,6 +568,12 @@
    - 흰 판(02)의 12는 DS `xl`, 사람 메뉴의 줄(04)과 내 차례 알약(05)의 8은 `md`, 답한 질문 · 대기 메시지(11)의 12는 `xl`이다 — 시안에서도
      둥근 네모다.
 
+   **restart 시안의 앱 틀 둥글기**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1). Air를 잰 값이고 둥근 네모 하나다. 쓰는 화면은
+   02a-2부터 짓는다(괄호 안).
+     card      8     앱 틀의 카드 — 사이드바 밖의 영역이 8 틈으로 뜬 카드들로 선다. 지금은 흰 판 하나(`xl` 12)다(02a-2)
+     rail      6     레일 카드(02a-14)
+     ctl       4     틀 안의 버튼 · 선택 줄 · 입력칸 · 탭(02a-2 · 02a-3)
+
    `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
    이 이름들을 모서리로 아는지도 같은 검사가 잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로
    옮기기 전의 기록이다 — 머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
@@ -565,9 +581,12 @@
     --radius-*: initial;
     --radius-2xs: 2px;
     --radius-xs: 4px;
+    --radius-ctl: 4px;
     --radius-sm: 6px;
     --radius-codespan: 6px;
+    --radius-rail: 6px;
     --radius-md: 8px;
+    --radius-card: 8px;
     --radius-lg: 10px;
     --radius-row: 10px;
     --radius-xl: 12px;
@@ -638,7 +657,14 @@
        칩 등장(subagent 칩)    `duration-chip` · `ease-enter-snappy` — translate(−8, 4) · .92 → 1.02 → 1(10)
        입력창 바닥 줄 높이     `duration-panel` · `ease-panel`(10)
      늦음(`--delay-*`)과 사이(`--stagger-*`)는 Tailwind 이름공간이 아니다 — 움직임 유틸리티가 변수로 읽는다(Thread 화면은 `delay-*`를 쓰지
-     않는다, `motion-guard.test.ts`). */
+     않는다, `motion-guard.test.ts`).
+   - **restart 시안의 움직임**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · Motion 보드 「바뀜」 · 「새로 추가」 · 티켓 02a-1). Motion 보드의
+     나머지 줄은 위 토큰 그대로다(보드 「앱 그대로」). 아직 쓰는 자리가 없다(괄호 안은 쓰게 될 티켓).
+       panel-open  500ms  오른쪽 패널 여닫기 · 레일이 들고 남 · 카드 넓힘 — Codex spring {duration .5, bounce .1}, 곡선은 `ease-spring`.
+                          지금 패널은 `duration-panel`(220)이다(02a-2 · 02a-14)
+       rail        220ms  레일 켜짐 표시가 칸 사이를 옮겨 감 — 곡선 `ease-panel`(02a-14)
+       rise        320ms  보낸 말 말풍선이 아래 12 · .985배에서 자리에 섬 — 곡선 `ease-enter-snappy`(02b-7)
+     Motion 보드의 「목록에서 상세로」 240ms는 보드가 토큰 이름 없이 적은 값이라 여기 두지 않는다. */
 @theme static {
     --duration-basic: 150ms;
     --duration-relaxed: 300ms;
@@ -659,6 +685,9 @@
     --duration-arrive: 700ms;
     --duration-wave: 1000ms;
     --duration-morph: 520ms;
+    --duration-panel-open: 500ms;
+    --duration-rail: 220ms;
+    --duration-rise: 320ms;
 
     --stagger-wave: 100ms;
     --delay-think: 600ms;
@@ -720,7 +749,13 @@
          stream-fade  240   답이 흐르는 동안 끝을 옅게 지우는 그라데이션의 길이(12 「답 글자 도착」)
        02의 다른 크기는 지금 토큰이다 — 셸 컨트롤 · 보내기 · 칩 · + · @ · 「…」 · 요약 고정 토글의 28은 `--size-control`, 요약 카드 폭 300은
        `--size-summary`(v1 `--size-work-card`의 이름을 고쳤다 — 07), 사이드바 줄 30은 `--size-row-nav`, 입력창 글 칸 최소 44는
-       `--space-11`(눈금 11)이다. */
+       `--space-11`(눈금 11)이다.
+
+       **restart 시안 크기**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1) — 셋은 아직 쓰는 자리가 없다(괄호 안은 쓰게 될 티켓).
+         gap        8    카드 사이 · 창 끝 틈(02a-2). 값은 눈금의 `--space-2`와 같다
+         titlebar  44    창 머리 줄(02a-2). 값은 지금 머리 줄이 읽는 `--titlebar-height`와 같고 토큰으로 뺀 것이다
+         send-chat 28    입력창 보내기 원 — 앱과 Codex 실측(02b-2). 지금 원은 `--size-control`을 읽는다
+       레일 카드 폭 32는 지금 `--size-prail`이다(위 머리말 — `--size-rail` 52와 이름이 갈린다). */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -743,6 +778,9 @@
     --size-thread-beside: 480px;
     --size-column: 737px;
     --size-stream-fade: 240px;
+    --size-gap: 8px;
+    --size-titlebar: 44px;
+    --size-send-chat: 28px;
 }
 
 /* **Codex 색 · 그림자 — 라이트**(codex-ds 결정 27 · 스펙 S1 · S2). 이름과 값은 DS 「Atelier」 2판 `tokens.json` 그대로다 —
@@ -768,10 +806,13 @@
        같은 길) 다크에서도 같은 값이라 `.dark`에 다시 적지 않는다. 쓰는 자리는 위험 버튼(`Button` destructive)의 글자와 스위치
        손잡이다. */
     --fg-on-solid: #ffffff;
-    /* **DS 표 밖의 이름 하나 더 — 사이드바의 글자**(`fg-sidebar`, v1 티켓 46). Codex 사이드바의 줄 글자 · 아이콘은 본문의 `fg`보다 옅다 —
-       사용자가 준 Codex 그림(2배)에서 #fbfbfb 위 #3a3d3f, 고른 줄(#eeefef) 위 #3a3b3d로 재었고, 둘 다 `fg` 85%가 그 바탕에 앉은 값이다.
-       DS는 다크 값만 적었다(`surface-sidebar` 「Sidebar text in dark is #DDDDDD」). 소제목 · 시각 · 미리보기는 그대로 `fg-tertiary`다. */
-    --fg-sidebar: rgba(26, 28, 31, 0.85);
+    /* **DS 표 밖의 이름 하나 더 — 사이드바의 글자**(`fg-sidebar`, v1 티켓 46). DS는 다크 값만 적었다(`surface-sidebar` 「Sidebar text in dark
+       is #DDDDDD」). 소제목 · 시각 · 미리보기는 그대로 `fg-tertiary`다.
+       **라이트는 본문 글자와 같은 #1a1c1f다**(restart 시안 `restart-tokens.css` · 티켓 02a-1). 시안의 사이드바는 고른 줄을 글자가 아니라 면으로
+       가른다(`.ra-sr-row.on`). 한때(v1 티켓 46부터 restart 02a-1 앞까지) Codex 그림에서 잰 `fg` 85%(rgba(26, 28, 31, 0.85))였다 — 고른 줄만 `fg`로
+       한 단 짙었다. 지금 사이드바(`sidebarRowTone` · 사람 메뉴 · 설정 nav)는 고른 줄에 여전히 `text-fg`를 걸지만 라이트에서는 같은 색이다.
+       사이드바를 시안대로 다시 세우는 것은 02a-3이다. */
+    --fg-sidebar: #1a1c1f;
 
     /* 면 알파 · 선 — 전경색의 투명도라 어느 면 위에서도 같은 단계로 보인다(DS 원칙 2). `fill-selected`만 불투명이다.
 
@@ -878,8 +919,9 @@
     --focus-halo: rgba(51, 156, 255, 0.22);
 
     /* **Codex 실측 색**(02 구현 스펙 §3~§12 · 티켓 01) — DS 2판 표 밖의 값이다. Codex 화면을 재어 시안(캔버스 v35 Diff-Frame · Diff-Chat ·
-       Components · Screen-Live)이 적은 값을 그대로 든다. 이름은 자리를 말한다. **다크 값은 없다** — 02는 라이트만이고(v1 S34) `.dark`에서는
-       이 값을 물려받는다. 쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓):
+       Components · Screen-Live)이 적은 값을 그대로 든다. 이름은 자리를 말한다. **다크 값은 대개 없다** — 02는 라이트만이고(v1 S34) `.dark`에서는
+       이 값을 물려받는다. restart 시안이 다섯(`fg-placeholder` · `fg-thinking` · `surface-tray` · `accent-solid-pending` · `shimmer-band`)에 다크
+       값을 주었다(restart 티켓 02a-1 — `.dark`). 쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓):
          fg-bubble             사람 말풍선의 글자(08) — 바탕은 그대로 `bubble-user`
          fg-placeholder        입력창 자리표시(10) · 03 Project 추가 창의 새 자리 줄 「이름」 · Service 미리보기 카드의 「이름 없음」(빈 칸의 자리표시)
          fg-subtle             입력창 칩의 글자(10) · 작업 구분선의 글자와 꺾쇠(09) · 응답 액션 글리프(08)
@@ -997,6 +1039,14 @@
     --notice-info: rgba(58, 131, 247, 0.07);
     --fg-notice-info: #1d4f9a;
     --fg-notice-warn-line: #9a5b00;
+
+    /* **restart 시안 색**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 시안 `restart-tokens.css` · 티켓 02a-1). 라이트와 다크가 함께 선다(`.dark`).
+       아직 쓰는 자리가 없다(괄호 안은 쓰게 될 티켓).
+         tool-rail-on    레일 켜짐 표시의 면 — 라이트는 `fill-selected`와 같은 #eff0f0, 다크는 Air 실측(02a-14)
+         bubble-user-fg  사람 말풍선의 글자(02b-1). 지금 말풍선은 위 「Codex 실측 색」의 `fg-bubble`(#0c274a — 시안은 #0c264a, 라이트만)을
+                         읽는다. 02b-1이 말풍선을 이 이름으로 옮기면 `fg-bubble`을 걷는다 */
+    --tool-rail-on: #eff0f0;
+    --bubble-user-fg: #0c264a;
 
     /* 그림자 — 외곽선은 실선 대신 0.5px 링 `shadow-hairline`이다(DS 원칙 4). 떠 있는 것은 `shadow-prominent` */
     --shadow-hairline: 0 0 0 0.5px #0000001a;
@@ -1150,7 +1200,9 @@
 .dark {
     --surface: #181818;
     --surface-under: #000000;
-    --surface-shell: #343434;
+    /* **창 바탕은 DS 값이 아니다**(restart 스펙 「02a」 · 구현 지도 「토큰」 표 · 티켓 02a-1). DS #343434(Codex — 카드보다 밝다) 대신 Air를 잰
+       #090909(카드 `surface` #181818보다 어둡다)다. 둥근 카드가 뜨려면 바탕이 카드보다 어두워야 한다 — 디자인 시스템과 어긋나는 결정이다. */
+    --surface-shell: #090909;
     --surface-sidebar: #222222;
     --surface-elevated: #282828;
     --surface-code: #2a2a2a;
@@ -1207,6 +1259,16 @@
     --chat-accent-cyan: #b3e3fc;
     --chat-accent-magenta: #fec5f6;
     --wait-soft: rgba(251, 106, 34, 0.18);
+    /* restart 시안 색(위 `:root`의 같은 머리말) */
+    --tool-rail-on: #2c2d2f;
+    --bubble-user-fg: #f6fafe;
+    /* **「Codex 실측 색」의 다크 값**(restart 구현 지도 「토큰」 표 · 티켓 02a-1) — 위 `:root`의 그 묶음은 라이트만이었고, 이 다섯만 다크에서
+       같은 무게로 보이게 제 값을 든다. 나머지는 지금도 라이트 값을 물려받는다. */
+    --fg-thinking: rgba(255, 255, 255, 0.42);
+    --fg-placeholder: rgba(255, 255, 255, 0.36);
+    --shimmer-band: rgba(255, 255, 255, 0.9);
+    --accent-solid-pending: #2d5aa8;
+    --surface-tray: #1f1f1f;
 
     --shadow-hairline: 0 0 0 0.5px #ffffff1f;
     --shadow-100: 0 1px 2px -1px #00000033;
