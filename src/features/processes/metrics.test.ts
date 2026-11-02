@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NOT_READ, formatCpu, formatMemory, formatPorts, sumMetrics } from "./metrics";
+import { NOT_READ, formatCpu, formatHeadCpu, formatMemory, formatPorts, sumMetrics } from "./metrics";
 import { metricsOf as 지표 } from "./process-fixture";
 
 // 프로세스 티켓 28 — **지표를 글자로**(프로세스 스펙 S40 · S37 · S38). 행의 숫자 칸 · 트리 합 · 접근성 이름, 그리고 29의 nav 메타와 31의
@@ -40,16 +40,27 @@ describe("메모리 표기(S40) — 1GB 이상은 소수 한 자리 GB, 그 아�
   });
 });
 
-describe("CPU 표기(S37) — 정수 %, 첫 표본은 「—」", () => {
-  it("반올림한 정수 %다. 여러 코어를 쓰면 100을 넘는다", () => {
-    expect(formatCpu(0)).toBe("0%");
-    expect(formatCpu(0.4)).toBe("0%");
-    expect(formatCpu(12.5)).toBe("13%");
-    expect(formatCpu(250)).toBe("250%");
+describe("CPU 표기(S37 · restart 03-5) — 맥 전체 = 100, 줄과 합계는 소수 한 자리, 머리 숫자만 정수", () => {
+  // 백엔드가 맥 전체를 100으로 준다 — 코어 열 개인 맥에서 한 코어를 다 쓰면 10이다. 줄의 값이 작아져 정수로는 0%가 흔하므로 한
+  // 자리를 둔다(시안 ProcessSheet 「CPU 눈금」).
+  it("줄과 합계는 소수 한 자리 %다", () => {
+    expect(formatCpu(0)).toBe("0.0%");
+    expect(formatCpu(0.04)).toBe("0.0%");
+    expect(formatCpu(0.25)).toBe("0.3%");
+    expect(formatCpu(3)).toBe("3.0%");
+    expect(formatCpu(12.34)).toBe("12.3%");
+    expect(formatCpu(100)).toBe("100.0%");
+  });
+
+  it("머리 숫자는 정수로 반올림한다", () => {
+    expect(formatHeadCpu(0.4)).toBe("0%");
+    expect(formatHeadCpu(37.5)).toBe("38%");
+    expect(formatHeadCpu(100)).toBe("100%");
   });
 
   it("첫 표본이거나 못 읽었으면 「—」다", () => {
     expect(formatCpu(null)).toBe(NOT_READ);
+    expect(formatHeadCpu(null)).toBe(NOT_READ);
   });
 });
 

@@ -637,7 +637,7 @@ function MineItem({ stop, on, onToggle }: { stop: boolean; on: boolean; onToggle
  * (「13% · 3.3GB」 — 아틀리에 CPU를 함께)에 맞추는 것은 03-11이다.
  *
  * **요약 폴러와 「봤다」 앉히기가 이 항목의 몸에서 돈다**(`useProcessesNavMeta` · 결정.md 「04 · 메모리 합계 폴러」). 위 칸은 늘 서 있고(사이드바가
- * 접혀도 렌더된다) 설정 nav로 갈아 서는 동안만 쉰다 — `Processes` 화면의 합계 카드(`useSummaryCache`)가 이 요약을 읽는다. 한때 이 폴러는 바닥
+ * 접혀도 렌더된다) 설정 nav로 갈아 서는 동안만 쉰다 — `Processes` 화면의 추이(`useProcessTrend`)가 이 요약이 올 때마다 묻는다. 한때 이 폴러는 바닥
  * 사람 줄의 몸에서 돌고 합계는 그 줄이 여는 메뉴의 `Processes` 줄 끝에 섰다 — 02a-3이 메뉴를 걷으며 둘이 한 줄로 모였다.
  */
 function ProcessesItem(place: Parameters<typeof PlaceRow>[0]) {

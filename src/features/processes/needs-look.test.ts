@@ -16,6 +16,7 @@ const 요약 = (unknown: ProcessIdentity[] = [], recordHead: number | null = nul
   cpu: null,
   app: null,
   webviewExcluded: true,
+  mac: null,
   unknown,
   recordHead,
 });

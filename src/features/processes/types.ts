@@ -16,7 +16,10 @@ export interface ProcessIdentity {
 export interface ProcessMetrics {
   /** `phys_footprint`(바이트) — 활성 상태 보기의 「메모리」 열과 같은 값이다. 못 읽었으면 `null`. */
   memory: number | null;
-  /** CPU%(한 코어를 다 쓰면 100 — 여러 코어면 넘는다). 첫 표본이거나 못 읽었으면 `null`. */
+  /**
+   * CPU% — **맥 전체가 100이다**(S37 · restart 03-5 — 코어 열 개인 맥에서 한 코어를 다 쓰면 10). 활성 상태 보기의 「% CPU」는 이 값 ×
+   * 코어 수(`MacMeasure.cores`)다. 첫 표본이거나 못 읽었으면 `null`.
+   */
   cpu: number | null;
   /** TCP LISTEN 로컬 포트 — 오름차순, 겹침 없음. */
   ports: number[];
@@ -76,6 +79,37 @@ export interface OtherInstance {
   shellKeys: string[];
 }
 
+/**
+ * **맥 전체 한 표본**(restart 03-5) — Rust `processes::machine::Machine`. 맥 전체를 100으로 잡는 눈금의 분모다. macOS 밖에서는 이
+ * 값 자체가 없다(`null` — 「측정 안 됨」).
+ */
+export interface MacMeasure {
+  /** 맥 전체 CPU% — 맥 전체 = 100. 첫 표본이거나 tick이 안 흘렀으면 `null`(「—」 — 두 번 재야 안다). */
+  cpu: number | null;
+  /** 맥 전체 메모리(바이트) — active + wired + compressed. 못 읽었으면 `null`. */
+  memory: number | null;
+  /** 이 맥의 코어 수 — 맥 전체 눈금의 CPU%에 곱하면 활성 상태 보기 눈금이다. */
+  cores: number;
+}
+
+/**
+ * **아틀리에 합계**(티켓 29 · 30 · restart 03-5) — Rust `processes::summary::Totals`. 요약(10초)은 칸을 펼쳐 싣고(`ProcessSummary`), 화면
+ * 스냅샷(2초)은 `atelier` 칸에 싣는다 — 같은 함수가 짓는다.
+ */
+export interface AtelierTotals {
+  /**
+   * 앱 전체 메모리 합계(`phys_footprint`, 바이트) — 앱 본체 + 이 실행의 셸과 자손. 예외 · 다른 인스턴스 · 고아는 안 든다. 아무것도
+   * 못 읽었으면(macOS 밖) `null`이고, nav 메타는 숫자를 안 세운다.
+   */
+  total: number | null;
+  /** 합계에 드는 것의 CPU%를 더한 것(맥 전체 = 100). 첫 표본이거나 못 쟀으면 `null`(「—」). */
+  cpu: number | null;
+  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
+  app: number | null;
+  /** 앱 본체에 웹뷰(WebContent)를 안 셌다(프로세스 스펙 S39) — 요약 카드가 「웹뷰 제외」를 붙인다. */
+  webviewExcluded: boolean;
+}
+
 export interface ProcessSnapshot {
   /** 판정 결과. */
   verdict: ProcessGroups;
@@ -88,26 +122,27 @@ export interface ProcessSnapshot {
    * 출처 불명과 함께 본 것으로 앉힌다(티켓 29 · S41 — `lookSourceOf`). 없으면 `null`.
    */
   recordHead: number | null;
+  /** 이 장을 잰 시각(에포크 ms) — 머리의 「…에 잰 값」(restart 03-5 · 스토리 129). */
+  measuredAt: number;
+  /**
+   * 맥 전체 — 줄과 같은 순간에 읽었다(restart 03-5 「한 표본」). macOS 밖이면 `null`이다 — 화면이 「측정 안 됨」으로 말한다.
+   */
+  mac: MacMeasure | null;
+  /** 아틀리에 합계 — 줄과 같은 표본에서 지었다. 화면을 보는 동안 메모리 카드가 이것을 읽는다(10초 요약이 아니라). */
+  atelier: AtelierTotals;
 }
 
 /**
- * nav 메타의 요약(프로세스 결정 10 · 11 · 티켓 29) — 요약 카드(티켓 30)도 같은 장을 읽는다. Rust의 `processes::summary::Summary`와 **칸
- * 이름으로만** 이어진다 — 와이어 모양은 Rust 쪽 검사(`the_summary_crosses_the_wire_in_the_shape_the_nav_reads`)가 글자로 못박는다.
+ * nav 메타의 요약(프로세스 결정 10 · 11 · 티켓 29). Rust의 `processes::summary::Summary`와 **칸 이름으로만** 이어진다 — 와이어 모양은
+ * Rust 쪽 검사(`the_summary_crosses_the_wire_in_the_shape_the_nav_reads`)가 글자로 못박는다. 아틀리에 합계의 칸(`AtelierTotals`)을
+ * 펼쳐 싣는다.
  *
- * 화면이 닫혀 있어도 Rust가 10초마다 모은다(배경 표본). 프런트는 nav 메타를 위해 10초마다 묻는다(`useProcessSummary`).
+ * 화면이 닫혀 있어도 Rust가 10초마다 모은다(배경 표본). 프런트는 nav 메타를 위해 10초마다 묻는다(`useProcessSummary`). **화면을 보는
+ * 동안의 머리 · 메모리 카드는 이것이 아니라 2초 스냅샷을 읽는다**(restart 03-5 「한 표본」).
  */
-export interface ProcessSummary {
-  /**
-   * 앱 전체 메모리 합계(`phys_footprint`, 바이트) — 앱 본체 + 이 실행의 셸과 자손. 예외 · 다른 인스턴스 · 고아는 안 든다. 아무것도
-   * 못 읽었으면(macOS 밖) `null`이고, nav 메타는 숫자를 안 세운다.
-   */
-  total: number | null;
-  /** 합계에 드는 것의 CPU%를 더한 것(한 코어 = 100). 배경 표본의 첫 장이거나 못 쟀으면 `null`(카드의 「—」). */
-  cpu: number | null;
-  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
-  app: number | null;
-  /** 앱 본체에 웹뷰(WebContent)를 안 셌다(프로세스 스펙 S39) — 요약 카드가 「웹뷰 제외」를 붙인다. */
-  webviewExcluded: boolean;
+export interface ProcessSummary extends AtelierTotals {
+  /** 맥 전체 — 같은 배경 표본에서 읽었다(restart 03-5). macOS 밖이면 `null`. */
+  mac: MacMeasure | null;
   /** 출처 불명의 신원 — 수가 아니라 신원이다(티켓 29): `●`는 본 것과 견줘 새로 생긴 것에만 선다. 수는 이 목록의 길이다. */
   unknown: ProcessIdentity[];
   /** `●`를 켜는 정리 기록(사람 손 없이 끝냄 · 못 끝냄) 중 가장 새것의 번호. 없으면 `null`. 무엇이 켜는 기록인지는 Rust가 가른다. */
@@ -115,12 +150,14 @@ export interface ProcessSummary {
 }
 
 /**
- * 추이의 한 점(티켓 30) — 배경 표본이 합계를 읽은 때(에포크 ms)와 그 합계(바이트). Rust의 `processes::summary::Point`와 칸 이름으로
- * 이어진다. 추이 IPC는 이것을 오래된 것부터 1시간치(360점)까지 돌려준다.
+ * 추이의 한 점(티켓 30 · restart 03-5) — 배경 표본이 읽은 때(에포크 ms)와 그 표본의 **맥 전체 CPU와 아틀리에 CPU**(둘 다 맥 전체 =
+ * 100). 한때 메모리 합계였다. Rust의 `processes::summary::Point`와 칸 이름으로 이어진다. 추이 IPC는 이것을 오래된 것부터 1시간치(360점)까지
+ * 돌려준다. CPU를 못 잰 표본(첫 표본 · macOS 밖)은 점이 없다.
  */
 export interface TrendPoint {
   at: number;
-  total: number;
+  mac: number;
+  atelier: number;
 }
 
 /**

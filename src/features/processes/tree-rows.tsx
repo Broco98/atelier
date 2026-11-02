@@ -343,8 +343,8 @@ function MemoryBar({ share }: { share: number }) {
 }
 
 /**
- * 작업 줄 막대의 몫 — 그 작업 트리 합 ÷ 요약 합계를 0–100으로 자른다(합계는 10초 요약, 트리 합은 2초 스냅샷이라 잠깐 100을 넘을 수
- * 있다). 둘 중 하나라도 못 읽었으면 없다 — 막대를 안 그린다.
+ * 작업 줄 막대의 몫 — 그 작업 트리 합 ÷ 아틀리에 합계를 0–100으로 자른다(둘 다 같은 2초 스냅샷이다 — restart 03-5. 한때 합계는 10초
+ * 요약이라 잠깐 100을 넘을 수 있었다). 둘 중 하나라도 못 읽었으면 없다 — 막대를 안 그린다.
  */
 export function memoryShare(part: number | null, whole: number | null | undefined): number | null {
   if (part === null || whole === null || whole === undefined || whole <= 0) return null;
