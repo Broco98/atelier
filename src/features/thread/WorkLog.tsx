@@ -5,7 +5,6 @@ import {
   Check,
   ChevronRight,
   Command,
-  Copy,
   FileText,
   Globe,
   Pencil,
@@ -20,6 +19,7 @@ import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { autoAllowReason } from "./approval";
 import { useArrival, useChanged } from "./arrival";
+import { CopyButton } from "./CopyButton";
 import { DocPlace } from "./doc-place";
 import type { ToolEntry } from "./fold";
 import { logRows, type LogGroup } from "./log";
@@ -423,13 +423,12 @@ const DIFF_MAX = 240;
 const DIFF_LINE = 21.6;
 
 /**
- * 변경 카드(Tools 보드 「변경 카드」 `.ra-diffcard`) — 둥근 12 · 1 `diff-border`. 머리 30(`diff-header` · 아래 1 선)에 이름 · `+N −N` · 복사(13 / 18
- * `fg-tool`), 아래 바뀐 줄(고정폭 12 / 21.6). 더한 줄은 `diff-added-line` 바탕에 찬 막대, 지운 줄은 `diff-deleted-line` 바탕에 빗금 막대다. 더한 줄은
+ * 변경 카드(Tools 보드 「변경 카드」 `.ra-diffcard`) — 둥근 12 · 1 `diff-border`. 머리 30(`diff-header` · 아래 1 선)에 이름 · `+N −N`(13 / 18
+ * `fg-tool`)과 「변경 복사」(대화의 복사 단추 `CopyButton` — `.ra-ic-btn` 26 · ✓ 1.6초, restart 02b-6b), 아래 바뀐 줄(고정폭 12 / 21.6). 더한 줄은 `diff-added-line` 바탕에 찬 막대, 지운 줄은 `diff-deleted-line` 바탕에 빗금 막대다. 더한 줄은
  * `<ins>`, 지운 줄은 `<del>`이라 보조 기술도 더함 · 지움을 읽는다. 바뀌지 않은 먼 줄은 「N줄 숨김」 한 줄로 접는다. 240을 넘으면 아래가 옅다.
  */
-function DiffCard({ piece }: { piece: DiffPiece }) {
+export function DiffCard({ piece }: { piece: DiffPiece }) {
   const cwd = useContext(LogPlace);
-  const [copied, setCopied] = useState(false);
   const over = piece.lines.length * DIFF_LINE > DIFF_MAX;
   return (
     <figure aria-label={`${piece.path} 변경`} className="flex flex-col overflow-hidden rounded-xl inset-ring inset-ring-diff-border">
@@ -439,16 +438,7 @@ function DiffCard({ piece }: { piece: DiffPiece }) {
         </span>
         <span className="shrink-0 text-diff-added tabular-nums">+{piece.added}</span>
         <span className="shrink-0 text-diff-deleted tabular-nums">−{piece.deleted}</span>
-        <button
-          type="button"
-          aria-label="변경 복사"
-          onClick={() => {
-            void navigator.clipboard?.writeText(diffText(piece.lines)).then(() => setCopied(true));
-          }}
-          className="ml-auto icon-button-quiet icon-button-xs text-fg-tool focus-ring"
-        >
-          {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-        </button>
+        <CopyButton text={diffText(piece.lines)} label="변경 복사" className="ml-auto" />
       </figcaption>
       <div className={cn("max-h-60 overflow-hidden font-mono text-xs leading-[21.6px]", over && "diff-overflow-fade")}>
         {piece.lines.map((line, at) => {
