@@ -64,11 +64,11 @@ export interface ServicePieces {
 }
 
 /**
- * 고치기 화면(관계 편집 · 직접 만들기)의 검사 한 번(core `draft_service` — 명령 `check_service`). 고칠 때마다 다시 부른다 — 화면은 따로
+ * 고치기 화면(파일로 고치기 · 직접 만들기)의 검사 한 번(core `draft_service` — 명령 `check_service`). 고칠 때마다 다시 부른다 — 화면은 따로
  * 검사하지 않는다(S7).
  */
 export interface ServiceDraft {
-  /** 그 글을 읽은 Service — 문제는 `problems`. slug는 관계 편집이면 그 Service의 것, 새 Service면 이름에서 지을 것(이름이 비면 빈 글). */
+  /** 그 글을 읽은 Service — 문제는 `problems`. slug는 파일로 고치기면 그 Service의 것, 새 Service면 이름에서 지을 것(이름이 비면 빈 글). */
   service: Service;
   pieces: ServicePieces;
   /** 그 글의 Project를 적은 다른 Service — 고치는 Service 자신은 빠진다. */

@@ -18,8 +18,19 @@ import type { PlaceSort } from "./place-list";
 //
 // 한때(03) 같은 짝의 판 · 찾기 칸 · 표가 `ListParts`였다(줄 48 · 경로 칸 · 판 안 위 30 · 옆 40). Services 목록이 이 틀로 옮기며(restart 03-3) 걷었다.
 
-/** 표의 칸 — 이름(옆 글 포함) · 시각 · 오른쪽 동작. 머리 줄과 몸 줄이 같은 격자다(보드 `--pl-cols` · `column-gap: 12px`). */
-export const PLACE_COLUMNS = "grid grid-cols-[minmax(0,1fr)_132px_108px] items-center gap-x-3";
+/**
+ * 표의 칸 — 이름(옆 글 포함) · 시각 · 오른쪽 동작. 머리 줄과 몸 줄이 같은 격자다(보드 `--pl-cols` · `column-gap: 12px`). 좁은 창(`narrow` — 900 이하)은
+ * 시각 64 · 동작 32다(보드 `@media (max-width: 900px)`).
+ */
+export const PLACE_COLUMNS =
+  "grid grid-cols-[minmax(0,1fr)_132px_108px] items-center gap-x-3 narrow:grid-cols-[minmax(0,1fr)_64px_32px]";
+
+/** 판의 가운데 열(보드 `.pl-col` — 최대 1120 · 위 36 · 옆 56 · 아래 56, 좁은 창은 위 20 · 옆 16 · 아래 32). 목록과 상세가 같은 열이다. */
+export const PLACE_COLUMN = "mx-auto w-full max-w-(--measure-wide) px-14 pt-9 pb-14 narrow:px-4 narrow:pt-5 narrow:pb-8";
+
+/** 판의 머리 줄(보드 `.pl-head` — 제목 · 도구가 한 줄, 사이 10). 좁은 창은 제목이 한 줄을 다 쓰고 도구가 그 아래 줄에 선다(`flex-wrap` · 제목 `basis-full`). */
+export const PLACE_HEAD = "flex min-h-9 items-center gap-2.5 narrow:flex-wrap";
+export const PLACE_TITLE = "min-w-0 flex-1 text-heading-lg leading-8 tracking-[-0.015em] wrap-anywhere text-fg narrow:basis-full";
 
 /** 목록이 지금 보이나 — 상세가 선 동안 목록은 마운트된 채 숨는다(`PlaceStage`). 찾기 칸의 ⌘F와 토스트 자리가 읽는다. 자리 밖이면 늘 보인다. */
 const ListShown = createContext(true);
@@ -67,10 +78,10 @@ export function PlaceList({ title, tools, children, after }: { title: string; to
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-        <div className="mx-auto w-full max-w-(--measure-wide) px-14 pt-9 pb-14">
+        <div className={PLACE_COLUMN}>
           {/* 머리 — `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead`). */}
-          <div className="mb-6 flex min-h-9 items-center gap-2.5">
-            <h1 className="min-w-0 flex-1 text-heading-lg leading-8 tracking-[-0.015em] wrap-anywhere text-fg">{title}</h1>
+          <div className={cn("mb-6", PLACE_HEAD)}>
+            <h1 className={PLACE_TITLE}>{title}</h1>
             {tools}
           </div>
           {children}
@@ -85,7 +96,8 @@ export function PlaceList({ title, tools, children, after }: { title: string; to
 /**
  * 찾기 칸(보드 `.pl-search` — 240 × 34 · 완전히 둥글게 · 0.5 고리). 쓰는 동안은 앱의 포커스 링이다(`focus-ring` — 1 파랑 선과 옅은 둘레, 보드는
  * 안쪽 1 파랑 고리 — 포커스 모양은 앱 한 벌이다, `state-scale.test.ts`). 칠 때마다 곧바로 거른다 — 한글을 조합하는 동안에도
- * 거른다(`input` 이벤트마다 — 보드 「찾기」). **⌘F로 이 칸에 선다**(스토리 111) — 목록이 보이는 동안만 듣는다. 칸의 이름이 자리표시와 같다.
+ * 거른다(`input` 이벤트마다 — 보드 「찾기」). **⌘F로 이 칸에 선다**(스토리 111) — 목록이 보이는 동안만 듣는다. 칸의 이름이 자리표시와 같다. 좁은 창은
+ * 제목 아래 줄에서 주 단추 앞을 다 채운다(보드 `.pl-search { flex: 1 1 0; width: auto }`).
  */
 export function PlaceSearch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -102,7 +114,7 @@ export function PlaceSearch({ label, value, onChange }: { label: string; value: 
     return () => window.removeEventListener("keydown", onKey);
   }, [shown]);
   return (
-    <label className="flex h-8.5 w-60 shrink-0 items-center gap-2 rounded-full pr-3.5 pl-3 text-fg-tertiary inset-ring-[0.5px] inset-ring-border-heavy focus-ring">
+    <label className="flex h-8.5 w-60 shrink-0 items-center gap-2 rounded-full pr-3.5 pl-3 text-fg-tertiary inset-ring-[0.5px] inset-ring-border-heavy focus-ring narrow:w-auto narrow:flex-1">
       <Search aria-hidden className="size-3.5 shrink-0" />
       <input
         ref={input}
@@ -161,6 +173,10 @@ export function PlaceTable({
   );
 }
 
+/**
+ * 열 머리의 정렬 단추. 글자 사이는 0이다(보드 그림 — 열 머리 줄의 .025em이 단추에서 끊긴다, restart 03-12b). 단추가 아닌 뼈대의 열 머리 글은 .025em
+ * 그대로다(보드 `.pl-skelrow` 위 `.pl-th`). 한때(restart 03-1) 단추도 .025em이었다.
+ */
 function SortHead({ label, sort, by, onSort }: { label: string; sort: PlaceSort; by: PlaceSort["key"]; onSort: (key: PlaceSort["key"]) => void }) {
   const on = sort.key === by;
   const dir = on ? sort.dir : "desc";
@@ -169,7 +185,7 @@ function SortHead({ label, sort, by, onSort }: { label: string; sort: PlaceSort;
       <button
         type="button"
         onClick={() => onSort(by)}
-        className="flex w-fit items-center gap-1 rounded-ctl transition-colors hover:text-fg-secondary focus-ring"
+        className="flex w-fit items-center gap-1 rounded-ctl tracking-normal transition-colors hover:text-fg-secondary focus-ring"
       >
         {label}
         <ArrowDown
@@ -248,7 +264,8 @@ export function PlaceRow({
           >
             {name}
           </Link>
-          <span className={cn("min-w-0 flex-1 truncate text-chat-meta", missing ? "text-warning" : "text-fg-tertiary")}>{desc}</span>
+          {/* 좁은 창은 옆 글을 걷는다(보드 `.pl-name .d { display: none }`). */}
+          <span className={cn("min-w-0 flex-1 truncate text-chat-meta narrow:hidden", missing ? "text-warning" : "text-fg-tertiary")}>{desc}</span>
         </span>
         <span role="cell" className="text-chat-meta text-fg-tertiary tabular-nums">
           {when}
@@ -261,9 +278,13 @@ export function PlaceRow({
   );
 }
 
-/** 줄 오른쪽의 아이콘 단추 꼴(보드 `.pl-acts .ra-tbtn` — 30 · 둥글기 4 · 쉴 때 흐린 글리프, 지나면 면과 진한 글리프). ⋯ 트리거도 이 꼴이다. */
+/**
+ * 줄 오른쪽의 아이콘 단추 꼴(보드 `.pl-acts .ra-tbtn` — 30 · 둥글기 4 · 쉴 때 흐린 글리프, 지나면 면과 진한 글리프). ⋯ 트리거도 이 꼴이다. 좁은 창은
+ * 줄 끝의 단추 하나만 남는다(보드 `.pl-acts .ra-tbtn:not(:last-child) { display: none }` — Projects · Services 줄은 「새 채팅」, 폴더를 찾을 수 없는 줄은
+ * 「재설정」과 ⋯, Archive 줄은 ⋯). 숨은 할 일은 상세의 머리 · ⋯에서 닿는다.
+ */
 export const PLACE_ROW_BUTTON =
-  "flex size-7.5 shrink-0 items-center justify-center rounded-ctl text-fg-tertiary transition-colors quiet-hover focus-ring aria-expanded:bg-fill-hover aria-expanded:text-fg";
+  "flex size-7.5 shrink-0 items-center justify-center rounded-ctl text-fg-tertiary transition-colors quiet-hover focus-ring aria-expanded:bg-fill-hover aria-expanded:text-fg narrow:not-last:hidden";
 
 /** 줄 끝의 글 단추(보드 `.pl-fix` — 링크 색 13) — 폴더를 찾을 수 없는 Project의 「재설정」. ⋯ 안이 아니라 줄 끝에서 바로 닿는다(스토리 119). */
 export function PlaceFix({ label, onClick }: { label: string; onClick: () => void }) {

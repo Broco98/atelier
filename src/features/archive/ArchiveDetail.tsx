@@ -173,14 +173,15 @@ function ArchiveDocs({ slug, file }: { slug: string; file: string | null }) {
   };
 
   return (
-    <div ref={place} className="mt-7 grid scroll-mt-2 grid-cols-[minmax(0,1fr)_240px] items-start gap-8">
+    // 좁은 창은 한 열이다 — 글 아래 32에 트리가 판과 함께 구른다(보드 `@media (max-width: 900px)`의 `.pl-doc` · `.pl-tree { position: static }`).
+    <div ref={place} className="mt-7 grid scroll-mt-2 grid-cols-[minmax(0,1fr)_240px] items-start gap-8 narrow:grid-cols-1">
       {/* 문서 글 — 우클릭 · ⇧F10이 「원문으로 보기 · 경로 복사」(고른 글이 있으면 「복사」)를 연다. */}
       <DocTextBox menu={{ view, onCopyPath: () => copyText(archiveRef(slug, current)) }} className="min-w-0 rounded-ctl">
         {docView(body)}
       </DocTextBox>
-      <nav ref={tree} aria-label="문서" className="sticky top-0 flex min-w-0 flex-col gap-px">
+      <nav ref={tree} aria-label="문서" className="sticky top-0 flex min-w-0 flex-col gap-px narrow:static">
         <span className="px-1.5 pb-1.5 text-xs text-fg-tertiary">문서</span>
-        <SpecTree dense items={items} current={current} onSelect={selectDoc} onCopy={(path) => copyText(archiveRef(slug, path))} />
+        <SpecTree place items={items} current={current} onSelect={selectDoc} onCopy={(path) => copyText(archiveRef(slug, path))} />
       </nav>
     </div>
   );

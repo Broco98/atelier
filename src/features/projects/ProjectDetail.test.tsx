@@ -136,7 +136,7 @@ describe("Project 상세", () => {
         ["/works/runtime-driver", "Runtime Driver 구조 feat/runtime-driver 3시간"],
       ],
     });
-    expect(sectionOf(html, "채팅")).toEqual({ head: "채팅 1개", rows: [["/threads/t1", "ACP v2 변경점 조사 작업공간 밖 1일"]] });
+    expect(sectionOf(html, "채팅")).toEqual({ head: "채팅 1개", rows: [["/threads/t1", "ACP v2 변경점 조사 작업공간 밖 어제"]] });
     expect(sectionOf(html, "Service")).toEqual({ head: "Service 1개", rows: [["/services/atelier-app", "Atelier 앱 Project 1개 3시간"]] });
   });
 

@@ -466,6 +466,11 @@ describe("눈금의 사분 단", () => {
       why: "Archive 상세의 「문서」 트리 — 「문서」 머리와 트리 사이 1(restart 시안 Places `.pl-tree`의 `gap: 1px`)",
     },
     {
+      file: "src/features/works/SpecTree.tsx",
+      className: "gap-0.75",
+      why: "목록 · 상세 판의 트리(Archive 상세의 「문서」) — 줄 사이 3(restart 시안 Places `.pl-tree`의 `gap: 1px` + `.ra-tree-row`의 `margin-bottom: 2px`)",
+    },
+    {
       file: "src/features/thread/ComposerChips.tsx",
       className: "gap-1.25",
       why: "입력창 칩 — 글리프 · 글자 · 꺾쇠 사이 5(restart 시안 Composer `.ra-cc`의 `gap: 5px`)",

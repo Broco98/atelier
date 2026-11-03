@@ -4,7 +4,7 @@ import type { SharedService, Service, ServiceDraft, ServicePieces, ServiceProble
 // 커서 줄 ↔ 조각, 처음 커서, 고친 줄, 상태 알약, 안내 줄, 새 Service의 빈 틀. **문제와 조각 자리는 core 검사가 준 것을 그대로 쓴다**
 // (S7 — `check_service`). 여기서는 그 값을 화면 말로 옮기기만 하고, 파일 글을 따로 읽어 문제를 짓지 않는다(L2가 잰다).
 
-/** 관계 편집(그 Service의 파일) · 새 Service(직접 만들기) — 같은 화면의 두 길. */
+/** 파일로 고치기(그 Service의 파일) · 새 Service(직접 만들기) — 같은 화면의 두 길. */
 export type EditMode = "edit" | "new";
 
 /** 파일의 세 조각 — 미리보기 카드의 이름 · 관계 그래프 · 설명이 이 차례로 그린다. */
@@ -37,7 +37,7 @@ export function lineEndOffset(text: string, line: number): number {
 }
 
 /**
- * 처음 커서(S14) — 첫 문제 줄, 없으면 새 Service는 `name` 줄, 관계 편집은 `projects` 줄(가장 많이 고치는 조각 — 「방금 고친 줄」은 화면을
+ * 처음 커서(S14) — 첫 문제 줄, 없으면 새 Service는 `name` 줄, 파일로 고치기는 `projects` 줄(가장 많이 고치는 조각 — 「방금 고친 줄」은 화면을
  * 새로 열면 없다). 조각이 없는 파일이면 frontmatter의 첫 칸 자리(2행)다.
  */
 export function firstCaretLine(problems: readonly ServiceProblem[], pieces: ServicePieces, mode: EditMode): number {
@@ -136,7 +136,7 @@ function valued(rest: string): PaintedLine["tokens"] {
   ];
 }
 
-/** 파일 칸 머리 끝의 말 — 관계 편집은 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」, 새 Service는 저장하기 전까지 「새 파일 · 아직 없음」. */
+/** 파일 칸 머리 끝의 말 — 파일로 고치기는 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」, 새 Service는 저장하기 전까지 「새 파일 · 아직 없음」. */
 export function fileNote(mode: EditMode, changed: number): string | null {
   if (mode === "new") return "새 파일 · 아직 없음";
   return changed > 0 ? `고친 줄 ${changed} · 저장 안 함` : null;
@@ -187,7 +187,7 @@ export function previewOf(draft: Pick<ServiceDraft, "service" | "shared">): {
 }
 
 /**
- * 편집기 아래 안내 줄 — 넣을 수 있는 Project(등록부 차례). 관계 편집은 뒤에 대화로 고치는 길을, 새 Service는 앞에 파일 이름이 이름을 따라온다는 말
+ * 편집기 아래 안내 줄 — 넣을 수 있는 Project(등록부 차례). 파일로 고치기는 뒤에 대화로 고치는 길을, 새 Service는 앞에 파일 이름이 이름을 따라온다는 말
  * (겹치면 `-2`를 붙였다는 말)을 단다(시안 `.hint` · F4-KitSpace 「파일 이름 — 따라옴 · 겹침」).
  */
 export function editHint(mode: EditMode, draft: Pick<ServiceDraft, "registered" | "suffix">): string {

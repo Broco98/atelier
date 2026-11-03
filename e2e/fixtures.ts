@@ -170,7 +170,7 @@ export const SERVICE_DETAILS: Record<string, ServiceDetail> = {
   "원장-도구": { ...SERVICES[1], shared: [{ slug: "결제", name: "결제", overlap: ["ledger"], projects: ["billing", "ledger"] }] },
 };
 
-/** Service 파일의 글 — 관계 편집이 그대로 연다(`read_service_text`). 위 `SERVICES`를 적은 파일이다. */
+/** Service 파일의 글 — 파일로 고치기가 그대로 연다(`read_service_text`). 위 `SERVICES`를 적은 파일이다. */
 export const SERVICE_TEXTS: Record<string, string> = {
   결제: "---\nname: 결제\nprojects:\n  - billing\n  - ledger\ncreatedAt: 2026-10-24\ncreatedBy: host\n---\n\n결제와 정산을 한 흐름으로 다뤄요.\n",
   "원장-도구": "---\nname: 원장 도구\nprojects:\n  - ledger\ncreatedAt: 2026-10-20\n---\n",
@@ -1087,7 +1087,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   services_folder: "~/.atelier/services",
   get_service: answerByArg("slug", SERVICE_DETAILS),
   update_service: SERVICES[0],
-  // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
+  // 고치기 화면(파일로 고치기 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
   read_service_text: answerByArg("slug", SERVICE_TEXTS),
   check_service: SERVICE_DRAFT,
   save_service_text: SERVICES[0],
