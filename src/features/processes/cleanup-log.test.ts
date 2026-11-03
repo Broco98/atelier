@@ -2,12 +2,12 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { OUTCOME_LABEL, REASON_LABEL, eventKey, eventKeys, eventLabel, eventOutcome, eventWhat, loggedAt, targetLabel } from "./cleanup-log";
+import { OUTCOME_LABEL, REASON_LABEL, cleanupRows, eventKey, eventKeys, loggedAt, reasonLabel } from "./cleanup-log";
 import type { CleanupEvent, CleanupTarget } from "./types";
 
 // 프로세스 티켓 32 — **정리 기록을 사람 말로**(프로세스 결정 6 · 프로세스 스펙 S12). 앱이 무엇을 언제 왜 끝냈는지가 `Processes`의
-// 맨 끝 묶음에 선다: 사건마다 까닭과 대상 수(와 때), 펼치면 대상마다 이름 · 명령줄 · 결과. 여기는 기록 한 줄 → 화면의 말이다. 화면에
-// 최근 것부터 서고 펼쳐지는지는 L3가 잰다(`processes-shells.spec.ts`).
+// 맨 끝 묶음에 선다: 대상마다 한 줄(때 · 까닭 · 대상 · 결과 — restart 03-15d · 시안 Processes). 여기는 기록 → 화면의 줄과 말이다. 화면에
+// 최근 것부터 서는지는 L3가 잰다(`processes-shells.spec.ts`).
 
 const 대상 = (pid: number, name: string, outcome: CleanupTarget["outcome"], command: string | null = null): CleanupTarget => ({
   pid,
@@ -63,11 +63,11 @@ describe("까닭과 결과의 말", () => {
 
   // 뒤 판의 앱이 쓴 기록을 앞 판이 읽는 날(두 빌드가 같은 데이터 루트를 쓴다) 모르는 까닭이 온다 — 빈 머리보다 그 글자가 낫다.
   it("모르는 까닭은 그 글자 그대로 선다", () => {
-    expect(eventLabel(사건({ reason: "renamed" as CleanupEvent["reason"] }))).toMatch(/^renamed, /);
+    expect(reasonLabel("renamed" as CleanupEvent["reason"])).toBe("renamed");
   });
 });
 
-describe("사건 한 줄 — 까닭, 대상 수, 때", () => {
+describe("사건의 때와 열쇠", () => {
   // 때는 그 사건의 끝내기가 **끝난** 때다(Rust `Event.at`). 이 화면의 다른 경과(「조용함 2h」)와 달리 「언제」를 묻는 자리라 시계의
   // 시각으로 적는다 — 새로 읽을 때마다 늙는 상대 시간은 기록의 말이 아니다.
   it("때는 월 · 일 · 시 · 분이다", () => {
@@ -87,27 +87,14 @@ describe("사건 한 줄 — 까닭, 대상 수, 때", () => {
     expect(loggedAt(new Date(2026, 9, 31, 22, 0).getTime(), new Date(2026, 10, 1, 1, 0).getTime())).toBe("어제 22:00");
   });
 
-  it("까닭 · 대상 수 · 때를 한 문장으로 잇는다", () => {
-    expect(eventLabel(사건())).toBe("셸 닫기, 프로세스 2개, 9월 27일 14:03");
-    expect(eventLabel(사건({ reason: "startupCleanup", targets: [대상(1, "node", "ended")] }))).toBe(
-      "시작 정리, 프로세스 1개, 9월 27일 14:03",
-    );
-  });
-
-  // 새 줄의 주인은 slug, 최상위 터미널은 `""`다(ui-refresh 결정 23). 옛 줄(기본 사건)과 같은 말로 선다.
-  it("주인이 slug여도 최상위 터미널의 빈 키여도 옛 줄과 같은 말로 선다", () => {
-    expect(eventLabel(사건({ owner: "plain-work" }))).toBe("셸 닫기, 프로세스 2개, 9월 27일 14:03");
-    expect(eventLabel(사건({ owner: "" }))).toBe("셸 닫기, 프로세스 2개, 9월 27일 14:03");
-  });
-
   // 번호는 파일 안에서 오르기만 한다(티켓 29). 번호가 없던 판의 줄은 모두 0이라 때와 함께 짓는다.
   it("줄의 열쇠는 번호와 때다 — 번호 없는 옛 줄끼리도 갈린다", () => {
     expect(eventKey(사건({ id: 0, at: 1 }))).not.toBe(eventKey(사건({ id: 0, at: 2 })));
     expect(eventKey(사건({ id: 7 }))).not.toBe(eventKey(사건({ id: 8 })));
   });
 
-  // **펼침은 사건에 붙는다**(코드 리뷰 스펙 5) — 기록은 새 사건을 맨 앞에 넣는다. 목록 안 자리를 열쇠에 넣으면 새 사건 하나에 모든
-  // 열쇠가 밀려 펼쳐 둔 사건이 다음 박자에 접힌다.
+  // **열쇠는 사건에 붙는다**(코드 리뷰 스펙 5) — 기록은 새 사건을 맨 앞에 넣는다. 목록 안 자리를 열쇠에 넣으면 새 사건 하나에 모든
+  // 열쇠가 밀려 박자마다 옛 줄이 모두 새 줄로 다시 선다.
   it("목록의 열쇠는 새 사건이 맨 앞에 붙어도 옛 사건의 것이 그대로다", () => {
     const before = [사건({ id: 3, at: 30 }), 사건({ id: 2, at: 20 }), 사건({ id: 0, at: 5 }), 사건({ id: 0, at: 5 })];
     const after = [사건({ id: 4, at: 40 }), ...before];
@@ -122,27 +109,41 @@ describe("사건 한 줄 — 까닭, 대상 수, 때", () => {
   });
 });
 
-describe("펼친 대상 한 줄", () => {
-  it("이름과 결과를 잇는다 — 명령줄은 따로 선다", () => {
-    expect(targetLabel(대상(200, "node", "ended", "node vite"))).toBe("node, 끝남");
-    expect(targetLabel(대상(300, "python3", "survived"))).toBe("python3, 못 끝냄");
+describe("화면의 줄은 대상마다 하나다(restart 03-15d · 시안 Processes 「정리 기록」)", () => {
+  // 시안의 줄은 「때 · 까닭 · 대상 · 결과」이고 대상마다 한 줄이다(보드 — 어제 23:12 셸 닫기의 next dev · esbuild가 두 줄). 기록은 사건 단위
+  // 그대로 오고 화면이 편다. 차례는 사건의 차례(새것부터) 안에서 대상의 차례다.
+  it("사건마다 대상을 한 줄씩 펴고, 줄마다 그 사건의 때 · 까닭과 그 대상의 이름 · 결과가 선다", () => {
+    const now = new Date(2026, 10, 3, 9, 30).getTime();
+    const rows = cleanupRows(
+      [
+        사건({ id: 5, at: new Date(2026, 10, 3, 8, 1, 2).getTime(), reason: "manual", targets: [대상(9, "pnpm", "ended")] }),
+        사건({
+          id: 4,
+          at: new Date(2026, 10, 2, 23, 12).getTime(),
+          targets: [대상(1, "next dev", "survived", "next dev --port 3000"), 대상(2, "esbuild", "ended")],
+        }),
+      ],
+      now,
+    );
+    expect(rows.map(({ when, why, what, outcome, bad }) => ({ when, why, what, outcome, bad }))).toEqual([
+      { when: "08:01:02", why: "손으로 끝냄", what: "pnpm", outcome: "끝남", bad: false },
+      { when: "어제 23:12", why: "셸 닫기", what: "next dev", outcome: "못 끝냄", bad: true },
+      { when: "어제 23:12", why: "셸 닫기", what: "esbuild", outcome: "끝남", bad: false },
+    ]);
   });
-});
 
-describe("사건 줄의 대상과 결과(restart 03-11 · 시안 Processes 「정리 기록」)", () => {
-  // 시안의 줄은 「때 · 까닭 · 대상 · 결과」 한 줄이다. 대상이 여럿이면 첫 이름과 남은 수다 — 이름 전부는 펼친 줄이 보인다.
-  it("대상은 첫 이름이고 여럿이면 남은 수를 붙인다", () => {
-    expect(eventWhat(사건({ targets: [대상(1, "next dev", "survived")] }))).toBe("next dev");
-    expect(eventWhat(사건())).toBe("node 외 1개");
-    expect(eventWhat(사건({ targets: [] }))).toBe("");
+  // 대상 없는 사건은 줄이 없다 — 화면에 설 것이 없다(구획 머리의 수도 줄의 수다).
+  it("대상 없는 사건은 줄을 내지 않는다", () => {
+    expect(cleanupRows([사건({ targets: [] })])).toEqual([]);
   });
 
-  // **결과 칸은 가장 손볼 결과다** — 못 끝냄이 하나라도 있으면 못 끝냄(경고 잉크), 그다음 강제로 끝남, 끝남, 이미 없음 차례다. 섞인 사건의
-  // 결과마다의 수는 펼친 줄이 보인다.
-  it("결과는 못 끝냄 · 강제로 끝남 · 끝남 · 이미 없음 차례로 가장 앞선 것이고, 못 끝냄은 나쁜 결과다", () => {
-    expect(eventOutcome(사건())).toEqual({ text: "강제로 끝남", bad: false });
-    expect(eventOutcome(사건({ targets: [대상(1, "a", "gone"), 대상(2, "b", "survived")] }))).toEqual({ text: "못 끝냄", bad: true });
-    expect(eventOutcome(사건({ targets: [대상(1, "a", "gone"), 대상(2, "b", "ended")] }))).toEqual({ text: "끝남", bad: false });
-    expect(eventOutcome(사건({ targets: [대상(1, "a", "gone")] }))).toEqual({ text: "이미 없음", bad: false });
+  // 줄의 열쇠는 사건의 열쇠(`eventKeys`)에 대상의 차례를 붙인 것이다 — 새 사건이 맨 위에 서도 옛 줄의 열쇠가 그대로라 줄이 다시 들어오지
+  // 않는다. 같은 사건의 대상끼리, 번호 없는 옛 줄끼리도 갈린다.
+  it("줄의 열쇠는 모두 다르고, 새 사건이 맨 앞에 붙어도 옛 줄의 것이 그대로다", () => {
+    const before = [사건({ id: 3, at: 30 }), 사건({ id: 0, at: 5 }), 사건({ id: 0, at: 5 })];
+    const keys = (events: CleanupEvent[]) => cleanupRows(events).map((row) => row.key);
+    expect(new Set(keys(before)).size).toBe(6);
+    const after = [사건({ id: 4, at: 40, targets: [대상(1, "node", "ended")] }), ...before];
+    expect(keys(after).slice(1)).toEqual(keys(before));
   });
 });

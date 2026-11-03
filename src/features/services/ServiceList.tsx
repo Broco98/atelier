@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { GitBranch, Layers, Plus, SquareM, SquarePen } from "lucide-react";
+import { GitBranch, Layers, SquarePen } from "lucide-react";
 import { HeadCrumb } from "@/components/catalog/DetailParts";
 import { FIRST_SORT, nextSort, placeWhen, sortPlaces, type PlaceSort } from "@/components/catalog/place-list";
 import {
   PLACE_ROW_BUTTON,
+  PlaceAdd,
   PlaceEmpty,
   PlaceList,
   PlaceRow,
@@ -16,13 +17,10 @@ import {
 } from "@/components/catalog/PlaceList";
 import { navItem } from "@/components/shell/nav-items";
 import { PlainFrame } from "@/components/shell/PlainFrame";
-import { buttonVariants } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import { useThreads } from "@/features/thread/hooks";
 import { useWorks } from "@/features/works/hooks";
-import { cn } from "@/lib/utils";
 import { useServices } from "./hooks";
 import { ServiceRowMenu, useServiceActs } from "./ServiceActions";
 import { useServiceDelete } from "./ServiceDeleteDialog";
@@ -41,8 +39,8 @@ import type { Service } from "./types";
 // - **최근 활동**은 작업공간과 채팅의 활동에서 짓고 저장하지 않는다(`serviceActivity` — 그 Service를 쓰는 작업공간의 채팅과 그 Service 범위의 작업공간
 //   밖 채팅). 처음 차례는 최근 활동 순이다.
 // - **줄의 「작업공간 만들기」 · 「새 채팅」**은 그 Service를 범위로 고른 새 채팅을 연다(`?new=work&service=` · `?new=thread&service=`).
-// - **「+ 만들기」**는 두 길의 메뉴다 — 「대화로 만들기」(기본 — 작업공간 없는 새 채팅에 맡기는 말을 넣어 연다, S16)와 「직접 만들기」(빈 틀의 Service
-//   파일을 고치기 화면에 연다 — `/services/new`). 보드는 단추만 그렸다.
+// - **「+ 만들기」**는 단추 하나다(restart 03-15c · 보드) — 누르면 「대화로 만들기」다: 작업공간 없는 새 채팅에 맡기는 말을 넣어 연다(S16). 한때(03-3)
+//   「대화로 만들기 · 기본」 · 「직접 만들기」(빈 틀의 Service 파일을 고치기 화면에 열었다 — `/services/new`) 두 길의 메뉴였다.
 // - 파일은 바깥에서도 고치므로 `services:changed`를 듣는다(`useServices`). 지우기는 확인 창과 「되돌리기」 토스트(`useServiceDelete`)다.
 // - 한때(03) 표가 이름 · Project · 설명 세 칸(줄 48)이었고, 이름 뒤에 「문제 있음」, 표 아래에 「Service는 Project를 묶어요 …」 한 줄이 섰다(`ListParts`).
 
@@ -141,49 +139,12 @@ function ServiceList() {
 }
 
 /**
- * 「+ 만들기」(보드 `.pl-btn.main` — 34 · 완전히 둥글게 · 면 `fg`) — 두 길의 메뉴를 연다(F4-SpaceNewMenu — 단추 오른쪽 끝에 맞춰 아래 6). 「대화로
- * 만들기」(끝에 「기본」)는 첫 화면을 작업공간 없는 새 채팅과 맡기는 말로 열고 보내기는 사람이 한다(S16), 「직접 만들기」는 빈 틀의 고치기 화면이다.
- * 머리와 빈 목록의 할 일이 같은 단추다.
+ * 「+ 만들기」(보드 `.pl-btn.main` — 34 · 완전히 둥글게 · 면 `fg`) — 「대화로 만들기」다. 첫 화면을 작업공간 없는 새 채팅과 맡기는 말로 열고 보내기는
+ * 사람이 한다(S16). 머리와 빈 목록의 할 일이 같은 단추다.
  */
 function MakeService({ className }: { className?: string }) {
   const navigate = useNavigate();
-  return (
-    <DropdownMenu>
-      {/* `Button`처럼 `cn`으로 겹친 크기를 걷는다 — 날 `buttonVariants`면 기본 글리프 16이 남아 보드(+ 15)보다 1 넓다. */}
-      <DropdownMenuTrigger className={cn(buttonVariants({ size: "place" }), "hover:opacity-86", className)}>
-        <Plus aria-hidden />
-        만들기
-      </DropdownMenuTrigger>
-      {/* 폭은 308이고 설명은 낱말 단위로 두 줄에 접힌다(F4-SpaceNewMenu `.pop{min-width:300px}` — 단추에 붙은 칸이라 내용 폭으로 넓어지지 않는다). */}
-      <DropdownMenuContent side="bottom" align="end" sideOffset={6} width="note-fold">
-        <DropdownMenuItem
-          size="note"
-          aria-label="대화로 만들기"
-          aria-description="Project를 읽고 초안을 내요 — 승인하면 만들어져요"
-          onClick={() => void navigate({ to: "/", search: HOST_MAKE })}
-        >
-          <SquarePen className="mt-0.5" aria-hidden />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate">대화로 만들기</span>
-            <span className="text-xs break-keep text-fg-tertiary">Project를 읽고 초안을 내요 — 승인하면 만들어져요</span>
-          </span>
-          <span className="shrink-0 pl-3 text-xs text-fg-tertiary">기본</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          size="note"
-          aria-label="직접 만들기"
-          aria-description="Service 파일을 빈 틀로 열어요 — 이름과 Project를 적어요"
-          onClick={() => void navigate({ to: "/services/new" })}
-        >
-          <SquareM className="mt-0.5" aria-hidden />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate">직접 만들기</span>
-            <span className="text-xs break-keep text-fg-tertiary">Service 파일을 빈 틀로 열어요 — 이름과 Project를 적어요</span>
-          </span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  return <PlaceAdd label="만들기" onClick={() => void navigate({ to: "/", search: HOST_MAKE })} className={className} />;
 }
 
 /**

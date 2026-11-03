@@ -101,7 +101,7 @@ export type PrChecks =
 
 /**
  * 바뀐 파일 하나의 diff(v1 티켓 33 · 코어 `FileDiff`, `read_work_diff`의 답) — 변경 칸과 같은 기준(base 대비, 커밋한 것과 아직 커밋하지 않은
- * 것을 합침)이다. `patch`는 git이 낸 그 파일의 unified diff 그대로라 넓힌 카드의 diff 보기(`@pierre/diffs`)에 곧장 들어간다(v1 티켓 35).
+ * 것을 합침)이다. `patch`는 git이 낸 그 파일의 unified diff 그대로라 넓힌 카드의 변경 보기가 줄 목록으로 읽는다(`WideDiff` — restart 03-15b).
  */
 export type FileDiff =
   | { kind: "patch"; patch: string }

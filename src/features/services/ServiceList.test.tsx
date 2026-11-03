@@ -162,4 +162,13 @@ describe("Services 목록", () => {
     expect(html).not.toContain('type="search"');
     expect(textOf(html)).toContain("아직 Service가 없어요 함께 고치는 Project를 하나로 묶으면, 그 묶음을 범위로 채팅과 작업공간을 시작할 수 있어요. 만들기");
   });
+
+  // restart 03-15c · 보드 Places 머리 `.pl-btn.main` — 「+ 만들기」는 메뉴 없이 단추 하나이고, 누르면 「대화로 만들기」다(주소는 L3가 잰다).
+  // 한때(03-3) 「대화로 만들기 · 기본」 · 「직접 만들기」 두 길의 메뉴를 열었다.
+  it("머리와 빈 목록의 「만들기」는 메뉴를 열지 않는 단추 하나다", () => {
+    const make = (html: string) => [...html.matchAll(/<button[^>]*>(?:<svg[\s\S]*?<\/svg>)?만들기<\/button>/g)].map((m) => m[0]);
+    const buttons = [...make(render()), ...make(render([]))];
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) expect(button).not.toContain("aria-haspopup");
+  });
 });

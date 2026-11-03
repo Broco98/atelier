@@ -57,6 +57,34 @@ describe("넓힌 카드 보기의 머리", () => {
     expect(button(locked, "원문")).toContain("disabled");
   });
 
+  it("좁으면 경로가 먼저 줄고(끝 조각 말줄임), 그다음 브랜치가 말줄임으로, 끝으로 +/−가 잘린다 — 경로 복사 · ×는 줄지 않는다", () => {
+    const markup = renderToStaticMarkup(
+      <ViewerHead
+        path={["atelier", "src-tauri", "src", "watcher.rs"]}
+        change={{ branch: "feat/watcher-failure-signal", additions: 18, deletions: 4 }}
+        onCopy={none}
+        onClose={none}
+      />,
+    );
+    expect(nav(markup)).toMatch(/^<nav aria-label="위치" class="[^"]*\bmin-w-0 flex-1 basis-0\b[^"]*\boverflow-hidden\b/);
+    expect(nav(markup)).toMatch(/class="min-w-0 truncate text-fg">watcher.rs</);
+    // 브랜치는 줄 수 있고(기본 flex-shrink 1 · 최소 폭 0) 넘치면 말줄임이다. 경로의 바탕이 0이라 경로가 먼저 다 준다.
+    expect(markup).toMatch(
+      /<span class="flex min-w-0 items-center gap-2 overflow-hidden"><span class="min-w-0 truncate font-mono text-xs text-fg-tertiary">feat\/watcher-failure-signal<\/span>/,
+    );
+    expect(markup).toMatch(/<span class="shrink-0 text-xs text-diff-added tabular-nums">\+18<\/span>/);
+    expect(markup).toMatch(/<span class="shrink-0 text-xs text-diff-deleted tabular-nums">−4<\/span>/);
+    expect(button(markup, "경로 복사")).toContain("icon-button");
+    expect(button(markup, "카드로 접기")).toContain("icon-button");
+  });
+
+  it("좁으면 렌더 · 원문 묶음도 잘린다 — 묶음이 포커스 링 자리(4)를 들어 링은 잘리지 않는다", () => {
+    const markup = renderToStaticMarkup(
+      <ViewerHead path={["문서", "overview.md"]} view={{ source: false, locked: false, onChange: none }} onCopy={none} onClose={none} />,
+    );
+    expect(markup).toMatch(/<span role="group" aria-label="문서 보기" class="flex min-w-0 gap-0\.5 overflow-hidden focus-ring-room">/);
+  });
+
   it("Project 트리는 가리킬 파일이 없어 경로 복사가 없다", () => {
     const markup = renderToStaticMarkup(<ViewerHead path={["Project", "atelier"]} onClose={none} />);
     expect(text(nav(markup))).toBe("Project / atelier");

@@ -1,8 +1,8 @@
-import { processCount } from "./process-tree";
-import type { CleanupEvent, CleanupOutcome, CleanupReason, CleanupTarget } from "./types";
+import type { CleanupEvent, CleanupOutcome, CleanupReason } from "./types";
 
 // **정리 기록을 사람 말로**(프로세스 결정 6 · 프로세스 스펙 S12 · 티켓 32). 앱이 무엇을 언제 왜 끝냈는지가 `Processes`의 맨 끝 묶음에
-// 선다 — 사건마다 까닭과 대상 수(와 때), 펼치면 대상마다 이름 · 명령줄 · 결과. 이 모듈은 기록 한 줄을 화면의 말로 옮긴다. 순수하다.
+// 선다 — **대상마다 한 줄**(때 · 까닭 · 대상 · 결과, restart 03-15d · 시안 Processes). 기록은 사건 단위로 오고 화면이 편다(`cleanupRows`).
+// 이 모듈은 기록을 화면의 줄과 말로 옮긴다. 순수하다.
 
 /**
  * 까닭의 말 — 프로세스 결정 6 · 스펙 S5의 낱말이다. 「손으로」는 [끝내기] · [정리]의 까닭이라 「손으로 끝냄」으로 풀어 적는다: 줄의 머리에
@@ -19,7 +19,7 @@ export const REASON_LABEL: Readonly<Record<CleanupReason, string>> = {
   manual: "손으로 끝냄",
 };
 
-/** 결과의 말 — 「못 끝냄」은 판 04의 `●`를 켜는 결과다(프로세스 스펙 S41). */
+/** 결과의 말 — 「못 끝냄」은 줄의 결과 칸이 경고 잉크로 선다(시안 Processes `data-bad`). */
 export const OUTCOME_LABEL: Readonly<Record<CleanupOutcome, string>> = {
   ended: "끝남",
   forced: "강제로 끝남",
@@ -59,11 +59,6 @@ export function loggedAt(at: number, now: number = Date.now()): string {
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${clock}`;
 }
 
-/** 사건 한 줄 — 「까닭, 프로세스 N개, 때」. 눈에 보이는 줄과 접근성 이름이 같은 이것을 읽는다. */
-export function eventLabel(event: CleanupEvent): string {
-  return `${reasonLabel(event.reason)}, ${processCount(event.targets.length)}, ${loggedAt(event.at)}`;
-}
-
 /**
  * 사건 줄의 열쇠 — 번호와 때다. 번호는 파일 안에서 오르기만 하지만(티켓 29) 번호가 없던 판의 줄은 모두 0이라 때와 함께 짓는다. 둘 다
  * 같은 줄(번호 없는 옛 줄이 같은 ms에 둘)은 목록이 겹침 차례로 가른다(`eventKeys`).
@@ -73,11 +68,12 @@ export function eventKey(event: CleanupEvent): string {
 }
 
 /**
- * 목록의 사건마다 열쇠 — 펼침과 줄을 든다. `eventKey`이고, **같은 열쇠가 앞에 이미 섰을 때만** 그 겹침 차례를 붙인다(`#1`, `#2` …).
+ * 목록의 사건마다 열쇠 — 그 사건의 줄들을 든다(`cleanupRows`). `eventKey`이고, **같은 열쇠가 앞에 이미 섰을 때만** 그 겹침 차례를
+ * 붙인다(`#1`, `#2` …).
  *
  * 목록 안 자리를 붙이지 않는다: 기록은 새 사건을 맨 앞에 넣으므로(Rust `cleanup_log::add`) 자리를 붙이면 새 사건 하나에 모든 열쇠가
- * 밀려, 펼쳐 읽던 사건이 다음 박자에 접힌다. 겹치는 것은 번호가 없던 판의 옛 줄이 같은 ms에 둘일 때뿐이고, 그 줄들은 목록 끝에서 제
- * 차례를 지키므로 겹침 차례도 안 바뀐다.
+ * 밀려, 박자마다 옛 줄이 모두 새 줄로 다시 선다. 겹치는 것은 번호가 없던 판의 옛 줄이 같은 ms에 둘일 때뿐이고, 그 줄들은 목록 끝에서
+ * 제 차례를 지키므로 겹침 차례도 안 바뀐다.
  */
 export function eventKeys(events: ReadonlyArray<CleanupEvent>): string[] {
   const taken = new Map<string, number>();
@@ -89,30 +85,40 @@ export function eventKeys(events: ReadonlyArray<CleanupEvent>): string[] {
   });
 }
 
-/** 펼친 대상 한 줄 — 「이름, 결과」. 명령줄은 그 밑에 따로 선다(길어서 한 줄에 못 싣는다). */
-export function targetLabel(target: CleanupTarget): string {
-  return `${target.name}, ${outcomeLabel(target.outcome)}`;
+/** 화면의 정리 기록 한 줄 — 시안 Processes `.pr-logrow`의 칸이다. */
+export interface CleanupRow {
+  /** 줄의 열쇠 — 사건의 열쇠(`eventKeys`)와 그 사건 안 대상의 차례. */
+  key: string;
+  /** 사건의 때(`loggedAt`). */
+  when: string;
+  /** 사건의 까닭(`reasonLabel`). */
+  why: string;
+  /** 대상의 이름. */
+  what: string;
+  /** 대상의 결과(`outcomeLabel`). */
+  outcome: string;
+  /** 못 끝냄 — 경고 잉크(시안 `data-bad`). */
+  bad: boolean;
 }
 
 /**
- * 사건 줄의 대상 칸(restart 03-11 · 시안 Processes 「정리 기록」의 `때 · 까닭 · 대상 · 결과` 한 줄) — 첫 대상의 이름이고, 여럿이면 남은 수를
- * 붙인다(「node 외 2개」). 이름 전부는 펼친 줄이 보인다.
+ * **사건을 대상마다 한 줄로 편다**(restart 03-15d · 시안 Processes 「정리 기록」) — 사건의 차례(새것부터) 안에서 대상의 차례다. 줄마다
+ * 그 사건의 때 · 까닭과 그 대상의 이름 · 결과가 선다. 대상 없는 사건은 줄이 없다. 기록(Rust `cleanup_log`)은 사건 단위 그대로다 — 셸
+ * 하나를 닫은 일이 한 사건이다(티켓 32).
+ *
+ * 열쇠는 사건의 열쇠에 대상의 차례를 붙인다 — 새 사건이 맨 위에 서도 옛 줄의 열쇠가 그대로다(`eventKeys`). 지금(`now`)은 때의 꼴을
+ * 가른다(`loggedAt`).
  */
-export function eventWhat(event: CleanupEvent): string {
-  const [first, ...rest] = event.targets;
-  if (first === undefined) return "";
-  return rest.length === 0 ? first.name : `${first.name} 외 ${rest.length}개`;
-}
-
-/** 결과의 무게 — 앞선 것이 더 손볼 결과다. */
-const OUTCOME_WEIGHT: ReadonlyArray<CleanupOutcome> = ["survived", "forced", "ended", "gone"];
-
-/**
- * 사건 줄의 결과 칸 — **가장 손볼 결과**다: 못 끝냄이 하나라도 있으면 못 끝냄(`bad` — 경고 잉크, 시안 `data-bad`), 그다음 강제로 끝남 · 끝남 ·
- * 이미 없음 차례다. 섞인 사건의 결과마다의 수는 펼친 줄이 보인다. 모르는 결과(뒤 판의 기록)만 있으면 그 글자다.
- */
-export function eventOutcome(event: CleanupEvent): { text: string; bad: boolean } {
-  const outcomes = event.targets.map((target) => target.outcome);
-  const top = OUTCOME_WEIGHT.find((outcome) => outcomes.includes(outcome)) ?? outcomes[0];
-  return top === undefined ? { text: "", bad: false } : { text: outcomeLabel(top), bad: top === "survived" };
+export function cleanupRows(events: ReadonlyArray<CleanupEvent>, now: number = Date.now()): CleanupRow[] {
+  const keys = eventKeys(events);
+  return events.flatMap((event, at) =>
+    event.targets.map((target, index) => ({
+      key: `${keys[at]}/${index}`,
+      when: loggedAt(event.at, now),
+      why: reasonLabel(event.reason),
+      what: target.name,
+      outcome: outcomeLabel(target.outcome),
+      bad: target.outcome === "survived",
+    })),
+  );
 }

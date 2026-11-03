@@ -247,7 +247,7 @@ test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입�
 });
 
 // [닫기] = 셸 탭의 ×와 같은 길(`requestCloseShell`). 명령이나 자손이 있으면 08의 확인 창이 묻는다. 까닭은 「셸 닫기」다 — 사람이 누른
-// 닫기라 `●`를 켜지 않는다(29).
+// 닫기다.
 test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫히고, 자손이 있으면 확인 창이 선다", async ({ page }) => {
   await installFixtureBackend(page, {
     processes_snapshot: 스냅샷([1, 2], false),

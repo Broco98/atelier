@@ -22,7 +22,6 @@ import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as ServicesIndexRouteImport } from './routes/services.index'
 import { Route as ServicesSlugRouteImport } from './routes/services.$slug'
-import { Route as ServicesNewRouteImport } from './routes/services_.new'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
@@ -101,11 +100,6 @@ const ServicesSlugRoute = ServicesSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ServicesRoute,
 } as any)
-const ServicesNewRoute = ServicesNewRouteImport.update({
-  id: '/services_/new',
-  path: '/services/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -178,7 +172,6 @@ export interface FileRoutesByFullPath {
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/services/$slug': typeof ServicesSlugRoute
-  '/services/new': typeof ServicesNewRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
@@ -202,7 +195,6 @@ export interface FileRoutesByTo {
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/services/$slug': typeof ServicesSlugRoute
-  '/services/new': typeof ServicesNewRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/terminal': typeof SettingsTerminalRoute
@@ -230,7 +222,6 @@ export interface FileRoutesById {
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/services/$slug': typeof ServicesSlugRoute
-  '/services_/new': typeof ServicesNewRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
@@ -260,7 +251,6 @@ export interface FileRouteTypes {
     | '/archive/$slug'
     | '/projects/$slug'
     | '/services/$slug'
-    | '/services/new'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
@@ -284,7 +274,6 @@ export interface FileRouteTypes {
     | '/archive/$slug'
     | '/projects/$slug'
     | '/services/$slug'
-    | '/services/new'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/terminal'
@@ -311,7 +300,6 @@ export interface FileRouteTypes {
     | '/archive/$slug'
     | '/projects/$slug'
     | '/services/$slug'
-    | '/services_/new'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
@@ -337,7 +325,6 @@ export interface RootRouteChildren {
   ServicesRoute: typeof ServicesRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
-  ServicesNewRoute: typeof ServicesNewRoute
   ThreadsIdRoute: typeof ThreadsIdRoute
   WorksSlugRoute: typeof WorksSlugRoute
   WorksIndexRoute: typeof WorksIndexRoute
@@ -436,13 +423,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/services/$slug'
       preLoaderRoute: typeof ServicesSlugRouteImport
       parentRoute: typeof ServicesRoute
-    }
-    '/services_/new': {
-      id: '/services_/new'
-      path: '/services/new'
-      fullPath: '/services/new'
-      preLoaderRoute: typeof ServicesNewRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/settings/': {
       id: '/settings/'
@@ -615,7 +595,6 @@ const rootRouteChildren: RootRouteChildren = {
   ServicesRoute: ServicesRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,
-  ServicesNewRoute: ServicesNewRoute,
   ThreadsIdRoute: ThreadsIdRoute,
   WorksSlugRoute: WorksSlugRoute,
   WorksIndexRoute: WorksIndexRoute,

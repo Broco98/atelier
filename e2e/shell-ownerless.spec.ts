@@ -91,7 +91,7 @@ test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 
 
   await archiveByMcp(page, WORKS, plainWork.slug);
 
-  // 조용한 셸 하나만 닫는다 — 까닭은 「MCP 아카이브」이고 주인은 그 work이다(정리 기록 · 판 04의 `●`가 이것을 읽는다).
+  // 조용한 셸 하나만 닫는다 — 까닭은 「MCP 아카이브」이고 주인은 그 work이다(정리 기록이 이것을 적는다).
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "mcpArchive", owner: plainWork.slug }]);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
@@ -150,7 +150,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
   await toast.getByRole("button", { name: "모두 닫기", exact: true }).click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "모두 닫기", exact: true }).click();
-  // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 판 04의 `●`가 선다(S41).
+  // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 정리 기록이 까닭을 거짓으로 적는다.
   const owner = plainWork.slug;
   await expect
     .poll(() => kills(page))

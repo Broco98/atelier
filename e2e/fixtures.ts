@@ -716,12 +716,11 @@ export const shellKeyOf = (pty: number): string => `${FIXTURE_GENERATION}-${pty}
 export const PROCESS_SNAPSHOT: ProcessSnapshot = snapshotFixture();
 
 /**
- * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — **손볼 것이 하나도 없는 앱**이다: 출처 불명도, `●`를 켜는 정리 기록도 없다. 그래서
- * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계 · CPU · 앱 본체는 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU
- * 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
+ * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — 어느 화면에서든 위 칸 `Processes` 줄 끝에 CPU · 합계가 선다. 합계 · CPU · 앱 본체는
+ * 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
  *
  * **모든 spec이 지나는 답이다** — nav 메타가 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
- * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — `●`를 켜는 검사).
+ * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — 요약 박자마다 새 값을 재는 검사).
  */
 export const PROCESS_SUMMARY: ProcessSummary = {
   total: 3_650_722_202,
@@ -730,11 +729,9 @@ export const PROCESS_SUMMARY: ProcessSummary = {
   webviewExcluded: false,
   // 맥 전체(restart 03-5) — 코어 열 개인 맥의 18.4%, 메모리 16GB다. nav 메타는 읽지 않는다(추이의 한 선이다).
   mac: { cpu: 18.4, memory: 17_179_869_184, cores: 10 },
-  unknown: [],
-  recordHead: null,
 };
 
-/** 위 요약에서 `over`의 칸만 바꾼 것 — 합계 · `●`를 켜는 것을 재는 검사가 제 칸만 덮어쓴다. */
+/** 위 요약에서 `over`의 칸만 바꾼 것 — 합계를 재는 검사가 제 칸만 덮어쓴다. */
 export const summaryWith = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
 
 /**
@@ -1080,14 +1077,12 @@ export function workChatAnswers(
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
-  // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Service이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
-  // (`useUpdateService`) — 이 답은 쓰기를 기억하지 않는다.
+  // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 파일로 고치기. 상세에서 칸 단위로 고치던 `update_service`는 걷혔다(restart 03-15c).
   list_services: SERVICES,
   // Service 파일들의 폴더(restart 03-3) — ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다. 목록 · 상세가 열 때 한 번 읽는다.
   services_folder: "~/.atelier/services",
   get_service: answerByArg("slug", SERVICE_DETAILS),
-  update_service: SERVICES[0],
-  // 고치기 화면(파일로 고치기 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
+  // 고치기 화면(파일로 고치기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
   read_service_text: answerByArg("slug", SERVICE_TEXTS),
   check_service: SERVICE_DRAFT,
   save_service_text: SERVICES[0],
@@ -1194,8 +1189,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `Processes` 화면이 열려 있는 동안 2초마다 묻는다(티켓 26). 답은 위 `PROCESS_SNAPSHOT`이고, 화면을 여는 검사가 덮어쓴다.
   processes_snapshot: PROCESS_SNAPSHOT,
   // nav 메타의 요약(티켓 29). nav `Processes` 옆 메타가 모든 화면에 서므로 **앱이 뜨자마자, 그 뒤 10초마다** 부른다 — 이
-  // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`(손볼 것 없음)이고, `●`를 재는
-  // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts`).
+  // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`이고, 줄 끝의 값을 재는
+  // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts` · `frame-sidebar.spec.ts`).
   processes_summary: PROCESS_SUMMARY,
   // 요약 카드의 추이(티켓 30) — `Processes` 화면이 열려 있는 동안 요약이 올 때마다 한 번 부른다. 답은 위 `PROCESS_TREND`(빈 고리)이고,
   // 스파크라인을 재는 검사가 덮어쓴다.
@@ -1216,11 +1211,6 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
-  // 프로젝트 화면의 기준 브랜치 · 이름을 바꾸는 쓰기(판 3 — `projects-list.spec.ts`의 기준 브랜치 절, `inline-rename.spec.ts`의 프로젝트
-  // 절). 고치기는 부분 patch라 바꾼 칸만 실린다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시
-  // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
-  // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
-  update_project: null,
   // 프로젝트 메뉴(목록 행 · 머리 줄 이름의 우클릭)의 「Finder에서 열기」와 머리 줄 「폴더 열기」가 나간다(codex-ds 티켓 30 —
   // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_project_folder: null,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { baseNote, branchGroups, detailMenu, missingNotice, relocateProblem, renameHint, rowMenu, shownProjects } from "./project-view";
+import { missingNotice, relocateProblem, rowMenu, shownProjects } from "./project-view";
 import type { GitInfo, ProjectView } from "./types";
 
-// Projects 목록 · 상세의 갈래(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjMissing · F4-ProjDetailMissing · F4-ProjBranch ·
-// F4-ProjRename · F4-KitProject 「목록 줄」 · 「상세 조각」). 기대 글은 시안의 글자 그대로다.
+// Projects 목록 · 상세의 갈래(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjMissing · F4-ProjDetailMissing · F4-KitProject
+// 「목록 줄」 · 「상세 조각」). 기대 글은 시안의 글자 그대로다. 상세 머리의 ⋯는 목록 줄의 ⋯ 그대로라(restart 03-15c) 따로 재지 않는다.
 
 const git = (over: Partial<GitInfo> = {}): GitInfo => ({
   remoteSlug: "acme/web-app",
@@ -57,48 +57,9 @@ describe("찾기", () => {
   });
 });
 
-describe("기준 브랜치 목록", () => {
-  it("「로컬」 · 「원격 — <원격 이름>」 묶음이고, 원격 브랜치는 원격 이름을 단 그대로다", () => {
-    const upstream = { remote: "upstream", branches: ["upstream/main"] };
-    expect(branchGroups(git({ remoteBranches: [...git().remoteBranches, upstream] }))).toEqual([
-      { label: "로컬", branches: ["develop", "main", "release/2.4"] },
-      { label: "원격 — origin", branches: ["origin/develop", "origin/main", "origin/release/2.5"] },
-      { label: "원격 — upstream", branches: ["upstream/main"] },
-    ]);
-  });
-
-  it("브랜치가 없는 묶음은 서지 않는다 — fetch하지 않은 원격 · git으로 읽지 못한 폴더", () => {
-    expect(branchGroups(git({ remoteBranches: [{ remote: "origin", branches: [] }] }))).toEqual([
-      { label: "로컬", branches: ["develop", "main", "release/2.4"] },
-    ]);
-    expect(branchGroups(null)).toEqual([]);
-  });
-});
-
 describe("상세 조각의 글", () => {
-  it("기준 브랜치 아래 한 줄 — 갈라지는 자리, 바꾼 뒤, 폴더를 찾을 수 없을 때", () => {
-    expect(baseNote(project(), false)).toBe("새 작업공간의 브랜치가 여기서 갈라져요");
-    expect(baseNote(project({ baseBranch: "origin/release/2.5" }), true)).toBe("바꿨어요 — 새 작업공간부터 origin/release/2.5에서 갈라져요");
-    expect(baseNote(PLAYGROUND, false)).toBe("폴더를 찾아야 브랜치를 읽을 수 있어요");
-  });
-
-  it("제목을 고치는 동안 — 파일 이름은 slug다(이름을 바꿔도 그대로)", () => {
-    expect(renameHint(project({ name: "웹 앱 (고객용)" }))).toBe("↵ 저장 · esc 취소 — 파일 이름(web-app.md)과 경로는 그대로예요");
-  });
-
   it("폴더를 찾을 수 없음 — 상세 경고의 한 줄이다(보드 PlaceSheet 「폴더를 찾을 수 없는 Project」)", () => {
     expect(missingNotice()).toBe("폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요.");
-  });
-});
-
-describe("상세의 ⋯", () => {
-  // 보드 상세 머리의 ⋯ — 칸이 그려지지 않았다. 목록 줄의 세 줄 앞에 상세에서만 고치는 둘(이름 · 설명)이 선다. 보드 상세에는 고치는 자리가 없다.
-  it("이름 바꾸기 · 설명 고치기 뒤에 목록 줄의 ⋯가 그대로 선다", () => {
-    expect(detailMenu(project()).map((item) => item.label)).toEqual(["이름 바꾸기", "설명 고치기", "Finder에서 열기", "경로 복사", "제거…"]);
-  });
-
-  it("폴더를 찾을 수 없어도 이름과 설명은 고친다 — Finder · 경로 복사는 줄과 같이 빠진다", () => {
-    expect(detailMenu(PLAYGROUND).map((item) => item.act)).toEqual(["rename", "describe", "remove"]);
   });
 });
 

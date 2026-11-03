@@ -540,7 +540,7 @@ describe("Service의 주소", () => {
     expect(matches[matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
-  // 고치기 화면 둘(03 구현 스펙 §13) — 파일로 고치기는 그 Service 아래, 새 Service는 목록 아래 고정 주소다. 둘 다 목록 · 상세의 틀 밖에 따로 선 화면이다.
+  // 파일로 고치기(03 구현 스펙 §13)는 그 Service 아래 주소이고 목록 · 상세의 틀 밖에 따로 선 화면이다.
   it("`/services/<slug>/edit`는 그 Service의 파일로 고치기다 — 목록 · 상세의 틀 밖이다", async () => {
     const { router } = setup(["/services/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4/edit"]);
     await router.load();
@@ -551,13 +551,14 @@ describe("Service의 주소", () => {
     expect(router.state.matches[router.state.matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
-  it("`/services/new`는 새 Service다 — slug가 new인 Service의 상세가 아니고, 목록의 틀 밖이다", async () => {
+  // 한때(03 · 03-3) `/services/new`는 빈 틀의 새 Service 화면(「직접 만들기」)이었다 — Services 「+ 만들기」가 보드대로 「대화로 만들기」 단추 하나가
+  // 되며 걷혔다(restart 03-15c). 이제 따로 선 주소가 아니다.
+  it("`/services/new`는 따로 선 화면이 아니다 — 다른 slug처럼 목록의 틀 안 상세 주소다", async () => {
     const { router } = setup(["/services/new"]);
     await router.load();
-    const ids = router.state.matches.map((match) => match.routeId);
-    expect(ids).toContain("/services_/new");
-    expect(ids).not.toContain("/services");
-    expect(ids).not.toContain("/services/$slug");
+    const matches = router.state.matches;
+    expect(matches.map((match) => match.routeId)).toEqual(expect.arrayContaining(["/services", "/services/$slug"]));
+    expect(matches[matches.length - 1].params).toEqual({ slug: "new" });
   });
 
   it("상세에서 함께 쓰는 Service로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Service로 간다", async () => {

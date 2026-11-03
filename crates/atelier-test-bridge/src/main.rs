@@ -7,7 +7,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use atelier_core::{archive_dir, data_root, projects_dir, works_dir, ProjectPatch};
+use atelier_core::{archive_dir, data_root, projects_dir, works_dir};
 use serde_json::{Map, Value};
 
 /// 커맨드 하나가 받는 인자. Tauri와 같게 **snake_case로 정규화된 뒤** 들어온다.
@@ -39,17 +39,6 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("new_project", |a| {
         ok(atelier_core::new_project(&projects_dir(), &PathBuf::from(text(a, "parent")?), &text(a, "name")?))
     }),
-    ("update_project", |a| {
-        ok(atelier_core::update_project(
-            &projects_dir(),
-            &text(a, "slug")?,
-            ProjectPatch {
-                name: maybe_text(a, "name"),
-                description: maybe_text(a, "description"),
-                base_branch: maybe_text(a, "base_branch"),
-            },
-        ))
-    }),
     // 재설정(03 구현 스펙 §15) — 진짜 git이 「저장소의 뿌리인가」를 본다.
     ("relocate_project", |a| {
         ok(atelier_core::relocate_project(&projects_dir(), &text(a, "slug")?, &PathBuf::from(text(a, "folder")?)))
@@ -64,19 +53,6 @@ const HANDLERS: &[(&str, Handler)] = &[
     // ⋯ 「경로 복사」가 읽는 Service 파일들의 폴더(restart 03-3) — 데이터 루트의 `services`를 홈 `~`로 접은 글이다.
     ("services_folder", |_| ok(Ok(atelier_core::collapse_home(&atelier_core::services_in(&data_root()))))),
     ("get_service", |a| ok(atelier_core::service_detail(&data_root(), &text(a, "slug")?))),
-    ("update_service", |a| {
-        ok(atelier_core::update_service(
-            &data_root(),
-            &text(a, "slug")?,
-            atelier_core::ServicePatch {
-                name: maybe_text(a, "name"),
-                description: maybe_text(a, "description"),
-                add: maybe_texts(a, "add")?,
-                before: maybe_text(a, "before"),
-                remove: maybe_texts(a, "remove")?,
-            },
-        ))
-    }),
     ("read_service_text", |a| ok(atelier_core::read_service_text(&data_root(), &text(a, "slug")?))),
     ("check_service", |a| {
         ok(atelier_core::draft_service(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
@@ -365,14 +341,6 @@ fn destinations(args: &Args) -> Result<Vec<atelier_core::Destination>, String> {
 fn texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
     let value = args.get(key).ok_or_else(|| format!("인자 '{key}'(문자열 배열)가 필요합니다"))?;
     serde_json::from_value(value.clone()).map_err(err)
-}
-
-/// 없어도 되는 문자열 배열 인자 — 없거나 `null`이면 빈 목록이다.
-fn maybe_texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
-    match args.get(key) {
-        None | Some(Value::Null) => Ok(Vec::new()),
-        Some(value) => serde_json::from_value(value.clone()).map_err(err),
-    }
 }
 
 fn flag(args: &Args, key: &str) -> Result<bool, String> {

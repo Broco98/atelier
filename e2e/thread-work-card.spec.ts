@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD, WORKS, worktreeFile, worktreeFolder } from "./fixtures";
-import { callCount, fireEvent, fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
+import { fireEvent, fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
 import { atHome, lineOf, record, sentPayloads, specWrites, summaryOf, titleThrough, workView } from "./thread-records";
 import { WORK_WRITING_EVENT } from "@/features/thread/events";
 import type { ThreadView, WorkWritingEvent } from "@/features/thread/types";
@@ -206,19 +206,23 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
       },
     ]);
 
-  // 넓힌 카드의 목록에는 「변경 사항」 아래 바뀐 파일마다 줄이 선다. 파일 줄 — 그 파일의 diff다. 숨긴 위 줄은 펴면 worktree의 지금
-  // 파일을 읽어 잇는다.
+  // 넓힌 카드의 목록에는 「변경 사항」 아래 바뀐 파일마다 줄이 선다. 파일 줄 — 그 파일의 diff다(시안 Summary `.ra-vwdiff` — restart 03-15b). 줄 목록은
+  // 문법색 없이 왼쪽 막대 · 줄번호 · 글이고 더한 줄은 `<ins>`, 지운 줄은 `<del>`이다. worktree의 지금 파일을 함께 읽어 「숨긴 줄 N개」가 펼 줄을
+  // 든다 — 마지막 덩어리 아래 숨긴 줄의 수도 거기서 온다(이 파일은 덩어리가 끝 줄까지라 아래 숨긴 줄이 없다).
   await expect(카드(page).locator("[data-change]")).toHaveText([/^service\.py\s*\+6\s*−3$/, /^test_refund\.py\s*\+12$/]);
   await 카드(page).locator(`[data-change="${SERVICE}"]`).click();
   await expect(카드(page).locator(`[data-change="${SERVICE}"]`)).toHaveAttribute("aria-current", "true");
-  const diff = 보기(page, "change").locator("[data-code-view]");
+  const diff = 보기(page, "change").locator("[data-diff]");
   await expect(diff.getByText('raise RefundError("환불할 수 없는 금액이에요")')).toBeVisible();
   await expect(보기(page, "change")).toContainText("+6");
-  expect(await callCount(page, "read_worktree_file")).toBe(0);
-  // 숨긴 줄의 글은 한국어다(「변경 없는 9줄」 — v1 티켓 46). 라이브러리가 영어로 그린 뒤 갈아 끼우므로 `getByText`의 기다림이 그 틈을 덮는다.
-  await diff.getByText(/변경 없는 9줄/).first().click();
+  await expect(diff.locator("ins")).toHaveCount(6);
+  await expect(diff.locator("del")).toHaveCount(3);
+  await expect(diff.locator("ins").first()).toHaveText(/^13\s+if amount is None:$/);
+  await expect.poll(async () => (await ipcCallArgs(page, "read_worktree_file", "path")).map(({ args }) => args.path)).toEqual([SERVICE]);
+  await expect(diff.getByRole("button", { name: /^숨긴 줄 \d+개$/ })).toHaveText(["숨긴 줄 9개"]);
+  await diff.getByRole("button", { name: "숨긴 줄 9개", exact: true }).click();
   await expect(diff.getByText("환불 서비스 — 주문의 남은 금액 안에서 돌려준다.", { exact: false })).toBeVisible();
-  expect((await ipcCallArgs(page, "read_worktree_file", "path")).map(({ args }) => args.path)).toEqual([SERVICE]);
+  await expect(diff.getByRole("button", { name: /^숨긴 줄/ })).toHaveCount(0);
 
   // Project 줄 — 그 worktree의 트리다(머리 「… · worktree …」 없이 — restart 02b-8). 바뀐 파일 위 폴더는 처음부터 펼쳐 있고 바뀐 파일은 표시가
   // 선다. 그 파일을 누르면 그 diff가 열린다.

@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, X } from "lucide-react";
 import { copyText } from "@/components/shell/copy-text";
 import type { PathView } from "@/components/shell/PathBar";
@@ -14,11 +14,11 @@ import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { freshLines, treePick, viewerPath, type Opened } from "./expanded";
 import { setQuote } from "./thread-store";
 import type { ChangeSummary } from "./summary-card";
+import { WideDiff } from "./WideDiff";
 import { cn } from "@/lib/utils";
 
-// 강조 라이브러리(`@pierre/diffs`)는 코드 보기 모듈 아래에서만 들어온다(git-integration 결정 35 · `code-view-chunk.test.ts`) — 넓힌 카드도 그
-// 모듈을 `lazy`로 부른다. diff 보기는 그 모듈의 이름 붙은 내보내기다. 넓힌 카드 안의 코드 보기는 걷었다(restart 02a-12 — 트리의 파일은 파일 탭으로 연다).
-const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => ({ default: module.DiffView })));
+// 넓힌 카드는 강조 라이브러리(`@pierre/diffs`)를 부르지 않는다 — 변경 보기는 문법색 없는 줄 목록이다(restart 03-15b · `WideDiff`). 한때 diff
+// 보기가 코드 보기 모듈의 이름 붙은 내보내기라 그 모듈을 `lazy`로 불렀다. 넓힌 카드 안의 코드 보기는 걷었다(restart 02a-12 — 트리의 파일은 파일 탭으로 연다).
 
 /**
  * **넓힌 카드의 보기**(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand 보드 `.viewer`) — 요약 카드가 넓어지면 목록 오른쪽에
@@ -32,7 +32,7 @@ const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => 
  *   줄만 잠깐 칠하고(스토리 118 · Motion 보드 — `freshLines` · `doc-flash`), 구르는 자리는 그대로다(같은 쿼리의 새 값이 같은 상자에
  *   들어간다). 글을 고르면 「❝ 이 자리를 두고 말하기」가 떠 그 자리를 지금 입력창(`draftKey` — 채팅이면 그 채팅, 작업공간의 새 채팅 탭이면
  *   그 탭의 글 열쇠, restart 02a-11)에 인용으로 붙인다(S41 · `setQuote`).
- * - **변경**은 그 파일의 diff다(`DiffView` — `read_work_diff`, 숨긴 줄 펼치기).
+ * - **변경**은 그 파일의 diff다(`WideDiff` — `read_work_diff`의 줄 목록, 「숨긴 줄 N개」 펼치기 · restart 03-15b).
  * - **Project**는 그 worktree의 파일 트리다(`FilesTree`). 트리에서 바뀐 파일을 누르면 그 diff가 이 카드에 열리고(보드 — 트리의 `schema.prisma`가 그
  *   diff를 연다), 그 밖의 파일은 **파일 탭**으로 간다(restart 02a-12 · 스토리 102 · SummarySheet 「넓힌 카드」 표 — 파일 탭이 켜지면 이 카드는 닫힌다).
  *   한때 카드 안에 강조된 코드가 섰다.
@@ -88,9 +88,8 @@ export function ExpandedViewer({
             onNavigate={(path) => onOpen({ kind: "doc", path })}
           />
         ) : opened.kind === "change" ? (
-          <Suspense fallback={null}>
-            <DiffView slug={work.slug} project={opened.project} path={opened.path} wide={false} />
-          </Suspense>
+          // 파일마다 새 보기다 — 편 숨긴 줄이 다른 파일로 따라가지 않는다.
+          <WideDiff key={`${opened.project}\u0000${opened.path}`} slug={work.slug} project={opened.project} path={opened.path} />
         ) : (
           <ProjectTree work={work} project={opened.project} changes={changes} onOpen={onOpen} onOpenFile={onOpenFile} />
         )}
@@ -147,6 +146,9 @@ const MINI = "flex h-6 shrink-0 items-center rounded-lg px-2 text-xs transition-
  * - **경로**는 「위치」 nav 안에 「/」로 이은 조각이다 — 앞 조각 `fg-tertiary`, 끝 조각(지금 보는 것)만 `fg`이고 길면 끝 조각이 말줄임으로
  *   줄어든다. 보여 주기만 한다(이름 「위치」는 경로 줄의 것 그대로다 — 검사가 같은 이름으로 찾는다).
  * - **변경**이면 Work 브랜치(고정폭 12 `fg-tertiary`)와 +/−(0인 쪽은 적지 않는다 — 카드의 줄과 같다).
+ * - **좁으면** 경로가 먼저 준다(바탕 0 — 시안 `.ra-vwpath`의 `flex: 1 1 0`, 끝 조각은 말줄임). 경로가 다 줄고도 모자라면 브랜치가 말줄임으로 주고,
+ *   그래도 모자라면(창 900의 보기 92) +/−와 렌더 · 원문 묶음이 잘린다 — 경로 복사 · 「카드로 접기」는 늘 선다. 시안은 브랜치가 줄지 않아 +/− · 단추가
+ *   머리 밖으로 밀려 잘린다(창 1100의 보기 292 — restart 03-15b). 렌더 · 원문 묶음은 포커스 링 자리(`focus-ring-room`)를 들어 잘라도 링은 남는다.
  * - **문서**면 「문서 보기」 묶음의 렌더 · 원문 두 단추다 — 지금 보기가 눌린 단추다(`aria-pressed`). 본문이 이 묶음을 따르지 않는 파일
  *   (`locked`)이면 둘 다 못 누른다.
  * - 경로 복사(`onCopy`가 없으면 — 트리 — 서지 않는다)와 「카드로 접기」 ×.
@@ -182,14 +184,14 @@ export function ViewerHead({
         ))}
       </nav>
       {change && (
-        <>
-          {change.branch && <span className="shrink-0 font-mono text-xs text-fg-tertiary">{change.branch}</span>}
+        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+          {change.branch && <span className="min-w-0 truncate font-mono text-xs text-fg-tertiary">{change.branch}</span>}
           {change.additions > 0 && <span className="shrink-0 text-xs text-diff-added tabular-nums">+{change.additions}</span>}
           {change.deletions > 0 && <span className="shrink-0 text-xs text-diff-deleted tabular-nums">−{change.deletions}</span>}
-        </>
+        </span>
       )}
       {view && (
-        <span role="group" aria-label="문서 보기" className="flex shrink-0 gap-0.5">
+        <span role="group" aria-label="문서 보기" className="flex min-w-0 gap-0.5 overflow-hidden focus-ring-room">
           {([false, true] as const).map((source) => (
             <button
               key={String(source)}

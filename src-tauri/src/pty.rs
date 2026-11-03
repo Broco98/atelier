@@ -800,8 +800,7 @@ fn exited(pool: &Arc<PtyPool>, id: u32) {
 /// 세운다). 유예와 SIGKILL까지 부른 스레드에서 돌아 최악 2초 남짓 걸린다 — 셸 닫기처럼 뒤 스레드로 보내지 않는다(S5의 「손」 갈래를
 /// 고쳤다). 그동안에도 이 끝내기는 진행 중인 끝내기 목록에 있어 앱이 닫히면 종료가 함께 마감한다. 결과는 이 끝내기가 맡은 대상만이다 —
 /// 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 빠진다(그 결과는 그것을 맡은 끝내기의 것이다). 끝낸 것은 **답을 돌려주기 전에** 정리
-/// 기록에 까닭 「손으로」로 적는다(티켓 11) — 셸 키와 주인은 없다. 사람이 누른 것이라 `●`를 켜지 않는다(못 끝냄이 들면 켠다 —
-/// `cleanup_log::worth_a_look`). 표를 찍고 유예를 기다리니 `commands.rs`가 blocking 풀에서 부른다.
+/// 기록에 까닭 「손으로」로 적는다(티켓 11) — 셸 키와 주인은 없다. 표를 찍고 유예를 기다리니 `commands.rs`가 blocking 풀에서 부른다.
 pub fn end_by_hand(pool: &PtyPool, targets: &[Identity]) -> Vec<EndResult> {
     if targets.is_empty() {
         return Vec::new();

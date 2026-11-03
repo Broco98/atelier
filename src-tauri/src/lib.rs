@@ -428,9 +428,9 @@ pub fn run() {
             // 끝낸 것을 위에서 센 몫으로 시작 보고에 싣는다. **기록을 연 뒤다** — 연 뒤라야 남의 기록이 읽힌다. 이 실행의 셸은
             // 안 본다: 웹뷰가 곧 첫 셸을 띄운다.
             startup::clean_up(cleanup, Arc::clone(&pool));
-            // nav 메타의 배경 표본(프로세스 결정 10 · 11 · 티켓 29). 앱 전체 메모리 합계와 손볼 것(출처 불명 · `●`를 켜는 기록)을 10초마다
-            // 모은다 — 화면이 닫혀 있어도 돈다. **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸
-            // 자손이 모두 출처 불명으로 서고, 뜨자마자 `●`가 선다. 첫 장은 시작 정리의 기록을 못 볼 수 있다 — 다음 장(10초)이 본다.
+            // nav 메타의 배경 표본(프로세스 결정 10 · 티켓 29). 앱 전체 CPU와 메모리 합계를 10초마다 모은다 — 화면이 닫혀 있어도 돈다.
+            // **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸 자손이 모두 출처 불명으로 서고, 그
+            // 몫이 첫 장의 합계에 든다.
             //
             // 표본을 걸기 **전에** 웹뷰에게 WebContent의 pid를 물을 길을 건다(프로세스 스펙 S39 · 티켓 30) — 앱 본체 = Rust 본체 +
             // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다 —
@@ -463,14 +463,12 @@ pub fn run() {
             commands::list_projects,
             commands::get_project,
             commands::create_project,
-            commands::update_project,
             commands::project_usage,
             commands::remove_project,
             commands::restore_project,
             commands::list_services,
             commands::services_folder,
             commands::get_service,
-            commands::update_service,
             commands::read_service_text,
             commands::check_service,
             commands::save_service_text,
@@ -1283,7 +1281,7 @@ mod tests {
     }
 
     /// **nav 메타의 배경 표본은 인스턴스 기록을 연 뒤에 건다**(티켓 29). 먼저 걸면 첫 판정이 남의 기록을 못 읽어(`Record::records`가
-    /// 빈 목록) 함께 뜬 다른 빌드(dev · 설치본)의 셸 자손이 모두 출처 불명으로 서고 — 뜨자마자 `●`가 선다. 표본이 한 번뿐이어야 박자가
+    /// 빈 목록) 함께 뜬 다른 빌드(dev · 설치본)의 셸 자손이 모두 출처 불명으로 서고 — 그 몫이 첫 장의 합계에 든다. 표본이 한 번뿐이어야 박자가
     /// 하나다(10초). 셋업은 헤드리스로 못 돌리니 자리로 잰다. 모으는 순서는 `processes::service`의 핀이 잰다.
     #[test]
     fn the_background_sample_starts_after_the_record_opens() {

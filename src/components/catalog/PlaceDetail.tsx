@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, CircleAlert, MoreHorizontal, Plus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -72,55 +72,6 @@ export function PlaceLede({ children }: { children?: ReactNode }) {
   return <p className="mb-5 max-w-170 text-sm leading-5.5 whitespace-pre-wrap text-fg-secondary">{children}</p>;
 }
 
-/**
- * 설명 고치기(Project 스토리 118 · restart 03-2 · 03-3) — 설명 자리가 칸이 되고(열자마자 쓴다) 아래 「취소 · 저장」. 보드 상세에는 고치는 자리가 없다 —
- * ⋯ 「설명 고치기」가 연다. **Esc는 그만두기다** — 친 글을 버리고 아무것도 고치지 않는다. 저장이 실패하면(`false`) 칸이 그대로 남는다. `note`는 왼쪽
- * 아래 한 줄(이 설명을 누가 읽는지)이다.
- */
-export function PlaceLedeEditor({
-  text,
-  placeholder,
-  note,
-  onSave,
-  onDone,
-}: {
-  text: string;
-  placeholder: string;
-  note: string;
-  onSave: (text: string) => Promise<boolean>;
-  onDone: () => void;
-}) {
-  const [draft, setDraft] = useState(text);
-  const save = async () => {
-    if (await onSave(draft)) onDone();
-  };
-  return (
-    <div className="mb-5 max-w-170">
-      <textarea
-        autoFocus
-        rows={3}
-        aria-label="설명"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onDone();
-        }}
-        placeholder={placeholder}
-        className="block w-full resize-none rounded-xl border border-border-heavy bg-surface px-3 py-2.5 text-sm leading-5.5 text-fg outline-none placeholder:text-fg-placeholder focus-ring"
-      />
-      <div className="mt-2.5 flex items-center gap-1.5">
-        <p className="mr-auto text-xs text-fg-tertiary">{note}</p>
-        <Button variant="ghost" size="top" onClick={onDone}>
-          취소
-        </Button>
-        <Button size="top" onClick={() => void save()}>
-          저장
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 /** 상세 경고(보드 `.pl-warn` · PlaceSheet 「폴더를 찾을 수 없는 Project」) — 한 줄과 끝의 할 일(링크 색 글 단추). 할 일은 ⋯ 안이 아니라 여기서 바로 닿는다. */
 export function PlaceWarn({ text, action }: { text: string; action: { label: string; onClick: () => void } }) {
   return (
@@ -137,12 +88,12 @@ export function PlaceFacts({ children }: { children: ReactNode }) {
   return <div className="mb-2 grid grid-cols-4 gap-2 narrow:grid-cols-2">{children}</div>;
 }
 
-/** 위 카드 한 칸의 겉(보드 `.pl-fact` — 위아래 12 · 옆 14 · 둥글기 8 · `surface-under` 면 · 안쪽 0.5 `border` 고리). 값을 고르는 칸(단추)도 이 겉을 쓴다. */
-export const PLACE_FACT =
+/** 위 카드 한 칸의 겉(보드 `.pl-fact` — 위아래 12 · 옆 14 · 둥글기 8 · `surface-under` 면 · 안쪽 0.5 `border` 고리). */
+const PLACE_FACT =
   "flex min-w-0 flex-col items-start gap-0.5 rounded-card bg-surface-under px-3.5 py-3 text-left inset-ring-[0.5px] inset-ring-border";
 /** 칸의 이름(12 · .025em · `fg-tertiary`)과 값(13/19 · 한 줄 · 말줄임). */
-export const PLACE_FACT_LABEL = "text-xs text-fg-tertiary";
-export const PLACE_FACT_VALUE = "max-w-full truncate text-chat-meta leading-4.75 text-fg";
+const PLACE_FACT_LABEL = "text-xs text-fg-tertiary";
+const PLACE_FACT_VALUE = "max-w-full truncate text-chat-meta leading-4.75 text-fg";
 
 /** 위 카드 한 칸 — 이름과 값. 값이 잘리면 가리켜 전부를 본다(`title`). */
 export function PlaceFact({ label, value }: { label: string; value: string }) {
@@ -210,14 +161,10 @@ export function PlaceButton({ label, onClick, className }: { label: string; onCl
 export const PLACE_ICON_BUTTON =
   "icon-button icon-button-ctl text-fg-secondary transition-colors quiet-hover focus-ring aria-expanded:bg-fill-hover aria-expanded:text-fg";
 
-/** 그 자리를 입력 칸으로 바꾸는 ⋯ 항목 — 고르면 포커스가 그 칸에 남아야 한다. */
-const EDITS: ReadonlySet<string> = new Set(["rename", "describe"]);
-
 /**
- * 상세 머리의 ⋯(보드 Places 상세 머리의 `.ra-tbtn` — 항목은 그려지지 않았다) — 항목은 화면이 준다(Project `detailMenu` · Service `serviceDetailMenu`).
- * 메뉴 카드는 단추 오른쪽 끝에 맞춘 208 폭이다. **「이름 바꾸기」(`rename`) · 「설명 고치기」(`describe`)로 닫히면 포커스를 ⋯로 돌리지 않는다**
- * (`finalFocus`) — 막 선 입력 칸이 포커스를 받는데, ⋯로 돌아가면 입력 칸이 곧바로 blur되어 이름은 「다른 곳 = 저장」으로 닫힌다(채팅 머리의 「…」와
- * 같은 까닭 — `ThreadMenu`).
+ * 상세 머리의 ⋯(보드 Places 상세 머리의 `.ra-tbtn`) — 항목은 화면이 준다. 목록 줄의 ⋯와 같은 항목이다(restart 03-15c — Project는 PlaceSheet 표,
+ * Service는 보드 `MENUS.services`). 메뉴 카드는 단추 오른쪽 끝에 맞춘 208 폭이다. 한때(03-2 · 03-3) 앞에 「이름 바꾸기 · 설명 고치기」가 섰고, 그것으로
+ * 닫히면 포커스를 ⋯로 돌리지 않았다.
  */
 export function PlaceDetailMenu<A extends string>({
   label,
@@ -230,31 +177,16 @@ export function PlaceDetailMenu<A extends string>({
   icons: Record<A, LucideIcon>;
   onAct: (act: A) => void;
 }) {
-  const editing = useRef(false);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger aria-label={label} className={PLACE_ICON_BUTTON}>
         <MoreHorizontal aria-hidden className="size-3.75" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        width="place"
-        finalFocus={() => {
-          if (!editing.current) return true;
-          editing.current = false;
-          return false;
-        }}
-      >
+      <DropdownMenuContent align="end" width="place">
         {items.map((item) => {
           const Icon: LucideIcon = icons[item.act];
           return (
-            <DropdownMenuItem
-              key={item.act}
-              onClick={() => {
-                editing.current = EDITS.has(item.act);
-                onAct(item.act);
-              }}
-            >
+            <DropdownMenuItem key={item.act} onClick={() => onAct(item.act)}>
               <Icon />
               <span>{item.label}</span>
             </DropdownMenuItem>

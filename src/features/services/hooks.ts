@@ -6,7 +6,6 @@ import { invalidateWorks } from "@/features/works/hooks";
 import { threadApi } from "@/features/thread/api";
 import { servicesApi } from "./api";
 import type { ScopeOf } from "./scope";
-import type { ServicePatch } from "./types";
 
 /** Service 읽기의 머리 열쇠 — 목록은 이것 하나, 상세는 뒤에 slug를 단다. 무효화는 이 머리로 둘을 함께 한다. */
 const SERVICES_KEY = ["services"] as const;
@@ -67,26 +66,16 @@ export function useService(slug: string) {
   });
 }
 
-/** 상세의 설명 · 넣기 · 빼기. 쓴 뒤 목록과 상세를 함께 다시 읽는다 — 감시의 종보다 먼저 화면이 따라온다. */
-export function useUpdateService() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ slug, patch }: { slug: string; patch: ServicePatch }) => servicesApi.update(slug, patch),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SERVICES_KEY }),
-  });
-}
-
-// ── 고치기 화면(파일로 고치기 · 직접 만들기 — 03 구현 스펙 §13) ──────────────────────────────────────────────────────────────
+// ── 고치기 화면(파일로 고치기 — 03 구현 스펙 §13) ──────────────────────────────────────────────────────────────
 
 /**
  * 파일로 고치기가 여는 파일 글 — 화면이 한 번 받아 편집기에 옮긴다. 열 때마다 새로 읽고(남긴 값을 쓰지 않는다), 연 뒤에 파일이 바뀌어도
- * 고치는 글을 덮지 않는다(종을 듣지 않는다). 새 Service(`null`)는 읽지 않는다.
+ * 고치는 글을 덮지 않는다(종을 듣지 않는다).
  */
-export function useServiceText(slug: string | null) {
+export function useServiceText(slug: string) {
   return useQuery({
     queryKey: ["service-text", slug],
-    queryFn: () => servicesApi.readText(slug!),
-    enabled: slug !== null,
+    queryFn: () => servicesApi.readText(slug),
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
@@ -97,7 +86,7 @@ export function useServiceText(slug: string | null) {
  * 고치는 글의 검사 — 글이 바뀔 때마다 core가 다시 읽는다(S7 — 화면은 따로 검사하지 않는다). 다음 답이 오기까지 앞 답을 그대로 그려 카드가
  * 깜빡이지 않는다. 등록부 · 다른 Service 파일이 바뀌어도 다시 읽는다(머리 열쇠 아래라 그 종이 함께 무효화한다).
  */
-export function useServiceDraft(slug: string | null, text: string) {
+export function useServiceDraft(slug: string, text: string) {
   useServicesFeed();
   return useQuery({
     queryKey: [...SERVICES_KEY, { draft: slug }, text],
@@ -111,7 +100,7 @@ export function useServiceDraft(slug: string | null, text: string) {
 export function useSaveServiceText() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ slug, text }: { slug: string | null; text: string }) => servicesApi.saveText(slug, text),
+    mutationFn: ({ slug, text }: { slug: string; text: string }) => servicesApi.saveText(slug, text),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SERVICES_KEY }),
   });
 }

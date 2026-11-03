@@ -109,13 +109,12 @@ const sectionOf = (html: string, label: string) => {
   return { head: textOf(body.slice(0, body.indexOf('role="table"'))).replace(/<div$/, "").trim(), rows };
 };
 
-// 맨 `<button>`은 macOS WebKit의 Tab이 지나친다 — 제목(이름 바꾸기) · 묶음 머리의 + · 경고의 「재설정」도 키보드로 닿아야 한다(restart 03-13b).
-// 꺼진 단추(폴더를 찾을 수 없는 Project의 기준 브랜치)는 서지 않는 것이 맞다.
+// 맨 `<button>`은 macOS WebKit의 Tab이 지나친다 — 묶음 머리의 + · 경고의 「재설정」도 키보드로 닿아야 한다(restart 03-13b).
 const untabbable = (html: string) =>
-  [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]).filter((button) => !/\b(tabindex="0"|disabled="")/.test(button));
+  [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]).filter((button) => !/\btabindex="0"/.test(button));
 
 describe("Project 상세의 Tab", () => {
-  it("판의 단추(제목 · 머리 단추 · ⋯ · 묶음 머리의 + · 줄의 ⋯)에는 모두 Tab이 앉는다", () => {
+  it("판의 단추(머리 단추 · ⋯ · 묶음 머리의 +)에는 모두 Tab이 앉는다", () => {
     expect(untabbable(render("atelier"))).toEqual([]);
   });
 
@@ -138,8 +137,16 @@ describe("Project 상세", () => {
   it("위 카드는 경로 · 기준 브랜치 · 원격 · 추가한 날이다", () => {
     const html = render("atelier");
     const facts = html.slice(html.indexOf("관리한다."), html.indexOf("<section"));
-    // 기준 브랜치 칸은 누르면 목록이 서는 칸이라 고르기 표시(▼ — 정적 그림에서는 글자다)를 든다. 쉴 때는 숨는다(L3).
-    expect(textOf(facts).replace(" ▼", "")).toBe("관리한다. 경로 ~/MyProjects/atelier 기준 브랜치 develop 원격 atelier-app/atelier 추가한 날 2026년 3월 2일");
+    expect(textOf(facts)).toBe("관리한다. 경로 ~/MyProjects/atelier 기준 브랜치 develop 원격 atelier-app/atelier 추가한 날 2026년 3월 2일");
+  });
+
+  // restart 03-15c · 보드 MainProjectDetail · Places `.pl-detail` — 보드 상세에는 고치는 자리가 없다. 이름 · 설명 · 기준 브랜치는 대화(`atelier` MCP ·
+  // Runtime의 설정 도구)로 고친다. 한때 제목을 누르면 이름 칸, 기준 브랜치 카드를 누르면 목록이 섰다.
+  it("제목은 이름 글이고 기준 브랜치는 다른 칸과 같은 카드다 — 눌러 고치는 자리가 없다", () => {
+    const html = render("atelier");
+    expect(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1]).toBe("atelier");
+    const facts = html.slice(html.indexOf("관리한다."), html.indexOf("<section"));
+    expect(facts).not.toMatch(/<button|role="combobox"/);
   });
 
   it("작업공간 · 채팅 · Service 묶음이 수와 줄(이름 · 옆 글 · 최근 활동)로 서고, 줄의 이름이 그곳으로 가는 링크다", () => {
@@ -160,7 +167,7 @@ describe("Project 상세", () => {
     const warn = html.slice(html.indexOf("옛 관리자 화면."), html.lastIndexOf("<div", html.indexOf(">경로<")));
     expect(textOf(warn)).toBe("옛 관리자 화면. 폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요. 재설정");
     expect(warn).toMatch(/<button[^>]*>재설정<\/button>/);
-    expect(textOf(html).replace(" ▼", "")).toContain("경로 ~/old/legacy-admin 기준 브랜치 main 원격 — 추가한 날 2026년 2월 3일");
+    expect(textOf(html)).toContain("경로 ~/old/legacy-admin 기준 브랜치 main 원격 — 추가한 날 2026년 2월 3일");
     expect(sectionOf(html, "작업공간")).toBeNull();
     expect(sectionOf(html, "채팅")).toBeNull();
     expect(sectionOf(html, "Service")).toEqual({ head: "Service 1개", rows: [["/services/admin", "관리자 콘솔 Project 2개 —"]] });

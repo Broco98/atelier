@@ -22,10 +22,9 @@ import {
   토큰색,
   행버튼,
 } from "./harness";
-import { PROJECTS, WORKS } from "./fixtures";
+import { WORKS } from "./fixtures";
 
 const [pinnedWork, plainWork] = WORKS;
-const [billing] = PROJECTS;
 
 // codex-ds 티켓 31 — **입력칸 · 터미널에서 우리 편집 메뉴가 뜬다**(codex-ds 스펙 §9 · S9 · 구현 노트 Q12 · Q17). 우클릭하면 웹뷰의 기본
 // 메뉴 대신 앱의 편집 메뉴가 커서 자리에 선다.
@@ -368,15 +367,16 @@ test("검색 팔레트의 검색어 칸에서 메뉴로 복사 · 붙여넣기�
 
 // ── 이름을 고치는 칸 ──
 
-// 제자리 이름 바꾸기의 입력칸(`InlineRename`, 티켓 28)도 입력칸이다. 그 칸은 대상 메뉴(work · 프로젝트)의 자리에 선다 — 사이드바 행 ·
-// 프로젝트 목록 행의 칸은 행의 우클릭을 받는 목록 안이고, 머리 줄의 칸은 메뉴를 단 이름 자리를 갈아 끼운 것이다. 그래도 우클릭 ·
+// 제자리 이름 바꾸기의 입력칸(`InlineRename`, 티켓 28)도 입력칸이다. 그 칸은 대상 메뉴(work)의 자리에 선다 — 사이드바 행의 칸은 행의
+// 우클릭을 받는 목록 안이고, 머리 줄의 칸은 메뉴를 단 이름 자리를 갈아 끼운 것이다. 그래도 우클릭 ·
 // ⇧F10은 그 대상의 메뉴가 아니라 편집 메뉴를 열고, 메뉴가 포커스를 쥐어도 고치기는 끝나지 않는다(「다른 곳 = 저장」이 아니다) — 닫히면
 // 포커스가 고름째 그 칸으로 돌아와 이어 고친다. 픽스처의 이름 저장은 바뀐 이름을 기억하지 않아 저장은 나간 IPC로 잰다
 // (`inline-rename.spec.ts`).
 //
 // work의 두 칸은 대상 메뉴(`WorkContextMenu`)의 자리다 — 그 자리의 가름도 이 칸을 대상으로 치지 않는다. 그 가름이 넓어지는 날 이 칸을
-// 지키는 것이 자리의 물러섬(`opensEditMenu`)이고, 이 검사가 그날 빨개진다. Project 상세 제목(03 구현 스펙 §16)은 대상 메뉴가 없는 자리다 —
-// 한때 프로젝트 목록 행 · 머리 줄 이름이 대상 메뉴(`TargetMenu`)를 단 이름 칸이었다(03 결정 「10」이 걷었다).
+// 지키는 것이 자리의 물러섬(`opensEditMenu`)이고, 이 검사가 그날 빨개진다. 한때 프로젝트 목록 행 · 머리 줄 이름이 대상 메뉴(`TargetMenu`)를
+// 단 이름 칸이었고(03 결정 「10」이 걷었다), 그 뒤 Project 상세 제목이 대상 메뉴 없는 이름 칸이었다(restart 03-15c가 걷었다 — 보드 상세에는
+// 고치는 자리가 없다).
 
 const 이름칸들: Array<{
   name: string;
@@ -384,7 +384,7 @@ const 이름칸들: Array<{
   url: string;
   /** 칸 밖의 그 자리에서 서는 대상 메뉴 — 이 칸에서는 안 선다. 그 자리에 대상 메뉴가 없으면 `null`이다. */
   menu: "work" | null;
-  /** 고치는 이름의 work · 프로젝트. */
+  /** 고치는 이름의 work. */
   slug: string;
   /** 이름 저장 — 나가는 IPC와 이름이 실리는 인자(`slug` 옆). */
   save: { command: string; key: string };
@@ -416,19 +416,6 @@ const 이름칸들: Array<{
     setUp: async (page) => {
       await 화면머리(page).getByText(plainWork.title, { exact: true }).dblclick();
       return 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true, includeHidden: true });
-    },
-  },
-  {
-    name: "Project 상세 제목",
-    url: `/projects/${billing.slug}`,
-    menu: null,
-    slug: billing.slug,
-    save: { command: "update_project", key: "name" },
-    // 글자 폭 칸이다(`InlineRename`의 `text`) — 짝을 든 상자가 링을 입는다.
-    ring: (field) => field.locator(".."),
-    setUp: async (page) => {
-      await page.getByRole("button", { name: `${billing.name} — 이름 바꾸기`, exact: true }).click();
-      return page.getByRole("main").getByRole("textbox", { name: "Project 이름", exact: true, includeHidden: true });
     },
   },
 ];

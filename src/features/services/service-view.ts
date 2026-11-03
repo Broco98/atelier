@@ -1,7 +1,7 @@
 import type { ProjectView } from "@/features/projects/types";
 import { startSearch, type NewThreadSearch } from "@/routes/-new-thread-search";
 import type { ScopePick } from "./scope";
-import type { SharedService, Service, ServiceProblemKind } from "./types";
+import type { SharedService, Service } from "./types";
 
 // Service 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14 · restart 03-3) — 고치기 화면 카드의 그래프 배치 · 목록 줄 · ⋯ 메뉴 · 시작 단추가
 // 여는 첫 화면, 그리고 Work 화면 머리의 Service 메뉴(§10)와 범위 칩의 범위 메뉴. 상세의 묶음 · 위 카드 · 경고는 `service-detail.ts`다. 화면 부품은 이
@@ -189,12 +189,10 @@ export function serviceSummary(service: Pick<Service, "projects" | "problems">, 
 /** 목록 줄 ⋯의 항목이 하는 일 — 파일로 고치기(고치기 화면) · 경로 복사(그 Service 파일) · 삭제…(확인 창). */
 export type ServiceAct = "edit-file" | "copy-path" | "delete";
 
-/** 상세 ⋯의 항목이 하는 일 — 목록 줄의 셋에 상세에서만 고치는 둘(이름 · 설명)을 더한다. */
-export type ServiceDetailAct = "rename" | "describe" | ServiceAct;
-
 /**
- * 목록 줄의 ⋯(restart 03-3 · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.services`) — 「파일로 고치기 · 경로 복사 · 삭제…」. 세 줄이 같은 줄이다 — 한때(03)
- * 「관계 편집」과 선 아래 빨간 「삭제…」였다. 삭제는 메뉴 안에만 있고 창이 한 번 더 묻는다.
+ * 목록 줄과 상세 머리의 ⋯(restart 03-3 · 03-15c · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.services`) — 「파일로 고치기 · 경로 복사 · 삭제…」. 세 줄이
+ * 같은 줄이다 — 한때(03) 「관계 편집」과 선 아래 빨간 「삭제…」였다. 삭제는 메뉴 안에만 있고 창이 한 번 더 묻는다. 한때(03-3) 상세 ⋯는 앞에
+ * 「이름 바꾸기 · 설명 고치기」가 섰다(칸 단위로 고칠 수 없는 파일이면 빠졌다).
  */
 export function serviceRowMenu(): { act: ServiceAct; label: string }[] {
   return [
@@ -202,28 +200,6 @@ export function serviceRowMenu(): { act: ServiceAct; label: string }[] {
     { act: "copy-path", label: "경로 복사" },
     { act: "delete", label: "삭제…" },
   ];
-}
-
-/** 칸 단위로 고칠 자리를 찾을 수 없는 문제 — 닫히지 않은 frontmatter · YAML이 아님 · 글로 읽을 수 없는 파일. 이때는 파일로만 고친다. */
-const UNEDITABLE: ReadonlySet<ServiceProblemKind> = new Set(["unclosedFrontmatter", "badYaml", "unreadable"]);
-
-/** 이름 · 설명 · Project 빼기를 칸 단위로 고칠 수 있나(core `update_service`가 그 칸만 바꾼다) — 아니면 「파일로 고치기」만이다. */
-export function editableInPlace(service: Pick<Service, "problems">): boolean {
-  return !service.problems.some((problem) => UNEDITABLE.has(problem.kind));
-}
-
-/**
- * 상세 머리의 ⋯(restart 03-3 · 보드 Places 상세 머리의 `.ra-tbtn` — 항목은 그려지지 않았다) — 「이름 바꾸기 · 설명 고치기」 뒤에 목록 줄의 ⋯가 그대로
- * 선다(Project 상세 `detailMenu`와 같은 짜임). 칸 단위로 고칠 수 없는 파일이면 고치기 둘이 빠진다.
- */
-export function serviceDetailMenu(service: Pick<Service, "problems">): { act: ServiceDetailAct; label: string }[] {
-  const edits = editableInPlace(service)
-    ? [
-        { act: "rename", label: "이름 바꾸기" } as const,
-        { act: "describe", label: "설명 고치기" } as const,
-      ]
-    : [];
-  return [...edits, ...serviceRowMenu()];
 }
 
 /** ⋯ 「경로 복사」가 쓰는 그 Service 파일 — Service 파일들의 폴더(core가 홈을 `~`로 접어 준다) 아래 `<slug>.md`다. */
@@ -333,7 +309,7 @@ export function scopeMenu(
 // 한다(S16 — 사람이 말을 더할 수 있다).
 
 /**
- * 「대화로 만들기」(§14 S16 — 목록 「새 Service ⌄」의 기본 · Service 메뉴에 Service가 하나도 없을 때의 「대화로 Service 만들기」) — 작업공간 없는
+ * 「대화로 만들기」(§14 S16 — Services 목록 「+ 만들기」 · Service 메뉴에 Service가 하나도 없을 때의 「대화로 Service 만들기」) — 작업공간 없는
  * 채팅과 이 입력 글. Runtime은 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
  */
 export const HOST_MAKE: NewThreadSearch = {

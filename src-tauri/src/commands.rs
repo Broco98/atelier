@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, AddProject, ArchiveEntry, ArchivedDocs, Destination,
-    DeletedService, FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView, RestoredService, SearchResults,
-    Service, ServiceDetail, ServiceDraft, ServicePatch, ServiceUsage, WorkView, WorkWithSpecTree, WorktreeTree,
+    DeletedService, FolderLook, NewProjectPlace, ProjectRemoval, ProjectUsage, ProjectView, RestoredService, SearchResults,
+    Service, ServiceDetail, ServiceDraft, ServiceUsage, WorkView, WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -73,20 +73,6 @@ pub async fn new_project(parent: String, name: String) -> CmdResult<ProjectView>
     .map_err(|e| format!("Project를 만들지 못했습니다: {e}"))?
 }
 
-#[tauri::command]
-pub async fn update_project(
-    slug: String,
-    name: Option<String>,
-    description: Option<String>,
-    base_branch: Option<String>,
-) -> CmdResult<ProjectView> {
-    tauri::async_runtime::spawn_blocking(move || {
-        atelier_core::update_project(&projects_dir(), &slug, ProjectPatch { name, description, base_branch }).map_err(err)
-    })
-    .await
-    .map_err(|e| format!("Project를 고치지 못했습니다: {e}"))?
-}
-
 /// 재설정 — 폴더를 찾을 수 없는 Project가 새 자리를 고른다(03 구현 스펙 §15 · §16). git 저장소의 뿌리만 받고 경로만 바꾼다.
 #[tauri::command]
 pub async fn relocate_project(slug: String, folder: String) -> CmdResult<ProjectView> {
@@ -138,23 +124,9 @@ pub async fn get_service(slug: String) -> CmdResult<ServiceDetail> {
     atelier_core::service_detail(&data_root(), &slug).map_err(err)
 }
 
-/// 상세의 설명 · 넣기 · 빼기(되돌리기는 `before`로 제자리에 넣는다). 고친 칸만 바꾸고, 새 문제를 만들면 쓰지 않고 그 문제를 말한다.
-#[tauri::command]
-pub async fn update_service(
-    slug: String,
-    name: Option<String>,
-    description: Option<String>,
-    add: Option<Vec<String>>,
-    before: Option<String>,
-    remove: Option<Vec<String>>,
-) -> CmdResult<Service> {
-    let patch =
-        ServicePatch { name, description, add: add.unwrap_or_default(), before, remove: remove.unwrap_or_default() };
-    atelier_core::update_service(&data_root(), &slug, patch).map_err(err)
-}
-
-// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 파일로 고치기 · 직접 만들기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면
-// 새 Service다. 검사는 core 하나이고 화면은 따로 검사하지 않는다(S7) — 저장도 같은 검사로 거절한다.
+// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 파일로 고치기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면 새
+// Service다(core의 길 — 그 화면 「직접 만들기」는 restart 03-15c에서 걷혀 앱은 늘 slug를 보낸다). 검사는 core 하나이고 화면은 따로 검사하지
+// 않는다(S7) — 저장도 같은 검사로 거절한다.
 #[tauri::command]
 pub async fn read_service_text(slug: String) -> CmdResult<String> {
     atelier_core::read_service_text(&data_root(), &slug).map_err(err)
@@ -244,7 +216,7 @@ pub async fn get_work(slug: String) -> CmdResult<WorkWithSpecTree> {
     Ok(works.remove(0))
 }
 
-/// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (update_project와 같은 규칙).
+/// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (core `update_project`와 같은 규칙).
 #[tauri::command]
 pub async fn set_work_title(slug: String, title: String) -> CmdResult<WorkView> {
     atelier_core::update_work_title(&works_dir(), &slug, &title).map_err(err)
@@ -599,7 +571,7 @@ pub async fn processes_snapshot(
         .map_err(|e| format!("프로세스 스냅샷을 찍지 못했습니다: {e}"))
 }
 
-// nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(프로세스 결정 11 · 티켓 29). 모든
+// nav 메타의 요약 — 앱 전체 CPU와 메모리 합계(프로세스 결정 10 · 티켓 29 · restart 03-11). 모든
 // 화면에 선 nav 메타가 10초마다 부른다(`src/features/processes/hooks.ts`). 답은 Rust의 배경 표본이 10초마다 앉힌 마지막 장이다 —
 // 부를 때마다 표를 찍지 않는다. 첫 장이 아직 없으면 그 자리에서 모으므로(표 한 장과 판정) blocking 풀에서 돌린다.
 #[tauri::command]
@@ -1304,7 +1276,7 @@ mod tests {
     /// - `list_projects` · `get_project`(03 티켓 10): Project마다 git을 기다린다(브랜치 · 원격 브랜치 `remoteBranches`).
     /// - `inspect_project_folder`(03 티켓 09): 추가 창이 폴더를 고를 때마다 git을 여러 번 기다린다(저장소인가 · 뿌리 · 원격).
     /// - `create_project` · `new_project`(03 티켓 09): `git init` · 빈 첫 커밋 · 기준 브랜치를 기다린다.
-    /// - `update_project` · `relocate_project`(03 티켓 10 · 09): 기준 브랜치 검사 · 새 자리의 뿌리를 git에게 묻는다.
+    /// - `relocate_project`(03 티켓 09): 새 자리의 뿌리를 git에게 묻는다.
     /// - `check_service`(03 티켓 04): 고치기 화면이 칠 때마다 Service 파일 전부와 등록부를 읽는다.
     /// - `service_usage`(03 티켓 07): Work 파일 전부와 Thread 파일 전부를 읽는다.
     /// - `mention_files`(restart 02b-3): 찾는 자리마다 `git ls-files`를 기다리거나 폴더를 걷는다 — 범위 없음은 등록된 Project 전부다.
@@ -1332,7 +1304,6 @@ mod tests {
             ("inspect_project_folder", "atelier_core::inspect_folder(", "inspect_folder("),
             ("create_project", "atelier_core::add_project(", "add_project("),
             ("new_project", "atelier_core::new_project(", "new_project("),
-            ("update_project", "atelier_core::update_project(", "update_project("),
             ("relocate_project", "atelier_core::relocate_project(", "relocate_project("),
             ("check_service", "atelier_core::draft_service(", "draft_service("),
             ("service_usage", "atelier_core::service_usage(", "service_usage("),

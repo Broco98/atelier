@@ -20,18 +20,18 @@ import {
   화면머리,
   화면토스트,
 } from "./harness";
-import { blankServiceText } from "@/features/services/service-edit";
 import type { ReadingScope } from "@/features/services/scope";
 import type { Service, ServiceDetail, ServiceDraft } from "@/features/services/types";
 
 // 03 구현 스펙 Testing 「Service(`F4-KitSpace`)」 — Service 흐름 하나. 목록 · 상세는 공용 목록 · 상세 틀이다(restart 03-3 — 보드 MainServices ·
-// MainServiceDetail · PlaceSheet): 목록(이름 · 최근 활동) · 「+ 만들기」 메뉴 · 상세(위 카드 · Projects · 작업공간 · 함께 쓰는 Service 묶음 · 「Project
-// 넣기」 · 빼기와 되돌리기 · 문제 경고 · ⋯의 고치기) · 빈 Service · 지우기와 되돌리기, 그리고 고치기 화면(파일로 고치기 · 직접 만들기 — 두 칸 자리 ·
-// 커서 줄 ↔ 조각 · 줄 끝 문제 · 알약 · 저장 꺼짐 · slug 따라옴 · -2 · 버릴지 묻기). 한때(03) 상세에 관계 그래프 · 오른쪽 칸 · 「넣기」 메뉴 · 「대화로
-// 고치기」가 있었다. 목록 ↔ 상세의 돌아옴 · 뒤로 · 앞으로 · ⌘F는 `places.spec.ts`가 잰다.
+// MainServiceDetail · PlaceSheet): 목록(이름 · 최근 활동) · 「+ 만들기」(대화로 만들기) · 상세(위 카드 · Projects · 작업공간 · 함께 쓰는 Service 묶음 ·
+// 「Project 넣기」 · 문제 경고) · 빈 Service · 지우기와 되돌리기, 그리고 파일로 고치기 화면(두 칸 자리 · 커서 줄 ↔ 조각 · 줄 끝 문제 · 알약 · 저장
+// 꺼짐 · 버릴지 묻기). 한때(03) 상세에 관계 그래프 · 오른쪽 칸 · 「넣기」 메뉴 · 「대화로 고치기」가 있었고, 한때(03-3) 「+ 만들기」가 「직접 만들기」
+// (빈 틀의 고치기 화면)를 품은 메뉴 · 상세의 이름 · 설명 칸 · Projects 줄의 「Service에서 빼기」가 있었다(restart 03-15c가 걷었다 — 상세 ⋯ 항목은
+// `places.spec.ts`). 목록 ↔ 상세의 돌아옴 · 뒤로 · 앞으로 · ⌘F는 `places.spec.ts`가 잰다.
 //
-// 이 층에는 core가 없다 — 고치기(`update_service`)의 답은 값을 기억하지 않고, 검사(`check_service`)는 글마다 시험이 둔 답이다. 그래서 재는 것은
-// 「무엇이 나갔나」(IPC와 그 인자)와 「받은 답을 어떻게 그렸나」다. 파일 글이 그대로 남는지 · 검사가 맞는지는 core 단위 표(L1)가 잰다.
+// 이 층에는 core가 없다 — 검사(`check_service`)는 글마다 시험이 둔 답이다. 그래서 재는 것은 「무엇이 나갔나」(IPC와 그 인자)와 「받은 답을 어떻게
+// 그렸나」다. 파일 글이 그대로 남는지 · 검사가 맞는지는 core 단위 표(L1)가 잰다.
 //
 // 다른 흐름이 재는 칸은 여기서 다시 재지 않는다 — 「입력창에서 고름」(빈 범위 칩 · 범위 줄)은 트레이 흐름, 「대화로 만듦」 결과 카드 · 「그
 // Service에 있던 대화」 줄은 대화 속 Service 흐름이 잰다. 「작업공간 화면에서 붙이기」 칸은 다음 판(Work 화면)이다. 시작 단추(작업공간 만들기 ·
@@ -59,9 +59,6 @@ const 첫화면 = (page: Page) => page.getByRole("heading", { name: "무엇을 �
 /** 지금 주소의 search — 한글 씨앗을 풀어 읽는다. */
 const 씨앗 = (page: Page) => Object.fromEntries(new URL(page.url()).searchParams);
 
-/** `update_service`로 나간 인자들, 나간 차례대로. */
-const 고치기 = (page: Page) => ipcArgs(page, "update_service", "slug");
-
 /** 파일 문제 하나 — core 검사가 짓는 모양 그대로다(말까지 core가 짓는다). */
 const 등록안됨 = (line: number, project: string) =>
   ({ line, kind: "unknownProject", project, message: "등록되지 않은 Project예요" }) as const;
@@ -70,7 +67,7 @@ const 등록안됨 = (line: number, project: string) =>
 const 상세답 = (...details: ServiceDetail[]) =>
   answerByArg("slug", { ...SERVICE_DETAILS, ...Object.fromEntries(details.map((detail) => [detail.slug, detail])) });
 
-/** 빈 Service — Project가 없는 Service도 된다(스토리 142). 「직접 만듦」이다. */
+/** 빈 Service — Project가 없는 Service도 된다(스토리 142). */
 const 정산: ServiceDetail = {
   slug: "정산",
   name: "정산",
@@ -123,7 +120,7 @@ test.describe("목록과 만들기", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Service가 없으면 「아직 Service가 없어요」와 가운데 「만들기」 하나가 서고, 그 메뉴는 「대화로 만들기 · 기본」 · 「직접 만들기」 둘이다", async ({ page }) => {
+  test("Service가 없으면 「아직 Service가 없어요」와 가운데 「만들기」 하나가 서고, 누르면 메뉴 없이 「대화로 만들기」다", async ({ page }) => {
     await installFixtureBackend(page, { list_services: [] });
     await page.goto("/services");
 
@@ -137,28 +134,18 @@ test.describe("목록과 만들기", () => {
     await expect(page.getByRole("searchbox", { name: "Service 찾기", exact: true })).toHaveCount(0);
     const 만들기 = 본문칸.getByRole("button", { name: "만들기", exact: true });
     await expect(만들기).toHaveCount(1);
+    await expect(만들기).not.toHaveAttribute("aria-haspopup");
+
+    // 「대화로 만들기」 — Work 없는 새 대화에 맡기는 말을 넣어 연다(S16). 보내기는 사람이 한다. 한때(03-3) 「대화로 만들기 · 기본」 · 「직접 만들기」
+    // 메뉴를 열었다(restart 03-15c가 보드대로 단추 하나로 걷었다).
     await 만들기.click();
-
-    await expect(메뉴(page).getByRole("menuitem")).toHaveText([/^대화로 만들기.*기본$/, /^직접 만들기/]);
-    // 접근 이름은 머리 글자만, 설명은 따로다(03 코드 리뷰 P13).
-    await expect(항목(page, "대화로 만들기")).toHaveAccessibleDescription("Project를 읽고 초안을 내요 — 승인하면 만들어져요");
-    await expect(항목(page, "직접 만들기")).toHaveAccessibleDescription("Service 파일을 빈 틀로 열어요 — 이름과 Project를 적어요");
-
-    // 「대화로 만들기」 — Work 없는 새 대화에 맡기는 말을 넣어 연다(S16). 보내기는 사람이 한다.
-    await 메뉴(page).getByRole("menuitem").first().click();
     await expect(첫화면(page)).toBeVisible();
+    await expect(메뉴(page)).toHaveCount(0);
     expect(씨앗(page)).toEqual({
       new: "thread",
       say: "Service를 만들고 싶어요. 등록된 Project를 읽고 초안(이름 · Project · 설명)을 보여 주세요.",
     });
     expect(await ipcCallArgs(page, "thread_start", "text")).toEqual([]);
-
-    // 「직접 만들기」 — 빈 틀의 Service 파일을 고치기 화면에 연다.
-    await page.goBack();
-    await 본문(page, "Services").getByRole("button", { name: "만들기", exact: true }).click();
-    await 메뉴(page).getByRole("menuitem").nth(1).click();
-    await expect(page).toHaveURL("/services/new");
-    await expect(page.getByRole("textbox", { name: "Service 파일", exact: true })).toBeVisible();
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -251,87 +238,24 @@ test.describe("상세", () => {
     await expect(page.getByRole("button", { name: `범위: ${결제.name}`, exact: true })).toBeVisible();
     // 시작 단추는 열기만 한다 — 보내기는 사람이 한다.
     expect(await ipcCallArgs(page, "thread_start", "text")).toEqual([]);
-    expect(await 고치기(page)).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Projects 묶음 줄은 이름 링크 · 경로 · 최근 활동이고, 줄을 지날 때 서는 ⋯의 「Service에서 빼기」는 그 Project를 빼고 「되돌리기」로 제자리에 다시 넣는다", async ({
-    page,
-  }) => {
+  test("Projects 묶음 줄은 이름 링크 · 경로 · 최근 활동이고 줄을 지나도 끝에 단추가 서지 않으며, 이름 링크가 그 Project 상세로 간다", async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(`/services/${결제.slug}`);
     const 표 = 상세판(page).getByRole("region", { name: "Projects", exact: true }).getByRole("table");
     await expect(몸줄(표)).toHaveCount(2);
     await expect(몸줄(표).first().getByRole("cell")).toHaveText([`${billing.name}${billing.path}`, /\S/, ""]);
 
-    // 줄 끝 ⋯는 쉴 때 보이지 않고 줄을 지나면 선다(보드 상세 줄에는 오른쪽 단추가 없다). 한때 ⋯가 「Project 보기 · Service에서 빼기」였다.
-    const 단추 = 표.getByRole("button", { name: `${billing.name} 메뉴`, exact: true });
-    expect(await 칠한값(단추, "opacity")).toEqual(["0"]);
+    // 보드 상세 줄에는 오른쪽 단추가 없다(restart 03-15c). 한때(03-3) 줄을 지나면 ⋯(「Service에서 빼기」 — 「되돌리기」 토스트)가 섰다. Project는 대화나
+    // 「파일로 고치기」로 뺀다. 이름 · 설명도 그렇다 — 상세 ⋯ 항목은 `places.spec.ts`가 잰다.
     await 몸줄(표).first().hover();
-    await expect.poll(async () => (await 칠한값(단추, "opacity"))[0]).toBe("1");
-    await 단추.click();
-    await expect(메뉴(page).getByRole("menuitem")).toHaveText(["Service에서 빼기"]);
-    // 빼기 — 첫 줄(billing)을 빼면 「되돌리기」가 그 뒤에 있던 ledger 앞에 다시 넣는다(제자리).
-    await 항목(page, "Service에서 빼기").click();
-    await expect.poll(() => 고치기(page)).toEqual([{ slug: 결제.slug, remove: [billing.slug] }]);
-    const 뺀뒤 = 화면토스트(page, `Service에서 뺐어요 — ${billing.slug}`);
-    await 뺀뒤.getByRole("button", { name: "되돌리기", exact: true }).click();
-    await expect
-      .poll(() => 고치기(page))
-      .toEqual([
-        { slug: 결제.slug, remove: [billing.slug] },
-        { slug: 결제.slug, add: [billing.slug], before: ledger.slug },
-      ]);
-    await expect(뺀뒤).toHaveCount(0);
+    await expect(표.getByRole("button")).toHaveCount(0);
 
     // 이름 링크 — 그 Project 상세로.
     await 표.getByRole("link", { name: ledger.name, exact: true }).click();
     await expect(page).toHaveURL(`/projects/${ledger.slug}`);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test("설명 · 이름은 ⋯의 「설명 고치기」 · 「이름 바꾸기」로 그 자리에서 고치고(Esc는 그만두기), 둘 다 그 칸만 고친다", async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/services/${결제.slug}`);
-    const 판 = 상세판(page);
-    const 상세메뉴 = 판.getByRole("button", { name: `${결제.name} 메뉴`, exact: true });
-
-    // 한때(03) 설명은 「설명」 묶음의 연필 · 「저장했어요」였고 제목 끝에 연필이 섰다 — 이제 ⋯가 이름 아래 그 자리를 칸으로 바꾼다(restart 03-3).
-    await 상세메뉴.click();
-    await expect(메뉴(page).getByRole("menuitem")).toHaveText(["이름 바꾸기", "설명 고치기", "파일로 고치기", "경로 복사", "삭제…"]);
-    await 항목(page, "설명 고치기").click();
-    const 설명 = 판.getByRole("textbox", { name: "설명", exact: true });
-    await expect(설명).toBeFocused();
-    await expect(판.getByText("Runtime이 이 Service에서 일할 때 처음 읽어요", { exact: true })).toBeVisible();
-    // Esc는 그만두기다 — 친 글을 버리고 아무것도 고치지 않는다(Project 상세의 설명 칸과 같은 칸 — 03 코드 리뷰 D1). 아래 「그 칸만 고친다」가
-    // 나간 고치기를 모두 센다.
-    await 설명.fill("버릴 글");
-    await 설명.press("Escape");
-    await expect(설명).toHaveCount(0);
-    await expect(판.getByText(결제.description, { exact: true })).toBeVisible();
-    await 상세메뉴.click();
-    await 항목(page, "설명 고치기").click();
-    await expect(설명).toBeFocused();
-    await 설명.fill("결제 · 정산 · 환불");
-    await 판.getByRole("button", { name: "저장", exact: true }).click();
-    await expect(설명).toHaveCount(0);
-
-    await 상세메뉴.click();
-    await 항목(page, "이름 바꾸기").click();
-    const 이름칸 = 판.getByRole("textbox", { name: "Service 이름", exact: true });
-    await expect(이름칸).toBeFocused();
-    await 이름칸.fill("결제 서비스");
-    await 이름칸.press("Enter");
-    await expect
-      .poll(() => 고치기(page))
-      .toEqual([
-        { slug: 결제.slug, description: "결제 · 정산 · 환불" },
-        { slug: 결제.slug, name: "결제 서비스" },
-      ]);
-    // 제목을 눌러도 그 칸이다.
-    await 판.getByRole("button", { name: `${결제.name} — 이름 바꾸기`, exact: true }).click();
-    await expect(이름칸).toBeFocused();
-    await 이름칸.press("Escape");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -367,16 +291,13 @@ test.describe("상세", () => {
     await expect(경고문.locator("xpath=..")).toHaveText("등록되지 않은 Project가 있어요. Service 파일 6번째 줄 · nope파일로 고치기");
     await expect(판.getByRole("region", { name: "문제", exact: true })).toHaveCount(0);
     await expect(판.getByRole("region", { name: "Projects", exact: true }).getByRole("link")).toHaveText([billing.name, ledger.name]);
-    // 칸 자리를 아는 파일이라 고치는 문은 그대로 선다.
-    await expect(판.getByRole("button", { name: `${결제.name} — 이름 바꾸기`, exact: true })).toBeVisible();
 
     await 경고문.locator("xpath=..").getByRole("button", { name: "파일로 고치기", exact: true }).click();
     await expect(page).toHaveURL(`/services/${encodeURIComponent(결제.slug)}/edit`);
-    expect(await 고치기(page)).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("칸 자리를 모르는 파일이면 고치는 문(제목 · ⋯의 고치기 둘 · 줄 ⋯)이 꺼지는 게 아니라 서지 않고, 경고가 다른 문제의 수까지 말한다", async ({ page }) => {
+  test("칸 자리를 모르는 파일(닫히지 않은 frontmatter)도 경고가 다른 문제의 수까지 말하고, ⋯의 「파일로 고치기」가 그 파일의 고치기 화면이다", async ({ page }) => {
     const 깨진: ServiceDetail = {
       ...SERVICE_DETAILS[결제.slug],
       problems: [{ line: 1, kind: "unclosedFrontmatter", message: "frontmatter가 닫히지 않았어요" }, 등록안됨(5, "nope")],
@@ -387,13 +308,10 @@ test.describe("상세", () => {
 
     await expect(판.getByText("frontmatter가 닫히지 않았어요. Service 파일 1번째 줄 · 다른 문제 1개", { exact: true })).toBeVisible();
     await expect(판.getByRole("heading", { level: 1 })).toHaveText(결제.name);
-    await expect(판.getByRole("heading", { level: 1 }).getByRole("button")).toHaveCount(0);
-    await expect(판.getByRole("button", { name: `${billing.name} 메뉴`, exact: true })).toHaveCount(0);
     await 판.getByRole("button", { name: `${결제.name} 메뉴`, exact: true }).click();
     await expect(메뉴(page).getByRole("menuitem")).toHaveText(["파일로 고치기", "경로 복사", "삭제…"]);
     await 항목(page, "파일로 고치기").click();
     await expect(page).toHaveURL(`/services/${encodeURIComponent(결제.slug)}/edit`);
-    expect(await 고치기(page)).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -701,66 +619,6 @@ test.describe("파일 고치기 화면", () => {
     await expect(page).toHaveURL(`/services/${encodeURIComponent(결제.slug)}`);
     await expect(떠날때확인(page)).toHaveCount(0);
     expect(await ipcCallArgs(page, "save_service_text", "text")).toHaveLength(1);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test("직접 만들기는 빈 틀(「문제 1개」 · name 줄 커서)로 열리고, 이름을 적으면 파일 이름이 따라오며 겹치면 -2가 붙고, 「만들기」면 그 Service 상세로 간다", async ({
-    page,
-  }) => {
-    // 빈 틀은 오늘 날짜를 적는다 — 페이지 시계를 세워 그 글을 시험이 안다.
-    const 오늘 = new Date("2026-10-26T12:00:00");
-    const 빈틀 = blankServiceText(오늘);
-    const 이름 = (name: string) => 빈틀.replace("name: \n", `name: ${name}\n`);
-    const 새답 = (slug: string, name: string, suffix: string | null): ServiceDraft => ({
-      service: { slug, name, projects: [], createdAt: "2026-10-26", createdBy: null, description: "", problems: [] },
-      pieces: { name: 2, projects: { first: 3, last: 3 }, body: null },
-      shared: [],
-      registered: PROJECTS.map((one) => one.slug),
-      folder: "~/.atelier/services",
-      suffix,
-    });
-    const 빈답: ServiceDraft = {
-      ...새답("", "", null),
-      service: { ...새답("", "", null).service, problems: [{ line: 2, kind: "noName", message: "이름(name)이 비어 있어요" }] },
-    };
-    const 만든것: ServiceDetail = { ...새답("원장-도구-2", "원장 도구", "-2").service, shared: [] };
-    await page.clock.setFixedTime(오늘);
-    await installFixtureBackend(page, {
-      check_service: 검사({ [이름("정산")]: 새답("정산", "정산", null), [이름("원장 도구")]: 새답("원장-도구-2", "원장 도구", "-2") }, 빈답),
-      save_service_text: 만든것,
-      get_service: 상세답(만든것),
-    });
-    await page.goto("/services/new");
-
-    await expect(화면머리(page)).toHaveText("Services/새 Service");
-    const 판 = 본문(page, "새 Service");
-    await expect(편집기(page)).toHaveValue(빈틀);
-    await expect(판.getByText("새 파일 · 아직 없음", { exact: true })).toBeVisible();
-    // 갓 연 틀 — 이름이 비어 「문제 1개」, 경로는 자리표시, 처음 커서는 name 줄(그 줄이 첫 문제 줄이다).
-    await expect(경로(page)).toHaveText("~/.atelier/services/이름.md");
-    await expect(알약(page)).toHaveText("문제 1개");
-    await expect(편집기줄(page, 2)).toContainText("← 이름(name)이 비어 있어요");
-    await expect(켜진조각(page).getByText("2행", { exact: true })).toBeVisible();
-    await expect(판.getByRole("button", { name: "만들기", exact: true })).toBeDisabled();
-    const 안내 = (첫말: string) => 판.getByText(`${첫말} · Project는 billing · ledger 중에서`, { exact: true });
-    await expect(안내("이름(name)을 적으면 파일 이름이 따라와요 — 만든 뒤엔 바뀌지 않아요")).toBeVisible();
-
-    // 이름을 적으면 경로가 따라온다.
-    await 편집기(page).fill(이름("정산"));
-    await expect(경로(page)).toHaveText("~/.atelier/services/정산.md");
-    await expect(알약(page)).toHaveText("문제 없어요");
-    await expect(판.getByRole("button", { name: "만들기", exact: true })).toBeEnabled();
-
-    // 같은 이름의 Service가 있으면 -2 — 경로와 안내 줄이 그렇게 말한다.
-    await 편집기(page).fill(이름("원장 도구"));
-    await expect(경로(page)).toHaveText("~/.atelier/services/원장-도구-2.md");
-    await expect(안내("같은 이름의 Service가 있어 파일 이름에 -2를 붙였어요")).toBeVisible();
-    await expect(판.getByText("새 파일 · 아직 없음", { exact: true })).toBeVisible();
-
-    await 판.getByRole("button", { name: "만들기", exact: true }).click();
-    await expect(page).toHaveURL(`/services/${encodeURIComponent(만든것.slug)}`);
-    expect(await ipcArgs(page, "save_service_text", "text")).toEqual([{ slug: null, text: 이름("원장 도구") }]);
-    await expect(본문(page, "Services 상세").getByRole("heading", { level: 1 })).toHaveText("원장 도구");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });

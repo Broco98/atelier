@@ -32,8 +32,6 @@ import { expireEndings, useEndMarks } from "./endings-store";
 import { OPEN_AT_FIRST, foldKey, liveFoldKeys, type Folds, type RowFold, type SectionId } from "./folds";
 import { useCleanupLog, useProcessSnapshot } from "./hooks";
 import { sumMetrics } from "./metrics";
-import { openProcessesScreen, useSeeWhileLooking } from "./looked";
-import { lookSourceOf, lookablesOf, ownerlessShellKeys } from "./needs-look";
 import { endAsk, straysOf } from "./process-groups";
 import {
   exceptionName,
@@ -139,19 +137,10 @@ function ProcessesPage() {
     () => ({ open: openAsk, start: (key: string, shown: ProcessSnapshot | undefined) => setOpenAsk({ key, shown }), close: () => setOpenAsk(null) }),
     [openAsk],
   );
-  // **이 화면이 서 있는 동안이 「화면이 열려 있다」다**(티켓 29) — nav 메타의 `●`가 창 포커스와 함께 이것으로 「봤다」를 가른다.
-  useEffect(() => openProcessesScreen(), []);
   // 스토어의 셸 전부 — 화면마다 갈리지 않고 한 벌이다(owner가 화면을 싣는다). 상태 칸이 셸 상태를 읽으므로 좁히지 않는다.
   const shells = useStore(terminalStore, (state) => state.shells);
   const list = useWorkList(shells.some((shell) => slugOfOwner(shell.owner) !== null));
   const goToShell = useGoToShell();
-  // **보는 동안 이 화면이 보인 손볼 것도 본 것이다**(티켓 29 · S41 — `useSeeWhileLooking`). nav 메타의 요약은 최대 20초 늦다 — 그것으로만
-  // 앉히면 이 스냅샷(2초)에 먼저 선 출처 불명 · 정리 기록이 떠난 뒤 늦은 요약에 실려 `●`를 켠다. 이름은 요약과 같은 이름이다.
-  const shown = useMemo(
-    () => (measured ? lookablesOf(ownerlessShellKeys(shells), lookSourceOf(measured)) : NOTHING_SHOWN),
-    [shells, measured],
-  );
-  useSeeWhileLooking("screen", shown);
 
   const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
   const [closedOffscreen, markOffscreenClosed] = useClosedOffscreen(snapshot?.pool);
@@ -202,7 +191,8 @@ function ProcessesPage() {
             instances: strays.instances.length > 0,
             exceptions: strays.exceptions.length > 0,
             others: snapshot.breakdown.apps.length > 0,
-            log: events.length > 0,
+            // 줄은 대상마다다(`cleanupRows`) — 대상 없는 사건만 있으면 구획이 안 선다.
+            log: events.some((event) => event.targets.length > 0),
           }),
           rows: liveFoldKeys(snapshot, [...tree, ...ownerless]),
         }
@@ -342,7 +332,7 @@ function ProcessesPage() {
                           {offscreen.length > 0 && (
                             // **화면 밖 셸**(프로세스 스펙 S42 · 티켓 32) — 풀에는 있는데 화면이 모르는 셸. 새로고침 중에 끝난 spawn이 남길 수 있다
                             // (추정). 스토어의 칸이 없어 이름도 주인도 모른다 — 「셸」로 서고 자손은 셸 키로 잇는다. [닫기]는 셸 탭의 ×와 같은 규칙으로
-                            // 묻는다(`closeOffscreenShell`). 닫은 줄은 곧바로 빠진다(`useClosedOffscreen`). `●`를 안 켠다.
+                            // 묻는다(`closeOffscreenShell`). 닫은 줄은 곧바로 빠진다(`useClosedOffscreen`).
                             <Section
                               title="화면 밖 셸"
                               note={countNote(offscreen.length)}
@@ -486,9 +476,6 @@ const NO_FLAT: ReadonlyArray<FlatRow> = [];
 
 /** 스냅샷 전의 빈 다른 앱 — 늘 같은 배열이다. */
 const NO_APPS: ReadonlyArray<OtherAppRow> = [];
-
-/** 스냅샷 전의 「보인 손볼 것」 — 늘 같은 배열이라 보는 동안의 이펙트가 렌더마다 다시 돌지 않는다. */
-const NOTHING_SHOWN: ReadonlyArray<string> = [];
 
 /** 기록 전의 빈 기록 — 늘 같은 배열이다. */
 const NO_EVENTS: ReadonlyArray<CleanupEvent> = [];

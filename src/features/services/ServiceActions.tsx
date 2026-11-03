@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Copy, FilePen, MoreHorizontal, Trash2, type LucideIcon } from "lucide-react";
+import { Copy, MoreHorizontal, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { PLACE_ROW_BUTTON } from "@/components/catalog/PlaceList";
 import { copyText } from "@/components/shell/copy-text";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,10 +16,10 @@ import type { Service } from "./types";
 // 한때(03) ⋯는 「관계 편집 · 삭제…」였다.
 
 /**
- * ⋯ 항목의 글리프(보드 `MENUS.services` — 연필 · 복사 · 지우기). 「파일로 고치기」는 연필 대신 파일 위 연필이다 — 상세 ⋯에서는 「이름 바꾸기」가 연필이라
- * (Project 상세와 같다) 둘이 갈리게 했다. 보드 `ic-trash`는 그림이 깨진다 — 앱의 휴지통을 쓴다(README).
+ * ⋯ 항목의 글리프(보드 `MENUS.services` — 연필 · 복사 · 지우기). 보드 `ic-trash`는 그림이 깨진다 — 앱의 휴지통을 쓴다(README). 한때(03-3) 「파일로
+ * 고치기」는 파일 위 연필이었다 — 상세 ⋯의 「이름 바꾸기」 연필과 갈리려던 것이라, 그 항목이 걷히며(restart 03-15c) 보드의 연필로 돌아왔다.
  */
-export const SERVICE_ACT_ICONS: Record<ServiceAct, LucideIcon> = { "edit-file": FilePen, "copy-path": Copy, delete: Trash2 };
+export const SERVICE_ACT_ICONS: Record<ServiceAct, LucideIcon> = { "edit-file": Pencil, "copy-path": Copy, delete: Trash2 };
 
 /** ⋯의 셋을 하는 길 — `onDelete`가 확인 창을 연다. 경로 복사는 폴더를 읽은 뒤에만 고를 수 있다(`canCopy`). */
 export function useServiceActs(onDelete: (service: Service) => void) {
