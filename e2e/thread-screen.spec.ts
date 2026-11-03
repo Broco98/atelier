@@ -96,7 +96,8 @@ async function openThread(page: Page, view: ThreadView, lines: readonly RecordLi
 // 채팅 탭에 서고(02a-4) 이름 · ⋯는 탭이 맡는다(02a-5). 한때 이 시험은 Work에 이은 Thread의 머리(「폴더 · 작업공간 이름 ›」 · 오른쪽 끝 「…」 ·
 // 요약 고정 토글)를 쟀다 — 그 머리가 없어져, 작업공간 밖 Thread로 남은 것(이름 · 제자리 바꾸기 · 이름 바로 뒤 「…」 · 오른쪽 끝 요약 단추)을
 // 잰다. 「Work 이름이 카드를 연다」는 읽기만 되는 Thread(보관된 작업공간)의 머리가 들고 `thread-archived`가 잰다.
-test("머리 줄 — 작업공간 밖 Thread는 이름이 서서 그 자리에서 바뀌고, 이름 바로 뒤 「…」, 오른쪽 끝 요약 단추가 카드를 여닫는다", async ({
+// 이름은 「요약 카드 열기」 단추이고 이름 바꾸기는 F2 · 「…」다(restart 03-15a — 한때 두 번 누르면 이름 바꾸기였다).
+test("머리 줄 — 작업공간 밖 Thread는 이름을 누르면 요약 카드가 열리고 F2로 그 자리에서 바뀌며, 이름 바로 뒤 「…」, 오른쪽 끝 요약 단추가 카드를 여닫는다", async ({
   page,
 }) => {
   await openThread(page, looseA, twoTurns);
@@ -129,11 +130,25 @@ test("머리 줄 — 작업공간 밖 Thread는 이름이 서서 그 자리에�
   await page.mouse.move(720, 450);
   await expect.poll(async () => (await 모양(요약토글(page), ["background-color"]))["background-color"]).toBe("rgba(0, 0, 0, 0)");
 
-  // 제자리 바꾸기 — 이름을 두 번 누르면 그 자리가 입력칸이 되고, Enter가 새 이름을 보낸다. 입력칸이 걷히면 포커스는 이름으로 돌아온다.
+  // 제목은 「요약 카드 열기: <제목>」 단추다(restart 03-15a · 시안 Main `isLoose` `.ra-crumb button`) — 누르면 카드가 열리고, 열려 있으면 그대로다.
+  // 두 번 눌러도 이름 바꾸기에 들지 않는다(한때 두 번 누르면 이름 바꾸기였다 — 02a-7).
+  const 이름칸 = 머리줄(page).getByRole("textbox", { name: "채팅 이름", exact: true });
+  await expect(name).toHaveAccessibleName(`요약 카드 열기: ${looseA.title}`);
+  await name.click();
+  await expect(카드(page)).toBeVisible();
+  await expect(요약토글(page)).toHaveAttribute("aria-pressed", "true");
+  await name.dblclick();
+  await expect(카드(page)).toBeVisible();
+  await expect(이름칸).toHaveCount(0);
+  await 요약토글(page).click();
+  await expect(카드(page)).toHaveCount(0);
+
+  // 제자리 바꾸기 — 제목에 포커스를 두고 F2를 누르면 그 자리가 입력칸이 되고, Enter가 새 이름을 보낸다. 입력칸이 걷히면 포커스는 제목으로
+  // 돌아온다(스토리 92).
   const renamed = "환불 버그 고친 이야기";
   await replaceAnswer(page, "thread_rename", { ...summaryOf(looseA), title: renamed });
-  const 이름칸 = 머리줄(page).getByRole("textbox", { name: "채팅 이름", exact: true });
-  await name.dblclick();
+  await name.focus();
+  await page.keyboard.press("F2");
   await expect(이름칸).toBeFocused();
   await expect(이름칸).toHaveValue(looseA.title);
   await 이름칸.fill(renamed);
@@ -144,7 +159,7 @@ test("머리 줄 — 작업공간 밖 Thread는 이름이 서서 그 자리에�
   const shown = 머리줄(page).getByText(renamed, { exact: true });
   await expect(shown).toBeFocused();
 
-  // F2도 그 자리를 연다 — Esc는 바꾸지 않고 닫는다.
+  // 다시 F2 — Esc는 바꾸지 않고 닫는다.
   await page.keyboard.press("F2");
   await expect(이름칸).toBeFocused();
   await page.keyboard.press("Escape");

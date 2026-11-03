@@ -1647,12 +1647,51 @@ export const shownEntry = (entry: Entry): boolean => entry.kind !== "thought" ||
 /** 접으면 숨는 일인가 — 도구 줄 · 글이 있는 생각 · 승인 결정 줄 같은 작업 로그의 줄이다. 답 글과 접힌 턴에도 남는 줄(`keptFolded`)은 아니다. */
 const foldsAway = (entry: Entry): boolean => shownEntry(entry) && !keptFolded(entry);
 
+/** 일인가 — 접으면 숨는 줄 가운데 답 글이 아닌 것(도구 줄 · 글이 있는 생각 · 승인 결정 줄)이다. */
+const workEntry = (entry: Entry): boolean => foldsAway(entry) && entry.kind !== "message";
+
+/** 작업 로그의 줄인가 — 일, 그리고 턴 끝 자리를 가르는 질문 · 결과 카드(`finalFrom`). */
+const logEntry = (entry: Entry): boolean => entry.kind === "question" || entry.kind === "result" || workEntry(entry);
+
 /**
- * 도는 턴의 머리줄을 세우나(States 보드 05 「도구 실행」 · restart 02b-1) — 접으면 숨는 일이 하나라도 왔다. 말만 흘리는 턴과 아직 아무것도 오지 않은 턴은
+ * 도는 턴의 머리줄을 세우나(States 보드 05 「도구 실행」 · restart 02b-1) — 일이 하나라도 왔다. 말만 흘리는 턴과 아직 아무것도 오지 않은 턴은
  * 머리 없이 선다(States 보드 04 · 12의 말만 한 턴) — 끝나도 구분선이 서지 않는 턴이라(`workLine`) 머리가 섰다 걷히며 글이 튀지 않는다. 일이 오면 그때 선다.
  */
 export function workShown(turn: Turn): boolean {
-  return turn.entries.some((entry) => foldsAway(entry) && entry.kind !== "message");
+  return turn.entries.some(workEntry);
+}
+
+/** 글이 둘째 줄로 넘어갔나 — 글이 선 줄 뒤에 줄바꿈과 글이 또 있다. 앞의 빈 줄 · 끝의 줄바꿈만으로는 아니다. */
+function pastFirstLine(text: string): boolean {
+  const start = text.search(/\S/);
+  if (start < 0) return false;
+  const lineEnd = text.indexOf("\n", start);
+  return lineEnd >= 0 && /\S/.test(text.slice(lineEnd + 1));
+}
+
+/**
+ * 도는 턴의 마지막 답이 시작했으면 접히는 줄의 끝(그 앞의 줄이 작업 로그로 접힌다), 아니면 null이다(States 보드 12 「답 흐르는 중」 · restart 03-15a).
+ * `flowing`은 지금 흐르는 답 글이다 — 기록 줄이 되기 전이라 턴의 줄에 없다.
+ *
+ * **마지막 답은 일 뒤의 글이 둘째 줄로 넘어간 때다**(`spec/결정.md` 「03-15a」). 흐르는 글이 마지막 답인지는 턴이 끝나야 안다 — Claude · Codex는
+ * 글 · 도구 · 글을 섞어 내고, 도구 앞의 설명은 한두 문장 한 줄이다(축복한 `thread-work`의 82자 · 48자). 끝 답은 여러 줄이다(같은 기록의 963자).
+ * 그래서 한 줄 글에는 접지 않는다. 한 줄로 끝나는 답은 턴이 끝날 때 접힌다(`workLine`).
+ * - 일이 앞에 없으면 접을 것이 없어 null이다. 접히는 줄의 끝은 그 답 앞의 마지막 로그 줄(`logEntry`) 바로 뒤다.
+ * - **한 번 마지막 답으로 본 글은 뒤에 일이 다시 와도 그대로다** — 접힌 자리는 그 글 앞에 머물고, 뒤에 온 일은 그 아래에 이어 선다. 그래서 로그가
+ *   접혔다 펴지며 출렁이지 않는다. 그런 턴은 끝날 때 끝 답 앞의 줄이 모두 로그로 든다(`finalFrom`).
+ */
+export function answerFrom(turn: Turn, flowing: string | null): number | null {
+  let cut = 0;
+  let folds = false;
+  for (const [at, entry] of turn.entries.entries()) {
+    if (logEntry(entry)) {
+      cut = at + 1;
+      folds ||= workEntry(entry);
+    } else if (entry.kind === "message" && folds && pastFirstLine(entry.text)) {
+      return cut;
+    }
+  }
+  return flowing !== null && folds && pastFirstLine(flowing) ? cut : null;
 }
 
 /**
@@ -1688,6 +1727,19 @@ function roughCount(count: number): string {
  * 「승인 대기」).
  */
 export function runningHeadline(turn: Pick<Turn, "startedAt" | "waitedMs" | "waitingSince">, now: number): string {
+  return `${spoken(workedFor(turn, now))} 동안 작업 중입니다`;
+}
+
+/**
+ * 마지막 답이 흐르는 턴의 머리줄(States 보드 12 · restart 03-15a — `answerFrom`) — 끝난 턴의 머리와 같은 「N초 동안 작업함」이고 시계는 턴이 끝날
+ * 때까지 간다(도는 머리와 같은 셈이라 끝나는 순간 시간이 뛰지 않는다).
+ */
+export function answeringHeadline(turn: Pick<Turn, "startedAt" | "waitedMs" | "waitingSince">, now: number): string {
+  return `${spoken(workedFor(turn, now))} 동안 작업함`;
+}
+
+/** 도는 턴이 일한 시간 — 보낸 때부터 지금까지에서 사람의 답을 기다린 시간을 뺀다. 물음이 걸려 있으면 그 물음이 걸린 때에 멈춰 있다. */
+function workedFor(turn: Pick<Turn, "startedAt" | "waitedMs" | "waitingSince">, now: number): number {
   const until = turn.waitingSince === null ? now : Date.parse(turn.waitingSince);
-  return `${spoken(until - Date.parse(turn.startedAt) - turn.waitedMs)} 동안 작업 중입니다`;
+  return until - Date.parse(turn.startedAt) - turn.waitedMs;
 }

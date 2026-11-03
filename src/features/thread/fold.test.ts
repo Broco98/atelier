@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
+  answerFrom,
   thinkingLine,
   continueAsk,
   cutNotice,
@@ -120,6 +121,57 @@ describe("작업 구분선", () => {
     expect(shown([sent])).toBe(false);
     expect(shown([sent, thinking, saying, planning])).toBe(false);
     expect(shown([sent, thinking, saying, planning, reading])).toBe(true);
+  });
+
+  // States 보드 12 「답 흐르는 중」(restart 03-15a) — 마지막 답이 흐르기 시작하면 로그가 접힌다. 흐르는 글이 마지막 답인지는 턴이 끝나야 알므로,
+  // 일 뒤의 글이 둘째 줄로 넘어가면 마지막 답으로 본다 — 도구 앞의 설명은 한 줄이다(축복한 `thread-work`: 일 사이의 글 82자 · 48자는 한 줄,
+  // 끝 답 963자는 여러 줄). 접히는 줄은 그 답 앞의 마지막 로그 줄까지다.
+  describe("도는 턴의 마지막 답", () => {
+    const worked = record("thread-work");
+    const turnOf = (lines: readonly RecordLine[]) => foldThread(lines).turns[0];
+    /** 그 글 앞의 마지막 도구 줄 바로 뒤 — 접히는 줄의 끝이다(그 사이의 빈 생각은 그리지 않는 줄이다). */
+    const lastLogBefore = (turn: ReturnType<typeof turnOf>, text: string) => {
+      const answer = turn.entries.findIndex((entry) => entry.kind === "message" && entry.text.startsWith(text));
+      const tools = turn.entries.slice(0, answer).map((entry) => entry.kind);
+      return tools.lastIndexOf("tool") + 1;
+    };
+
+    it("일 뒤의 글이 한 줄이면 아직 마지막 답이 아니다", () => {
+      expect(answerFrom(turnOf(through(worked, 47)), null)).toBeNull();
+      expect(answerFrom(turnOf(through(worked, 59)), null)).toBeNull();
+    });
+
+    it("일 뒤의 글이 둘째 줄로 넘어가면 마지막 답이고, 그 앞의 로그가 접힌다", () => {
+      const turn = turnOf(through(worked, 69));
+      const answer = lastLogBefore(turn, "버그는 찾았고");
+      expect(answer).toBeGreaterThan(0);
+      expect(answerFrom(turn, null)).toBe(answer);
+    });
+
+    it("흐르는 글도 같다 — 둘째 줄이 서야 접히고, 줄바꿈만 오면 아직이다", () => {
+      const turn = turnOf(through(worked, 68));
+      expect(answerFrom(turn, "버그는 찾았고, 재현도 해 봤어요.")).toBeNull();
+      expect(answerFrom(turn, "버그는 찾았고, 재현도 해 봤어요.\n\n")).toBeNull();
+      expect(answerFrom(turn, "버그는 찾았고, 재현도 해 봤어요.\n\n**원인")).toBe(turn.entries.map((entry) => entry.kind).lastIndexOf("tool") + 1);
+      expect(answerFrom(turn, "\n\n버그는 찾았고")).toBeNull();
+    });
+
+    it("일이 오기 전의 글은 여러 줄이어도 마지막 답이 아니다 — 접을 로그가 없다", () => {
+      const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "설명해 줘" } };
+      const said = update(2, 2, { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "첫 줄\n둘째 줄" } });
+      expect(answerFrom(turnOf([sent, said]), null)).toBeNull();
+      expect(answerFrom(turnOf([sent]), "첫 줄\n둘째 줄")).toBeNull();
+    });
+
+    it("마지막 답 뒤에 일이 다시 와도 접힌 자리는 그대로다 — 접혔다 펴지지 않는다", () => {
+      const turn = turnOf(through(worked, 69));
+      const answer = lastLogBefore(turn, "버그는 찾았고");
+      const more = [
+        ...through(worked, 69),
+        update(90, 50, { sessionUpdate: "tool_call", toolCallId: "late", title: "Read a.rs", kind: "read", status: "in_progress" }),
+      ];
+      expect(answerFrom(turnOf(more), null)).toBe(answer);
+    });
   });
 
   it("안내 줄이 없는 끝 까닭은 도구가 없어도 그 까닭이 선다 — 펼칠 것은 없다", () => {

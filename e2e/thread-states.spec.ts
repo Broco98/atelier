@@ -139,8 +139,9 @@ test("사람이 멈춘 턴(States 14)은 머리 「N초 후에 중단했습니�
   const head = 흐름(page).getByRole("button", { name: /초 후에 중단했습니다$/ });
   await expect(head).toHaveAttribute("aria-expanded", "true");
   const rule = head.locator("xpath=../div[@aria-hidden]");
-  // 로그의 첫 줄은 머리 다음 칸이다(묻지 않고 허용한 판정의 방패 줄 — 그 아래 「중지됨 …」).
-  const firstEntry = head.locator("xpath=ancestor::*[@data-turn-head][1]/following-sibling::*[1]");
+  // 로그의 첫 줄은 머리 다음 칸 — 작업 로그 상자(restart 03-15a — 도는 턴의 상자가 그대로 펼친 채 남는다)의 첫 묶음이다(묻지 않고 허용한 판정의 방패
+  // 줄 — 그 아래 「중지됨 …」).
+  const firstEntry = head.locator("xpath=ancestor::*[@data-turn-head][1]/following-sibling::*[1]").locator("[data-log-run]").first();
   expect(Math.round((await 상자(firstEntry)).y - (await 상자(rule)).bottom), "선 → 첫 줄").toBe(12);
   const stoppedRow = 흐름(page).getByRole("group", { name: /^중지됨 / });
   expect((await 상자(head)).y).toBeLessThan((await 상자(stoppedRow)).y);

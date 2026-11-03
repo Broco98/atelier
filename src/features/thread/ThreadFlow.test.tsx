@@ -601,32 +601,37 @@ describe("멈춘 턴", () => {
     expect(markup.indexOf("data-log-run")).toBeGreaterThan(markup.indexOf("후에 중단했습니다"));
   });
 
-  // restart 02b-7 — 멈추는 순간 그려 둔 줄을 펼친 로그 상자(`unfold`)로 옮기면 앞선 긴 글을 통째로 다시 그려 그 프레임이 300ms 멎는다(L3 fixture에서
-  // 앞선 글 4만 자 · 도구 60쌍). 사람이 접기 전까지는 도는 턴의 칸 그대로다 — 같은 칸 · 같은 열쇠라 다시 그리지 않는다.
-  describe("사람이 접기 전까지는 도는 턴과 같은 칸이다", () => {
+  // restart 02b-7 · 03-15a — 멈추는 순간 그려 둔 줄을 새 상자로 옮기면 앞선 긴 글을 통째로 다시 그려 그 프레임이 300ms 멎는다(L3 fixture에서 앞선 글
+  // 4만 자 · 도구 60쌍). 도는 턴의 로그가 처음부터 로그 상자(`unfold`)에 서서, 멈추면 그 상자가 그대로 펼친 채 남는다 — 같은 칸 · 같은 열쇠라 다시
+  // 그리지 않는다. 한때 도는 턴은 상자 없이 줄로 섰고, 멈춘 턴은 사람이 처음 접을 때 상자로 옮겨 섰다.
+  describe("도는 턴의 로그 상자가 그대로 펼친 채 남는다", () => {
     const end = lines.find((line) => line.kind === "turn-end")!;
     const running = lines.filter((line) => line.seq < end.seq);
-    /** 턴 본문 칸(`data-turn`의 둘째 상자)에서 첫 로그 묶음까지 거치는 여는 꼬리표들 — 머리(구분선 · 도는 머리)는 뺀다. */
-    const pathToLog = (markup: string) => {
-      const body = markup.lastIndexOf("<div data-turn=", markup.indexOf("data-log-run"));
-      const between = markup.slice(body, markup.indexOf("data-log-run")).replace(/<div data-turn-head[\s\S]*?<\/div><\/div>/, "");
-      return [...between.matchAll(/<(div|span)\b([^>]*?)(?: class="([^"]*)")?>/g)].map((m) => `${m[1]} ${m[3] ?? ""}`.trim());
-    };
+    /** 작업 로그 상자의 여는 꼬리표 — 머리 아래 8을 당겨 선다(`-mt-2`). 명령 출력의 펼침 상자와 그것으로 갈린다. */
+    const box = (markup: string) => /<div[^>]*class="unfold -mt-2[^"]*"[^>]*>/.exec(markup)?.[0] ?? "";
 
-    it("로그 묶음이 도는 턴과 같은 자리에 선다 — 펼친 로그 상자가 없다", () => {
-      const stopped = flow(lines);
-      // 펼친 로그 상자(`OpenedLog`)는 머리 아래 8을 당겨 선다 — 명령 출력의 펼침 상자와 그것으로 갈린다.
-      expect(stopped).not.toContain('class="unfold -mt-2');
-      expect(pathToLog(stopped)).toEqual(pathToLog(flow(running)));
+    it("로그 묶음이 도는 턴과 같은 상자에 선다", () => {
+      for (const markup of [flow(lines), flow(running)]) {
+        expect(box(markup)).toBe('<div data-open="true" data-settled="true" class="unfold -mt-2 w-full">');
+        expect(markup.indexOf("data-log-run")).toBeGreaterThan(markup.indexOf(box(markup)));
+      }
     });
 
     it("머리에서 첫 줄까지 12, 로그 끝에서 멈추기 전 답까지 16이다 — 펼친 로그와 같다", () => {
       const markup = withoutMeta(flow([...running.filter((line) => line.seq !== 12), said, end]));
-      expect(/<div data-turn-head[^>]*class="([^"]*)"/.exec(markup)?.[1].split(" ")).toContain("mb-1");
-      // 턴 안 줄 사이 8에 빈칸 하나의 8을 더한다.
-      const logEnd = markup.indexOf("data-log-end");
-      expect(logEnd).toBeGreaterThan(markup.lastIndexOf("data-log-run"));
-      expect(logEnd).toBeLessThan(markup.indexOf("멈추기 전 글"));
+      // 머리 아래 8 · 칸 사이 8 · 상자가 당긴 −8 · 상자 안 위 4, 그리고 상자 안 아래 8 · 칸 사이 8.
+      expect(/<div data-turn-head[^>]*class="([^"]*)"/.exec(markup)?.[1].split(" ")).toContain("mb-2");
+      const inner = markup.slice(markup.indexOf(box(markup)) + box(markup).length);
+      expect(/^<div><div class="([^"]*)"/.exec(inner)?.[1].split(" ")).toEqual(expect.arrayContaining(["gap-2", "pt-1", "pb-2"]));
+      expect(markup.indexOf("멈추기 전 글")).toBeGreaterThan(markup.lastIndexOf("data-log-run"));
+    });
+
+    it("도는 동안은 로그 끝에서 그 뒤의 글까지 턴 안 줄 사이 8이다 — 글이 다음 도구에 상자로 들어도 자리가 그대로다", () => {
+      const markup = withoutMeta(flow([...running.filter((line) => line.seq !== 12), said]));
+      const inner = markup.slice(markup.indexOf(box(markup)) + box(markup).length);
+      const classes = /^<div><div class="([^"]*)"/.exec(inner)?.[1].split(" ");
+      expect(classes).toContain("pt-1");
+      expect(classes).not.toContain("pb-2");
     });
   });
 
@@ -765,6 +770,85 @@ describe("흐르는 글", () => {
       <ThreadFlow thread="흐름-없음" model={foldThread([sent(1, "물음"), thought(2, "")])} runtime="Claude Code" />,
     );
     expect(markup).toContain("생각 중");
+  });
+});
+
+// States 보드 12 「답 흐르는 중」(restart 03-15a) — 마지막 답이 흐르기 시작하면 로그가 「N초 동안 작업함 ›」으로 접히고 답이 그 아래로 흐른다. 마지막
+// 답은 일 뒤의 글이 둘째 줄로 넘어간 때다(`fold.ts`의 `answerFrom`). 한 번 접히면 턴이 끝날 때까지 스스로 펴지지 않는다 — 뒤에 온 일은 답 아래에
+// 이어 선다. 로그는 도는 동안 처음부터 한 상자(`unfold`)에 서서 접힐 때 높이 · 옅음으로 접히고(Motion 「작업 로그가 접힌다」), 접혀도 줄을 그대로
+// 둔다(멈추면 다시 그리지 않고 펼친다). 한때 턴이 끝날 때까지 펼친 로그 아래로 답이 흘렀다(02b-1).
+describe("답이 흐르는 턴", () => {
+  const worked = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-work.jsonl", import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+  const through = (seq: number) => worked.filter((line) => line.seq <= seq);
+  let serial = 0;
+  /** 그 기록을 그린다 — 흐르는 글이 있으면 조각 이벤트가 쌓는 그 스토어에 넣는다. */
+  const flow = (lines: readonly RecordLine[], flowing: string | null = null, thread = `답-${(serial += 1)}`) => {
+    if (flowing !== null) addChunk(thread, { stream: 99, kind: "message", offset: 0, text: flowing });
+    return withoutMeta(renderToStaticMarkup(<ThreadFlow thread={thread} model={foldThread(lines)} runtime="Claude Code" />));
+  };
+  const head = (markup: string) => /<(button|div)[^>]*data-work-divider[^>]*>([\s\S]*?)<\/\1>/.exec(markup);
+  /** 작업 로그 상자의 여는 꼬리표 — 머리 아래 8을 당겨 선다(`-mt-2`). */
+  const box = (markup: string) => /<div[^>]*class="unfold -mt-2[^"]*"[^>]*>/.exec(markup)?.[0] ?? null;
+  const ANSWER = "버그는 찾았고, 재현도 해 봤어요.\n\n**원인** — 금액을 버린다";
+
+  it("일 뒤의 글이 한 줄인 동안은 로그가 펼친 채 「N초 동안 작업 중입니다」 아래에 선다", () => {
+    const markup = flow(through(68), "프런트를 확인해 볼게요.");
+    expect(head(markup)?.[1]).toBe("div");
+    expect(head(markup)?.[2]).toContain("동안 작업 중입니다");
+    expect(box(markup)).toContain("data-open");
+    expect(markup.indexOf("볼게요.")).toBeGreaterThan(markup.lastIndexOf("data-log-run"));
+  });
+
+  it("흐르는 답이 둘째 줄로 넘어가면 로그가 접힌 머리 「N초 동안 작업함 ›」 아래로 답이 흐른다", () => {
+    const markup = flow(through(68), ANSWER);
+    const [tag] = head(markup) ?? [""];
+    expect(tag).toMatch(/^<button[^>]*aria-expanded="false"/);
+    expect(head(markup)?.[2]).toMatch(/ 동안 작업함<svg/);
+    expect(markup).not.toContain("동안 작업 중입니다");
+    expect(box(markup)).not.toContain("data-open");
+    expect(markup.indexOf("버린다")).toBeGreaterThan(markup.lastIndexOf("data-log-run"));
+  });
+
+  it("기록 줄이 된 답도 같다", () => {
+    const markup = flow(through(69));
+    expect(head(markup)?.[0]).toMatch(/^<button[^>]*aria-expanded="false"/);
+    expect(head(markup)?.[2]).toContain("동안 작업함");
+    expect(box(markup)).not.toContain("data-open");
+  });
+
+  it("접혀도 도는 동안은 로그의 줄이 상자 안에 그대로 있고, 닫힌 상자는 포커스와 읽기에서 빠진다", () => {
+    const markup = flow(through(68), ANSWER);
+    const at = markup.indexOf(box(markup)!);
+    expect(markup.indexOf("data-log-run")).toBeGreaterThan(at);
+    expect(box(markup)).toContain("inert");
+  });
+
+  it("접힌 뒤에 일이 다시 와도 스스로 펴지지 않고, 그 일은 답 아래에 이어 선다", () => {
+    const late: RecordLine = {
+      seq: 90,
+      at: worked[worked.length - 1].at,
+      kind: "update",
+      payload: { sessionId: "s", update: { sessionUpdate: "tool_call", toolCallId: "late", title: "Read late.rs", kind: "read", status: "in_progress" } },
+    };
+    const markup = flow([...through(69), late]);
+    expect(head(markup)?.[0]).toMatch(/^<button[^>]*aria-expanded="false"/);
+    expect(markup.lastIndexOf("data-log-run")).toBeGreaterThan(markup.indexOf("버그는 찾았고"));
+  });
+
+  it("접힌 머리를 누르면 도는 동안에도 로그가 펼쳐진다", () => {
+    const thread = "답-펼침";
+    const [turn] = foldThread(through(69)).turns;
+    threadUiStore.setState((state) => ({ ...state, expanded: { [turnKey(thread, turn.key)]: true } }));
+    try {
+      const markup = flow(through(69), null, thread);
+      expect(head(markup)?.[0]).toMatch(/^<button[^>]*aria-expanded="true"/);
+      expect(box(markup)).toContain("data-open");
+    } finally {
+      threadUiStore.setState((state) => ({ ...state, expanded: {} }));
+    }
   });
 });
 

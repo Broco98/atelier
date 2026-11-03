@@ -8,6 +8,8 @@ import { AnsweredCards } from "./AnsweredCards";
 import { decisionText } from "./approval";
 import { useArrival, useChanged } from "./arrival";
 import {
+  answerFrom,
+  answeringHeadline,
   continueAsk,
   cutNotice,
   endNotice,
@@ -67,8 +69,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   `workShown`. 말만 하는 턴에는 끝까지 머리가 없다). 사람의 답을 기다리면 시간 대신 「승인을 기다립니다」(경고색)만 서고 시계가 멈춘다 — 머리의
 //   시간은 기다린 동안을 뺀다(restart 02b-4 · Tools 보드 「승인 대기」 · `fold.ts`의 `waitedMs`). 끝나면 턴 머리 「N초 동안
 //   작업함 ›」(그 아래 0.5 선 — States 보드 13)으로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다. 머리를 누르면 생각 · 도구 줄 · 앞선
-//   답이 높이와 함께 펼쳐진다(`Unfold`). 답이 흐르는 동안은 접지 않는다 — 흐르는 글이 마지막 답인지는 턴이 끝나야 안다(States 보드 12와 다르다,
-//   restart 결정 「02b-1 — 답이 흐르는 동안 로그를 접지 않는다」). **펼칠 것 없이 끝난 턴(말만 한 턴)에는 머리가 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 바로 위의 결정 줄이다(v1 티켓 24 · restart 02b-4 · 02b-5 — 「✓ 한 번만
+//   답이 높이와 함께 펼쳐진다(`Unfold`). **마지막 답이 흐르기 시작하면 턴이 끝나기 전에 접힌다**(States 보드 12 · restart 03-15a) — 일 뒤의 글이 둘째
+//   줄로 넘어간 때다(`answerFrom`). 한 번 접히면 스스로 펴지지 않는다. **펼칠 것 없이 끝난 턴(말만 한 턴)에는 머리가 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 바로 위의 결정 줄이다(v1 티켓 24 · restart 02b-4 · 02b-5 — 「✓ 한 번만
 //   허용함」 · 「방패 ✓ 비슷한 명령 허용함」, 거부는 「✕ 거부함」과 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
 //   「✓ 작업공간 만들기 · api-server · fix/refund-api」 · 「→ 작업공간 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 작업공간 … 을 만들고 이 채팅에 연결함」이다.
@@ -330,11 +332,15 @@ const sentArrival = (at: number) => `sent-${at}`;
  * 턴 하나(States 보드 · restart 02b-1). 값이 그대로인 턴은 다시 그리지 않는다 — 기록 줄이 늘어도 지난 턴의 값은 그대로다(`foldOf`). 시스템 줄은 값으로 견준다:
  * 고른 배열은 그릴 때마다 새것이다.
  *
- * 상자의 칸은 늘 같은 차례다 — 머리(작업 머리줄 · 구분선과 펼친 로그 · 접혀도 남는 줄), 줄(`Entries`), 끝(문서 카드 · 안내 · 답 아래 줄 · 「생각 중」).
- * 도는 턴과 끝난 턴의 답이 같은 칸의 같은 열쇠라 턴이 끝나 접혀도, 멈추거나 끊겨도 그려 둔 답을 다시 그리지 않는다(01b-9 · 01b-10).
- * - **도는 턴과 끊긴 턴은 줄을 접지 않는다**(`flat` — States 보드 15) — 끊긴 턴은 머리 없이 한 일이 펼친 채 남고 안내가 까닭을 말한다.
- * - **멈춘 턴은 머리가 위에 서고 펼친 채다**(States 보드 14 · Tools 보드 「사람이 멈춤」) — 「N초 후에 중단했습니다 ›」를 누르면 접힌다. 멈추기 전까지 흐른
- *   답은 그 자리에 그대로 남는다. 한때 ■ 줄이 턴 아래에 섰고 답은 옅었다.
+ * 상자의 칸은 늘 같은 차례다 — 머리(작업 머리줄 · 구분선), 작업 로그 상자(`OpenedLog`), 접혀도 남는 줄, 줄(`Entries`), 끝(문서 카드 · 안내 · 답 아래 줄 ·
+ * 「생각 중」). 도는 턴과 끝난 턴의 로그 상자와 답이 같은 칸의 같은 열쇠라 턴이 끝나 접혀도, 멈추거나 끊겨도 그려 둔 줄을 다시 그리지 않는다(01b-9 ·
+ * 01b-10 · 02b-7).
+ * - **도는 턴의 로그는 마지막 답이 흐르기 전까지 펼친 채 쌓이고, 마지막 답이 흐르기 시작하면 접힌다**(States 보드 12 · restart 03-15a — `answerFrom`).
+ *   머리가 「N초 동안 작업함 ›」이 되고 로그가 높이 · 옅음으로 접힌다(Motion 「작업 로그가 접힌다」). 한 번 접히면 턴이 끝날 때까지 스스로 펴지지
+ *   않는다 — 뒤에 온 일은 답 아래에 이어 서고, 턴이 끝나면 끝 답 앞의 줄로 로그에 든다. 한때 턴이 끝날 때까지 펼친 로그 아래로 답이 흘렀다(02b-1).
+ * - **끊긴 턴은 머리 없이 한 일이 펼친 채 남는다**(States 보드 15) — 안내가 까닭을 말한다.
+ * - **멈춘 턴은 머리가 위에 서고 펼친 채다**(States 보드 14 · Tools 보드 「사람이 멈춤」) — 마지막 답이 흐르며 접혔어도 편다(보드 `halt`). 「N초 후에
+ *   중단했습니다 ›」를 누르면 접힌다. 멈추기 전까지 흐른 답은 그 자리에 그대로 남는다. 한때 ■ 줄이 턴 아래에 섰고 답은 옅었다.
  */
 const TurnView = memo(function TurnView({
   turn,
@@ -355,21 +361,28 @@ const TurnView = memo(function TurnView({
   const tailed = running && last;
   const flow = useStore(threadFlowStore, (state) => (tailed ? (state[thread]?.kind ?? null) : null));
   const stream = useStore(threadFlowStore, (state) => (tailed ? (state[thread]?.stream ?? null) : null));
+  // 도는 턴의 마지막 답이 시작한 자리(States 보드 12 · restart 03-15a — `answerFrom`). 흐르는 글은 조각마다 바뀌지만 이 값은 접는 자리가 설 때 한 번만
+  // 바뀌어, 조각이 오는 동안 턴을 다시 그리지 않는다.
+  const answerAt = useStore(threadFlowStore, (state) => {
+    if (!running) return null;
+    const flowing = tailed && state[thread]?.kind === "message" ? state[thread].text : null;
+    return answerFrom(turn, flowing);
+  });
+  const answering = answerAt !== null;
   const from = finalFrom(turn);
-  // 글이 빈 생각은 그리지 않는다(`shownEntry`).
-  const before = turn.entries.slice(0, from).filter(shownEntry);
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   // 멈춘 턴 · 거부로 멈춘 턴 · 앱이 막아서 멈춘 턴은 로그가 펼친 채 남는다(Tools 보드 「사람이 멈춤」 · 「거부로 멈춤」 · 「앱이 막아서 멈춤」).
   const halted = turn.end?.stopReason === "cancelled";
   const cutTurn = turn.end !== null && turn.end.cut !== null;
   // 작업 구분선(02 구현 스펙 §8) — 펼칠 것 없이 끝난 턴과 끊긴 턴에는 없다. 펼칠 것이 없는 구분선은 늘 접힌 모양이다.
   const line = workLine(turn);
-  // 멈춘 턴은 사람이 접기 전까지 도는 턴의 칸 그대로다(restart 02b-7) — 멈추는 순간 그려 둔 줄을 펼친 로그 상자로 옮기면 앞선 긴 글까지 통째로
-  // 다시 그려 그 프레임이 멎는다(L3 fixture — 앞선 글 4만 자 · 도구 60쌍에서 300ms). 같은 칸 · 같은 열쇠라 다시 그리지 않는다. 머리 아래 12 ·
-  // 로그 끝과 답 사이 16은 펼친 로그와 같다. 사람이 처음 접으면 그때 펼친 로그 상자로 옮겨 서며 접힌다(`Unfold`의 `from`).
-  const held = halted && line?.unfolds === true && open === undefined;
-  const leftHeld = useChanged(held) && !held;
-  const flat = running || cutTurn || held;
+  // 작업 로그 상자에 드는 줄 — 마지막 답이 흐르는 턴은 그 답 앞, 그 밖은 턴 끝 답 앞이다(`finalFrom`). 글이 빈 생각은 그리지 않는다(`shownEntry`).
+  const cutAt = answerAt ?? from;
+  const before = turn.entries.slice(0, cutAt).filter(shownEntry);
+  // 작업 로그는 한 상자다(`OpenedLog`) — 도는 동안에도, 끝나도, 멈추거나 끊겨도 같은 자리의 같은 상자라 그려 둔 줄을 다시 그리지 않는다(01b-9 ·
+  // 02b-7). 도는 턴과 끊긴 턴은 숨을 일이 있을 때, 끝난 턴은 펼칠 것이 있을 때 선다.
+  const logged = running || cutTurn ? before.some((entry) => !keptFolded(entry)) : line?.unfolds === true;
+  const flat = running && !answering;
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
   const final = running || cutTurn ? [] : turn.entries.slice(from).filter((entry) => entry.kind === "message" || isCardDecision(entry));
   // 다시 이을 수 있을 때만 다시 잇자고 말한다 — 지난 턴과 읽기만인 채팅은 지난 일이다(`cutNotice`).
@@ -378,12 +391,21 @@ const TurnView = memo(function TurnView({
   const notice = endNotice(turn) ?? cut;
   const reconnecting = cut !== null && actions !== null && reconnectable !== null && (connecting || actions.reconnecting);
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
-  const unfolded = line?.unfolds === true && (open ?? halted);
+  // 로그가 펼쳐 있나 — 도는 턴은 마지막 답이 흐르기 전까지 늘, 끊긴 턴도 늘 펼친다. 마지막 답이 흐르는 턴과 끝난 턴은 사람이 고른 쪽이고, 고른 적이
+  // 없으면 멈춘 턴만 펼친다.
+  const unfolded = flat || cutTurn || ((answering || line?.unfolds === true) && (open ?? halted));
   const onToggle = () => toggleTurn(turnKey(thread, turn.key), !unfolded);
   // 계획 카드 · 체크리스트 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 Work를 만들었는지 ·
   // 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
-  // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다.
-  const kept = flat ? [] : turn.entries.filter((entry, at) => keptFolded(entry) && (at < from ? !unfolded : !isCardDecision(entry)));
+  // 턴 끝 자리(`from` 뒤)의 계획 · 체크리스트는 펼친 로그에 들지 않으므로 펼쳐도 여기 남는다. 마지막 답이 흐르는 턴은 답 뒤의 줄이 모두 그대로 선다.
+  const kept =
+    flat || cutTurn
+      ? []
+      : turn.entries.filter((entry, at) =>
+          at < cutAt ? keptFolded(entry) && !unfolded : !running && keptFolded(entry) && !isCardDecision(entry),
+        );
+  // 로그 상자 뒤의 줄 — 도는 턴과 끊긴 턴은 상자 뒤의 줄이 모두 선다. 끝난 턴은 턴 끝 답이다.
+  const after = running || cutTurn ? turn.entries.slice(logged ? cutAt : 0).filter(shownEntry) : final;
   // 보낸 뒤 첫 출력까지는 「생각 중」이다(States 보드 04) — 흐르는 글이 먼저 오면 그 글이 말한다. 생각이 흐르거나 마지막 줄이 생각이어도 같다.
   const thinks = running && !compacting && ((thinking && flow === null) || (flow ?? lastWork(turn.entries)?.kind) === "thought");
   return (
@@ -409,27 +431,28 @@ const TurnView = memo(function TurnView({
         // 도는 턴과 끝난 턴은 같은 상자이고 답은 같은 칸(`Entries`)에 선다 — 턴이 끝나도 그려 둔 답이 그대로 남는다.
         // 끊긴 턴은 머리 없이 한 일이 말 아래 42에 선다(States 보드 15 — 말 머리 26 · 4 아래 작업 로그의 위 12). 다른 턴의 46보다 4를 당긴다.
         <div data-turn={turn.key} className={cn("flex scroll-mt-16 flex-col items-start gap-2", cutTurn && "-mt-1")}>
+          {/* 칸은 늘 같은 차례다 — 머리 · 로그 상자 · 접혀도 남는 줄 · 줄 · 끝. 도는 턴이 끝나거나 멈춰도 로그 상자와 답이 제자리에 남는다. */}
           {running ? (
-            // 사람의 답을 기다리면 일이 아직 없어도 선다 — 무엇을 기다리는지 말한다.
-            (workShown(turn) || waiting !== null) && <RunningHead turn={turn} waiting={waiting} />
+            answering ? (
+              // 마지막 답이 흐르기 시작했다(States 보드 12) — 머리가 「N초 동안 작업함 ›」이 되어 아래 4에서 떠오르고 로그가 접힌다.
+              <AnsweringHead key="answering" turn={turn} open={unfolded} onToggle={onToggle} />
+            ) : (
+              // 사람의 답을 기다리면 일이 아직 없어도 선다 — 무엇을 기다리는지 말한다.
+              (workShown(turn) || waiting !== null) && <RunningHead turn={turn} waiting={waiting} logged={!logged} />
+            )
           ) : (
-            <>
-              {line && (
-                <>
-                  <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key} logged={held}>
-                    {line.text}
-                  </WorkDivider>
-                  {line.unfolds && !held && <OpenedLog entries={before} open={unfolded} from={leftHeld} />}
-                </>
-              )}
-              {kept.map((entry) => (
-                <EntryView key={entry.key} entry={entry} />
-              ))}
-            </>
+            line && (
+              <WorkDivider open={unfolded} onToggle={line.unfolds ? onToggle : undefined} arrival={turn.key}>
+                {line.text}
+              </WorkDivider>
+            )
           )}
+          {logged && <OpenedLog entries={before} open={unfolded} keep={running} shape={cutTurn ? "bare" : flat ? "running" : "opened"} />}
+          {kept.map((entry) => (
+            <EntryView key={entry.key} entry={entry} />
+          ))}
           <Entries
-            entries={flat ? turn.entries.filter(shownEntry) : final}
-            gapBefore={held ? final[0]?.key : undefined}
+            entries={after}
             tail={flow === "message" && stream !== null ? <MessageView key={flowKey(stream)} /> : flow === "thought" ? <FlowingThought key="thought" /> : null}
           />
           {turn.end ? (
@@ -509,17 +532,13 @@ function FlowingThought() {
  * 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 사람의 답을 기다리면 시간 대신 그 말 하나가 경고색으로 선다(Tools 보드 「승인 대기」 · States 07 —
  * 시계는 멈춰 있다가 답하면 기다린 만큼을 빼고 이어 센다, `runningHeadline`). 두 글은 같은 자리에서 바뀌며 떠오른다(줄 바뀜).
  */
-function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (waiting) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [waiting]);
+function RunningHead({ turn, waiting, logged }: { turn: Turn; waiting: string | null; logged: boolean }) {
+  const now = useClock(waiting === null);
   const swapped = useChanged(waiting !== null);
-  // 끝난 턴의 머리 자리에 선다(States 보드 05~11 `.ra-shimmer` — 14 / 22, 셰브런 없음) — 글은 띠가 지나가고 그 아래 가는 선이 같다.
+  // 끝난 턴의 머리 자리에 선다(States 보드 05~11 `.ra-shimmer` — 14 / 22, 셰브런 없음) — 글은 띠가 지나가고 그 아래 가는 선이 같다. 아래에 로그
+  // 상자가 서면 그 상자가 첫 줄까지 12를 둔다(`OpenedLog`).
   return (
-    <WorkDivider logged>
+    <WorkDivider logged={logged}>
       {waiting ? (
         <span key="waiting" className={cn("leading-5.5 text-warning", swapped && "row-in")}>
           {waiting}
@@ -533,31 +552,48 @@ function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) 
   );
 }
 
+/** 1초마다 다시 읽는 지금 — 멈추면(`ticking`이 아니면) 마지막으로 읽은 때에 선다. */
+function useClock(ticking: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [ticking]);
+  return now;
+}
+
+/**
+ * 마지막 답이 흐르는 턴의 머리(States 보드 12 · restart 03-15a) — 끝난 턴의 머리와 같은 「N초 동안 작업함 ›」 단추이고, 누르면 로그가 펼쳐진다. 시계는
+ * 턴이 끝날 때까지 간다(`answeringHeadline`). 화면이 선 뒤에 접히면 아래 4에서 떠오르고(보드 `.ra-wh.ra-in`), 턴이 끝나 끝난 머리로 바뀔 때는 같은
+ * 이름이라 다시 떠오르지 않는다(`WorkDivider`의 `arrival`).
+ */
+function AnsweringHead({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggle: () => void }) {
+  const now = useClock(true);
+  return (
+    <WorkDivider open={open} onToggle={onToggle} arrival={turn.key}>
+      {answeringHeadline(turn, now)}
+    </WorkDivider>
+  );
+}
+
 /** 작업 로그의 한 줄로 서는 줄인가 — 도구 줄과 승인 결정 줄 · 답이 없어 닫힌 카드의 줄(Tools 보드 `.ra-log-list` — 줄 사이 4). */
 const logLine = (entry: Entry): entry is ToolEntry | DecisionEntry | UnansweredEntry =>
   entry.kind === "tool" || entry.kind === "decision" || entry.kind === "unanswered";
 
 /**
- * 턴의 줄들 — 잇따른 도구 줄 · 결정 줄은 작업 로그의 한 묶음이다(Tools 보드 `.ra-log-list` — 줄 24 · 줄 사이 4, 묶음 줄 포함). 묶음 밖의 줄(중간 설명 ·
- * 계획 · 카드)과는 턴 안 줄 사이 8이다 — 보드의 줄 사이 4 + 글 줄의 위아래 4와 같다. 흐르는 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
+ * 턴의 줄들 — 잇따른 도구 줄 · 결정 줄은 작업 로그의 한 묶음이다(Tools 보드 `.ra-log-list` — 줄 24 · 줄 사이 4, 묶음 줄 포함 · `data-log-run`). 묶음
+ * 밖의 줄(중간 설명 · 계획 · 카드)과는 턴 안 줄 사이 8이다 — 보드의 줄 사이 4 + 글 줄의 위아래 4와 같다. 글은 `MessageView`, 그 밖은 제 줄이다. 흐르는
+ * 꼬리는 줄들과 한 목록에 선다 — 기록 줄이 되어도 같은 열쇠다.
  */
-/**
- * 턴의 줄들 — 잇따른 로그 줄은 한 묶음(`data-log-run`), 글은 `MessageView`, 그 밖은 제 줄이다. `gapBefore`의 줄 앞에는 빈칸 하나가 서서 줄 사이 8을
- * 한 번 더 둔다 — 사람이 접기 전의 멈춘 턴에서 로그 끝과 턴 끝 답 사이가 펼친 로그처럼 16이다(restart 02b-7). 빈칸도 열쇠가 있어 다른 줄을 다시
- * 그리지 않는다.
- */
-function Entries({ entries, tail = null, gapBefore }: { entries: readonly Entry[]; tail?: ReactNode; gapBefore?: string }) {
+function Entries({ entries, tail = null }: { entries: readonly Entry[]; tail?: ReactNode }) {
   const runs: Entry[][] = [];
   for (const entry of entries) {
     const last = runs[runs.length - 1];
     if (logLine(entry) && last && logLine(last[0])) last.push(entry);
     else runs.push([entry]);
   }
-  const rows = runs.flatMap((run, at) => {
-    const [first] = run;
-    const row = entryRow(run);
-    return first.key === gapBefore && at > 0 ? [<span key="log-end" data-log-end aria-hidden />, row] : [row];
-  });
+  const rows = runs.map(entryRow);
   return <>{tail === null ? rows : [...rows, tail]}</>;
 }
 
@@ -602,14 +638,31 @@ function LogLines({ entries }: { entries: readonly (ToolEntry | DecisionEntry | 
 }
 
 /**
- * 펼친 작업 로그 — 턴 머리를 누르면 생각 · 도구 줄 · 앞선 답이 높이와 투명도로 자라 나오고, 다시 누르면 줄어 걷힌다(02 구현 스펙 §12 ·
- * `Unfold`). 줄들은 턴의 줄 사이(8)를 그대로 따른다 — 자라는 상자는 위 8을 당겨 두고(`-mt-2`) 안에서 다시 띄워, 다 접힌 상자가 줄 사이를
- * 하나 더 만들지 않는다. 펼치면 머리 선 → 첫 줄 12, 마지막 줄 → 답 16이다(States 보드 14 — 작업 로그의 위 12 · 턴 칸 사이 16).
+ * 작업 로그 상자 — 턴 머리를 누르면 생각 · 도구 줄 · 앞선 답이 높이와 투명도로 자라 나오고, 다시 누르면 줄어 걷힌다(02 구현 스펙 §12 · Motion
+ * 「작업 로그가 접힌다」 — `Unfold`). 줄들은 턴의 줄 사이(8)를 그대로 따른다 — 자라는 상자는 위 8을 당겨 두고(`-mt-2`) 안에서 다시 띄워, 다 접힌
+ * 상자가 줄 사이를 하나 더 만들지 않는다. 모양(`shape`)은 셋이다.
+ * - `opened` — 펼치면 머리 선 → 첫 줄 12, 마지막 줄 → 답 16이다(States 보드 14 — 작업 로그의 위 12 · 턴 칸 사이 16). 끝난 턴 · 멈춘 턴 · 마지막 답이
+ *   흐르는 턴이다.
+ * - `running` — 도는 턴은 마지막 답이 흐르기 전까지 이 상자에 펼친 채 쌓인다(restart 03-15a — 한때 상자 없이 턴의 줄로 섰다). 머리 선 → 첫 줄 12는
+ *   같고, 마지막 줄 → 그 뒤의 글은 턴 안 줄 사이 8이다 — 그 글이 다음 도구가 오면 상자로 들어도 자리가 그대로다.
+ * - `bare` — 끊긴 턴은 머리 없이 한 일이 펼친 채 남는다(States 보드 15). 상자가 턴의 줄과 같은 자리다.
+ *
+ * 도는 동안은 접혀도 줄을 걷지 않는다(`keep`) — 마지막 답이 흐르며 접힌 로그를 멈춤이 다시 펼 때 줄을 새로 그리지 않는다.
  */
-function OpenedLog({ entries, open, from }: { entries: readonly Entry[]; open: boolean; from?: boolean }) {
+function OpenedLog({
+  entries,
+  open,
+  keep,
+  shape,
+}: {
+  entries: readonly Entry[];
+  open: boolean;
+  keep: boolean;
+  shape: "opened" | "running" | "bare";
+}) {
   return (
-    <Unfold open={open} from={from} className="-mt-2 w-full">
-      <div className="flex flex-col items-start gap-2 pt-1 pb-2">
+    <Unfold open={open} keep={keep} className={cn(shape !== "bare" && "-mt-2", "w-full")}>
+      <div className={cn("flex flex-col items-start gap-2", shape !== "bare" && "pt-1", shape === "opened" && "pb-2")}>
         <Entries entries={entries} />
       </div>
     </Unfold>

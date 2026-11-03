@@ -547,10 +547,13 @@ const headOf = (html: string) => html.match(/<header data-slot="screen-head">[\s
 const endOf = (head: string) => head.slice(head.indexOf("data-head-actions"));
 /** 머리의 채팅 이름 칸 — 이름 글자만 든 `span`. */
 const titleTag = (head: string, title: string) => head.match(new RegExp(`<span[^>]*>${title}</span>`))?.[0] ?? "";
+/** 머리의 채팅 이름 단추 — 이름 글자만 든 `button`. */
+const titleButton = (head: string, title: string) => head.match(new RegExp(`<button[^>]*>${title}</button>`))?.[0] ?? "";
 
 // restart 02a-7 · 스토리 92 · 보드 MainLoose 창 머리 · Shell 「어디에 서나」 — 탭 줄이 없는 채팅(작업공간 밖 채팅, 작업공간이 보관되거나 지워져
 // 읽기만 되는 채팅)은 `/threads/:id`에 서고 창 머리를 쓴다: 셸 컨트롤 뒤 세로선 다음에 제목, 그 바로 뒤에 ⋯(채팅 메뉴)가 서고, 요약 단추
-// (「요약 카드」 — 02a-9)는 오른쪽 끝이다. 이름은 창 머리에서 바꾼다(두 번 클릭 · F2 · ⋯의 「이름 바꾸기」 — 읽기만인 채팅은 못 바꾼다).
+// (「요약 카드」 — 02a-9)는 오른쪽 끝이다. 제목을 누르면 요약 카드가 열리고, 이름은 F2 · ⋯의 「이름 바꾸기」로 바꾼다(restart 03-15a — 읽기만인
+// 채팅은 못 바꾼다).
 describe("탭 줄이 없는 채팅의 창 머리", () => {
   it("작업공간 밖 채팅은 제목 바로 뒤에 ⋯가 서고, 요약 단추만 오른쪽 끝에 선다", () => {
     const head = headOf(draw({ ...chat, id: "20261010-130000" }));
@@ -560,21 +563,31 @@ describe("탭 줄이 없는 채팅의 창 머리", () => {
     expect(endOf(head)).not.toContain("채팅 메뉴");
   });
 
-  it("작업공간 밖 채팅의 이름은 창 머리에서 바꾼다 — 제목이 포커스를 받고 F2가 이름 바꾸기다", () => {
-    const title = titleTag(headOf(draw({ ...chat, id: "20261010-130001" })), chat.title);
-    expect(title).toContain('tabindex="0"');
+  // restart 03-15a · 시안 Main `isLoose` `.ra-crumb` — 제목은 「요약 카드 열기: <제목>」 단추다(누르면 카드가 열린다 — L3). 이름은 F2와 ⋯의
+  // 「이름 바꾸기」로 바꾼다(스토리 92). 한때 제목은 포커스만 받는 글자였고 두 번 누르면 이름 바꾸기였다(02a-7).
+  it("작업공간 밖 채팅의 제목은 「요약 카드 열기」 단추이고 F2가 이름 바꾸기다", () => {
+    const title = titleButton(headOf(draw({ ...chat, id: "20261010-130001" })), chat.title);
+    expect(title).toContain(`aria-label="요약 카드 열기: ${chat.title}"`);
     expect(title).toContain('aria-keyshortcuts="F2"');
+    expect(title).toContain('type="button"');
   });
 
-  it("보관된 작업공간의 채팅도 창 머리에 제목과 ⋯가 선다 — 이름은 바꾸지 못한다", () => {
+  it("보관된 작업공간의 채팅도 제목이 카드를 여는 단추이고 ⋯가 뒤에 선다 — 이름은 바꾸지 못한다", () => {
     const view: ThreadView = { ...chat, id: "20261010-130002", work: "shelved-work", readOnly: "archived" };
     const head = headOf(draw(view));
     expect(head.indexOf(chat.title)).toBeGreaterThan(-1);
     expect(head.indexOf('aria-label="채팅 메뉴"')).toBeGreaterThan(head.indexOf(chat.title));
     expect(endOf(head)).not.toContain("채팅 메뉴");
-    const title = titleTag(head, chat.title);
-    expect(title).not.toBe("");
+    const title = titleButton(head, chat.title);
+    expect(title).toContain(`aria-label="요약 카드 열기: ${chat.title}"`);
     expect(title).not.toContain("aria-keyshortcuts");
+  });
+
+  it("지워진 작업공간의 채팅은 카드가 없어 제목이 단추가 아니다", () => {
+    const view: ThreadView = { ...chat, id: "20261010-130003", work: "gone-work", readOnly: "removed" };
+    const head = headOf(draw(view));
+    expect(titleButton(head, chat.title)).toBe("");
+    expect(titleTag(head, chat.title)).not.toBe("");
   });
 });
 

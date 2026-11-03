@@ -214,11 +214,8 @@ const BEFORE_TOOLS_CHARS = 40_000;
 const TOOL_PAIRS = 60;
 const AFTER_TOOLS_CHARS = 2_000;
 
-// restart 02b-7 — 앞선 글 4만 자 · 도구 60쌍 뒤의 답을 멈춘다. 멈추는 순간 그려 둔 줄을 펼친 로그 상자로 옮기면 앞선 긴 글까지 통째로 다시 그려
-// 그 프레임이 300ms 멎었다 — 멈춘 턴은 사람이 접기 전까지 도는 턴의 칸 그대로 선다. 사람이 처음 접으면 그때 상자로 옮겨 서며 높이 · 옅음 300으로
-// 접힌다(Motion 「작업 로그가 접힌다」).
-test("앞선 긴 글과 도구 60쌍 뒤의 답을 멈춰도 그 프레임이 멎지 않고, 멈춘 턴은 펼친 채 서며 처음 접을 때 높이 · 옅음 300으로 접힌다", async ({ page }) => {
-  test.setTimeout(90_000);
+/** 앞선 글 4만 자 · 도구 60쌍 뒤에 `flowing`이 흐르는 도는 턴을 연다 — 도구 줄 60개가 그려질 때까지 기다린다(접힌 상자 안이어도 그려 둔다). */
+async function openLongWork(page: Page, title: string, flowing: string): Promise<LongAnswer> {
   const past = pastTurns(1000);
   // 명령 줄이다 — 이어진 읽기는 묶음 줄 하나로 서서 줄이 60개가 되지 않는다.
   const [, , , , runCall, runDone] = TURN.filter((line) => /tool_call/.test(JSON.stringify(line.payload).slice(0, 80)));
@@ -230,14 +227,13 @@ test("앞선 긴 글과 도구 60쌍 뒤의 답을 멈춰도 그 프레임이 �
     for (const line of [runCall, runDone]) push(JSON.parse(JSON.stringify(line.payload).replace(/toolu_[0-9A-Za-z]+/, `toolu_pair_${pair}`)));
   }
   const lines = [...past, ...turn];
-  const text = answerOf(AFTER_TOOLS_CHARS);
   const view: ThreadView = {
     ...FIXTURE_THREAD,
-    title: "멈춘 긴 턴",
+    title,
     live: true,
     lastRead: lines.length,
     lastSeq: lines.length,
-    flowing: { stream: STREAM, kind: "message", offset: 0, text },
+    flowing: { stream: STREAM, kind: "message", offset: 0, text: flowing },
   };
   await installFixtureBackend(page, {
     thread_list: [summaryOf(view)],
@@ -246,31 +242,108 @@ test("앞선 긴 글과 도구 60쌍 뒤의 답을 멈춰도 그 프레임이 �
     thread_mark_read: answerByArg("thread", { [view.id]: summaryOf(view) }),
   });
   await page.goto(`/threads/${view.id}`);
+  await expect(page.getByRole("main").locator(TOOL_ROWS)).toHaveCount(TOOL_PAIRS, { timeout: 30_000 });
+  return { view, lines, text: flowing };
+}
+
+/** 도구 줄 60개 — 접힌 상자 안에서도 그려 둔 줄을 센다(역할로 찾으면 닫힌 상자(`inert`) 안의 줄이 빠진다). */
+const TOOL_ROWS = '[role="group"][aria-label="실행 완료 wc -c notes.txt"]';
+/** 작업 로그 상자 — 턴 머리 바로 뒤의 `unfold`다(도구 줄 안의 펼침 상자와 그것으로 갈린다). */
+const LOG_BOX = "[data-turn-head] + .unfold";
+
+/** 높이 · 옅음의 전이 — 그 상자에 걸린 전이의 속성과 길이. */
+const transitionsOf = (page: Page) =>
+  page.getByRole("main").locator(LOG_BOX).evaluate((element) =>
+    element.getAnimations().map((one) => [(one as CSSTransition).transitionProperty, Number(one.effect?.getTiming().duration)]),
+  );
+
+// restart 02b-7 · 03-15a — 앞선 글 4만 자 · 도구 60쌍 뒤의 답이 흐르다 멈춘다. 마지막 답(둘째 줄로 넘어간 글)이 흐르는 턴이라 로그가 「N초 동안
+// 작업함 ›」 아래로 접혀 있다(States 12). 멈추면 그 로그가 펼쳐진다(States 14 · 보드 `halt`) — 도는 동안 접힌 상자가 줄을 그려 둔 채라 멈추는 순간
+// 다시 그리지 않고 그 프레임이 멎지 않는다. 한때 줄을 새 상자로 옮겨 그려 300ms 멎었다. 다시 접으면 높이 · 옅음 300으로 접힌다(Motion 「작업 로그가 접힌다」).
+test("앞선 긴 글과 도구 60쌍 뒤의 접힌 답을 멈춰도 그 프레임이 멎지 않고, 멈춘 턴은 같은 상자를 펼치며 접을 때 높이 · 옅음 300으로 접힌다", async ({ page }) => {
+  test.setTimeout(90_000);
+  const answer = await openLongWork(page, "멈춘 긴 턴", answerOf(AFTER_TOOLS_CHARS));
+  const { view, lines } = answer;
   const main = page.getByRole("main");
-  const tools = main.getByRole("group", { name: "실행 완료 wc -c notes.txt", exact: true });
-  await expect(tools).toHaveCount(TOOL_PAIRS, { timeout: 30_000 });
-  const drawn = await tools.first().elementHandle();
+  const folded = main.getByRole("button", { name: / 동안 작업함$/ }).last();
+  await expect(folded).toHaveAttribute("aria-expanded", "false");
+  const drawn = await main.locator(TOOL_ROWS).first().elementHandle();
 
   const stoppedAt = record("thread-stopped").find((line) => line.kind === "turn-end")!;
-  const stamps = await framesWhileFiring(page, view.id, [answerLine({ view, lines, text }), { ...stoppedAt, seq: lines.length + 2 }]);
+  const stamps = await framesWhileFiring(page, view.id, [answerLine(answer), { ...stoppedAt, seq: lines.length + 2 }]);
   const head = main.getByRole("button", { name: /초 후에 중단했습니다$/ });
   await expect(head).toHaveAttribute("aria-expanded", "true");
   const report = frameGapReport(stamps, MEDIAN_GAP_LIMIT_MS);
   expect(report.maxGap, `최대 ${report.maxGap}ms, 보통 ${report.medianGap}ms, 프레임 ${report.frames}개`).toBeLessThan(STOP_GAP_LIMIT_MS);
-  // 도는 턴의 칸 그대로다 — 그려 둔 도구 줄이 같은 요소이고 펼친 로그 상자가 아직 없다.
+  // 같은 상자다 — 그려 둔 도구 줄이 같은 요소이고 로그 상자는 하나다.
   expect(await drawn!.evaluate((element) => element.isConnected)).toBe(true);
-  await expect(main.locator(".unfold")).toHaveCount(0);
+  await expect(main.locator(LOG_BOX)).toHaveCount(1);
+  await expect(main.locator(LOG_BOX)).toHaveAttribute("data-open", "true");
 
-  // 처음 접는다 — 그때 상자로 옮겨 서며 높이 · 옅음이 300으로 접힌다.
   await head.click();
   await expect(head).toHaveAttribute("aria-expanded", "false");
-  const box = main.locator(".unfold");
-  await expect(box).toHaveCount(1);
-  expect(
-    await box.evaluate((element) =>
-      element.getAnimations().map((one) => [(one as CSSTransition).transitionProperty, Number(one.effect?.getTiming().duration)]),
-    ),
-  ).toEqual(expect.arrayContaining([["grid-template-rows", 300], ["opacity", 300]]));
-  await expect(tools).toHaveCount(0);
+  expect(await transitionsOf(page)).toEqual(expect.arrayContaining([["grid-template-rows", 300], ["opacity", 300]]));
+  await expect(main.locator(TOOL_ROWS)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// restart 03-15a · States 12 「답 흐르는 중」 · Motion 「작업 로그가 접힌다」 — 일 뒤의 글이 한 줄인 동안은 로그가 펼친 채 「N초 동안 작업 중입니다」 아래에
+// 서고, 글이 둘째 줄로 넘어가는 조각이 오면 머리가 「N초 동안 작업함 ›」이 되며 로그가 높이 · 옅음 300(`ease-enter`)으로 접힌다. 그려 둔 줄은 그대로라
+// 앞선 글 4만 자 · 도구 60쌍에서도 그 프레임이 멎지 않는다. 뒤에 도구가 다시 와도 스스로 펴지지 않는다.
+test("도구 60쌍 뒤의 글이 둘째 줄로 넘어가면 로그가 「N초 동안 작업함 ›」 아래로 높이 · 옅음 300에 접히고, 그 프레임이 멎지 않으며 다시 펴지지 않는다", async ({ page }) => {
+  test.setTimeout(90_000);
+  const first = "도구를 모두 돌렸어요.";
+  const answer = await openLongWork(page, "접히는 긴 턴", first);
+  const { view, lines } = answer;
+  const main = page.getByRole("main");
+  await expect(main.locator("[data-work-divider]").last()).toHaveText(/동안 작업 중입니다$/);
+  await expect(main.locator(LOG_BOX)).toHaveAttribute("data-open", "true");
+  const drawn = await main.locator(TOOL_ROWS).first().elementHandle();
+
+  // 둘째 줄의 조각 — 쏜 뒤 다음 장면에 걸린 전이를 함께 읽는다(300이 지나면 전이가 걷힌다).
+  const chunk: FlowChunk = { stream: STREAM, kind: "message", offset: first.length, text: "\n\n- 60개 모두 성공했어요." };
+  const { stamps, moving } = await page.evaluate(
+    async ({ thread, chunk, onChunk, chunkEvent, box }) => {
+      const internals = (window as unknown as { __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void } }).__TAURI_INTERNALS__;
+      const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
+      const seen: number[] = [];
+      let measuring = true;
+      const frame: FrameRequestCallback = (time) => {
+        seen.push(time);
+        if (measuring) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+      await pause(100);
+      internals.runCallback(onChunk, { event: chunkEvent, id: 0, payload: { thread, chunk } });
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const element = document.querySelector(box);
+      const moving = (element?.getAnimations() ?? []).map((one) => [(one as CSSTransition).transitionProperty, Number(one.effect?.getTiming().duration)]);
+      await pause(500);
+      measuring = false;
+      return { stamps: seen, moving };
+    },
+    { thread: view.id, chunk, onChunk: await eventHandler(page, THREAD_CHUNK_EVENT), chunkEvent: THREAD_CHUNK_EVENT, box: LOG_BOX },
+  );
+
+  const head = main.getByRole("button", { name: / 동안 작업함$/ }).last();
+  await expect(head).toHaveAttribute("aria-expanded", "false");
+  await expect(main.getByText(/동안 작업 중입니다$/)).toHaveCount(0);
+  expect(moving).toEqual(expect.arrayContaining([["grid-template-rows", 300], ["opacity", 300]]));
+  await expect(main.locator(LOG_BOX)).toHaveCSS("transition-timing-function", "cubic-bezier(0.19, 1, 0.22, 1)");
+  expect(await drawn!.evaluate((element) => element.isConnected)).toBe(true);
+  await expect(main.locator(LOG_BOX)).not.toHaveAttribute("data-open");
+  const report = frameGapReport(stamps, MEDIAN_GAP_LIMIT_MS);
+  expect(report.maxGap, `최대 ${report.maxGap}ms, 보통 ${report.medianGap}ms, 프레임 ${report.frames}개`).toBeLessThan(STOP_GAP_LIMIT_MS);
+  // 답은 접힌 머리 아래 16이다(보드 — 머리 칸 → 답 칸 사이 16).
+  const rule = head.locator("xpath=../div[@aria-hidden]");
+  const answerTop = await main.locator("p").filter({ hasText: "도구를 모두 돌렸어요." }).last().evaluate((element) => element.getBoundingClientRect().top);
+  expect(Math.round(answerTop - (await rule.evaluate((element) => element.getBoundingClientRect().bottom)))).toBe(16);
+
+  // 뒤에 도구가 다시 와도 펴지지 않는다 — 그 줄은 답 아래에 선다.
+  const [, , , , runCall] = TURN.filter((line) => /tool_call/.test(JSON.stringify(line.payload).slice(0, 80)));
+  const late = JSON.parse(JSON.stringify(runCall.payload).replace(/toolu_[0-9A-Za-z]+/, "toolu_late")) as unknown;
+  await framesWhileFiring(page, view.id, [{ ...answerLine({ ...answer, text: first + chunk.text }), seq: lines.length + 1 }, { seq: lines.length + 2, at: lines[lines.length - 1].at, kind: "update", payload: late }]);
+  await expect(head).toHaveAttribute("aria-expanded", "false");
+  await expect(main.locator(LOG_BOX)).not.toHaveAttribute("data-open");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -74,8 +74,9 @@ import { startLink, startPlaceholder } from "./work-chip";
 //
 // - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 카드 자리 — 02 구현 스펙 §3 · restart 02a-2) — 이 화면은 머리 줄에 놓을 것과
 //   본문 카드에 들 것만 건넨다(`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
-// - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
-//   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
+// - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(13/18)이 서고, 누르면 요약 카드가 열린다
+//   (restart 03-15a · 시안 Main `isLoose` — 「요약 카드 열기: <이름>」 단추). 이름은 그 자리에서 F2 · ⋯의 「이름 바꾸기」로 바꾼다(스토리 92 —
+//   한때 두 번 클릭도 이름 바꾸기였다). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). Work 없는
 //   Thread에 Service가 있으면 「흐린 Service /」가 서고 누르면 그 Service 상세다(03 §10 — Service가 없으면 이름만). 이름 바로
 //   뒤에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)가, 오른쪽 끝에 요약 단추(「요약 카드」)가 선다(restart 02a-7 · 시안 MainLoose 창
 //   머리 — 한때 「…」도 오른쪽 끝이었다. Work 없는 Thread에도 선다 — 첫 말 전의 새 Thread에는 둘 다 없다, S23). 옛 Work 알약(브랜치)은
@@ -463,7 +464,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
   // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Service가 있으면 「흐린 Service /」(03 §10 — 누르면 그 Service 상세).
   const { data: scope } = useReadingScope({ thread });
   const crumb = view ? headService(view.work, scope) : null;
-  // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
+  // 머리 줄 이름의 제자리 바꾸기(F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
   const renameName =
     view && !gone
       ? {
@@ -487,7 +488,12 @@ export function ThreadScreen({ thread }: { thread: string }) {
           <ServiceCrumb name={crumb.name} onOpen={() => void navigate({ to: "/services/$slug", params: { slug: crumb.slug } })} />
         ) : undefined
       }
-      title={{ name, rename: renameName }}
+      // 제목을 누르면 요약 카드가 열린다(restart 03-15a · 시안 Main `isLoose` — 열려 있으면 그대로다). 카드가 없는 채팅(지워진 작업공간)은 글자다.
+      title={{
+        name,
+        rename: renameName,
+        open: hasCard ? { label: "요약 카드 열기", onOpen: () => move({ kind: "show", place: "summary" }) } : undefined,
+      }}
       // ⋯는 제목 바로 뒤다(restart 02a-7 · 시안 MainLoose 창 머리) — 오른쪽 끝에는 요약 단추만 선다.
       menu={view ? <ThreadMenu key={thread} rename={renameName?.onStart ?? null} /> : undefined}
       end={hasCard ? <SummaryToggle open={card.open} onToggle={() => move({ kind: "toggle", place: "summary" })} /> : undefined}

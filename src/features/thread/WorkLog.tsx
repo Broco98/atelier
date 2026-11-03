@@ -166,29 +166,44 @@ function RowChevron({ open, always = false }: { open: boolean; always?: boolean 
  * 접힌 뒤에 걷는다 — 접힌 줄들이 DOM에 남지 않는다. 처음부터 펼친 채 선 것(다시 연 Thread)은 움직이지 않는다. 동작
  * 줄이기에서는 곧바로 펴고 걷는다.
  *
- * `from`은 처음 설 때의 모양이다(기본은 `open`). 펼친 모양으로 서서 곧바로 접히면 그 안을 그린 채 접히며 걷힌다 — 다른 칸에 펼친 채 서
- * 있던 줄들이 이 상자로 옮겨 오며 접히는 때다(멈춘 턴을 처음 접음 — `ThreadFlow`의 `TurnView`, restart 02b-7).
+ * `from`은 처음 설 때의 모양이다(기본은 `open`). 펼친 모양으로 서서 곧바로 접히면 그 안을 그린 채 접히며 걷힌다.
+ *
+ * `keep`이면 접혀도 그 안을 걷지 않는다 — 도는 턴의 작업 로그다(`ThreadFlow`의 `TurnView`, restart 03-15a). 마지막 답이 흐르며 접힌 로그를 멈춤이
+ * 다시 펼 때 줄을 새로 그리지 않는다(앞선 긴 글 · 도구 60쌍을 새로 그리면 그 프레임이 300ms 멎는다 — 02b-7). `keep`이 풀리면 접힌 상자는 여느 때처럼
+ * 걷힌다. 남겨 둔 채 접힌 동안의 안은 포커스와 읽기에서 빠진다(`inert`).
  */
 export function Unfold({
   open,
   from = open,
+  keep = false,
   className,
   children,
 }: {
   open: boolean;
   from?: boolean;
+  keep?: boolean;
   className?: string;
   children: ReactNode;
 }) {
-  const [mounted, setMounted] = useState(from);
+  const [mounted, setMounted] = useState(from || keep);
   const [shown, setShown] = useState(from);
   const [settled, setSettled] = useState(from);
   const box = useRef<HTMLDivElement>(null);
-  if (open && !mounted) setMounted(true);
+  if ((open || keep) && !mounted) setMounted(true);
+  // 남겨 둔 채 접힌 안만 포커스와 읽기에서 뺀다 — 접혀서 곧 걷힐 안(여느 접힘)에 `inert`를 걸면 큰 로그에서 그 프레임이 20ms쯤 더 멎는다(턴 끝에 펼친
+  // 로그가 접힐 때 54~65ms → 32~35ms). 남겨 둔 채 접혔다가 `keep`이 풀린 안은 걷힐 때까지 그대로 둔다(풀었다가 걷으면 같은 값을 두 번 치른다).
+  const [sealed, setSealed] = useState(!from && keep);
+  const seal = !open && (keep || sealed);
+  if (seal !== sealed) setSealed(seal);
+  // 남겨 둔 채 접혀 있던 상자 — 접힌 모양이 이미 그려져 있어 펼치기 전에 다시 재지 않는다(멈춤이 큰 로그를 펼 때 재기 한 번이 그 프레임을 더 멎게 한다).
+  const keptClosed = useRef(false);
+  useEffect(() => {
+    keptClosed.current = mounted && !shown && keep;
+  });
   useLayoutEffect(() => {
     if (open) {
       // 접힌 모양(0fr)을 한 번 재 둔 뒤에 펼친다 — 재지 않고 바꾸면 처음 그림부터 펼친 모양이라 전이가 걸리지 않는다.
-      box.current?.getBoundingClientRect();
+      if (!keptClosed.current) box.current?.getBoundingClientRect();
       setShown(true);
       return;
     }
@@ -198,7 +213,7 @@ export function Unfold({
     setSettled(false);
   }, [open]);
   useEffect(() => {
-    if (open || !mounted) return;
+    if (open || keep || !mounted) return;
     const ms = reducedMotion() ? 0 : motionMs("--duration-relaxed");
     if (ms === 0) {
       setMounted(false);
@@ -207,17 +222,18 @@ export function Unfold({
     // 끝을 알리는 `transitionend`가 오지 않는 때(그 사이에 화면에서 빠짐)에도 걷히게 — 전이 길이 뒤에 한 번 더 본다.
     const timer = window.setTimeout(() => setMounted(false), ms + 50);
     return () => window.clearTimeout(timer);
-  }, [open, mounted]);
+  }, [open, keep, mounted]);
   if (!mounted) return null;
   return (
     <div
       ref={box}
       data-open={shown || undefined}
       data-settled={(shown && settled) || undefined}
+      inert={seal || undefined}
       onTransitionEnd={(event) => {
         if (event.target !== event.currentTarget) return;
         if (open) setSettled(true);
-        else setMounted(false);
+        else if (!keep) setMounted(false);
       }}
       className={cn("unfold", className)}
     >
