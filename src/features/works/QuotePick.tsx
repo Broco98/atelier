@@ -94,6 +94,7 @@ export function QuotePick({ box, layer, file, mode, onQuote }: QuotePickProps) {
   return (
     <button
       type="button"
+      tabIndex={0}
       data-quote-pick
       // 누르는 동안 고른 글이 풀리지 않게 — 풀리면 그 순간 단추가 걷혀 눌림이 닿지 않는다.
       onMouseDown={(event) => event.preventDefault()}

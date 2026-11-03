@@ -132,6 +132,7 @@ function EditorBody({
       <div className="flex h-13 min-w-0 items-center gap-2.5 border-b border-separator-soft pr-3.5 pl-4">
         <button
           type="button"
+          tabIndex={0}
           onClick={leave}
           className="inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border border-separator-soft pr-3 pl-2 text-chat-meta text-fg transition-colors hover:bg-fill-soft focus-ring"
         >

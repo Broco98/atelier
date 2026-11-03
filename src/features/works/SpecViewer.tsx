@@ -559,6 +559,7 @@ function BlockWrapper({
         text={`${range}줄 참조 복사`}
         announce="name"
         type="button"
+        tabIndex={0}
         onClick={() => onCopy(start, end)}
         className="icon-button-tint icon-button-2xs absolute top-2 right-full cursor-copy text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >

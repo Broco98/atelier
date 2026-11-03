@@ -222,6 +222,7 @@ function QuestionCard({ thread, name, request, count = null, next }: QuestionCar
         />
         <button
           type="button"
+          tabIndex={0}
           aria-label={atOnce ? "보내기" : "적기"}
           disabled={sent || pick.typed.trim() === ""}
           onClick={done}

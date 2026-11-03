@@ -77,6 +77,7 @@ function ToolQuestionCard({ view, onPick, onLater, count = null, next }: ToolQue
           <button
             key={`${at}-${option.label}`}
             type="button"
+            tabIndex={0}
             disabled={sent}
             onClick={() => choose(at)}
             onFocus={() => setActive(at)}

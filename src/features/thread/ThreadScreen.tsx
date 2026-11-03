@@ -1193,7 +1193,7 @@ function ThreadBody({
                       // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
                       // 서고, 올려 두거나 포커스가 오면 같은 자리의 ↓ 15로 옅음을 바꾼다(Thread 보드 `.ra-jump` — 150ms, 원의 글자색은 그대로).
                       // 누르면 바닥까지 따라가기 걸음으로 내려간다.
-                      <button type="button" aria-label="맨 아래로" onClick={jump} className={cn(SLOT_CIRCLE, "group relative jump-in focus-ring")}>
+                      <button type="button" tabIndex={0} aria-label="맨 아래로" onClick={jump} className={cn(SLOT_CIRCLE, "group relative jump-in focus-ring")}>
                         {working && (
                           <WorkingDots className="absolute transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0" />
                         )}

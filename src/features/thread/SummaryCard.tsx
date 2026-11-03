@@ -536,6 +536,7 @@ export function SummaryBody({
                   {!all && section.hidden.length > 0 && (
                     <button
                       type="button"
+                      tabIndex={0}
                       data-ring-inset=""
                       onClick={onUnfold}
                       className={cn(ROW, "text-fg-tertiary transition-colors hover:text-fg-secondary focus-ring")}
@@ -673,6 +674,7 @@ function Line({
   return (
     <button
       type="button"
+      tabIndex={0}
       {...data}
       data-ring-inset=""
       title={title}

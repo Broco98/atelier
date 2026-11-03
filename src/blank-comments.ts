@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 
 // **소스 지킴 검사가 주석을 빼고 읽는 길** — 글자 단계(`type-scale.test.ts`) · 아이콘 선(`icon-stroke.test.ts`) · 상태 면
 // (`state-scale.test.ts`) · 색 지킴(`color-guard.test.ts`) · 여백 지킴(`spacing-guard.test.ts`) · 단축키 글자 지킴
-// (`hotkey-glyphs.test.ts`)이 함께 쓴다.
+// (`hotkey-glyphs.test.ts`) · 맨 단추 지킴(`button-tab-guard.test.ts`)이 함께 쓴다.
 // 주석은 옛 값을 기록으로 남기는 자리라(부품 머리말 「앱 규격으로 고친 자리」), 그 글자를 어긴 자리로 세면 안 된다.
 //
 // `src`를 걷고 읽는 것(`blankedSources`)과 어긴 자리를 `파일:줄: 글자`로 세는 것(`placesOf` · `where`, 원문 한 장의 꼴 `Source`)도

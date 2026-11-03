@@ -77,6 +77,7 @@ function ProjectCard({ thread, name, card, count = null, next }: ToolCardProps<P
             <button
               key={choice.answer}
               type="button"
+              tabIndex={0}
               disabled={sent}
               onClick={() => choose(at)}
               onFocus={() => setActive(at)}

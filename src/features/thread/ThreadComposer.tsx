@@ -437,7 +437,7 @@ function ThreadComposer({
             />
           </div>
           <div className="flex min-w-0 items-center gap-0.5">
-            <button type="button" aria-label="파일 첨부" onClick={pick} disabled={busy} className={ADD_BUTTON}>
+            <button type="button" tabIndex={0} aria-label="파일 첨부" onClick={pick} disabled={busy} className={ADD_BUTTON}>
               <Plus className="size-3.75" aria-hidden />
             </button>
             {/* 첫 말을 보내는 중(「세션 여는 중」)에도 칩은 그대로 서고 누르지 않는다 — 고른 것은 이미 첫 말과 함께 떠났다. 모델 칩만 Runtime이
@@ -587,6 +587,7 @@ function SendButton({
   return (
     <button
       type={stop ? "button" : "submit"}
+      tabIndex={0}
       aria-label={glyph === "sending" ? "보내는 중" : stop ? "멈추기" : "보내기"}
       onClick={stop ? onStop : undefined}
       disabled={glyph === "sending" || (glyph === "send" && (empty || locked))}

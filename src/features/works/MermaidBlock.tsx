@@ -26,9 +26,9 @@ function ZoomControls({
 }) {
   return (
     <>
-      <button type="button" aria-label="축소" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
-      <button type="button" aria-label="100%로" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
-      <button type="button" aria-label="확대" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
+      <button type="button" tabIndex={0} aria-label="축소" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
+      <button type="button" tabIndex={0} aria-label="100%로" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
+      <button type="button" tabIndex={0} aria-label="확대" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
     </>
   );
 }
@@ -46,7 +46,7 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <Hint text="원본 mermaid 코드 복사" announce="name" type="button" onClick={onCopy} className={toolbarButtonQuiet}>
+    <Hint text="원본 mermaid 코드 복사" announce="name" type="button" tabIndex={0} onClick={onCopy} className={toolbarButtonQuiet}>
       {copied ? (
         <Check className="size-3 text-success" strokeWidth={SMALL_GLYPH_STROKE} />
       ) : (
@@ -184,7 +184,7 @@ function MermaidBlock({ code }: { code: string }) {
           <FullscreenModal
             name="다이어그램"
             label="mermaid"
-            trigger={<button className={toolbarButtonQuiet} />}
+            trigger={<button tabIndex={0} className={toolbarButtonQuiet} />}
             controls={
               <>
                 <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />

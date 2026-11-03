@@ -194,6 +194,7 @@ export function ViewerHead({
             <button
               key={String(source)}
               type="button"
+              tabIndex={0}
               aria-pressed={view.source === source}
               disabled={view.locked}
               onClick={() => view.onChange(source)}

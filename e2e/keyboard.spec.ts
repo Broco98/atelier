@@ -185,7 +185,8 @@ test("목록 · 상세의 맨 단추(열 머리 정렬 · 줄 끝 「작업공�
 });
 
 // Archive 상세 판 안의 Tab은 DOM 차례가 보이는 차례다 — 왼쪽 문서 글을 지나 오른쪽 「문서」 트리로 간다(restart 03-4 — 한때 내용 | 목록 카드의
-// 두 칸이었다, codex-ds 결정 28). 트리를 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다.
+// 두 칸이었다, codex-ds 결정 28). 트리를 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다. 글과 트리 사이는 글 안 블록마다의
+// 「N줄 참조 복사」(거터 단추 — 포커스면 선다)다(restart 03-13c — 한때 맨 `<button>`이라 WebKit Tab이 지나쳐 글 다음이 곧 트리였다).
 test("Archive 상세 판 안 Tab은 왼쪽 문서 글을 지나 오른쪽 「문서」 트리로 간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}`);
@@ -194,7 +195,10 @@ test("Archive 상세 판 안 Tab은 왼쪽 문서 글을 지나 오른쪽 「문
   const 글 = 본문.findIndex(({ 이름 }) => 이름.startsWith("기록 — 치운 일"));
   const 트리 = 본문.findIndex(({ 행 }) => 행 === "record.md");
   expect(글, "문서 글이 정류장이다").toBeGreaterThan(-1);
-  expect(트리).toBe(글 + 1);
+  expect(트리).toBeGreaterThan(글);
+  const 사이 = 본문.slice(글 + 1, 트리).map(({ 이름 }) => 이름);
+  expect(사이.length, "글 안 블록의 참조 복사").toBeGreaterThan(0);
+  for (const 이름 of 사이) expect(이름).toMatch(/^[\d–]+줄 참조 복사$/);
   const 글상자 = (await page.locator("main [data-doc-text]").boundingBox())!;
   const 트리상자 = (await 문서트리행(page, "record.md").boundingBox())!;
   expect(트리상자.x).toBeGreaterThan(글상자.x + 글상자.width);

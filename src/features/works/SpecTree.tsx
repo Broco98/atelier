@@ -231,7 +231,7 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
   current: string | null;
   /**
    * 트리의 Tab 정류장 행(경로) — 그 행만 `tabIndex={0}`이고 나머지는 `-1`이다(roving, SpecTree 머리말). 안 받으면(files 트리) 행은
-   * roving에 들지 않는다 — `tabIndex` · `data-roving`을 달지 않는다.
+   * roving에 들지 않는다 — `data-roving`을 달지 않고 행마다 `tabIndex={0}`이다(맨 단추면 WebKit Tab이 지나친다, restart 03-13c).
    */
   stop?: string | null;
   /** 폴더가 펼쳐져 있는가 — 「처음에 펼쳐 둘 폴더」의 규칙도 여기 든다(spec: 최신 판만, files: 아무것도). */
@@ -255,9 +255,10 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
   place?: boolean;
 }
 
-// roving에 든 트리면 정류장 행만 Tab이 앉는다(SpecTree 머리말). `stop`을 안 받은 트리는 행에 아무것도 달지 않는다.
+// roving에 든 트리면 정류장 행만 Tab이 앉는다(SpecTree 머리말). `stop`을 안 받은 트리는 행마다 Tab이 앉는다 — `tabIndex`를 적지 않으면
+// WebKit의 Tab이 맨 `<button>`을 지나친다(`button-tab-guard.test.ts`, restart 03-13c — 한때 아무것도 달지 않았다).
 const rovingOf = (path: string, stop: string | null | undefined) =>
-  stop === undefined ? {} : { tabIndex: path === stop ? 0 : -1, [ROVING]: path };
+  stop === undefined ? { tabIndex: 0 } : { tabIndex: path === stop ? 0 : -1, [ROVING]: path };
 
 // 폴더는 Collapsible이다(판 4, 스토리 114). 행이 트리거라 `aria-expanded`를 스스로 달고, 자식 줄은 패널이다.
 // 기본 변형이라 움직임 없이 **바로** 접히고 닫히면 언마운트된다 — 지금까지의 조건부 렌더와 같다.

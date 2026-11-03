@@ -92,6 +92,7 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
             {/* × — 이름 끝 6에 선 12 글리프다. 누를 자리는 글리프보다 크다(20). */}
             <button
               type="button"
+              tabIndex={0}
               aria-label={`${name} 빼기`}
               onClick={() => removeAttachment(draftKey, attached.path)}
               className="-ml-1 flex size-5 shrink-0 items-center justify-center rounded-md transition-colors hover:text-fg focus-ring"

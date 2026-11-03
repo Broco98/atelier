@@ -78,6 +78,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
             ) : (
               <button
                 type="button"
+                tabIndex={0}
                 aria-label={`기다리는 말 고치기: ${message.text}`}
                 title={message.text}
                 disabled={message.sendNow}
@@ -91,6 +92,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
             {!message.sendNow && (
               <button
                 type="button"
+                tabIndex={0}
                 onClick={() => run(threadApi.sendNow(thread, message.id))}
                 className="h-6 shrink-0 rounded-lg px-2 text-xs text-fg-secondary transition-colors quiet-hover focus-ring"
               >
@@ -99,6 +101,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
             )}
             <button
               type="button"
+              tabIndex={0}
               aria-label="기다리는 말 지우기"
               onClick={() => run(threadApi.deleteQueued(thread, message.id))}
               className="flex size-5.5 shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors quiet-hover focus-ring"

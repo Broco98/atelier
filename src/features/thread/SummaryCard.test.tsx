@@ -77,7 +77,7 @@ describe("요약 카드의 몸", () => {
 
   it("「변경 사항」은 넓힌 카드의 diff를 여는 단추이고, 합계는 초록 · 빨강 diff 글자이며 0인 쪽은 적지 않는다(S17)", () => {
     const markup = body(live);
-    expect(markup).toMatch(/<button type="button" data-changes=""[^>]*>.*변경 사항.*<\/button>/);
+    expect(markup).toMatch(/<button type="button" tabindex="0" data-changes=""[^>]*>.*변경 사항.*<\/button>/);
     expect(markup).toMatch(/text-diff-added[^>]*>\+18</);
     expect(markup).toMatch(/text-diff-deleted[^>]*>−6</);
     const added = body({
@@ -161,15 +161,15 @@ describe("요약 카드의 몸", () => {
     };
     const unfolded = body(many, { unfolded: true });
     expect(unfolded).not.toContain("모두 보기");
-    expect(unfolded).toMatch(/<button type="button" data-project="web-app"[^>]*class="[^"]*row-in/);
+    expect(unfolded).toMatch(/<button type="button" tabindex="0" data-project="web-app"[^>]*class="[^"]*row-in/);
     expect(unfolded).not.toMatch(/data-project="api-server"[^>]*class="[^"]*row-in/);
     expect(body(many, { expanded: true })).not.toContain("row-in");
   });
 
   it("문서 · Project 줄은 넓힌 카드를 여는 단추다 — 이름은 줄의 글 그대로다", () => {
     const markup = body(live);
-    expect(markup).toMatch(/<button type="button" data-doc="설계.md"/);
-    expect(markup).toMatch(/<button type="button" data-project="web-app"/);
+    expect(markup).toMatch(/<button type="button" tabindex="0" data-doc="설계.md"/);
+    expect(markup).toMatch(/<button type="button" tabindex="0" data-project="web-app"/);
     expect(markup).not.toContain("aria-current");
   });
 });

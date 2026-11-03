@@ -196,6 +196,7 @@ function ApprovalCard({ thread, name, runtime, request, scope, cwd, count = null
               <button
                 key={`${at}-${choice.label}`}
                 type="button"
+                tabIndex={0}
                 disabled={sent}
                 onClick={() => choose(at)}
                 onFocus={() => setActive(at)}
@@ -277,6 +278,7 @@ function ApprovalCard({ thread, name, runtime, request, scope, cwd, count = null
         />
         <button
           type="button"
+          tabIndex={0}
           aria-label="보내기"
           disabled={sent}
           onClick={refuse}
@@ -352,6 +354,7 @@ function Details({ input }: { input: Json }) {
     <>
       <button
         type="button"
+        tabIndex={0}
         aria-expanded={open}
         onClick={() => setOpen((now) => !now)}
         className="flex w-fit items-center gap-1 rounded-xs text-xs text-fg-tool transition-colors duration-basic ease-default hover:text-fg-secondary focus-ring"
@@ -416,6 +419,7 @@ export function SlotButton({
   return (
     <button
       type="button"
+      tabIndex={0}
       data-choice={at}
       disabled={disabled}
       onClick={onClick}

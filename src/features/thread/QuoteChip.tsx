@@ -38,6 +38,7 @@ export function DraftQuoteChip({ quote, onDrop }: { quote: Quote; onDrop: () => 
       </span>
       <button
         type="button"
+        tabIndex={0}
         aria-label="인용 빼기"
         onClick={onDrop}
         className="flex size-4 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-fill-hover focus-ring"
