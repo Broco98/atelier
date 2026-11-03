@@ -415,6 +415,7 @@ function cardOf(over: Partial<ChatCard> = {}): ChatCard {
     opened: null,
     docPlace: null,
     onShowChanges: () => {},
+    onReview: () => {},
     onOpen: () => {},
     onOpenFile: () => {},
     onClose: () => {},

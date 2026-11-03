@@ -194,6 +194,50 @@ test("새 채팅 탭의 글 · 고른 Runtime은 그 탭의 것이다 — 셸 ·
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 고른 값 · 보내는 중 상태도 그 탭의 것이다(구현 스펙 「02a — 숨은 탭」 — 「내리면 Codex를 고른 탭이 Claude로 돌아온 채 보내지고 Runtime이 잠긴다」).
+// 작업공간을 옮기면 그 작업공간의 탭 몸은 내려가지만, 고른 값은 탭의 열쇠로 쥐어 돌아오면 그대로다.
+test("새 채팅 탭에서 고른 Runtime과 보내는 중인 첫 말은 작업공간을 옮겼다 돌아와도 그 탭에 남는다 — 다시 보내지 않고 답이 오면 채팅 탭이 된다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, {
+    thread_get: answerByArg("thread", { [started.id]: started }),
+    thread_read_record: answerByArg("thread", { [started.id]: [] }),
+  });
+  await page.goto(`/works/${plainWork.slug}`);
+  await expect(page).toHaveURL(주소(plainWork.slug, "tab=chat"), { timeout: 20_000 });
+
+  // Codex를 고르고 다른 작업공간을 다녀온다 — 그 탭은 Codex 그대로다.
+  await 고르는칩(page, "Claude Code").click();
+  await page.getByRole("menuitemradio", { name: "Codex", exact: true }).click();
+  await expect(고르는칩(page, "Codex")).toBeVisible();
+  await 작업화면으로(page, multiWork);
+  await 작업공간말(page, multiWork);
+  await expect(고르는칩(page, "Claude Code")).toBeVisible();
+  await 작업화면으로(page, plainWork);
+  await expect(page).toHaveURL(주소(plainWork.slug, "tab=chat"));
+  await 작업공간말(page, plainWork);
+  await expect(고르는칩(page, "Codex")).toBeVisible();
+
+  // 첫 말을 보내고 답이 오기 전에 다른 작업공간을 다녀온다 — 그 탭은 보내는 중이고 다시 보낼 수 없다.
+  await holdCommand(page, "thread_start");
+  await 입력칸(page).fill(started.title);
+  await 입력칸(page).press("Enter");
+  await expect.poll(() => heldCalls(page, "thread_start")).toBe(1);
+  await 작업화면으로(page, multiWork);
+  await 작업공간말(page, multiWork);
+  await 작업화면으로(page, plainWork);
+  await expect(입력칸(page)).toHaveAttribute("placeholder", "채팅을 시작하는 중…");
+  await expect(page.getByText(started.title, { exact: true })).toBeVisible();
+
+  // 답이 온다 — 그 칸이 채팅 탭이 되고, 첫 말은 Codex로 한 번만 갔다.
+  await releaseCommand(page, "thread_start");
+  await expect.poll(() => 칸차례(page)).toEqual([`chat:${started.id}`]);
+  expect(await ipcArgs(page, "thread_start", "text")).toEqual([
+    expect.objectContaining({ text: started.title, runtime: "codex", link: { kind: "work", slug: plainWork.slug } }),
+  ]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 첨부도 글처럼 탭의 것이다(구현 스펙 「새 채팅의 글」 「글과 첨부의 열쇠를 탭마다 나눈다」). 끌어다 놓기는 창의 이벤트라 듣는 자리 모두에 간다 —
 // 숨은 새 채팅 탭은 내리지 않으므로(「숨은 탭」) 그 탭이 듣고 있으면 보이지 않는 탭에도 붙는다.
 test("새 채팅 탭에 끌어다 놓은 첨부는 그 탭의 것이다 — 다른 작업공간 · 홈에 서지 않고, 같은 작업공간의 숨은 새 채팅 탭에도 붙지 않는다", async ({

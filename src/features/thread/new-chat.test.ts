@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { addAttachments, attachmentsOf, attachmentStore } from "./attachments";
-import { forgetNewChat, newChatKey } from "./new-chat";
+import { forgetNewChat, newChatKey, newChatStore, type NewChatChoice } from "./new-chat";
 import { NEW_THREAD, setDraft, setQuote, threadUiStore } from "./thread-store";
 
 // restart 02a-8 — **새 채팅 탭의 글 열쇠.** 입력 중인 글 · 첨부 · 인용은 열쇠로 산다. 새 채팅 탭은 탭마다 제 열쇠를 쓰고 홈(`/`)은 `NEW_THREAD`를
@@ -11,7 +11,15 @@ const file = (path: string) => ({ path, folder: false, size: 1 });
 afterEach(() => {
   threadUiStore.setState(() => ({ drafts: {}, expanded: {}, filled: null, quotes: {}, mentions: {} }));
   attachmentStore.setState(() => ({}));
+  newChatStore.setState(() => ({}));
 });
+
+/** Codex를 고른 새 채팅 탭의 것 — 범위는 고르지 않았다. */
+const codex: NewChatChoice = {
+  picks: { runtime: "codex", mode: null, model: null, effort: null },
+  hold: { loose: null, work: null },
+  starting: null,
+};
 
 describe("새 채팅 탭의 글 열쇠", () => {
   it("탭마다 다르고 홈의 열쇠와도 다르다", () => {
@@ -31,7 +39,7 @@ describe("새 채팅 탭의 글 열쇠", () => {
     expect(attachmentsOf(attachmentStore.state, NEW_THREAD)).toEqual([]);
   });
 
-  it("탭을 닫으면 그 탭의 글 · 첨부 · 인용을 지우고 다른 열쇠의 것은 그대로다", () => {
+  it("탭을 닫으면 그 탭의 글 · 첨부 · 인용 · 고른 것을 지우고 다른 열쇠의 것은 그대로다", () => {
     const a = newChatKey(3);
     const b = newChatKey(4);
     setDraft(a, "닫을 탭의 말");
@@ -40,6 +48,7 @@ describe("새 채팅 탭의 글 열쇠", () => {
     addAttachments(a, [file("/tmp/a.png")]);
     addAttachments(b, [file("/tmp/b.png")]);
     setQuote(a, { file: "spec.md", start: 1, end: 1, text: "고른 글" });
+    newChatStore.setState(() => ({ [a]: codex, [b]: codex }));
 
     forgetNewChat(a);
 
@@ -47,13 +56,16 @@ describe("새 채팅 탭의 글 열쇠", () => {
     expect(threadUiStore.state.quotes[a]).toBeUndefined();
     expect(attachmentStore.state[a]).toBeUndefined();
     expect(attachmentsOf(attachmentStore.state, b)).toEqual([file("/tmp/b.png")]);
+    expect(newChatStore.state).toEqual({ [b]: codex });
   });
 
   it("지울 것이 없으면 스토어가 그대로다", () => {
     const ui = threadUiStore.state;
     const attached = attachmentStore.state;
+    const chosen = newChatStore.state;
     forgetNewChat(newChatKey(9));
     expect(threadUiStore.state).toBe(ui);
     expect(attachmentStore.state).toBe(attached);
+    expect(newChatStore.state).toBe(chosen);
   });
 });

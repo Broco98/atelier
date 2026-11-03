@@ -30,7 +30,7 @@ import ChangesPill from "./ChangesPill";
 import { chipLists, newThreadChips, newThreadLevel, pickRuntime, threadChips, type NewThreadPicks } from "./chips";
 import { awaitingLogin, checkEngineOnce, engineOf, guideKind, threadEngineStore } from "./engine-store";
 import { foldOf, type ThreadModel } from "./fold";
-import type { Opened } from "./expanded";
+import { reviewOf, type Opened } from "./expanded";
 import GuideCard from "./GuideCard";
 import {
   useChangeChip,
@@ -60,7 +60,8 @@ import ThreadFlow, { DocPlace, PendingTurn, type FlowActions, type SentWords } f
 import { isToolCardAsk } from "./tool-cards";
 import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
-import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
+import { useNewChatChoice, type NewChatSending } from "./new-chat";
+import { fillDraft, linesOf, NEW_THREAD, threadRecordStore } from "./thread-store";
 import type { AskLevel, Attachment, Runtime, ThreadLink, ThreadView } from "./types";
 import type { ComposerTray, ModeChoice, ModelChoice, ScopeChoice } from "./ComposerChips";
 import { ArchivedSummaryCard, LooseSummaryCard, WorkSummaryCard } from "./SummaryCard";
@@ -189,8 +190,9 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
  * - **첫 말의 답이 오면 그 탭이 채팅이 된다**(`onStarted` — 작업공간 화면이 그 칸을 채팅 탭으로 바꾼다). 주소로 가지 않는다 — 그 탭이 꺼져 있으면
  *   주소는 그대로이고 사람을 그 탭으로 끌고 오지 않는다.
  *
- * **숨은 새 채팅 탭은 내리지 않는다** — 고른 Runtime · 모델 · 생각 깊이 · 모드 · 범위와 보내는 중인 상태가 이 안의 지역 상태다. 내리면 Codex를
- * 고른 탭이 Claude로 돌아온 채 보내지고 Runtime이 잠긴다. 작업공간 화면이 숨긴 채 둔다.
+ * **고른 것은 탭의 것이다**(구현 스펙 「02a — 숨은 탭」) — 고른 Runtime · 모델 · 생각 깊이 · 모드 · 범위와 보내는 중인 상태를 탭의 글 열쇠로 쥔다
+ * (`kept` · `newChatStore`). 숨은 새 채팅 탭은 작업공간 화면이 숨긴 채 두고, 작업공간을 옮겨 몸이 내려가도 돌아오면 고른 것이 그대로다. 지역
+ * 상태로 두면 Codex를 고른 탭이 Claude로 돌아온 채 보내지고 Runtime이 잠긴다.
  *
  * **요약 카드와 넓힌 카드가 선다**(restart 02a-11 · 구현 스펙 「02a — 오른쪽 자리」) — 작업공간 화면이 쥔 오른쪽 자리(`card`)를 채팅 탭 몸처럼
  * 받아 그린다. 숨은 탭은 받지 않는다(`null`). 아직 채팅이 없어 카드는 작업공간의 것이다 — 읽는 범위는 작업공간으로 읽고, 넓힌 카드의 문서
@@ -242,6 +244,7 @@ export function WorkNewChat({
           link={link}
           hold={holdOf({ link, service: null, project: null })}
           draftKey={draftKey}
+          kept
           onStarted={onStarted}
           drops={shown}
           // 넓힌 카드면 대화 자리가 이미 왼쪽 480이라 비킬 몫이 없다(보드 Main `beside: summaryShown && !wide`).
@@ -264,6 +267,7 @@ function NewChat({
   draftKey,
   onStarted,
   onDropNewWork,
+  kept = false,
   drops = true,
   beside = false,
   toasts = true,
@@ -273,6 +277,8 @@ function NewChat({
   hold: ScopeHold;
   /** 입력 중인 글 · 첨부의 열쇠 — 홈은 `NEW_THREAD`, 새 채팅 탭은 탭마다다. */
   draftKey: string;
+  /** 고른 것을 글 열쇠로 스토어에 쥐나 — 작업공간의 새 채팅 탭(`WorkNewChat`)이다. 홈은 몸의 지역 상태다(`useNewChatChoice`). */
+  kept?: boolean;
   onStarted: (id: string) => void;
   /** 「새 작업공간」 칩의 × — `?new=work`로 연 홈만 준다. */
   onDropNewWork?: () => void;
@@ -288,9 +294,14 @@ function NewChat({
   const { data: works } = useWorks();
   const linked = works?.find((one) => one.slug === work);
   const title = linked?.title ?? null;
+  // 고른 것(범위 · 칩 · 보내는 중인 첫 말) — 작업공간의 새 채팅 탭은 탭의 글 열쇠로 스토어에 쥐어 작업공간을 옮겼다 돌아와도 그대로다(구현 스펙
+  // 「02a — 숨은 탭」 · `useNewChatChoice`). 홈은 몸의 지역 상태다.
+  const [choice, choose] = useNewChatChoice(kept ? draftKey : null, { picks: NO_PICKS, hold: seedHold, starting: null });
+  const { hold, picks, starting } = choice;
+  const setStarting = (next: NewChatSending | null) => choose((now) => ({ ...now, starting: next }));
+  const setPicks = (update: (now: NewThreadPicks) => NewThreadPicks) => choose((now) => ({ ...now, picks: update(now.picks) }));
   // 읽을 곳(03 §5 · 티켓 06) — 범위 칩이 고르고 입력창이 쥐었다가 첫 말과 함께 간다. 작업공간의 새 채팅이면 칩은 그 Work의 Service를 보이고,
   // 바꾸면 첫 말을 보낼 때 그 Work에 적는다(S4). 범위 줄은 쥔 것으로 센 범위다.
-  const [hold, setHold] = useState(seedHold);
   const held = heldScope(link, hold, linked?.service ?? null);
   const { data: reading, isPlaceholderData } = useReadingScope({ work, ...scopeArgs(held) });
   // 칩이 보이는 것은 쥔 것으로 센 범위의 것이다(03 코드 리뷰 P14) — 그것이 사라졌으면 빈 칩이고, 첫 말도 보이는 대로 간다(P6).
@@ -298,14 +309,12 @@ function NewChat({
   const scope: ScopeChoice = {
     shown,
     ofWork: work !== null,
-    onPick: (pick) => setHold((now) => holdPick(link, now, pick)),
+    onPick: (pick) => choose((now) => ({ ...now, hold: holdPick(link, now.hold, pick) })),
     reading,
   };
-  const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[]; quote: Quote | null } | null>(null);
   // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「편집 자동」, 작업공간의 새 채팅이면
   // 그 Work의 지금 정도이고(`newThreadLevel`), 모델 · 생각 깊이는 Runtime의 기본값이다. Runtime(스토리 30)은 새 채팅에서만 고르고 첫 말과 함께 간다 —
   // 첫 말을 보내면 입력창이 칩을 잠근다(스토리 31). Runtime을 바꾸면 고른 모델과 생각 깊이를 비운다(`pickRuntime`).
-  const [picks, setPicks] = useState<NewThreadPicks>(NO_PICKS);
   const runtime = picks.runtime;
   const workLevel = useWorkMode(work);
   const { shown: level, sent: mode } = newThreadLevel(picks.mode, work, workLevel, runtime);
@@ -529,6 +538,8 @@ export interface ChatCard {
   docPlace: { specRoot: string; open: (path: string) => void } | null;
   /** PR 카드의 「변경 사항 보기」(v1 티켓 36). */
   onShowChanges: (pr: PrLine) => void;
+  /** 바뀐 파일 알약의 「검토」 — 그 턴이 바꾼 파일들(절대 경로)이다(SummarySheet 표 넷째 줄 — 카드가 넓어져 그 변경을 연다). */
+  onReview: (files: readonly string[]) => void;
   /** 카드의 줄 · 트리 · 문서 링크가 파일을 열었다 — 카드가 넓어져(이미 넓으면 그대로) 그것을 본다. */
   onOpen: (target: Opened) => void;
   /** 넓힌 카드의 Project 트리에서 바뀌지 않은 파일을 눌렀다 — 파일 탭으로 연다(restart 02a-12 · 스토리 102). */
@@ -538,7 +549,7 @@ export interface ChatCard {
 }
 
 /**
- * 작은 카드만 쓰는 자리의 오른쪽 자리 — `/threads/:id`의 채팅(작업공간 밖 · 보관된 작업공간)이다. 넓히는 길(PR의 「변경 사항 보기」 · 카드의 줄)은
+ * 작은 카드만 쓰는 자리의 오른쪽 자리 — `/threads/:id`의 채팅(작업공간 밖 · 보관된 작업공간)이다. 넓히는 길(PR의 「변경 사항 보기」 · 알약의 「검토」 · 카드의 줄)은
  * 작은 카드를 열 뿐이고 대화의 문서 카드는 서지 않는다 — 열 곳이 없다(구현 스펙 「02a — 작업공간 밖 채팅」).
  */
 function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
@@ -548,6 +559,7 @@ function smallCard(open: boolean, move: (move: RightMove) => void): ChatCard {
     opened: null,
     docPlace: null,
     onShowChanges: show,
+    onReview: show,
     onOpen: show,
     onOpenFile: show,
     onClose: () => move({ kind: "collapse" }),
@@ -607,11 +619,25 @@ export function useWorkRightPlace(
     },
     [slug, queryClient, move],
   );
+  // 바뀐 파일 알약의 「검토」(SummarySheet 표 넷째 줄) — 카드를 넓혀 그 턴이 바꾼 첫 파일의 변경을 연다. 그 파일이 이 작업공간의 worktree 밖이면
+  // 열 변경이 없어 작은 카드만 연다(`reviewOf`). worktree 자리는 `~` 꼴이라 집 폴더로 풀어 견준다.
+  const trees = useMemo(
+    () => (work && home ? work.worktrees.map((tree) => ({ project: tree.project, root: expandHome(tree.path, home) })) : []),
+    [work, home],
+  );
+  const review = useCallback(
+    (files: readonly string[]) => {
+      const target = reviewOf(files, trees);
+      move(target === null ? { kind: "show", place: "summary" } : { kind: "expand", target });
+    },
+    [trees, move],
+  );
   const card: ChatCard = {
     open: shown.card,
     opened: shown.opened,
     docPlace,
     onShowChanges: showChanges,
+    onReview: review,
     onOpen: (target) => move({ kind: "expand", target }),
     onOpenFile: openFile,
     onClose: () => move({ kind: "collapse" }),
@@ -710,6 +736,7 @@ function ThreadPane({
           beside={cardOpen && !expanded}
           toasts={!expanded}
           onShowChanges={card.onShowChanges}
+          onReview={card.onReview}
           place={place}
           onLeave={onLeave}
         />
@@ -863,7 +890,8 @@ function useFoldSidebar(expanded: boolean) {
 }
 
 /**
- * Thread 본문 — 흐름과 입력창. `onShowChanges`는 PR 카드의 「변경 사항 보기」다(v1 티켓 36) — 넓힌 카드(v1 티켓 35)의 변경으로 간다.
+ * Thread 본문 — 흐름과 입력창. `onShowChanges`는 PR 카드의 「변경 사항 보기」(v1 티켓 36), `onReview`는 바뀐 파일 알약의 「검토」다 — 둘 다 넓힌
+ * 카드(v1 티켓 35)의 변경으로 간다(SummarySheet 표 넷째 줄).
  */
 function ThreadBody({
   view,
@@ -871,6 +899,7 @@ function ThreadBody({
   beside,
   toasts,
   onShowChanges,
+  onReview,
   place,
   onLeave,
 }: {
@@ -881,6 +910,7 @@ function ThreadBody({
   /** 안내 카드의 토스트가 이 본문 아래에 서나 — 넓힌 카드가 서 있으면 그 보기의 토스트 자리(`ExpandedViewer`)가 받는다. */
   toasts: boolean;
   onShowChanges: (pr: PrLine) => void;
+  onReview: (files: readonly string[]) => void;
 } & ChatPlace) {
   const navigate = useNavigate();
   const thread = view.id;
@@ -1147,10 +1177,7 @@ function ThreadBody({
                       <ChangesPill
                         changes={changes}
                         arrival={last.key}
-                        onReview={() => {
-                          toggleTurn(turnKey(thread, last.key), true);
-                          stuck.current = false;
-                        }}
+                        onReview={() => onReview(changes.files.map((file) => file.path))}
                       />
                     ) : (
                       <span />
