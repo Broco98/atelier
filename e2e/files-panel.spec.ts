@@ -39,7 +39,7 @@ const FOLDER = "list_worktree_folder";
 const 요약카드단추 = (page: Page) => page.getByRole("button", { name: "요약 카드", exact: true });
 /** 넓힌 카드의 Project 보기 — 트리가 여기 선다. */
 const 트리 = (page: Page) => page.locator('[data-viewer="project"]');
-/** 트리의 행 — 폴더 행은 이름이 곧 이름이고, 파일 행은 확장자 꼬리표가 앞에 붙는다(`MD README.md`). */
+/** 트리의 행 — 이름이 곧 이름이다. 파일 행의 확장자 꼬리표 글자는 그림이라 이름에 들지 않는다(restart 02b-8 — 한때 `MD README.md`였다). */
 const 행 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
 const 트리행 = (page: Page, name: string) => 행(트리(page), name);
 
@@ -81,25 +81,25 @@ test("트리는 프로젝트 루트만 펼쳐 서고, 걸린 것은 흐린 글�
   for (const folder of [".github", "dist", "src"]) {
     await expect(트리행(page, folder), folder).toHaveAttribute("aria-expanded", "false");
   }
-  for (const file of [".env", ".gitignore", "MD README.md"]) {
+  for (const file of [".env", ".gitignore", "README.md"]) {
     await expect(트리행(page, file), file).toBeVisible();
   }
-  await expect(트리행(page, "TS index.ts")).toHaveCount(0);
-  await expect(트리행(page, "YML ci.yml")).toHaveCount(0);
+  await expect(트리행(page, "index.ts")).toHaveCount(0);
+  await expect(트리행(page, "ci.yml")).toHaveCount(0);
 
   // 폴더를 누르면 펼친다 — 한 겹만이다(안쪽 폴더는 접힌 채)
   await 트리행(page, "src").click();
   await expect(트리행(page, "src")).toHaveAttribute("aria-expanded", "true");
-  await expect(트리행(page, "TS index.ts")).toBeVisible();
+  await expect(트리행(page, "index.ts")).toBeVisible();
   await expect(트리행(page, "api")).toHaveAttribute("aria-expanded", "false");
 
   // 걸린 것은 접근성 설명으로 그 까닭을 말하고(스토리 88), 글자가 흐리다(스토리 19). 걸리지 않은 행은 설명이 없다.
   await expect(트리행(page, "dist")).toHaveAccessibleDescription("gitignore에 걸림");
   await expect(트리행(page, ".env")).toHaveAccessibleDescription("gitignore에 걸림");
   await expect(트리행(page, "src")).toHaveAccessibleDescription("");
-  await expect(트리행(page, "MD README.md")).toHaveAccessibleDescription("");
+  await expect(트리행(page, "README.md")).toHaveAccessibleDescription("");
   const colorOf = (name: string) => 트리행(page, name).evaluate((el) => getComputedStyle(el).color);
-  expect(await colorOf(".env")).not.toBe(await colorOf("MD README.md"));
+  expect(await colorOf(".env")).not.toBe(await colorOf("README.md"));
   expect(await colorOf("dist")).not.toBe(await colorOf("src"));
   // 걸린 폴더는 접힌 채 서고, 펼치기 전에는 그 안을 묻지 않는다(스토리 20)
   expect(await callCount(page, FOLDER)).toBe(0);
@@ -141,9 +141,9 @@ test("걸린 폴더를 펼치면 「읽는 중」 뒤에 한 겹이 서고, 그 
   // 걸린 폴더 행도 펼쳐짐을 말한다(스토리 88)
   await expect(dist).toHaveAttribute("aria-expanded", "true");
   await expect(트리(page).getByText("읽는 중…", { exact: true })).toBeVisible();
-  await expect(트리행(page, "JS app.js")).toHaveCount(0);
+  await expect(트리행(page, "app.js")).toHaveCount(0);
   await releaseCommand(page, FOLDER);
-  await expect(트리행(page, "JS app.js")).toBeVisible();
+  await expect(트리행(page, "app.js")).toBeVisible();
   await expect(트리(page).getByText("읽는 중…", { exact: true })).toHaveCount(0);
   // 한 겹 명령이 그 폴더의 (slug, 프로젝트, 경로)로 한 번 불렸다
   expect((await ipcCallArgs(page, FOLDER, "path")).map(({ args }) => args)).toEqual([
@@ -154,25 +154,25 @@ test("걸린 폴더를 펼치면 「읽는 중」 뒤에 한 겹이 서고, 그 
   await expect(트리(page).getByText(/^그 밖에/)).toHaveCount(0);
 
   // 안의 것은 모두 걸린 것이다 — 흐린 글자와 그 까닭. 자식 폴더는 아직 안 읽어 접힌 채다
-  await expect(트리행(page, "JS app.js")).toHaveAccessibleDescription("gitignore에 걸림");
+  await expect(트리행(page, "app.js")).toHaveAccessibleDescription("gitignore에 걸림");
   const assets = 트리행(page, "assets");
   await expect(assets).toHaveAccessibleDescription("gitignore에 걸림");
   await expect(assets).toHaveAttribute("aria-expanded", "false");
-  await expect(트리행(page, "SVG logo.svg")).toHaveCount(0);
+  await expect(트리행(page, "logo.svg")).toHaveCount(0);
 
   // 그 안의 폴더를 펼치면 다음 겹이다
   await assets.click();
   await expect(assets).toHaveAttribute("aria-expanded", "true");
-  await expect(트리행(page, "SVG logo.svg")).toBeVisible();
+  await expect(트리행(page, "logo.svg")).toBeVisible();
   expect((await ipcCallArgs(page, FOLDER, "path")).map(({ args }) => args.path)).toEqual(["dist", "dist/assets"]);
 
   // 접었다 다시 펼치면 또 읽는다 — 펼칠 때 읽는다(결정 37)
   await dist.click();
   await expect(dist).toHaveAttribute("aria-expanded", "false");
-  await expect(트리행(page, "JS app.js")).toHaveCount(0);
+  await expect(트리행(page, "app.js")).toHaveCount(0);
   const before = await steadyCount(page, FOLDER);
   await dist.click();
-  await expect(트리행(page, "JS app.js")).toBeVisible();
+  await expect(트리행(page, "app.js")).toBeVisible();
   await expect.poll(() => callCount(page, FOLDER)).toBeGreaterThan(before);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -189,11 +189,11 @@ test("걸린 폴더의 한 겹이 상한에 걸려 잘려 오면 받은 행 아�
   await openTree(page);
   await 트리행(page, "dist").click();
 
-  await expect(트리행(page, "O b.o")).toBeVisible();
+  await expect(트리행(page, "b.o")).toBeVisible();
   const note = 트리(page).getByText("그 밖에 76,440개는 그리지 않아요", { exact: true });
   await expect(note).toBeVisible();
   // 받은 행 다음 자리다
-  const [last, below] = await Promise.all([트리행(page, "O b.o").boundingBox(), note.boundingBox()]);
+  const [last, below] = await Promise.all([트리행(page, "b.o").boundingBox(), note.boundingBox()]);
   expect(below!.y).toBeGreaterThan(last!.y);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -209,7 +209,7 @@ test("한 겹 명령이 실패하면 그 폴더 아래에 까닭 행이 서고, 
   await expect(트리(page).getByText("읽지 못했어요 — Permission denied (os error 13)", { exact: true })).toBeVisible();
   await expect(dist).toHaveAttribute("aria-expanded", "true");
   await expect(트리행(page, "src")).toBeVisible();
-  await expect(트리행(page, "MD README.md")).toBeVisible();
+  await expect(트리행(page, "README.md")).toBeVisible();
 
   // 코어가 답으로 「읽지 못함」을 말해도 같은 자리에 그 까닭이 선다
   await replaceAnswer(
@@ -238,7 +238,7 @@ test("프로젝트가 둘이면 Project 줄이 둘 서고, 줄마다 그 프로�
   // 넓힌 카드 목록의 다른 Project 줄을 누르면 그 트리다.
   await Project줄을누른다(page, "ledger");
   await expect(트리행(page, "lib")).toBeVisible();
-  await expect(트리행(page, "TOML Cargo.toml")).toBeVisible();
+  await expect(트리행(page, "Cargo.toml")).toBeVisible();
   await expect(트리행(page, "src")).toHaveCount(0);
   // 프로젝트마다 한 번 묻는다
   const asked = (await ipcCallArgs(page, COMMAND, "project")).map(({ args }) => `${args.slug}/${args.project}`);
@@ -301,6 +301,6 @@ test("펼친 폴더는 넓힌 카드를 닫았다 열어도, 다른 work에 갔�
   await 작업화면으로(page, pinnedWork);
   await openTree(page, "billing");
   await expect(src).toHaveAttribute("aria-expanded", "true");
-  await expect(트리행(page, "TS index.ts")).toBeVisible();
+  await expect(트리행(page, "index.ts")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

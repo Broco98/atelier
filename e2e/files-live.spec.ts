@@ -47,7 +47,7 @@ const READ = "read_worktree_file";
 
 /** 넓힌 카드의 Project 보기 — 트리가 여기 선다. */
 const 트리 = (page: Page) => page.locator('[data-viewer="project"]');
-/** 트리의 행 — 파일 행은 확장자 꼬리표가 앞에 붙는다(`MD README.md`). */
+/** 트리의 행 — 이름이 곧 이름이다(파일 행의 확장자 꼬리표 글자는 이름에 들지 않는다 — restart 02b-8). */
 const 패널행 = (page: Page, name: string) => 트리(page).getByRole("button", { name, exact: true });
 /** 넓힌 카드를 닫는다(「카드로 접기」) — 트리가 내려간다. */
 const 카드로접기 = (page: Page) => page.getByRole("button", { name: "카드로 접기", exact: true }).click();
@@ -105,12 +105,12 @@ test("Project 트리가 서 있을 때 그 워크트리의 `worktree:changed`가
   await openFiles(page);
   await expect(패널행(page, "src")).toBeVisible();
   const before = await steadyCount(page, TREE);
-  await expect(패널행(page, "MD CHANGELOG.md")).toHaveCount(0);
+  await expect(패널행(page, "CHANGELOG.md")).toHaveCount(0);
 
   await replaceAnswer(page, TREE, billingWith("CHANGELOG.md"));
   await fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" });
 
-  await expect(패널행(page, "MD CHANGELOG.md")).toBeVisible();
+  await expect(패널행(page, "CHANGELOG.md")).toBeVisible();
   // 이벤트 한 번에 한 번이다 — 구독이 여럿이 되어 그 수만큼 다시 읽지 않는다
   expect((await steadyCount(page, TREE)) - before).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -134,7 +134,7 @@ test("트리를 붙잡아 둔 채 신호를 세 번 쏘고 풀면, 붙잡힌 부
 
   await replaceAnswer(page, TREE, billingWith("CHANGELOG.md"));
   await releaseCommand(page, TREE);
-  await expect(패널행(page, "MD CHANGELOG.md")).toBeVisible();
+  await expect(패널행(page, "CHANGELOG.md")).toBeVisible();
   await steadyCount(page, TREE);
   expect(await callsSinceRelease(page, TREE)).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -157,7 +157,7 @@ test("트리가 내려가 있는 동안 온 신호에는 묻지 않고, 다시 �
 
   // 보이는 순간 한 번 읽어 새 행이 선다
   await Project줄을누른다(page, "billing");
-  await expect(패널행(page, "MD CHANGELOG.md")).toBeVisible();
+  await expect(패널행(page, "CHANGELOG.md")).toBeVisible();
   expect((await steadyCount(page, TREE)) - hidden).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -259,7 +259,7 @@ test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed` · 「도는 중
   await awaitSpawned(page, 1);
   await openFiles(page);
   await 패널행(page, "dist").click();
-  await expect(패널행(page, "JS app.js")).toBeVisible();
+  await expect(패널행(page, "app.js")).toBeVisible();
   const folders = await steadyCount(page, FOLDER);
   /** 신호 하나를 주고 트리를 다시 묻기를 기다린다 — 한 겹이 그대로인지는 그 뒤에 잰다. */
   const treeAskedAfter = async (signal: () => Promise<unknown>) => {
@@ -280,7 +280,7 @@ test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed` · 「도는 중
   await expect.poll(() => callCount(page, FOLDER)).toBe(folders + 1);
   expect(await steadyCount(page, FOLDER), "창으로 돌아오기").toBe(folders + 1);
   // 다시 읽는 동안에도 행은 그대로다
-  await expect(패널행(page, "JS app.js")).toBeVisible();
+  await expect(패널행(page, "app.js")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

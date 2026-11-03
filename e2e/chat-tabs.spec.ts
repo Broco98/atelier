@@ -38,8 +38,11 @@ const 칸차례 = (page: Page) =>
 const 채팅칸 = (page: Page, id: string) => page.locator(`[data-tab="chat"][data-thread="${id}"]`);
 const 켜짐 = (page: Page, id: string) => 채팅칸(page, id).locator("button[aria-pressed]");
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
-/** 입력창 위 가운데의 작업 중 점 — 사이드바 줄 끝의 스피너도 이름이 같아 본문에서 집는다. */
-const 작업중 = (page: Page) => page.getByRole("main").getByRole("img", { name: "작업 중", exact: true });
+/**
+ * 도는 턴의 표시 — 보낸 뒤 첫 출력 전의 「생각 중」(States 보드 04). 한때 입력창 위 가운데의 작업 중 점이었다 — 이제 그 점은 위로 굴려 「맨 아래로」가
+ * 설 때 그 원 안에만 선다(restart 02b-1).
+ */
+const 작업중 = (page: Page) => page.getByRole("main").getByText("생각 중", { exact: true });
 const 작업공간주소 = (slug: string, query: string) => new RegExp(`/works/${slug}\\?${query.replace(/[?&]/g, "\\$&")}$`);
 
 test("사이드바의 채팅을 누르면 그 채팅 탭이 서서 켜지고, 탭을 닫아도 채팅이 남으며, 채팅이 없는 작업공간은 새 채팅 탭으로 열린다", async ({
@@ -251,12 +254,30 @@ test.describe(() => {
     await expect(맨아래로(page)).toBeVisible();
     expect(Math.abs((await 굴림(page)).top - held)).toBeLessThanOrEqual(1);
 
-    // 따라가던 채팅 탭으로 돌아온다 — 숨은 동안 쌓인 둘째 턴의 끝(바닥)이다.
+    // 따라가던 채팅 탭으로 돌아온다 — 숨은 동안 쌓인 둘째 턴의 끝(바닥)이다. 다시 선 탭은 곧바로 바닥에 서지만 선 뒤 늦게 크는 것(답 아래 줄 ·
+    // 펼침)은 따라가기 걸음(프레임마다 18%)으로 붙는다(restart 02b-7) — 바닥은 되풀이해 읽는다. 위에서 미끄러져 내려오지 않는다 — 그 탭의
+    // 흐름이 선 첫 프레임부터 남은 거리가 24 안이다(`시안-비교/02b-7/차이.md` 「처음 여는 채팅 · 돌아온 탭」).
+    const 둘째말 = sentPayloads(twoTurns)[1].text;
+    await page.evaluate((said) => {
+      const log: number[] = [];
+      (window as unknown as { 돌아온굴림: number[] }).돌아온굴림 = log;
+      const start = performance.now();
+      const frame = () => {
+        const box = [...(document.querySelector("main")?.querySelectorAll<HTMLElement>("div") ?? [])].find(
+          (el) => getComputedStyle(el).overflowY === "auto" && el.scrollHeight > el.clientHeight && el.isConnected && el.offsetParent !== null,
+        );
+        if (box?.textContent?.includes(said)) log.push(Math.round(box.scrollHeight - box.scrollTop - box.clientHeight));
+        if (performance.now() - start < 1500) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }, 둘째말);
     await 켜짐(page, following.id).click();
-    await expect(page.getByRole("main").getByText(sentPayloads(twoTurns)[1].text, { exact: true })).toBeVisible();
-    const back = await 굴림(page);
-    expect(back.height).toBeGreaterThan(before);
-    expect(back.rest).toBeLessThan(24);
+    await expect(page.getByRole("main").getByText(둘째말, { exact: true })).toBeVisible();
+    expect((await 굴림(page)).height).toBeGreaterThan(before);
+    await expect.poll(async () => (await 굴림(page)).rest).toBeLessThan(24);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { 돌아온굴림: number[] }).돌아온굴림.length)).toBeGreaterThan(5);
+    const 돌아온굴림 = await page.evaluate(() => (window as unknown as { 돌아온굴림: number[] }).돌아온굴림);
+    expect(돌아온굴림.filter((rest) => rest >= 24), `돌아온 탭의 남은 거리 ${돌아온굴림.join(" ")}`).toEqual([]);
     await expect(맨아래로(page)).toHaveCount(0);
 
     // 읽던 채팅 탭은 다시 와도 그 자리다 — 다른 채팅 탭을 다녀와도 같다.

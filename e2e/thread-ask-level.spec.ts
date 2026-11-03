@@ -43,7 +43,7 @@ test("새 Thread에서 칩으로 고른 「편집 자동」이 첫 말과 함께
   await 정도칩(page, "편집 자동").click();
   await expect(page.getByRole("menuitemradio")).toHaveText([/^매번 묻기/, /^편집 자동/, /^계획/, /^묻지 않음/]);
   await expect(정도(page, "편집 자동")).toHaveAttribute("aria-checked", "true");
-  await expect(정도(page, "편집 자동")).toHaveAccessibleDescription("파일 편집은 묻지 않고, 명령은 묻습니다");
+  await expect(정도(page, "편집 자동")).toHaveAccessibleDescription("파일 편집은 묻지 않고, 명령은 묻는다");
   await 정도(page, "계획").click();
   await expect(정도칩(page, "계획")).toBeVisible();
   await 정도칩(page, "계획").click();
@@ -62,8 +62,8 @@ test("새 Thread에서 칩으로 고른 「편집 자동」이 첫 말과 함께
 
   // 첫 턴 — 판정이 파일 쓰기를 묻지 않고 허용한다. 카드는 서지 않고, 펼친 턴의 그 도구 줄 앞에 방패 줄이 까닭(정도 이름)과 선다.
   await streamLines(page, started.id, linesThrough(linesAfter(level, FIRST_SENT), FIRST_END));
-  await expect(page.getByRole("group", { name: /될까요\?$/ })).toHaveCount(0);
-  const 첫턴 = 흐름(page).getByRole("button", { name: /초 동안 작업$/ });
+  await expect(page.getByRole("group", { name: /할까요\?$/ })).toHaveCount(0);
+  const 첫턴 = 흐름(page).getByRole("button", { name: /초 동안 작업함$/ });
   await 첫턴.click();
   await expect(첫턴).toHaveAttribute("aria-expanded", "true");
   const 방패 = 흐름(page).locator("[data-auto-allowed]");
@@ -71,7 +71,7 @@ test("새 Thread에서 칩으로 고른 「편집 자동」이 첫 말과 함께
   await expect(방패).toContainText("자동으로 허용함");
   await expect(방패).toContainText("allowed.txt");
   await expect(방패).toContainText("편집 자동");
-  await expect(흐름(page).getByRole("group", { name: "allowed.txt 작성함", exact: true })).toBeVisible();
+  await expect(흐름(page).getByRole("group", { name: "생성됨 allowed.txt", exact: true })).toBeVisible();
 
   // 선 Thread에서 「매번 묻기」로 — 곧바로 바꾸기가 가고, 엔진이 적은 `mode` 줄이 「Policy를 매번 묻기로 바꿈」으로 선다.
   await 정도칩(page, "편집 자동").click();
@@ -84,7 +84,8 @@ test("새 Thread에서 칩으로 고른 「편집 자동」이 첫 말과 함께
   await expect(흐름(page).locator('[data-system="mode"]')).toHaveText("Policy를 매번 묻기로 바꿈");
   await expect(정도칩(page, "매번 묻기")).toBeVisible();
 
-  // 다음 편집부터 그 정도다 — 둘째 턴의 파일 쓰기는 카드로 묻고, 카드 머리 한 줄이 왜 묻는지 「매번 묻기」를 말한다(02 티켓 11).
+  // 다음 편집부터 그 정도다 — 둘째 턴의 파일 쓰기는 카드로 묻는다. 카드는 갈래 「파일 편집」과 물음이고, 묻는 정도는 카드가 아니라 입력창의
+  // 정도 칩이 말한다(restart 02b-5 — 머리 한 줄을 걷었다. 칩은 위에서 「매번 묻기」로 쟀다).
   await 입력칸(page).fill(second.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_send", "text")).map(({ args }) => args)).toEqual([
@@ -92,8 +93,8 @@ test("새 Thread에서 칩으로 고른 「편집 자동」이 첫 말과 함께
   ]);
   await streamLines(page, started.id, linesThrough(linesAfter(level, MODE), ASKED));
   await expect(흐름(page).getByText(second.text, { exact: true })).toBeVisible();
-  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true });
-  await expect(card).toContainText("Claude Code · 파일 고치기 · 「매번 묻기」");
+  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 편집하도록 허용할까요?", exact: true });
+  await expect(card.getByText("파일 편집", { exact: true })).toBeVisible();
   await expect(card.getByRole("figure", { name: /denied\.txt 변경$/ })).toBeVisible();
   await expect(흐름(page).locator("[data-auto-allowed]")).toHaveCount(1);
   expect(await unknownIpcCalls(page)).toEqual([]);

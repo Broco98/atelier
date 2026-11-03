@@ -106,7 +106,7 @@ test("「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세�
   await expect(page).toHaveURL(채팅주소(loose));
 
   // 마지막 물음에 답하면 수가 걷히고 목록은 비었다는 한 줄이다.
-  await page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();
+  await page.getByRole("group", { name: "Claude Code가 이 파일을 편집하도록 허용할까요?", exact: true }).getByRole("button", { name: "한 번만 허용", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args.thread))
     .toEqual([loose.id]);

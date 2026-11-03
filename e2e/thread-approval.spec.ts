@@ -54,45 +54,48 @@ const permission = record("thread-permission");
 const ASKED = lineOf(permission, "permission", "asked");
 const ANSWERED = lineOf(permission, "permission", "answered");
 
-test("승인 카드가 입력창 자리에 서서 누가 · 무엇을 · 왜 묻는지 보이고, esc가 「아니요, 다르게」 칸을 열고 닫으며, 숫자 · ↓는 고르지 않고 ↵가 「이번만 허용」을 보내며, 답 줄이 오면 결정 줄이 선다", async ({
+test("승인 카드가 입력창 자리에 서서 무엇을 묻는지 보이고, esc가 「거부」 칸을 열고 닫으며, 숫자 · ↓는 고르지 않고 ↵가 「한 번만 허용」을 보내며, 답 줄이 오면 결정 줄이 선다", async ({
   page,
 }) => {
   const view = await openThread(page, permission, ASKED);
 
-  // 물음 줄 — 입력창이 사라지고 그 자리에 카드가 선다(02 §10 · 티켓 11). 카드의 이름은 누가 묻는 물음이고, 머리 한 줄이 누가 · 무슨
-  // 일 · 어떤 규칙 때문에(Policy 이름) 묻는지, 그 아래 바꿀 파일의 바뀐 줄이 선다. 단추 한 줄은 왼쪽에서 「아니요, 다르게」 · 늘
-  // 허용 · 맨 오른쪽 「이번만 허용」이다 — 이 물음은 「다시 묻지 않기」로 적을 허락(`grant` — 편집)을 실어 늘 허용이 「이 채팅의
-  // 모든 편집 허용」이다(Work 없는 Thread).
+  // 물음 줄 — 입력창이 사라지고 그 자리에 카드가 선다(02 §10 · 티켓 11). 카드는 Cards 보드의 한 겉이다(restart 02b-5) — 위에 갈래 「파일
+  // 편집」, 그 아래 물음(카드의 이름), 줄인 diff다. 머리 한 줄(누가 · 무슨 일 · 규칙 이름)은 걷혔다. 단추 한 줄은 왼쪽 허락 문구 · 오른쪽
+  // 「거부」 · 「한 번만 허용」이다 — 이 물음은 「다시 묻지 않기」로 적을 허락(`grant` — 편집)을 실어 허락 문구가 「이 채팅의 모든 편집
+  // 허용」이다(Work 없는 Thread).
   await streamLines(page, view.id, [ASKED]);
-  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true });
+  const card = page.getByRole("group", { name: "Claude Code가 이 파일을 편집하도록 허용할까요?", exact: true });
   await expect(card).toBeVisible();
   await expect(입력칸(page)).toHaveCount(0);
-  await expect(card).toContainText("Claude Code · 파일 고치기 · 「매번 묻기」");
-  await expect(card.getByRole("figure", { name: /allowed\.txt 변경$/ })).toContainText("+x");
+  await expect(card.getByText("파일 편집", { exact: true })).toBeVisible();
+  await expect(card).not.toContainText("매번 묻기");
+  // 줄인 diff는 줄 번호 · 「+」 없이 바뀐 줄의 글과 왼쪽 막대다(restart 02b-4 · 02b-5).
+  await expect(card.getByRole("figure", { name: /allowed\.txt 변경$/ })).toHaveText("x");
   const 선택지 = card.getByRole("button");
-  const names = ["아니요, 다르게", "이 채팅의 모든 편집 허용", "이번만 허용"];
+  const names = ["이 채팅의 모든 편집 허용", "거부", "한 번만 허용"];
   await expect(선택지).toHaveCount(names.length);
   for (const [at, name] of names.entries()) await expect(선택지.nth(at)).toHaveAccessibleName(name);
-  // 글쇠는 단추 끝에 옅게 선다 — 「아니요, 다르게」에 esc, 「이번만 허용」에 ↵. 켜진 줄이 옮겨 다니지 않으니 글쇠도 그 자리다.
-  await expect(선택지.first()).toHaveText(/Esc$/);
+  // 글쇠는 단추 끝에 옅게 선다 — 「거부」에 esc, 「한 번만 허용」에 ↵. 켜진 줄이 옮겨 다니지 않으니 글쇠도 그 자리다.
+  await expect(선택지.nth(1)).toHaveText(/Esc$/);
   await expect(선택지.last()).toHaveText(/↵$/);
-  await expect(선택지.nth(1)).toHaveText(names[1]);
-  await expect(흐름(page).getByText("승인을 기다립니다", { exact: true })).toBeVisible();
+  await expect(선택지.first()).toHaveText(names[0]);
+  // 기다리는 턴의 머리는 시간 없이 「승인을 기다립니다」다(restart 02b-4 — 도구 줄의 동사도 같은 글이라 머리로 좁힌다).
+  await expect(흐름(page).locator("[data-work-divider]")).toHaveText(["승인을 기다립니다"]);
   // 풀린 포커스는 카드가 받는다 — Enter · Esc가 카드의 키다.
   await expect(card).toBeFocused();
   await page.waitForTimeout(ARMING_MS);
 
-  // Esc는 「아니요, 다르게」 — 카드 안에 할 말 칸이 열린다. 칸의 Esc는 칸만 닫고 카드로 돌아간다.
+  // Esc는 「거부」 — 카드 안에 할 말 칸이 열린다. 칸의 Esc는 칸만 닫고 카드로 돌아간다.
   const 할말 = card.getByRole("textbox", { name: "Claude Code에게 다르게 할 방법 알려 주기", exact: true });
   await page.keyboard.press("Escape");
   await expect(할말).toBeFocused();
-  await expect(card.getByRole("button", { name: names[0], exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(card.getByRole("button", { name: "거부", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
   await expect(할말).toHaveCount(0);
   await expect(card).toBeFocused();
   expect(await ipcCallArgs(page, "thread_answer_permission", "thread")).toEqual([]);
 
-  // 숫자 키와 ↑↓는 아무것도 고르지 않는다(S25 — 번호 줄이 단추 줄이 됐다). Enter는 「이번만 허용」이다 — 답은 물은 참여자 · 요청 id와
+  // 숫자 키와 ↑↓는 아무것도 고르지 않는다(S25 — 번호 줄이 단추 줄이 됐다). Enter는 「한 번만 허용」이다 — 답은 물은 참여자 · 요청 id와
   // 함께 가고, 다시 묻지 않기로 적지 않는다.
   for (const key of ["1", "2", "3", "ArrowDown", "ArrowUp"]) await page.keyboard.press(key);
   await expect(할말).toHaveCount(0);
@@ -103,17 +106,17 @@ test("승인 카드가 입력창 자리에 서서 누가 · 무엇을 · 왜 묻
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args))
     .toEqual([{ thread: view.id, request: "0", option: "allow_once", remember: false, words: null }]);
 
-  // 답 줄이 오면 카드가 걷히고 입력창이 돌아온다. 물은 턴에 결정 줄이 선다.
+  // 답 줄이 오면 카드가 걷히고 입력창이 돌아온다. 물은 턴에 결정 줄이 선다 — 누른 단추의 글 + 「함」이다(restart 02b-5).
   await streamLines(page, view.id, [ANSWERED]);
   await expect(card).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
-  await expect(흐름(page).locator("[data-decision]")).toHaveText(["파일 고치기를 승인함"]);
+  await expect(흐름(page).locator("[data-decision]")).toHaveText(["한 번만 허용함"]);
   await expect(흐름(page).locator('[data-decision="allowed"]')).toBeVisible();
 
   // 턴이 이어져 끝난다 — 다시 묻지 않는다.
   await streamLines(page, view.id, linesAfter(permission, ANSWERED.seq));
   await expect(흐름(page).getByText("done", { exact: true })).toBeVisible();
-  await expect(page.getByRole("group", { name: /될까요\?$/ })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: /할까요\?$/ })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -124,12 +127,13 @@ type AskedQuestion = { question: string; multiSelect: boolean; options: { label:
 const [FEE, SCREEN] = (QUESTION_ASKED.payload as { questions: AskedQuestion[] }).questions;
 const { answers: ANSWERS } = QUESTION_ANSWERED.payload as { answers: { question: string; answer: string }[] };
 
-test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 선택지와 설명을 보이고, 숫자로 고른 답이 Enter로 가며, 답 줄이 오면 물음마다 한 줄로 물음과 고른 답이 선다", async ({
+test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 선택지와 설명(접근성 설명)을 보이고, 숫자로 고른 답이 Enter로 가며, 답 줄이 오면 물음마다 한 줄로 물음과 고른 답이 선다", async ({
   page,
 }) => {
   const view = await openThread(page, question, QUESTION_ASKED);
 
-  // 질문 줄 — 입력창 자리에 질문 카드가 선다. 하나 고르는 물음은 라디오, 여럿 고르는 물음은 체크이고, 선택지 이름은 이름과 설명이다.
+  // 질문 줄 — 입력창 자리에 질문 카드가 선다. 하나 고르는 물음은 라디오, 여럿 고르는 물음은 체크다. 선택지 이름은 보이는 이름이고 설명은
+  // 접근성 설명(`title`)이다(restart 02b-5 — 알약에 설명 글이 없다).
   await streamLines(page, view.id, [QUESTION_ASKED]);
   const card = page.getByRole("group", { name: "Claude Code의 질문", exact: true });
   await expect(card).toBeVisible();
@@ -137,10 +141,12 @@ test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 �
   const 수수료 = card.getByRole("radiogroup", { name: FEE.question, exact: true });
   const 화면 = card.getByRole("group", { name: SCREEN.question, exact: true });
   for (const [at, option] of FEE.options.entries()) {
-    await expect(수수료.getByRole("radio").nth(at)).toHaveAccessibleName(`${option.label} ${option.description}`);
+    await expect(수수료.getByRole("radio").nth(at)).toHaveAccessibleName(option.label);
+    await expect(수수료.getByRole("radio").nth(at)).toHaveAccessibleDescription(option.description);
   }
   for (const [at, option] of SCREEN.options.entries()) {
-    await expect(화면.getByRole("checkbox").nth(at)).toHaveAccessibleName(`${option.label} ${option.description}`);
+    await expect(화면.getByRole("checkbox").nth(at)).toHaveAccessibleName(option.label);
+    await expect(화면.getByRole("checkbox").nth(at)).toHaveAccessibleDescription(option.description);
   }
   const 답하기 = card.getByRole("button", { name: "답하기", exact: true });
   await expect(답하기).toBeDisabled();

@@ -146,17 +146,18 @@ test("×가 칩을 빼고 주소를 `/?new=thread`로 바꾸며 고른 범위 ·
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("`?work=`는 그 작업공간의 새 채팅 탭에 잠긴 칩을 세우고, 안내가 그 이름을 부르며 정도 칩이 그 작업공간의 값이고, 첫 말이 그 작업공간으로 간다", async ({
+test("`?work=`는 그 작업공간의 새 채팅 탭이고 Work 칩 없이 안내가 그 이름을 부르며, 정도 칩이 그 작업공간의 값이고, 첫 말이 그 작업공간으로 간다", async ({
   page,
 }) => {
   // 기본 정도(「편집 자동」)와 다른 값이라야 칩이 그 작업공간의 값을 읽었는지 갈린다.
   await installFixtureBackend(page, { ...BACKEND, thread_work_mode: answerByArg("work", { [picked.slug]: "plan" }) });
   await open(page, `/?work=${picked.slug}`);
-  // `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — 한때 홈에 그 작업공간의 잠긴 칩을 세웠다). 같은 새 채팅 몸이라 칩 · 안내 · 정도는 같다.
+  // `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — 한때 홈에 그 작업공간의 잠긴 칩을 세웠다). 그 탭은 Work 칩이 없다 — 탭 줄이 어디서
+  // 일하는지 말하고, 빈 칸의 말이 그 이름을 부른다(restart 02b-2 — 한때 트레이에 잠긴 Work 칩 「작업공간으로 가기: …」가 섰다).
   await expect(page).toHaveURL(`/works/${picked.slug}?tab=chat`);
 
-  await expect(잠긴칩(page)).toHaveAccessibleName(`작업공간으로 가기: ${picked.title}`);
-  await expect(잠긴칩(page)).toHaveText(picked.title);
+  await expect(잠긴칩(page)).toHaveCount(0);
+  await expect(새작업공간칩(page)).toHaveCount(0);
   await expect(칩빼기(page)).toHaveCount(0);
   await shows(page, `${picked.title}에서 무엇을 할까요?`);
   await expect.poll(() => ipcArgs(page, "thread_work_mode", "work")).toEqual([{ work: picked.slug }]);
