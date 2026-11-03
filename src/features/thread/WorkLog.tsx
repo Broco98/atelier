@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import {
   BookOpen,
   Bot,
@@ -169,8 +169,10 @@ function RowChevron({ open, always = false }: { open: boolean; always?: boolean 
  * `from`은 처음 설 때의 모양이다(기본은 `open`). 펼친 모양으로 서서 곧바로 접히면 그 안을 그린 채 접히며 걷힌다.
  *
  * `keep`이면 접혀도 그 안을 걷지 않는다 — 도는 턴의 작업 로그다(`ThreadFlow`의 `TurnView`, restart 03-15a). 마지막 답이 흐르며 접힌 로그를 멈춤이
- * 다시 펼 때 줄을 새로 그리지 않는다(앞선 긴 글 · 도구 60쌍을 새로 그리면 그 프레임이 300ms 멎는다 — 02b-7). `keep`이 풀리면 접힌 상자는 여느 때처럼
- * 걷힌다. 남겨 둔 채 접힌 동안의 안은 포커스와 읽기에서 빠진다(`inert`).
+ * 다시 펼 때 줄을 새로 그리지 않는다(앞선 긴 글 · 도구 60쌍을 새로 그리면 그 프레임이 300ms 멎는다 — 02b-7). 다 접힌 뒤의 안(`sealed`)은 읽기에서
+ * 빠지고(`aria-hidden`) 포커스가 들지 않는다(`leaveSealed`) — 안의 스타일을 건드리지 않는 길이라 큰 로그에서도 장면이 멎지 않는다. `inert` ·
+ * `visibility: hidden` · `display: none`은 요소 4천여 개(앞선 글 4만 자 · 도구 60쌍)에서 걸거나 풀 때 그 장면이 50ms를 넘었다(`spec/결정.md`
+ * 「03-15a」). 그렇게 남겨 둔 상자는 `keep`이 풀리면 곧바로 걷힌다.
  */
 export function Unfold({
   open,
@@ -188,58 +190,102 @@ export function Unfold({
   const [mounted, setMounted] = useState(from || keep);
   const [shown, setShown] = useState(from);
   const [settled, setSettled] = useState(from);
+  const [sealed, setSealed] = useState(!from && keep);
   const box = useRef<HTMLDivElement>(null);
   if ((open || keep) && !mounted) setMounted(true);
-  // 남겨 둔 채 접힌 안만 포커스와 읽기에서 뺀다 — 접혀서 곧 걷힐 안(여느 접힘)에 `inert`를 걸면 큰 로그에서 그 프레임이 20ms쯤 더 멎는다(턴 끝에 펼친
-  // 로그가 접힐 때 54~65ms → 32~35ms). 남겨 둔 채 접혔다가 `keep`이 풀린 안은 걷힐 때까지 그대로 둔다(풀었다가 걷으면 같은 값을 두 번 치른다).
-  const [sealed, setSealed] = useState(!from && keep);
-  const seal = !open && (keep || sealed);
-  if (seal !== sealed) setSealed(seal);
-  // 남겨 둔 채 접혀 있던 상자 — 접힌 모양이 이미 그려져 있어 펼치기 전에 다시 재지 않는다(멈춤이 큰 로그를 펼 때 재기 한 번이 그 프레임을 더 멎게 한다).
-  const keptClosed = useRef(false);
+  if (open && sealed) setSealed(false);
+  // 남겨 둔 채 다 접힌 상자는 `keep`이 풀리면 곧바로 걷는다 — 걷힐 상자에 줄을 새로 그리지 않는다(턴이 끝나 끝 답 앞의 줄이 이 상자로 드는 때.
+  // 4만 자 중간 설명이 들면 그 장면이 230ms 멎었다).
+  if (!open && !keep && sealed) {
+    setSealed(false);
+    setMounted(false);
+  }
+  // 이미 한 장면 그려진 상자 — 지금 모양이 셈해져 있어 바꾸기 전에 다시 재지 않는다(큰 로그에서 재기 한 번이 그 장면을 더 멎게 한다).
+  const drawn = useRef(false);
   useEffect(() => {
-    keptClosed.current = mounted && !shown && keep;
-  });
+    drawn.current = false;
+    if (!mounted) return;
+    const frame = requestAnimationFrame(() => {
+      drawn.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mounted]);
   useLayoutEffect(() => {
+    // 막 선 상자는 지금 모양을 한 번 재 둔 뒤에 바꾼다 — 재지 않고 바꾸면 처음 그림부터 바뀐 모양이라 전이가 걸리지 않는다.
+    if (!drawn.current) box.current?.getBoundingClientRect();
     if (open) {
-      // 접힌 모양(0fr)을 한 번 재 둔 뒤에 펼친다 — 재지 않고 바꾸면 처음 그림부터 펼친 모양이라 전이가 걸리지 않는다.
-      if (!keptClosed.current) box.current?.getBoundingClientRect();
       setShown(true);
       return;
     }
-    // 접을 때도 지금 모양을 한 번 재 둔다 — 펼친 모양으로 막 선 상자(`from`)는 재지 않으면 처음 그림부터 접힌 모양이라 전이가 걸리지 않는다.
-    box.current?.getBoundingClientRect();
     setShown(false);
     setSettled(false);
   }, [open]);
+  // 포커스를 품은 채 닫혀 두면 그 포커스는 상자 앞(접힌 머리)으로 간다 — 보이지 않는 줄에 남지 않게.
   useEffect(() => {
-    if (open || keep || !mounted) return;
+    const focused = document.activeElement;
+    if (sealed && box.current && focused instanceof HTMLElement && box.current.contains(focused)) moveOut(box.current, focused, false);
+  }, [sealed]);
+  useEffect(() => {
+    if (open || !mounted || sealed) return;
+    const done = () => (keep ? setSealed(true) : setMounted(false));
     const ms = reducedMotion() ? 0 : motionMs("--duration-relaxed");
     if (ms === 0) {
-      setMounted(false);
+      done();
       return;
     }
-    // 끝을 알리는 `transitionend`가 오지 않는 때(그 사이에 화면에서 빠짐)에도 걷히게 — 전이 길이 뒤에 한 번 더 본다.
-    const timer = window.setTimeout(() => setMounted(false), ms + 50);
+    // 끝을 알리는 `transitionend`가 오지 않는 때(그 사이에 화면에서 빠짐)에도 걷거나 닫아 두게 — 전이 길이 뒤에 한 번 더 본다.
+    const timer = window.setTimeout(done, ms + 50);
     return () => window.clearTimeout(timer);
-  }, [open, keep, mounted]);
+  }, [open, keep, mounted, sealed]);
   if (!mounted) return null;
   return (
     <div
       ref={box}
       data-open={shown || undefined}
       data-settled={(shown && settled) || undefined}
-      inert={seal || undefined}
+      data-sealed={sealed || undefined}
+      aria-hidden={sealed || undefined}
+      onFocus={sealed ? leaveSealed : undefined}
       onTransitionEnd={(event) => {
         if (event.target !== event.currentTarget) return;
         if (open) setSettled(true);
-        else if (!keep) setMounted(false);
+        else if (keep) setSealed(true);
+        else setMounted(false);
       }}
       className={cn("unfold", className)}
     >
       <div>{children}</div>
     </div>
   );
+}
+
+/** Tab이 앉는 요소 — 링크 · 입력 · 단추 · `tabindex`를 든 것. */
+const TABBABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex], [contenteditable="true"]';
+
+/**
+ * 다 접힌 상자 안으로 든 포커스를 상자 밖으로 옮긴다(`Unfold`의 `sealed`) — 앞에서 들어왔으면 상자 뒤의 첫 자리로, 뒤에서(Shift+Tab) 들어왔으면 상자
+ * 앞의 끝 자리로. 접힌 안은 높이 0에 잘려 보이지 않는다 — 거기 포커스가 앉으면 보이지 않는 단추에 앉는다.
+ */
+function leaveSealed(event: FocusEvent<HTMLDivElement>) {
+  const from = event.relatedTarget;
+  const forward = from instanceof Node && (event.currentTarget.compareDocumentPosition(from) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+  moveOut(event.currentTarget, event.target, forward);
+}
+
+/** `box` 안의 포커스(`focused`)를 상자 뒤의 첫 Tab 자리(`forward`)나 상자 앞의 끝 자리로 옮긴다. 자리가 없으면 포커스를 놓는다. */
+function moveOut(box: HTMLElement, focused: HTMLElement, forward: boolean) {
+  const stops = [...document.querySelectorAll<HTMLElement>(TABBABLE)].filter(
+    (element) =>
+      element.tabIndex >= 0 &&
+      !box.contains(element) &&
+      element.closest("[inert], [aria-hidden='true']") === null &&
+      element.getClientRects().length > 0,
+  );
+  const after = (element: HTMLElement) => (box.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  const next = forward ? stops.find(after) : stops.filter((element) => !after(element)).pop();
+  if (next) next.focus();
+  else focused.blur();
 }
 
 /** 문구 — 도는 줄은 한 글이 반짝이고(바탕 `fg-tool-running`), 선 줄은 동사 · 대상(고정폭 13 `fg-secondary`)이다. 실패한 줄도 색은 같다 — 동사가 말한다. */

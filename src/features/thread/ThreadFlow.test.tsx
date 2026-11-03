@@ -819,11 +819,12 @@ describe("답이 흐르는 턴", () => {
     expect(box(markup)).not.toContain("data-open");
   });
 
-  it("접혀도 도는 동안은 로그의 줄이 상자 안에 그대로 있고, 닫힌 상자는 포커스와 읽기에서 빠진다", () => {
+  it("접혀도 도는 동안은 로그의 줄이 상자 안에 그대로 있고, 닫힌 상자는 읽기에서 빠진다", () => {
     const markup = flow(through(68), ANSWER);
     const at = markup.indexOf(box(markup)!);
     expect(markup.indexOf("data-log-run")).toBeGreaterThan(at);
-    expect(box(markup)).toContain("inert");
+    expect(box(markup)).toContain('aria-hidden="true"');
+    expect(box(markup)).not.toContain("inert");
   });
 
   it("접힌 뒤에 일이 다시 와도 스스로 펴지지 않고, 그 일은 답 아래에 이어 선다", () => {

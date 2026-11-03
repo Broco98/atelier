@@ -2186,7 +2186,9 @@ body[data-palette-open] [data-scrollbar] {
    작업 구분선을 펼친 줄들 · 도구 줄의 안(명령 출력 · 변경 · MCP) · 묶음 줄의 줄들이 이것으로 자라고 줄며, 아래 내용이 함께 밀린다.
    `height: auto`는 전이가 걸리지 않아 줄 하나짜리 격자의 줄(0fr → 1fr)로 옮긴다 — 그 줄에 든 상자(`> *`)가 잘라 담는다. 펼친 모양은
    `data-open`이고, 다 펼쳐 멎으면(`data-settled`) 자르지 않는다 — 안의 단추 초점 고리(바깥 4)가 잘리지 않게. 접히면 다 접힌 뒤에
-   그 안을 걷는다(`WorkLog`의 `Unfold`). v1의 로그 펼침(줄마다 위 4에서 40ms씩 늦게, 높이는 곧바로)을 바꿨다. */
+   그 안을 걷는다(`WorkLog`의 `Unfold`). v1의 로그 펼침(줄마다 위 4에서 40ms씩 늦게, 높이는 곧바로)을 바꿨다.
+   자르기는 `clip-path`다 — 칠하기만 바꾸어 다 펼쳐 멎을 때 안을 다시 배치하지 않는다. 한때 `overflow: hidden` → `visible`이었고, 앞선 글 4만
+   자 · 도구 60쌍의 로그에서 그 장면이 45ms 멎었다(restart 03-15a). */
 @utility unfold {
     display: grid;
     grid-template-rows: 0fr;
@@ -2196,14 +2198,14 @@ body[data-palette-open] [data-scrollbar] {
     transition-timing-function: var(--ease-enter);
     & > * {
         min-height: 0;
-        overflow: hidden;
+        clip-path: inset(0);
     }
     &[data-open] {
         grid-template-rows: 1fr;
         opacity: 1;
     }
     &[data-open][data-settled] > * {
-        overflow: visible;
+        clip-path: none;
     }
 }
 

@@ -246,7 +246,7 @@ async function openLongWork(page: Page, title: string, flowing: string): Promise
   return { view, lines, text: flowing };
 }
 
-/** 도구 줄 60개 — 접힌 상자 안에서도 그려 둔 줄을 센다(역할로 찾으면 닫힌 상자(`inert`) 안의 줄이 빠진다). */
+/** 도구 줄 60개 — 접힌 상자 안에서도 그려 둔 줄을 센다(역할로 찾으면 다 접힌 상자(`aria-hidden`) 안의 줄이 빠진다). */
 const TOOL_ROWS = '[role="group"][aria-label="실행 완료 wc -c notes.txt"]';
 /** 작업 로그 상자 — 턴 머리 바로 뒤의 `unfold`다(도구 줄 안의 펼침 상자와 그것으로 갈린다). */
 const LOG_BOX = "[data-turn-head] + .unfold";
@@ -338,6 +338,21 @@ test("도구 60쌍 뒤의 글이 둘째 줄로 넘어가면 로그가 「N초 �
   const rule = head.locator("xpath=../div[@aria-hidden]");
   const answerTop = await main.locator("p").filter({ hasText: "도구를 모두 돌렸어요." }).last().evaluate((element) => element.getBoundingClientRect().top);
   expect(Math.round(answerTop - (await rule.evaluate((element) => element.getBoundingClientRect().bottom)))).toBe(16);
+
+  // 다 접힌 상자는 읽기에서 빠지고(`aria-hidden`) Tab이 그 안에 앉지 않는다 — 머리에서 Tab을 누르면 상자 뒤로 간다. 되돌아와도(Shift+Tab) 안에
+  // 앉지 않는다. 안의 스타일을 바꾸는 `inert`는 이 로그에서 그 장면을 70ms대로 멎게 했다(restart 03-15a).
+  await expect(main.locator(LOG_BOX)).toHaveAttribute("aria-hidden", "true");
+  await expect(main.locator(LOG_BOX)).not.toHaveAttribute("inert");
+  const focusSeat = () =>
+    main.locator(LOG_BOX).evaluate((box) => {
+      const focused = document.activeElement!;
+      return { inside: box.contains(focused), after: (box.compareDocumentPosition(focused) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 };
+    });
+  await head.focus();
+  await page.keyboard.press("Tab");
+  expect(await focusSeat()).toEqual({ inside: false, after: true });
+  await page.keyboard.press("Shift+Tab");
+  expect((await focusSeat()).inside).toBe(false);
 
   // 뒤에 도구가 다시 와도 펴지지 않는다 — 그 줄은 답 아래에 선다.
   const [, , , , runCall] = TURN.filter((line) => /tool_call/.test(JSON.stringify(line.payload).slice(0, 80)));

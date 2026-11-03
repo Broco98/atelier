@@ -663,11 +663,22 @@ function OpenedLog({
   return (
     <Unfold open={open} keep={keep} className={cn(shape !== "bare" && "-mt-2", "w-full")}>
       <div className={cn("flex flex-col items-start gap-2", shape !== "bare" && "pt-1", shape === "opened" && "pb-2")}>
-        <Entries entries={entries} />
+        <LogBody entries={entries} />
       </div>
     </Unfold>
   );
 }
+
+/**
+ * 로그 상자의 줄들 — 줄이 그대로면 다시 그리지 않는다. 턴의 모양이 바뀔 때(접힘 · 멈춤 · 턴 끝) 상자에 드는 줄 배열은 새것이어도 줄 하나하나는 같은
+ * 값이다(`foldOf`). 도구 60쌍을 다시 그리면 그 장면이 몇 ms 더 멎는다(restart 03-15a).
+ */
+const LogBody = memo(
+  function LogBody({ entries }: { entries: readonly Entry[] }) {
+    return <Entries entries={entries} />;
+  },
+  (a, b) => a.entries.length === b.entries.length && a.entries.every((entry, at) => entry === b.entries[at]),
+);
 
 function EntryView({ entry }: { entry: Entry }) {
   switch (entry.kind) {

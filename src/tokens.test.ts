@@ -525,14 +525,16 @@ describe("모션 토큰", () => {
   });
 
   // 펼침은 높이 0 → auto다(Motion 보드 「작업 묶음 펼침」) — 줄 하나짜리 격자의 줄이 0fr에서 1fr로 자라고, 그 안 상자가 잘라 담는다.
-  // 높이(`height: auto`)는 전이가 걸리지 않아 격자의 줄로 옮긴다. 다 펼쳐 멎으면 자르지 않는다 — 안의 단추 초점 고리가 잘리지 않게.
+  // 높이(`height: auto`)는 전이가 걸리지 않아 격자의 줄로 옮긴다. 다 펼쳐 멎으면 자르지 않는다 — 안의 단추 초점 고리가 잘리지 않게. 자르기는
+  // 칠하기만 바꾸는 `clip-path`다 — `overflow`를 바꾸면 안을 다시 배치해 큰 로그에서 다 펼친 장면이 45ms 멎었다(restart 03-15a).
   it("펼침은 격자의 줄과 투명도가 함께 0에서 펼친 모양으로 움직인다", async () => {
     const rule = utilityCss(await utilities(["unfold"]), "unfold") ?? "";
     expect(rule).toContain("grid-template-rows: 0fr");
     expect(rule).toContain("transition-property: grid-template-rows, opacity");
     expect(rule).toMatch(/\[data-open\][^{]*\{[^}]*grid-template-rows: 1fr;[^}]*opacity: 1/);
-    expect(rule).toMatch(/> \*[^{]*\{[^}]*min-height: 0;[^}]*overflow: hidden/);
-    expect(rule).toMatch(/\[data-settled\][^{]*> \*[^{]*\{[^}]*overflow: visible/);
+    expect(rule).toMatch(/> \*[^{]*\{[^}]*min-height: 0;[^}]*clip-path: inset\(0\)/);
+    expect(rule).toMatch(/\[data-settled\][^{]*> \*[^{]*\{[^}]*clip-path: none/);
+    expect(rule).not.toContain("overflow");
   });
 
   // 반짝임은 멎으면 흐린 글자다 — 띠(그라디언트)가 글자 한 자리에 굳어 진한 얼룩으로 남지 않는다.
