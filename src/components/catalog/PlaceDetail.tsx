@@ -177,10 +177,12 @@ export function PlaceSection({
         <h2>{title}</h2>
         <span className="font-normal text-fg-tertiary tabular-nums">{count}개</span>
         {add && (
+          // `tabIndex`를 명시한다 — WebKit의 Tab은 맨 단추에 서지 않는다(`@/lib/roving` 머리말, restart 03-13b).
           <Hint
             text={add.label}
             aria-label={add.label}
             type="button"
+            tabIndex={0}
             onClick={add.onClick}
             className="ml-auto flex size-6.5 shrink-0 items-center justify-center rounded-ctl text-fg-secondary transition-colors quiet-hover focus-ring"
           >

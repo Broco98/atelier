@@ -218,10 +218,12 @@ function ProjectRow({
           </DropdownMenu>
           {!missing && (
             <>
+              {/* `tabIndex`를 명시한다 — WebKit의 Tab은 맨 단추에 서지 않는다(`@/lib/roving` 머리말, restart 03-13b). */}
               <Hint
                 text="작업공간 만들기"
                 aria-label={`${project.name} 범위로 작업공간 만들기`}
                 type="button"
+                tabIndex={0}
                 onClick={() => onStart("work")}
                 className={PLACE_ROW_BUTTON}
               >
@@ -231,6 +233,7 @@ function ProjectRow({
                 text="새 채팅"
                 aria-label={`${project.name} 범위로 새 채팅`}
                 type="button"
+                tabIndex={0}
                 onClick={() => onStart("thread")}
                 className={PLACE_ROW_BUTTON}
               >

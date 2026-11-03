@@ -182,8 +182,10 @@ function SortHead({ label, sort, by, onSort }: { label: string; sort: PlaceSort;
   const dir = on ? sort.dir : "desc";
   return (
     <span role="columnheader" aria-sort={on ? (dir === "asc" ? "ascending" : "descending") : undefined}>
+      {/* `tabIndex`를 명시한다 — WebKit의 Tab은 맨 단추에 서지 않는다(`@/lib/roving` 머리말, restart 03-13b). 아래 맨 단추들도 같다. */}
       <button
         type="button"
+        tabIndex={0}
         onClick={() => onSort(by)}
         className="flex w-fit items-center gap-1 rounded-ctl tracking-normal transition-colors hover:text-fg-secondary focus-ring"
       >
@@ -289,7 +291,7 @@ export const PLACE_ROW_BUTTON =
 /** 줄 끝의 글 단추(보드 `.pl-fix` — 링크 색 13) — 폴더를 찾을 수 없는 Project의 「재설정」. ⋯ 안이 아니라 줄 끝에서 바로 닿는다(스토리 119). */
 export function PlaceFix({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="shrink-0 rounded-ctl text-chat-meta text-link hover:underline focus-ring">
+    <button type="button" tabIndex={0} onClick={onClick} className="shrink-0 rounded-ctl text-chat-meta text-link hover:underline focus-ring">
       {label}
     </button>
   );

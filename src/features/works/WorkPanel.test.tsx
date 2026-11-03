@@ -177,6 +177,16 @@ describe("WorkPanel spec 몸", () => {
     expect(markup).toContain(">overview.md<");
   });
 
+  // 구르는 상자는 넘침을 자르므로 첫 줄 · 그 「경로 복사」의 포커스 링(테두리 바깥 4px)이 위에서 잘린다 — 상자가 링 자리(4)만큼 위 안쪽을
+  // 두고 같은 만큼 올라서, 보이는 줄은 시안 `.ra-pbody`(0 6 8) 자리 그대로다(restart 03-13b · `SpecLayoutEditor`의 트리와 같은 길). 링이
+  // 실제로 서는지 · 줄의 y는 L3(`primitives` · `spacing`)가 잰다.
+  it("트리의 구르는 상자는 첫 줄의 링 자리만큼 위 안쪽을 두고 같은 만큼 올라선다", () => {
+    const markup = render(layered);
+    const before = markup.slice(0, markup.indexOf("data-spec-file"));
+    const scroller = [...before.matchAll(/<div class="([^"]*\boverflow-y-auto\b[^"]*)"/g)].pop()?.[1] ?? "";
+    expect(scroller.split(" ")).toEqual(expect.arrayContaining(["-mt-1", "pt-1", "px-1.5", "pb-2"]));
+  });
+
   it("spec 트리가 비면 아직 파일이 없다고 말한다", () => {
     expect(render(specDocs([]))).toContain("아직 spec 파일이 없어요");
   });

@@ -15,8 +15,10 @@ export function HeadCrumb({ label, onOpen }: { label: string; onOpen?: () => voi
   return (
     <span className="flex min-w-0 shrink-0 items-center gap-1">
       {onOpen ? (
+        // `tabIndex`를 명시한다 — WebKit의 Tab은 맨 단추에 서지 않는다(`@/lib/roving` 머리말, restart 03-13b).
         <button
           type="button"
+          tabIndex={0}
           onClick={onOpen}
           className={cn("rounded-md whitespace-nowrap transition-colors hover:text-fg focus-ring", HEAD_CRUMB)}
         >

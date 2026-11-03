@@ -55,7 +55,7 @@ const 패널 = (page: Page) => page.locator("aside:not([data-sidebar])");
 const 트리행 = (page: Page, 키: string) => 패널(page).locator(`[data-roving="${키}"]`);
 /** Archive 상세의 「문서」 트리 행 — 트리는 판 안의 `nav`다(restart 03-4 — 한때 둘째 `aside`의 spec 목록 패널). */
 const 문서트리행 = (page: Page, 키: string) => page.locator(`main nav[aria-label="문서"] [data-roving="${키}"]`);
-/** 목록 판의 정렬 단추 · 줄 끝 단추(작업공간 만들기 · 새 채팅)의 이름 — 아래 「앱 어긋남」 검사가 따로 잰다. */
+/** 목록 판의 정렬 단추 · 줄 끝 단추(작업공간 만들기 · 새 채팅)의 이름 — 아래 「맨 단추」 검사가 따로 잰다. */
 const 정렬과줄단추 = (이름: string) => ["이름", "최근 활동", "보관한 날"].includes(이름) || / 범위로 (작업공간 만들기|새 채팅)$/.test(이름);
 
 /** 차례에서 그 키들 가운데 선 정류장의 키 — 목록 하나가 정류장 하나인지를 본다. */
@@ -156,10 +156,10 @@ test("목록 표는 줄마다 이름 링크 · ⋯에 앉고, Archive 상세의 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **앱 어긋남(restart 03-13 — `티켓-03-13.md`)**: 공용 목록 · 상세 틀의 맨 `<button>` — 열 머리 정렬 단추(`SortHead`) · 줄 끝 「작업공간 만들기」 ·
-// 「새 채팅」(`Hint`) · 상세 제목 단추 · 묶음 머리의 +에 `tabIndex`가 없어 macOS WebKit의 Tab이 지나친다(`@/lib/roving` 머리말 · 02 코드 리뷰 C1 「맨 버튼도 앉는다」). 03-4가 적은
-// 차례는 「Archive 찾기」 → 열 머리 정렬 단추 둘 → 줄마다 이름 링크 · ⋯다(`e2e-수리.md` 「03」). 키보드로는 정렬을 바꿀 수도, 줄에서 범위로
-// 시작할 수도 없다. 앱을 고치면 초록이 된다 — 시험을 앱에 맞추지 않았다.
+// **목록 · 상세의 맨 `<button>`에도 Tab이 앉는다** — 열 머리 정렬 단추(`SortHead`) · 줄 끝 「작업공간 만들기」 · 「새 채팅」(`Hint`) · 상세 제목
+// 단추 · 묶음 머리의 +. macOS WebKit의 Tab은 `tabIndex`를 적지 않은 맨 단추를 지나친다(`@/lib/roving` 머리말 · 02 코드 리뷰 C1 「맨 버튼도
+// 앉는다」). 03-13이 이 검사로 찾은 앱 어긋남이었고(03-4가 적은 차례는 「Archive 찾기」 → 열 머리 정렬 단추 둘 → 줄마다 이름 링크 · ⋯ —
+// `e2e-수리.md` 「03」), 03-13b가 앱의 다른 단추처럼 `tabIndex`를 적어 고쳤다 — 시험을 앱에 맞추지 않았다.
 test("목록 · 상세의 맨 단추(열 머리 정렬 · 줄 끝 「작업공간 만들기」 · 「새 채팅」 · 제목 · 묶음의 +)에도 Tab이 앉는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/projects");
