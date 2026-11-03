@@ -23,7 +23,7 @@ use serde_json::Value;
 use super::gate::resolve;
 use super::writing::{Changed, DocDesk, ToolStep};
 use crate::host::{Emit, HostEvent, OutOfTurn};
-use crate::policy::Card;
+use crate::policy::{AppRefusal, Card};
 use crate::runtime::{Ruling, RuntimeEvent, Sink};
 
 /// 쓰기 자리의 표 — Work slug → 쥔 Session의 채팅 id. 호스트에 하나다. 잠금은 짧게만 쥐고, 쥔 채 대화의 잠금을 쥐지 않는다(대화 → 표의 차례).
@@ -82,9 +82,9 @@ pub(super) struct Writer {
     work: Mutex<Option<String>>,
     /// 사람에게 물은 요청 — 요청 id → 적어 둔 것. 턴이 끝나면 비운다(그 턴의 요청은 거둬졌다).
     asked: Mutex<HashMap<String, Noted>>,
-    /// 이 턴에 앱이 거절한 마지막 요청의 글(restart 01c-7) — 그 턴이 `cancelled`로 끝나면 끝 줄에 단다([`Writer::watching`]). 턴이
+    /// 이 턴에 앱이 거절한 마지막 요청(restart 01c-7) — 그 턴이 `cancelled`로 끝나면 끝 줄에 단다([`Writer::watching`]). 턴이
     /// 끝나면 비운다.
-    refusal: Mutex<Option<String>>,
+    refusal: Mutex<Option<AppRefusal>>,
     /// 이 Session이 쓰는 문서를 적는 자리(v1 티켓 34) — 호스트에 하나다. 턴 끝을 보는 sink가 편집 도구의 갱신을 여기 적는다.
     docs: Docs,
 }
@@ -131,13 +131,13 @@ impl Writer {
         self.asked.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn lock_refusal(&self) -> MutexGuard<'_, Option<String>> {
+    fn lock_refusal(&self) -> MutexGuard<'_, Option<AppRefusal>> {
         self.refusal.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// 앱이 요청 하나를 거부 선택지로 닫았다 — 판정의 거절(앱 경계 · 쓰기 자리)과, 사람이 허락한 사이에 다른 채팅이 쓰기 자리를 쥔 거절이다.
-    pub(super) fn refused(&self, reason: &str) {
-        *self.lock_refusal() = Some(reason.to_owned());
+    pub(super) fn refused(&self, refusal: &AppRefusal) {
+        *self.lock_refusal() = Some(refusal.clone());
     }
 
     /// 이 Session이 열릴 때 이은 Work — 물어보는 정도를 함께 쓰는 Session들을 찾고(v1 티켓 23), 「다시 묻지 않기」 허락을 둘 자리다
@@ -152,17 +152,17 @@ impl Writer {
         *self.work.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(slug.to_owned());
     }
 
-    /// 이 Session의 편집을 막는 주인의 글(§10) — 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 그 거절 글, 아무도 쥐지 않았거나 이
+    /// 이 Session의 편집을 막는 주인의 거절(§10) — 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 그 거절, 아무도 쥐지 않았거나 이
     /// Session이 주인이면 없다. 판정의 입력(「쓰기 자리 주인」)이다.
-    pub(super) fn blocker(&self) -> Option<String> {
+    pub(super) fn blocker(&self) -> Option<AppRefusal> {
         let work = self.work()?;
         let owner = self.seats.owner_against(&work, &self.thread)?;
         Some(self.busy(&owner))
     }
 
-    /// 판정이 편집을 묻지 않고 허용하는 순간 쓰기 자리를 쥔다. 그사이 다른 Session이 쥐었으면 그 주인의 거절 글이다. Work 없는 Thread는
+    /// 판정이 편집을 묻지 않고 허용하는 순간 쓰기 자리를 쥔다. 그사이 다른 Session이 쥐었으면 그 주인의 거절이다. Work 없는 Thread는
     /// 쥘 자리가 없다.
-    pub(super) fn take(&self) -> Result<(), String> {
+    pub(super) fn take(&self) -> Result<(), AppRefusal> {
         let Some(work) = self.work() else { return Ok(()) };
         self.seats.take(&work, &self.thread).map(drop).map_err(|owner| self.busy(&owner))
     }
@@ -200,9 +200,9 @@ impl Writer {
             Ok(false) => Grant::Unchanged,
             Err(owner) => match rejecting(&options) {
                 Some(reject) => {
-                    let reason = self.busy(&owner);
-                    self.refused(&reason);
-                    Grant::Refused(Ruling { option_id: reject, reason })
+                    let refusal = self.busy(&owner);
+                    self.refused(&refusal);
+                    Grant::Refused(Ruling { option_id: reject, reason: refusal.message })
                 }
                 None => Grant::Unchanged,
             },
@@ -286,14 +286,14 @@ impl Writer {
         })
     }
 
-    /// 거절의 글(§10) — 주인은 그 Thread의 이름으로 부른다.
-    fn busy(&self, owner: &str) -> String {
+    /// 쓰기 자리 주인의 거절(§10) — 주인은 그 Thread의 이름으로 부른다.
+    fn busy(&self, owner: &str) -> AppRefusal {
         let title = atelier_core::read_thread(&self.data_root, owner)
             .map(|file| file.title)
             .ok()
             .filter(|title| !title.is_empty())
             .unwrap_or_else(|| owner.to_owned());
-        format!("「{title}」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요")
+        AppRefusal::busy(&title)
     }
 }
 

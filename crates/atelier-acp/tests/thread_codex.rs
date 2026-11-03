@@ -811,10 +811,10 @@ fn 작업공간_밖_편집은_앱이_묻지_않고_거절하고_그_턴은_까�
     assert!(ends[0].get("appRefusal").is_none(), "앱이 거절하지 않은 턴: {}", ends[0]);
     assert_eq!(
         (&ends[1]["stopReason"], &ends[1]["cancelledByUs"], &ends[1]["appRefusal"]),
-        (&json!("cancelled"), &json!(false), &json!(reason)),
-        "앱이 거절해 멈춘 턴은 그 까닭을 단다"
+        (&json!("cancelled"), &json!(false), &json!({"kind": "outside", "inWork": true, "message": reason})),
+        "앱이 거절해 멈춘 턴은 그 까닭을 단다 — 화면이 사람의 말로 옮길 갈래 · 값과, Runtime에게 준 글이다"
     );
-    let ended_at = record.iter().position(|line| line["kind"] == "turn-end" && line["payload"]["appRefusal"].is_string()).unwrap();
+    let ended_at = record.iter().position(|line| line["kind"] == "turn-end" && line["payload"]["appRefusal"].is_object()).unwrap();
     assert!(record[ended_at + 1..].iter().any(late), "늦게 온 도구의 끝은 턴 끝 뒤의 update 줄로 선다:\n{}", common::lines_text(&record));
 
     let session = sandbox.thread_session_id(&thread);

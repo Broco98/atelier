@@ -72,10 +72,10 @@ export interface TurnEnd {
   /** 우리가 멈췄나 — `cancelled`가 사람의 멈춤인지 Runtime의 거부인지를 가른다. */
   cancelledByUs: boolean;
   /**
-   * 앱이 거절해 멈춘 턴의 까닭(01c-7) — `turn-end` 줄의 `appRefusal`이다. Codex는 앱의 거절도 거부 선택지로만 받아 턴을 `cancelled`로 끝내므로,
-   * 사람이 거부한 턴과 이것으로 가른다. 없으면 null이다.
+   * 앱이 거절해 멈춘 턴의 까닭(01c-7) — `turn-end` 줄의 `appRefusal`이다(`refusalOf`). Codex는 앱의 거절도 거부 선택지로만 받아 턴을 `cancelled`로
+   * 끝내므로, 사람이 거부한 턴과 이것으로 가른다. 없으면 null이다.
    */
-  appRefusal: string | null;
+  appRefusal: AppRefusal | null;
   /** 실패한 까닭 — `turn-end` 줄의 `error`다. 글이 왔어도 실패다. 실패하지 않았으면 null이다. */
   error: string | null;
   /** 끝 줄 없이 Session이 사라진 까닭(죽음 · 닫힘 · 앱을 다시 켬). 실패한 턴과 가른다. 사라지지 않았으면 null이다. */
@@ -847,7 +847,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
           waitedMs: turn.waitedMs,
           cancelledByUs: payload.cancelledByUs === true,
-          appRefusal: text(payload.appRefusal),
+          appRefusal: refusalOf(payload.appRefusal),
           error,
           cut: null,
           cutReason: null,
@@ -1514,27 +1514,51 @@ export interface EndNotice {
 const sentence = (words: string): string => (/[.!?。]$/.test(words) ? words : `${words}.`);
 
 /**
- * 앱이 거절한 까닭을 사람의 말로(Cards 보드 「앱이 막음」 · restart 02b-5) — 엔진이 Runtime에게 준 거절 글은 모델에게 할 말이라 경로와 채팅 도구
- * 이름(`start_editing` · `propose_work`)이 든다. 그 글의 갈래(`policy.rs`의 `outside_message` · `kept_message`, `seat.rs`의 `busy`)를 머리로 읽어 사람이 할
- * 일을 말한다. 작업공간 밖이면서 등록된 Project 안이면 보드의 글 그대로다. 모르는 글은 그대로 보인다 — 엔진이 새 갈래를 더해도 까닭이 사라지지 않는다.
- * 기록에 남은 글의 머리를 읽으므로, 엔진이 그 머리를 바꾸면 `fold.test.ts`의 축복한 기록(`thread-codex-refused`)이 빨개진다.
+ * 앱이 편집을 거절한 까닭(엔진 `policy.rs`의 `AppRefusal` — 01c-7) — 거절의 갈래와 그 값, 그리고 엔진이 Runtime에게 준 글(`message` — 모델에게 할 말이라
+ * 경로와 채팅 도구 이름이 든다)이다. 갈래는 작업공간(또는 채팅 폴더 `work/`) 밖의 파일(`outside` — 등록된 Project 안이면 그 Project) · Atelier만 쓰는
+ * 채팅 기록(`kept`) · 다른 채팅이 쥔 쓰기 자리(`busy` — 그 채팅의 이름)다. 모르는 갈래와 옛 기록(글만 실렸다)은 `other`다.
  */
-function refusalWords(refusal: string): string {
-  const intoProject = / Project를 고치려면 /.test(refusal);
-  if (refusal.startsWith("작업공간 밖의 파일이라")) {
-    return intoProject
-      ? "작업공간 밖 파일이라 고칠 수 없어요. 고치려면 그 Project를 작업공간에 붙여 달라고 말해 보세요."
-      : "작업공간 밖 파일이라 고칠 수 없어요. 이 작업공간의 worktree와 spec 폴더 안에서만 고칠 수 있어요.";
+export type AppRefusal =
+  | { kind: "outside"; inWork: boolean; project: string | null; message: string }
+  | { kind: "kept"; message: string }
+  | { kind: "busy"; chat: string; message: string }
+  | { kind: "other"; message: string };
+
+/** `turn-end` 줄의 `appRefusal`을 읽는다 — 없으면 null이다. 옛 기록은 엔진이 Runtime에게 준 글 하나였다. */
+function refusalOf(value: unknown): AppRefusal | null {
+  if (typeof value === "string") return { kind: "other", message: value };
+  if (!isObject(value)) return null;
+  const message = text(value.message) ?? "";
+  if (value.kind === "outside") return { kind: "outside", inWork: value.inWork === true, project: text(value.project), message };
+  if (value.kind === "kept") return { kind: "kept", message };
+  const chat = text(value.chat);
+  if (value.kind === "busy" && chat !== null) return { kind: "busy", chat, message };
+  return { kind: "other", message };
+}
+
+/**
+ * 앱이 거절한 까닭을 사람의 말로(Cards 보드 「앱이 막음」 · restart 02b-5) — 엔진이 실은 갈래를 읽어 사람이 할 일을 말한다. 작업공간 밖이면서 등록된
+ * Project 안이면 보드의 글 그대로다. 모르는 갈래는 엔진이 Runtime에게 준 글을 그대로 보인다 — 엔진이 새 갈래를 더해도 까닭이 사라지지 않는다. 한때 그
+ * 글의 머리를 맞춰 보아 갈래를 읽었다.
+ */
+function refusalWords(refusal: AppRefusal): string {
+  switch (refusal.kind) {
+    case "outside":
+      if (refusal.inWork) {
+        return refusal.project !== null
+          ? "작업공간 밖 파일이라 고칠 수 없어요. 고치려면 그 Project를 작업공간에 붙여 달라고 말해 보세요."
+          : "작업공간 밖 파일이라 고칠 수 없어요. 이 작업공간의 worktree와 spec 폴더 안에서만 고칠 수 있어요.";
+      }
+      return refusal.project !== null
+        ? "채팅 폴더 밖 파일이라 고칠 수 없어요. 고치려면 그 Project로 작업공간을 만들어 달라고 말해 보세요."
+        : "채팅 폴더 밖 파일이라 고칠 수 없어요. 작업공간이 없는 채팅은 채팅 폴더 안에서만 고칠 수 있어요.";
+    case "kept":
+      return "채팅 기록이라 고칠 수 없어요. 이 파일은 Atelier만 써요.";
+    case "busy":
+      return `「${refusal.chat}」 채팅이 이 작업공간을 고치는 중이에요. 그 채팅이 끝난 뒤 다시 시켜 보세요.`;
+    case "other":
+      return sentence(refusal.message);
   }
-  if (refusal.startsWith("`work/` 밖의 파일이라")) {
-    return intoProject
-      ? "채팅 폴더 밖 파일이라 고칠 수 없어요. 고치려면 그 Project로 작업공간을 만들어 달라고 말해 보세요."
-      : "채팅 폴더 밖 파일이라 고칠 수 없어요. 작업공간이 없는 채팅은 채팅 폴더 안에서만 고칠 수 있어요.";
-  }
-  if (refusal.startsWith("채팅 기록이라 고칠 수 없어요")) return "채팅 기록이라 고칠 수 없어요. 이 파일은 Atelier만 써요.";
-  const busy = /^(「.*」 채팅이 이 작업공간을 고치는 중이에요) — /.exec(refusal);
-  if (busy) return `${busy[1]}. 그 채팅이 끝난 뒤 다시 시켜 보세요.`;
-  return sentence(refusal);
 }
 
 /**
