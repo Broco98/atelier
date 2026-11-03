@@ -169,10 +169,10 @@ function EditorBody({
               {pill.text}
             </span>
           )}
-          <Button variant="outline" size="top" className="rounded-full" onClick={leave}>
+          <Button variant="outline" size="top" onClick={leave}>
             취소
           </Button>
-          <Button size="top" className="rounded-full" disabled={!savable} onClick={() => void commit()}>
+          <Button size="top" disabled={!savable} onClick={() => void commit()}>
             {mode === "new" ? "만들기" : "저장"}
           </Button>
         </span>

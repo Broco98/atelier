@@ -78,10 +78,10 @@ export function RemovalFooter({
 }) {
   return (
     <AlertDialogFooter className="pt-0.5">
-      <AlertDialogCancel ref={cancelRef} variant="ghost" size="top" className="rounded-full">
+      <AlertDialogCancel ref={cancelRef} variant="ghost" size="top">
         {cancel}
       </AlertDialogCancel>
-      <AlertDialogAction ref={actionRef} variant="destructive" size="top" className="rounded-full" disabled={disabled} onClick={onAction}>
+      <AlertDialogAction ref={actionRef} variant="destructive" size="top" disabled={disabled} onClick={onAction}>
         {action}
       </AlertDialogAction>
     </AlertDialogFooter>

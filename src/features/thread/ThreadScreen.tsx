@@ -979,6 +979,13 @@ function ThreadBody({
     setAway(false);
     follow();
   };
+  // 「맨 아래로」 — 바닥에 다시 붙이고 포커스를 입력창으로 돌려준다. 누른 원은 걷히므로 그대로 두면 포커스가 문서 맨 앞으로 떨어진다(restart 코드
+  // 리뷰). 커서 자리는 입력칸이 쥔 그대로이고, 굴림은 따라가기 걸음이 쥔다(`preventScroll`). 입력창 자리에 카드가 서 있으면 입력칸이 없어 그대로 둔다.
+  const composerPlace = useRef<HTMLDivElement>(null);
+  const jump = () => {
+    attach();
+    composerPlace.current?.querySelector<HTMLTextAreaElement>("textarea[data-composer-field]")?.focus({ preventScroll: true });
+  };
   // 보냈지만 기록에 아직 서지 않은 말(States 보드 02 · 03) — Session이 내려가 있던 채팅은 Session이 열린 뒤에야 보낸 말이 기록에 선다. 그 턴이
   // 기록에 서면 걷히고, 보내지 못했으면 곧바로 걷힌다(쓰던 글은 입력창이 되돌린다). 받았는데 턴이 서지 않으면(그사이 턴이 돌아 대기 줄로 갔다)
   // 잠시 뒤 걷힌다. 도는 동안 보낸 말은 대기 줄이 말한다.
@@ -1110,7 +1117,7 @@ function ThreadBody({
             </LogPlace.Provider>
           </Beside>
         </div>
-        <div className="px-4 pb-4">
+        <div ref={composerPlace} className="px-4 pb-4">
           <Beside open={beside}>
             <ThreadComposer
               draftKey={thread}
@@ -1186,7 +1193,7 @@ function ThreadBody({
                       // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
                       // 서고, 올려 두거나 포커스가 오면 같은 자리의 ↓ 15로 옅음을 바꾼다(Thread 보드 `.ra-jump` — 150ms, 원의 글자색은 그대로).
                       // 누르면 바닥까지 따라가기 걸음으로 내려간다.
-                      <button type="button" aria-label="맨 아래로" onClick={attach} className={cn(SLOT_CIRCLE, "group relative jump-in focus-ring")}>
+                      <button type="button" aria-label="맨 아래로" onClick={jump} className={cn(SLOT_CIRCLE, "group relative jump-in focus-ring")}>
                         {working && (
                           <WorkingDots className="absolute transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0" />
                         )}
