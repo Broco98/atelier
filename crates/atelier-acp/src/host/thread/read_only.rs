@@ -103,9 +103,14 @@ impl ConversationHost {
     }
 
     /// 고른 Session들을 떠 있는 표에서 꺼내 남김없이 끈다(stdin 닫기 → 1초 → 그룹째 SIGKILL). 대기 줄에 말이 남았으면 빈 대기 줄을
-    /// 알린다 — 그 말은 가지 않는다. 고르기는 표의 잠금 안에서 Session의 잠금을 쥔다(표 → Session의 차례). 고른 것이 그새 표에서
-    /// 빠졌으면 먼저 꺼낸 쪽이 끈다.
+    /// 알린다 — 그 말은 가지 않는다. 다시 열지 못해 둔 대화도 같이 고르고 놓는다. 고르기는 표의 잠금 안에서 Session의 잠금을 쥔다(표 →
+    /// Session의 차례). 고른 것이 그새 표에서 빠졌으면 먼저 꺼낸 쪽이 끈다.
     fn retire(&self, pick: impl Fn(&str, &Conv) -> bool) {
+        for conv in self.threads.unstrand_picked(&pick) {
+            if conv.lock_state().order.queued() > 0 {
+                conv.recorder.queue_changed(Vec::new());
+            }
+        }
         let picked: Vec<String> = self
             .threads
             .lock_sessions()

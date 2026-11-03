@@ -852,12 +852,13 @@ impl ConversationHost {
 
     /// 앱 종료 확인 창의 셈(three-axes 티켓 23 · S13 · v1 구현 스펙 S40) — 떠 있는 Session 모두에서 턴이 도는 Session · 대기 중인
     /// 말 · 답하지 않은 권한 요청을 센다. 셈의 원천이 화면이 아니라 여기인 것은, 대기 줄이 이 메모리에만 있고 지금 화면이 열지 않은
-    /// Thread의 Session도 함께 꺼지기 때문이다. 떠 있지 않은 Session(다시 켠 뒤)은 셀 것이 없다. 기다리지 않는다.
+    /// Thread의 Session도 함께 꺼지기 때문이다. 떠 있지 않은 Session(다시 켠 뒤)은 셀 것이 없다. 다시 열지 못해 대기 줄째 둔 대화는
+    /// 그 대기 줄을 센다(restart 01b-6). 기다리지 않는다.
     ///
     /// Runtime이 스스로 이어 간 턴(three-axes 티켓 16 · S4)도 「턴이 도는 Session」이다 — 끄면 그 턴도 잃는다.
     pub fn quit_counts(&self) -> QuitCounts {
         let mut counts = QuitCounts::default();
-        for conv in self.threads.live_convs() {
+        for conv in self.threads.held_convs() {
             let state = conv.lock_state();
             counts.running += usize::from(state.order.turning());
             counts.queued += state.order.queued();
