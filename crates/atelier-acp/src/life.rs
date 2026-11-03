@@ -147,12 +147,7 @@ impl Life {
             if !state.reaped {
                 process::kill_group(pgid);
             }
-            let reason = match (gone, state.exit) {
-                (Gone::ClosedOutput, _) => "에이전트가 출력을 닫았습니다".to_string(),
-                (Gone::Exited, Some(Exit::Code(code))) => format!("에이전트 프로세스가 끝났습니다 (종료 코드 {code})"),
-                (Gone::Exited, Some(Exit::Signal(signal))) => format!("에이전트 프로세스가 끝났습니다 (시그널 {signal})"),
-                (Gone::Exited, _) => "에이전트 프로세스가 끝났습니다".to_string(),
-            };
+            let reason = death_reason(gone, state.exit);
             let deadline = Instant::now() + STDERR_DRAIN;
             while !state.stderr_done {
                 let now = Instant::now();
@@ -166,5 +161,59 @@ impl Life {
             drop(state);
             on_death(Death { reason, stderr_tail });
         });
+    }
+}
+
+/// 죽음의 까닭 — 끊김 안내(States 15)가 그대로 싣는 한 줄이다. 보드의 결(「프로세스가 코드 137로 끝났어요」)이고 「에이전트」라는 말을
+/// 쓰지 않는다(스펙 「말」, restart 03-12a — 한때 「에이전트 프로세스가 끝났습니다 (종료 코드 137)」). 열기 실패(`runtime::OpenError`)도 같은 결이다.
+fn death_reason(gone: Gone, exit: Option<Exit>) -> String {
+    match (gone, exit) {
+        (Gone::ClosedOutput, _) => "프로세스가 출력을 닫았어요".to_string(),
+        (Gone::Exited, Some(Exit::Code(code))) => format!("프로세스가 코드 {code}{} 끝났어요", ro(code)),
+        (Gone::Exited, Some(Exit::Signal(signal))) => format!("프로세스가 시그널 {signal}{} 끝났어요", ro(signal)),
+        (Gone::Exited, _) => "프로세스가 끝났어요".to_string(),
+    }
+}
+
+/// 숫자 뒤의 「로」 · 「으로」 — 한국어로 읽은 소리의 끝을 따른다. 끝자리가 1 · 2 · 4 · 5 · 7 · 8 · 9(일 · 이 · 사 · 오 · 칠 · 팔 · 구 — 받침이
+/// 없거나 ㄹ)면 「로」, 3 · 6(삼 · 육)이면 「으로」다. 0으로 끝나면 읽는 끝이 0 아닌 자리의 단위(십 · 백 · 천 · 만 — 받침)거나 「영」이라 「으로」다.
+fn ro(number: i32) -> &'static str {
+    match number.unsigned_abs() % 10 {
+        3 | 6 | 0 => "으로",
+        _ => "로",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 끊김 안내의 까닭(States 15 · restart 03-12a) — 보드의 결(「~어요」)이고 「에이전트」라는 말을 쓰지 않는다(스펙 「말」 — Agent를 앱에서
+    // 지웠다). 숫자 뒤 조사는 읽는 소리의 끝을 따른다(137 「백삼십칠」 → 로, 3 「삼」 → 으로, 10 「십」 → 으로).
+    #[test]
+    fn the_death_reason_reads_like_the_board() {
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Code(137))), "프로세스가 코드 137로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Code(3))), "프로세스가 코드 3으로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Code(10))), "프로세스가 코드 10으로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Code(0))), "프로세스가 코드 0으로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Code(-1))), "프로세스가 코드 -1로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Signal(9))), "프로세스가 시그널 9로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, Some(Exit::Signal(6))), "프로세스가 시그널 6으로 끝났어요");
+        assert_eq!(death_reason(Gone::Exited, None), "프로세스가 끝났어요");
+        assert_eq!(death_reason(Gone::ClosedOutput, Some(Exit::Code(1))), "프로세스가 출력을 닫았어요");
+    }
+
+    #[test]
+    fn no_death_reason_says_agent() {
+        let all = [
+            death_reason(Gone::Exited, Some(Exit::Code(1))),
+            death_reason(Gone::Exited, Some(Exit::Signal(15))),
+            death_reason(Gone::Exited, None),
+            death_reason(Gone::ClosedOutput, None),
+        ];
+        for reason in all {
+            assert!(!reason.contains("에이전트"), "{reason}");
+            assert!(reason.ends_with("어요"), "{reason}");
+        }
     }
 }

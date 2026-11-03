@@ -148,10 +148,10 @@ function DropdownMenuContent({
   )
 }
 
-// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 2px**다(`menu-list`의 사이 — DS `.at-menu` `gap: 2px`). 묶음 안의
+// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 1px**다(`menu-list`의 사이 — 시안 `.ra-menu` `gap: 1px`, restart 03-12a). 묶음 안의
 // 줄은 목록의 직접 자식이 아니라 목록의 flex 사이를 받지 못한다 — registry의 맨 div 그대로면 묶음 안의 줄만 30 간격으로 붙어 선다
 // (상태 메뉴 · Archive 정렬 · 거르기, codex-ds 티켓 34). 안쪽 여백은 목록이 이미 주어 묶음은 사이만 든다.
-const GROUP = "flex flex-col gap-0.5"
+const GROUP = "flex flex-col gap-px"
 
 function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" className={cn(GROUP, className)} {...props} />

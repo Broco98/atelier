@@ -20,7 +20,7 @@ interface PanelToggleProps {
  * 그대로 둔다 — ⌘Enter와 같은 일이다(판정은 아래 `togglesPanel`, 듣는 자리는 `WorksPage`).
  *
  * 왼쪽 셸 컨트롤의 사이드바 토글(`PanelLeft`)을 뒤집은 그림이다. 모양은 머리 줄의 아이콘 단추 한 벌이다(`headButton` — 28 ·
- * `radius-lg` · 글리프 16 `fg-titlebar`, hover는 `quiet-hover` — Thread 머리 줄의 「…」 · 요약 단추와 같다, 02 결정 「머리 줄은 한
+ * `radius-ctl` · 글리프 15 `fg-secondary`, hover는 `quiet-hover` — Thread 머리 줄의 「…」 · 요약 단추와 같다, 02 결정 「머리 줄은 한
  * 결이다(03 뒤)」). 열림은 켜진 면으로 따로 칠하지 않는다 — 사이드바 토글과 같이 `aria-expanded`와 이름이 말한다. 한때 머리 카드의 24
  * 단추였고, 그 전에는 레일 열 맨 위의 32 원이었고 열리면 흰 원이었다(그때는 머리 줄이 없었다).
  *

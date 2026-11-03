@@ -2330,7 +2330,7 @@ fn 되살릴_세션을_claude가_모르면_그_까닭으로_답하고_같은_세
 
     let resume = bench.request("session/resume", revive.clone());
 
-    let reason = "claude가 세션을 되살리지 못했습니다: No conversation found with session ID: yesterday";
+    let reason = "claude가 세션을 되살리지 못했어요: No conversation found with session ID: yesterday";
     assert_eq!(bench.error(resume), json!({"code": -32603, "message": reason}));
     let launches = bench.launches();
     assert_eq!((launches.len(), flag(&launches[0].args, "--resume").as_deref()), (1, Some("yesterday")));
@@ -2361,7 +2361,7 @@ fn claude가_initialize에_답하지_않고_끝나면_열기를_오류로_답하
 
     assert_eq!(
         bench.error(first),
-        json!({"code": -32603, "message": "claude가 initialize에 답하지 않고 끝났습니다 (exit status: 1)"})
+        json!({"code": -32603, "message": "claude가 initialize에 답하지 않고 끝났어요 (exit status: 1)"})
     );
     assert!(bench.exits().is_empty(), "열리기 전의 claude가 끝나도 변환기는 남아 다음 열기를 받는다");
     bench.claude.silent = false;
@@ -2415,7 +2415,7 @@ fn claude를_띄우지_못하거나_cwd가_없으면_열기를_까닭으로_답�
     );
     assert_eq!(
         bench.error(nowhere),
-        json!({"code": -32603, "message": "claude를 실행할 수 없습니다: /nowhere/claude — No such file or directory (os error 2)"})
+        json!({"code": -32603, "message": "claude를 실행하지 못했어요: /nowhere/claude — No such file or directory (os error 2)"})
     );
     let no_cwd = bench.request("session/new", json!({"mcpServers": []}));
     assert_eq!(bench.error(no_cwd), json!({"code": -32603, "message": "세션을 여는 요청에 cwd가 없습니다"}));

@@ -67,6 +67,14 @@ interface SpecViewerProps {
   onQuote?: (quote: Quote) => void;
 }
 
+/**
+ * 넓힌 카드의 문서 몸 열(시안 Summary `.ra-vwdoc` · `.ra-vwsrc` — 거터 28 · 최대 640 · 위 20 · 아래 32, restart 03-12a). 이 보기(`SpecViewer`)는 이제
+ * 넓힌 카드만 쓴다 — Archive 상세는 `PrettyView`를 제 열로 쓰고, 파일 탭의 코드는 `HighlightedCode`다. 문서 카드의 열(`bodyColumn` — 거터 20 · 글 폭
+ * 768)만 덮는다. 위는 예쁜 보기의 블록 래퍼 4를 더해 20(`pt-4`), 원문은 20(`pt-5`)이다. 원문의 글자는 코드 보기 그대로다(줄번호 · 13/20) — 시안
+ * `.ra-vwsrc`는 줄번호 없는 12/21.6 `fg-secondary` 글이지만, 같은 문서의 원문은 어디서 열든 같게 읽힌다(결정 11).
+ */
+const WIDE_CARD_COLUMN = "max-w-160 px-7 pb-8";
+
 function SpecViewer({
   work,
   panelOpen,
@@ -127,10 +135,11 @@ function SpecViewer({
             files={files}
             onNavigate={onNavigate}
             specRoot={specRoot}
+            className={cn(WIDE_CARD_COLUMN, "pt-4")}
           />
         );
       case "source":
-        return <SourceView content={content ?? ""} wide={wide} />;
+        return <SourceView content={content ?? ""} wide={wide} className={cn(WIDE_CARD_COLUMN, "pt-5")} />;
       // 반환 타입만으로는 빠진 칸이 안 잡힌다 — `ReactNode`가 `undefined`를 품는다. 이웃
       // `hitTarget`이 `default` 없이 사는 것은 그 반환 타입이 좁아서다.
       default: {

@@ -33,9 +33,11 @@ describe("접히는 패널의 박자", () => {
   // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — `Frame.tsx`에 산다.
   // 공용 틀의 여백(머리 줄 · 카드 줄)도 패널과 함께 움직여 같은 박자를 읽는다(한때 분할 열도 그랬다 — restart 02a-13이 분할을 걷었다).
   // 사이드바는 접는 장치(안쪽 고정 폭 · 펴진 뒤의 상한)는 같고 박자만 제 것이다(아래 「사이드바 열고 닫기」).
-  it("사이드바와 공용 틀의 칸(목록 · 작업 패널)이 이 규격을 쓴다", () => {
+  // 작업공간의 spec 패널 상자(`PanelBox`)는 같은 박자로 움직이되 안쪽은 옅어지지 않고 잘리기만 한다(`clippingInnerClass` — restart 02a-14c).
+  // 한때 Archive의 spec 목록 패널이 같은 상자에서 이 규격(`foldingInnerClass`)으로 옅어졌다(restart 03-4가 걷었다).
+  it("사이드바와 공용 틀의 오른쪽 패널이 이 박자를 쓴다", () => {
     const frame = readFileSync("src/components/shell/Frame.tsx", "utf8");
-    expect(frame).toContain("foldingInnerClass(open)");
+    expect(frame).toContain("clippingInnerClass(open)");
     expect(frame).toContain("PANEL_MOTION");
     const sidebar = readFileSync("src/components/shell/Sidebar.tsx", "utf8");
     expect(sidebar).toContain('foldingInnerClass(open, "sidebar")');

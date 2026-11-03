@@ -84,3 +84,18 @@ describe("메뉴 카드의 폭", () => {
     expect(EXCEPTIONS.filter((one) => !found.some((place) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.width}`)))).toEqual([]);
   });
 });
+
+// **메뉴의 줄 사이는 1이다**(restart 03-12a — 시안의 메뉴는 모두 `.ra-menu`의 `gap: 1px`이다: Composer 칩 메뉴 · 목록 ⋯ 메뉴 · 요약 카드 메뉴).
+// 앱 메뉴 부품 한 벌(목록 상자 `menu-list` · 묶음 `GROUP`)이 같은 사이를 든다 — 둘이 갈리면 묶음 안의 줄만 벌어진다. 한때 DS `.at-menu`의 2였다.
+describe("메뉴의 줄 사이", () => {
+  it("목록 상자와 묶음이 모두 1이다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync("src/index.css", "utf8");
+    const list = css.match(/@utility menu-list \{\s*@apply ([^;]*);/)?.[1].split(/\s+/) ?? [];
+    expect(list, "menu-list").toContain("gap-px");
+    expect(list.filter((one) => one.startsWith("gap-")), "menu-list").toEqual(["gap-px"]);
+    const source = readFileSync("src/components/ui/dropdown-menu.tsx", "utf8");
+    const group = source.match(/const GROUP = "([^"]*)"/)?.[1].split(/\s+/) ?? [];
+    expect(group.filter((one) => one.startsWith("gap-")), "GROUP").toEqual(["gap-px"]);
+  });
+});

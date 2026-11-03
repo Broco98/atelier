@@ -1,6 +1,5 @@
 import { createContext, Fragment, useContext, useEffect, useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { SettingsIcon } from "lucide-react";
 import { Card, Frame } from "@/components/shell/Frame";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -239,7 +238,6 @@ function SettingsPage({ item }: { item: SettingsItemKey }) {
     // 「기본값으로」는 그 행의 것이다 — 예외 목록).
     <Frame
       head={{
-        icon: SettingsIcon,
         name: "Settings",
         sub: [settingsItem(item).label],
         actions: page.saves ? <span ref={setActionsSlot} className="contents" /> : undefined,

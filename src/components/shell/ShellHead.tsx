@@ -19,8 +19,9 @@ import { SIDEBAR_MOTION } from "./panel-layout";
 //   여닫기)는 화면에 산 채 자리만 머리 줄이다(설정 화면의 저장 버튼이 머리 줄의 할 일 묶음으로 가는 `HeadActionsSlot`과 같은 길).
 //   공용 틀(`Frame`)의 화면들은 `FrameHead`가, Thread 화면들은 `PlainFrame`이 이것으로 보낸다.
 // - **화면 것의 값도 여기 한 곳이다**(02 결정 「머리 줄은 한 결이다(03 뒤)」) — 이름(`HEAD_NAME`) · 아이콘 단추(`headButton` ·
-//   `HEAD_GLYPH` — 셸 컨트롤도 같은 단추다) · 오른쪽 끝 묶음(`HeadEnd`). 줄이 하나이니 그 위에 서는 것도 어느 화면이든 한 결이다. 값은 Codex 크롬 줄(시안
-//   Screen-Live `.tb-c` · `.tb-r` — Thread 머리 줄, 06)이다. 글자 단추는 `Button`의 `top`(28 — 아이콘 단추와 같은 높이)이다.
+//   `HEAD_GLYPH` — 셸 컨트롤도 같은 단추다) · 흐린 앞 자리(`HEAD_CRUMB`) · 오른쪽 끝 묶음(`HeadEnd`). 줄이 하나이니 그 위에 서는 것도 어느
+//   화면이든 한 결이다. 값은 restart 시안 Main 머리 줄(`.ra-title` · `.ra-crumb` · `.ra-tbtn`)이다(restart 03-12a — 한때 Codex 크롬 줄, 시안
+//   Screen-Live `.tb-c` · `.tb-r`). 글자 단추는 `Button`의 `top`(28 — 아이콘 단추와 같은 높이 · 완전히 둥글게)이다.
 
 /** 머리 줄의 화면 자리 — 앱 셸이 그 그릇을 내린다. 셸 밖(그릇이 아직 없거나 셸 없이 그린 화면)이면 `null`이다. */
 export const ShellHeadSlot = createContext<HTMLElement | null>(null);
@@ -48,7 +49,7 @@ export function ShellHeadRow({ onSlot, children }: ShellHeadRowProps) {
         {children}
       </div>
       {/* 세로선은 시안 `.ra-tsep` — 0.5 × 16 `border-heavy`, 줄(44) 가운데에 위아래 14씩 비운다. 셸 컨트롤 끝에서 6 뒤에 서고 이름은 그
-          뒤 10에서 시작한다(`margin: 0 10px 0 6px`). 화면이 아무것도 보내지 않으면(새 Thread) 선도 서지 않는다. 오른쪽 끝 여백은 8이다(시안
+          뒤 10에서 시작한다(`margin: 0 10px 0 6px`). 화면이 아무것도 보내지 않으면 선도 서지 않는다(한때 새 채팅이 그랬다 — 이제 「새 채팅」을 보낸다). 오른쪽 끝 여백은 8이다(시안
           `.ra-title`의 `padding-right` — 06의 `.tb-r`도 같다). */}
       <div
         ref={onSlot}
@@ -69,18 +70,30 @@ export function ScreenHead({ children }: { children: ReactNode }) {
 }
 
 /**
- * 머리 줄의 이름 글자 — 14/500 `fg`(시안 `.bar .title` · 02 §6). Thread 이름(`PlainFrame`)과 공용 틀의 이름 상자(`FrameHead`)가 같은
- * 글자다. 줄 높이는 부르는 자리가 든다(이름 상자는 24 줄 상자다).
+ * 머리 줄의 이름 글자 — 13/18 · 400 `fg`(시안 `.ra-title` · `.ra-crumb`, restart 03-12a). Thread 이름(`PlainFrame`)과 공용 틀의 이름
+ * 상자(`FrameHead`)가 같은 글자다. 줄 높이는 부르는 자리가 든다(이름 상자는 24 줄 상자다). 한때 Codex Thread 머리 줄(02 §6)의 14/500이었다.
  */
-export const HEAD_NAME = "text-sm font-medium text-fg";
+export const HEAD_NAME = "text-chat-meta text-fg";
 
-/** 머리 줄 아이콘 단추의 글리프 — 16(시안 Screen-Live 「…」 · 요약 토글). 셸 컨트롤(15)은 왼쪽 칸의 것이라 따로다. */
-export const HEAD_GLYPH = "size-4";
+/**
+ * 머리 줄 이름 앞의 흐린 자리 — 「Projects /」 · 「Service /」 · Thread의 Work · Service(시안 `.ra-crumb .svc` — 13/18 `fg-tertiary`). 이름과 같은
+ * 글자 크기다. 한때 14 `fg-titlebar`(#898a8b — 다크 값이 없었다)였다.
+ */
+export const HEAD_CRUMB = "text-chat-meta text-fg-tertiary";
+
+/**
+ * 머리 줄 crumb 조각 사이 — 흐린 자리 · 이름 · 브랜치가 6씩 띄어 선다(시안 `.ra-crumb`의 `gap: 6px`). 흐린 자리 안의 「/」는 글자 사이
+ * 한 칸(4)이다(시안은 「Atelier 앱 /」 한 글이다).
+ */
+export const HEAD_CRUMB_GAP = "gap-1.5";
+
+/** 머리 줄 아이콘 단추의 글리프 — 15(시안 `.ra-tbtn`의 `s15`). 셸 컨트롤과 화면 것(「…」 · 요약 토글 · 패널 토글)이 같다. 한때 화면 것은 16이었다. */
+export const HEAD_GLYPH = "size-3.75";
 
 /**
  * 머리 줄의 아이콘 단추 — 28(아이콘 버튼 기본 — `--size-control`) · 둥글기 4(`icon-button-ctl` — 시안 `.ra-tbtn`의 `radius-ctl`, restart 02b-6b),
- * 글리프 `fg-titlebar`(#898a8b — 크롬 위 글리프). 셸 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)도 이 한 벌이다. 한때 아이콘 버튼 기본의
- * 10(`radius-lg`)이었다. 쉴 때
+ * 글리프 `fg-secondary`(시안 `.ra-tbtn` — restart 03-12a. 한때 Codex 크롬 글리프 `fg-titlebar` #898a8b였다). 셸 컨트롤(사이드바 토글 · 뒤로 ·
+ * 앞으로 · 검색)도 이 한 벌이다. 한때 아이콘 버튼 기본의 10(`radius-lg`)이었다. 쉴 때
  * hover는 버튼 hover(`quiet-hover`)이고, 펼친 메뉴의 트리거(`open` — 「…」 · ⋯)는 hover와 같은 면, 켜진 토글(`on` — 요약 단추)은
  * 고른 면(`fill-selected` — 라이트 #eff0f0 · 다크 흰 .08, 시안 `.ra-tbtn[aria-pressed="true"]`)이다. 둘 다 글리프가 `fg`로 진해진다.
  * hover는 쉴 때의 가지에만 둔다(`quiet-hover` 머리말). 한때 켜진 면이 02 실측 `fill-toggle-on`(#ebebec)이었다 — 다크 값이 없어 다크에서
@@ -90,17 +103,18 @@ export const HEAD_GLYPH = "size-4";
 export function headButton(state: "rest" | "open" | "on" = "rest") {
   return cn(
     "icon-button icon-button-ctl transition-colors focus-ring",
-    state === "open" ? "bg-fill-hover text-fg" : state === "on" ? "bg-fill-selected text-fg" : "text-fg-titlebar quiet-hover",
+    state === "open" ? "bg-fill-hover text-fg" : state === "on" ? "bg-fill-selected text-fg" : "text-fg-secondary quiet-hover",
   );
 }
 
 /**
  * 머리 줄 오른쪽 끝 묶음 — 화면 자리 오른쪽 끝에 붙고(`ml-auto` — 끝 여백 8은 셸의 화면 자리가 든다) 줄지 않으며(`shrink-0`), 단추 사이
- * 2 · 이름 쪽과 적어도 12다(시안 `.tb-r`). 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ * 0 · 이름 쪽과 적어도 12다(시안 `.ra-title`은 `.ra-grow` 뒤 `.ra-tbtn`을 사이 없이 붙인다 — restart 03-12a, 한때 Codex `.tb-r`의 2).
+ * 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
  */
 export function HeadEnd({ children }: { children: ReactNode }) {
   return (
-    <div data-head-actions className="ml-auto flex shrink-0 items-center gap-0.5 pl-3">
+    <div data-head-actions className="ml-auto flex shrink-0 items-center pl-3">
       {children}
     </div>
   );

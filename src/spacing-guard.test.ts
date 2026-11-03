@@ -324,16 +324,6 @@ describe("눈금의 사분 단", () => {
   const QUARTERS: { file: string; className: string; why: string }[] = [
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
     {
-      file: "src/components/shell/Frame.tsx",
-      className: "mr-1.75",
-      why: "머리 줄 화면 것의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
-    },
-    {
-      file: "src/components/shell/Frame.tsx",
-      className: "gap-1.25",
-      why: "머리 줄 화면 것의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5",
-    },
-    {
       file: "src/components/ui/button.tsx",
       className: "gap-1.25",
       why: "머리 줄 버튼(`top`) — 아이콘과 글자 사이 5(DS `.at-btn.top`)",
@@ -358,11 +348,6 @@ describe("눈금의 사분 단", () => {
       file: "src/components/ui/dropdown-menu.tsx",
       className: "py-1.75",
       why: "두 줄 메뉴 항목(`note`) — 위아래 안쪽 7(DS `.at-mi.tall`)",
-    },
-    {
-      file: "src/components/shell/Frame.tsx",
-      className: "py-1.75",
-      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
     },
     {
       file: "src/components/ui/input.tsx",
@@ -416,6 +401,16 @@ describe("눈금의 사분 단", () => {
       why: "입력창 자리 카드의 긴 글 알약(Codex가 보낸 이름) — 위아래 안쪽 5(restart 시안 Cards `.ra-opt.long`의 `padding: 5px 12px`)",
     },
     {
+      file: "src/index.css",
+      className: "gap-px",
+      why: "메뉴의 목록 상자(`menu-list`) — 줄 사이 1(restart 시안의 모든 메뉴 `.ra-menu`의 `gap: 1px` — restart 03-12a)",
+    },
+    {
+      file: "src/components/ui/dropdown-menu.tsx",
+      className: "gap-px",
+      why: "메뉴의 묶음(`GROUP`) — 목록 상자와 같은 줄 사이 1(restart 시안 `.ra-menu` — restart 03-12a)",
+    },
+    {
       file: "src/features/thread/SlashMenu.tsx",
       className: "gap-px",
       why: "「/」 · 「@」 메뉴(한 카드 `ComposerListbox`) — 머리와 줄 사이 1(restart 시안 Composer `.ra-menu`의 `gap: 1px`)",
@@ -443,7 +438,7 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/features/works/SpecTree.tsx",
       className: "gap-px",
-      why: "작업공간 패널 트리 — 줄 사이 1(DS `.at-tree`)",
+      why: "트리 행(`ROWS` — 촘촘하지 않은 행, DS `.at-tree`) — 줄 사이 1. 지금은 모든 트리가 촘촘한 행(사이 2)이라 부르는 자리가 없다",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",
@@ -490,11 +485,6 @@ describe("눈금의 사분 단", () => {
       file: "src/components/shell/Frame.tsx",
       className: "pr-5.25",
       why: "고치는 동안의 머리 줄 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
-    },
-    {
-      file: "src/components/shell/Frame.tsx",
-      className: "mt-1.25",
-      why: "머리 줄 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",

@@ -76,6 +76,13 @@ describe("머리 줄", () => {
     expect(slot.filter((one) => one.includes("separator"))).toEqual([]);
   });
 
+  // 시안 Main 머리 줄의 `.ra-tbtn` 넷은 사이 없이 붙는다(`.ra-title`이 `gap`을 두지 않는다). 한때 Codex 머리 줄 값 6이었다(02 · report 02b-6b).
+  // 셸 컨트롤의 시작 x(진짜 신호등 끝에서 16 — `--titlebar-controls-left` 89)는 그대로다.
+  it("셸 컨트롤 사이는 0이다", () => {
+    expect(titlebarVar("--titlebar-control-gap")).toBe("0px");
+    expect(titlebarVar("--titlebar-controls-left")).toBe("89px");
+  });
+
   // 이름이 없는 화면(새 Thread)은 머리 줄 가운데가 빈다 — 선 하나만 덩그러니 남지 않는다.
   it("화면이 아무것도 보내지 않으면 세로선도 서지 않는다", () => {
     expect(slotTag(row())).toContain("empty:before:hidden");

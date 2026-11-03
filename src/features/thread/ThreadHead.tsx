@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { createLucideIcon, Folder, MoreHorizontal, Pencil } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
-import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
+import { HEAD_CRUMB, HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
+import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { useArchivedWork } from "./SummaryCard";
 
@@ -20,8 +21,9 @@ import { useArchivedWork } from "./SummaryCard";
 //   자리를 잇는다).
 
 /**
- * 머리 줄 Thread 이름 앞의 Work(02 §6 · S13) — 폴더 14 · Work 이름 14/400 `fg-titlebar`(#898a8b), 그 뒤 「›」. Work 이름이 누르는 자리이고
- * 누르면 요약 카드가 열린다(옛 Work 알약의 일 — 브랜치 · 알약 면은 걷었다). 「›」는 그림이라 이름에 들지 않는다. 틈은 시안 `.tb-c`의 8이다.
+ * 머리 줄 Thread 이름 앞의 Work(02 §6 · S13) — 폴더 14 · Work 이름, 그 뒤 「›」. 글자는 머리 줄의 흐린 앞 자리(`HEAD_CRUMB` — 13/18
+ * `fg-tertiary`, restart 03-12a)다. Work 이름이 누르는 자리이고 누르면 요약 카드가 열린다(옛 Work 알약의 일 — 브랜치 · 알약 면은 걷었다).
+ * 「›」는 그림이라 이름에 들지 않는다. 폴더와 이름은 6, 「›」는 한 칸(4)이다.
  * 이름이 길면 Thread 이름과 함께 줄어 말줄임이 된다.
  */
 export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void }) {
@@ -31,12 +33,15 @@ export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void
         type="button"
         aria-label={`작업공간 열기: ${title}`}
         onClick={onOpen}
-        className="flex min-w-0 items-center gap-2 rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring"
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 rounded-md whitespace-nowrap transition-colors hover:text-fg focus-ring",
+          HEAD_CRUMB,
+        )}
       >
         <Folder className="size-3.5 shrink-0" aria-hidden />
         <span className="min-w-0 truncate">{title}</span>
       </button>
-      <span aria-hidden="true" className="shrink-0 text-sm text-fg-titlebar">
+      <span aria-hidden="true" className={cn("-ml-0.5 shrink-0", HEAD_CRUMB)}>
         ›
       </span>
     </>
@@ -45,7 +50,7 @@ export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void
 
 /**
  * Work 없는 Thread의 머리 줄 이름 앞 Service(03 §10 · F4-KitChat 「작업공간 없음 · Service 있음」) — 「흐린 Service / 채팅 이름」. 흐린 Service를 누르면 그
- * Service 상세로 간다. 글자 · 사이는 Work 화면 머리 줄의 Service(`WorkServiceCrumb`)와 같다 — `fg-titlebar` · 사이 8 · 「/」는 그림이라 이름에 들지
+ * Service 상세로 간다. 글자 · 사이는 Work 화면 머리 줄의 Service(`WorkServiceCrumb`)와 같다 — `HEAD_CRUMB` · 「/」는 한 칸 · 그림이라 이름에 들지
  * 않는다. Service가 없으면 서지 않는다(이름만 — `headService`).
  */
 export function ServiceCrumb({ name, onOpen }: { name: string; onOpen: () => void }) {
@@ -55,11 +60,11 @@ export function ServiceCrumb({ name, onOpen }: { name: string; onOpen: () => voi
         type="button"
         aria-label={`Service 열기: ${name}`}
         onClick={onOpen}
-        className="min-w-0 truncate rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring"
+        className={cn("min-w-0 truncate rounded-md whitespace-nowrap transition-colors hover:text-fg focus-ring", HEAD_CRUMB)}
       >
         {name}
       </button>
-      <span aria-hidden="true" className="shrink-0 text-sm text-fg-titlebar">
+      <span aria-hidden="true" className={cn("-ml-0.5 shrink-0", HEAD_CRUMB)}>
         /
       </span>
     </>
@@ -97,7 +102,7 @@ export function ThreadMenuItems({ rename }: { rename: (() => void) | null }) {
 }
 
 /**
- * 머리 줄 이름 바로 뒤의 「…」(02 §6 · restart 02a-7 시안 MainLoose — 28 · 둥글기 4, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
+ * 머리 줄 이름 바로 뒤의 「…」(02 §6 · restart 02a-7 시안 MainLoose — 28 · 둥글기 4, 글리프 15 `fg-secondary`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
  * 연다. 열린 동안은 hover와 같은 면이다. 여닫이 · 줄 옮기기 · Esc · 바깥 누르기는 메뉴 부품이 한다(work 메뉴 ⋯와 같다). 모양은 머리 줄의
  * 아이콘 단추 한 벌이다(`ShellHead`의 `headButton` — 공용 틀 화면의 ⋯ · 패널 토글도 같은 것을 쓴다).
  *
@@ -153,7 +158,7 @@ export const SummaryGlyph = createLucideIcon("summary", [
 
 /**
  * 머리 줄 오른쪽 끝의 요약 단추(02 §6 · 시안 Main · MainLoose `aria-label="요약 카드"` — restart 02a-9가 이름을 「요약 고정」에서 「요약 카드」로
- * 바꿨다, SummarySheet 규격) — 28 · 둥글기 4(`.ra-tbtn`), 글리프 16 `fg-titlebar`. 켜지면
+ * 바꿨다, SummarySheet 규격) — 28 · 둥글기 4(`.ra-tbtn`), 글리프 15 `fg-secondary`. 켜지면
  * 바탕이 고른 면(`fill-selected`)이고 글리프가 `fg`로 진해지며, 켜진 채 hover해도 면이 그대로다(시안 `.ra-tbtn[aria-pressed="true"]`). 이름은 할 일
  * 하나이고 켬/끔은 `aria-pressed`가 말한다.
  *

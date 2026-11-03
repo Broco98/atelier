@@ -93,7 +93,6 @@ export function WorkToolsBoxes({
         trail={RAIL_TRAIL}
         // 카드는 옅어지지 않고 상자에 잘리기만 한다(시안 `.ra-panelwrap` · `clippingInnerClass`) — 작업공간 안의 여닫기도, 떠날 때도 같다.
         // 떠나는 500ms 동안은 남긴 마지막 몸(`holdBody`)이 그대로 보인다. 한때(02a-2 · 02a-14b) 작업공간 안의 여닫기는 옅어졌다.
-        fade={false}
         still={still}
         slot={{
           label: WORK_PANEL_LABEL,

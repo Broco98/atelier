@@ -33,7 +33,8 @@ export const treeIndent = (depth: number, dense = false) => ({ paddingLeft: 8 + 
 
 // **촘촘한 행**(restart 02b-8 · 보드 `.ra-tree-row` — SummarySheet 「넓힌 카드 — Project」) — 넓힌 카드의 Project 트리(files 트리)가 쓴다. 24 ·
 // 둥글기 `radius-ctl` 4 · 줄 사이 2 · 폴더 행도 본문 글자색이고, 파일 행 앞은 확장자 꼬리표가 아니라 그 첫 글자(`ExtMark`)다. spec 패널의
-// 트리는 그대로(28 · 둥글기 10 · 사이 1)다.
+// 트리(시안 Shell 「spec 패널」 — restart 03-12a)와 Archive 상세의 「문서」 트리(03-4)도 이 행이다 — 이제 모든 트리가 촘촘한 행이라 28 · 둥글기
+// 10 · 사이 1의 행(DS `.at-tree-row`)을 부르는 자리가 없다.
 const DENSE_ROW = "h-6 rounded-ctl";
 const DENSE_ROWS = "flex flex-col gap-0.5";
 
@@ -74,8 +75,8 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼과, 그 행의 대상 메뉴(⇧F10 · 메뉴 키 · 우클릭)의 「경로 복사」 (생략 시 둘 다 미표시)
   onCopy?: (path: string) => void;
-  // 촘촘한 행으로 그린다(`TreeRows`의 `dense` — 보드 `.ra-tree-row` 24). Archive 상세의 「문서」 트리가 쓴다(restart 03-4 · 보드 Places `.pl-tree`).
-  // spec 패널의 트리는 그대로(28)다.
+  // 촘촘한 행으로 그린다(`TreeRows`의 `dense` — 보드 `.ra-tree-row` 24). Archive 상세의 「문서」 트리(restart 03-4 · 보드 Places `.pl-tree`)와
+  // spec 패널의 트리(restart 03-12a · 시안 Shell 「spec 패널」)가 쓴다.
   dense?: boolean;
 }
 
