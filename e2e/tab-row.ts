@@ -77,8 +77,9 @@ export interface Row {
   /** 도는 칸의 로고+스피너 — 폭과, 제 칸 밖으로 삐져나온 양. */
   mark: { width: number; over: number } | null;
   /**
-   * 오른쪽 끝 조작 묶음(`data-tab-actions`) — 폭과, 줄 밖으로 밀려난 양. 조작이 있는 줄은 분할의 터미널 열(그 열을 닫는 `×`)뿐이고,
-   * 그 밖의 줄에는 묶음이 없어 `null`이다(상태 · ⋯ · 분할은 머리 줄에 선다).
+   * 오른쪽 끝 조작 묶음(`data-tab-actions`) — 폭과, 줄 밖으로 밀려난 양. **지금은 어느 줄에도 없어 늘 `null`이다** — 그 묶음은
+   * 한때 분할의 터미널 열(그 열을 닫는 `×`)에만 섰고, restart 02a-13이 분할을 걷은 뒤 review-fix가 `ShellTabs`의 `actions` 칸과 이
+   * 표지를 걷었다. 상태 · ⋯ · 요약 카드 · 패널 토글은 머리 줄(`workActions`)에 선다.
    */
   actions: { width: number; over: number } | null;
   /**

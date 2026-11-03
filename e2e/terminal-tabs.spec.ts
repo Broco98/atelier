@@ -260,7 +260,8 @@ test("새 채팅 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 �
 // 고르게 줄었나 · 로고가 남았나 · `+`가 줄 안에 남았나 · 머리 줄의 할 일이 안 밀리고 안 눌렸나.
 //
 // **work 화면에서 잰다.** 본문 카드 옆에 작업 패널 · 레일 카드가 서서 줄이 받는 폭이 가장 좁다 — 줄 자체는 두 화면이 같은 것을
-// 쓰므로 붐비는 쪽에서 재는 것이 둘 다를 잰다. 줄 끝 조작(`data-tab-actions`)은 한때 분할의 터미널 열에만 섰다(restart 02a-13이 걷었다).
+// 쓰므로 붐비는 쪽에서 재는 것이 둘 다를 잰다. 줄 끝 조작(`data-tab-actions`)은 한때 분할의 터미널 열에만 섰다 — restart 02a-13이 분할을
+// 걷고 review-fix가 `ShellTabs`의 `actions` 칸과 그 표지를 걷어 지금은 어느 줄에도 없다(`plusOf`는 늘 줄의 안쪽 오른쪽 끝으로 잰다).
 // 상태 · ⋯ · 요약 카드 · 패널 토글은 머리 줄 오른쪽 끝(`data-head-actions`)에 서고, 줄과 같은 순간에 잰다(`rowOf`의 `workActions`) — 줄이
 // 바닥에 닿는 폭이 곧 그 조작이 밀릴 수 있는 폭이다.
 
@@ -293,7 +294,7 @@ async function plusOf(page: Page) {
       // `+`의 왼쪽 끝을 누르면 `+`가 받는가 — 칸 상자의 링 자리(테두리)가 그 위에 걸쳐 있다(`ShellTabs`의 `PlusButton` 주석).
       edgeHit:
         document.elementFromPoint(plus.left + 0.5, plus.top + plus.height / 2)?.closest('[data-tab="new"]') !== null,
-      // 조작이 없는 줄(분할의 터미널 열 말고 모두)에서는 줄의 안쪽 오른쪽 끝(안쪽 여백 앞)이 그 자리다.
+      // 줄 끝 조작이 없으면(지금은 모든 줄 — 위 머리말) 줄의 안쪽 오른쪽 끝(안쪽 여백 앞)이 그 자리다.
       actionsLeft:
         actions?.left ?? row.getBoundingClientRect().right - parseFloat(getComputedStyle(row).paddingRight),
     };

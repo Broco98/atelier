@@ -592,7 +592,7 @@ async function 패널정류장(page: Page, 번 = 60): Promise<number> {
   return count;
 }
 
-// **닫힌 오른쪽 패널은 Tab이 지나친다**(`Frame`의 `PanelBox`). 닫힌 칸은 폭만 0으로 접혀 DOM에 남으므로, 막지 않으면 Tab이 보이지
+// **닫힌 오른쪽 패널은 Tab이 지나친다**(`WorkTools`의 `PanelBox` — 한때 `Frame`의 것이었다). 닫힌 칸은 폭만 0으로 접혀 DOM에 남으므로, 막지 않으면 Tab이 보이지
 // 않는 트리 행에 선다(옛 Archive는 행 안에 펼친 트리를 `inert`로 막았다). 열린 동안은 그 행(폴더 머리)이 Tab 정류장이라 두 상태를
 // 같은 길로 잰다 — 열린 쪽이 0이면 닫힌 쪽의 0도 아무것도 말하지 않는다. 오른쪽 패널은 이제 작업 패널 하나다(restart 03-4 — 한때 Archive의
 // spec 목록 패널도 같은 칸이었다).

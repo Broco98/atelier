@@ -117,7 +117,7 @@ const MADE_PROJECT: ProjectView = {
 };
 
 /**
- * Service(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(Host가 만들었다)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
+ * Service(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(채팅이 「Service 만들기」 도구로 만들었다 — `createdBy: host`)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
  * 「함께 쓰는 Service」 · 그래프의 점선 노드가 서는 갈래가 이 한 쌍이다.
  */
 export const SERVICES: Service[] = [
