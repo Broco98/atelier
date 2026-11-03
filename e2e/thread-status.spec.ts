@@ -33,7 +33,7 @@ const CUT =
       (line.payload as { update?: { sessionUpdate?: string } }).update?.sessionUpdate === "agent_message_chunk",
   )!.seq - 1;
 
-/** 승인을 묻기 바로 앞의 Thread — Host의 Session이 이 앱에 떠 있고 첫 턴이 돈다. */
+/** 승인을 묻기 바로 앞의 Thread — Runtime의 Session이 이 앱에 떠 있고 첫 턴이 돈다. */
 const asking = threadOf("20261024-090100", permission, { live: true, lastSeq: ASKED.seq - 1 });
 /** 사람이 멈춘 Thread — 앱을 다시 켠 꼴이라 떠 있는 Session이 없다. */
 const halted = threadOf("20261024-090200", stopped, { live: false, lastSeq: stopped[stopped.length - 1].seq });

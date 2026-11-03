@@ -83,7 +83,7 @@ export const summaryOf = (view: ThreadView): ThreadSummary => ({
   broken: null,
 });
 
-/** 목록 요약 이벤트를 쏜다 — 엔진이 새 Thread를 세우거나 참여자가 늘 때 내보내는 것 그대로다. 사이드바가 이것으로 줄을 세운다. */
+/** 목록 요약 이벤트를 쏜다 — 엔진이 새 Thread를 세우거나 요약이 바뀔 때 내보내는 것 그대로다. 사이드바가 이것으로 줄을 세운다. */
 export async function fireSummary(page: Page, view: ThreadView): Promise<void> {
   await fireEvent(page, THREAD_LIST_EVENT, summaryOf(view));
 }
@@ -130,7 +130,7 @@ export function specWrites(lines: readonly RecordLine[], slug: string): Record<s
   );
 }
 
-/** 머리말이 Host에게 알린 이은 Work의 이름(「- Work: `slug` — 이름」) — L1이 그 Work를 그 이름으로 세웠다. */
+/** 머리말이 Runtime에게 알린 이은 Work의 이름(「- Work: `slug` — 이름」) — L1이 그 Work를 그 이름으로 세웠다. */
 export function workTitleOf(lines: readonly RecordLine[], slug: string): string {
   const sent = lines.find((line) => line.kind === "sent")?.payload as { prompt?: { text?: string }[] } | undefined;
   const title = new RegExp(`- Work: \`${slug}\` — (.+)`).exec(sent?.prompt?.[0]?.text ?? "")?.[1];

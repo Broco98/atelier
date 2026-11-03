@@ -110,7 +110,7 @@ describe("물음 차례", () => {
 });
 
 describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같은 자리, 같은 차례」)", () => {
-  /** Host의 Work 만들기 제안 줄 — 요청 id는 엔진이 지은 uuid다. */
+  /** Runtime의 Work 만들기 제안 줄 — 요청 id는 엔진이 지은 uuid다. */
   const proposed = (seq: number, requestId = "w-1"): RecordLine => ({
     seq,
     at: at(seq),

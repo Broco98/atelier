@@ -167,7 +167,7 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect.poll(() => 대화끝(page)).toBe(480);
   await expect.poll(사이드바폭).toBe(8);
 
-  // Host가 그 문서를 쓰는 중이다 — 카드의 그 줄에 「쓰는 중」이 서고 그 줄이 소스 맨 위로 온다(restart 02b-8 — 보기 머리 끝의 「쓰는 중」은
+  // Runtime이 그 문서를 쓰는 중이다 — 카드의 그 줄에 「쓰는 중」이 서고 그 줄이 소스 맨 위로 온다(restart 02b-8 — 보기 머리 끝의 「쓰는 중」은
   // 걷었다). 다시 읽은 글은 바뀐 블록만 칠한다. PLAN을 쓰는 중으로 두면 그 줄이 OVERVIEW 앞으로 올라온다.
   const writing: WorkWritingEvent = {
     work: MADE.slug,

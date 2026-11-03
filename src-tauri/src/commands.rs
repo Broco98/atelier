@@ -909,9 +909,9 @@ pub async fn thread_read_record(
     to_host(&engine, "채팅 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
 }
 
-/// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
-/// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
-/// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
+/// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 고른 Runtime의
+/// Session을 열어 그 Runtime이 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 이을 Work가 없거나 Runtime을 찾지
+/// 못하면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 /// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 칩에서 고른 값이다(v1 티켓 23) — 이은 Work면 그 Work의 정도가
 /// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 범위 칩에서
 /// 고른 Service(`service` — `{slug}`, 「Service 없음」이면 `{slug: null}`)와 Project(`project`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Service가

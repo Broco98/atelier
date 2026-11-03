@@ -88,7 +88,7 @@ import { startLink, startPlaceholder } from "./work-chip";
 //   칩을 세운다. `?work=`는 그 작업공간의 새 채팅 탭으로 간다(restart 02a-8 — `WorkNewChat`). 입력 글
 //   씨앗(`?say=`)은 입력창에 넣기만 하고 보내는 것은 사람이다. 시작할 곳을 입력창
 //   안내가 따른다(`startPlaceholder`). 첫 말을 보내면 엔진이 고른 것대로
-//   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「채팅을 시작하는
+//   Thread를 세우고 고른 Runtime의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「채팅을 시작하는
 //   중」이 반짝인다(States 보드 02). 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **트레이**(03 §5 · restart 02b-2) — 첫 말 전의 새 채팅에만 상자 아래에 선다. 첫 말 뒤 입력창(Thread 화면 · 첫 말을 보내 Session이 열리기를
 //   기다리는 동안)에는 트레이가 없다(시안 Thread 보드) — 어디서 일하는지는 탭 줄 · 창 머리가 말하고, 범위는 대화로 바꾼다(Service 도구).
@@ -97,7 +97,7 @@ import { startLink, startPlaceholder } from "./work-chip";
 //   §10 — 바닥에서는 원이 없다, States 보드 · restart 02b-1). 흐름은 위 32 · 아래 28을 띄운다(Thread 보드 `.ra-col`). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 사람의 답을 기다리는 카드가 선다(v1 티켓 24 ·
 //   restart 02b-5 — Cards 보드 `.ra-ask`). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
 //   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
-// - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
+// - **Work와 이어짐**(v1 티켓 30 · §11) — Runtime의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 선다.
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
 //   Project · Service 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).

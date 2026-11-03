@@ -10,7 +10,7 @@ import type { ThreadView } from "@/features/thread/types";
 // 131 · 132). 차례 · 갈 곳을 고르는 순수 함수는 L2(`waiting.test.ts`)가, 메뉴 바의 View ▸ Next Waiting은 L1(lib.rs 메뉴 시험)이 잰다 —
 // 여기는 기록 줄 이벤트가 수 · 목록을 바꾸고 키가 주소를 옮기는 한 바퀴다. 부른 셸이 없는 자리라 마지막 Thread 다음은 처음으로 돈다.
 //
-// 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Work에 이은 Thread에서 Host가 Work 밖 Project를 고치려 해 물은 턴(`thread-project`),
+// 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Work에 이은 Thread에서 Runtime이 Work 밖 Project를 고치려 해 물은 턴(`thread-project`),
 // Work 없는 Thread에서 파일 쓰기를 매번 묻기로 물은 턴(`thread-permission`), 다 읽은 「새 채팅 두 턴」(`thread-two-turns`). 기다리기 시작한
 // 때(물음 줄의 시각)가 차례다 — Project 물음이 승인 물음보다 1초 먼저다.
 //
@@ -28,7 +28,7 @@ const ASKED = lineOf(permission, "permission", "asked");
 const ANSWERED = lineOf(permission, "permission", "answered");
 const twoTurns = record("thread-two-turns");
 
-/** Work에 이은 Thread — Host가 Work 밖 Project를 묻는 줄 바로 앞이다. */
+/** Work에 이은 Thread — Runtime이 Work 밖 Project를 묻는 줄 바로 앞이다. */
 const inWork = threadOf("20261024-100100", project, { work: ASK.work, live: true, lastSeq: PROJECT_ASKED.seq - 1 });
 /** Work 없는 Thread — 승인을 묻는 줄 바로 앞이다. */
 const loose = threadOf("20261024-100200", permission, { live: true, lastSeq: ASKED.seq - 1 });
