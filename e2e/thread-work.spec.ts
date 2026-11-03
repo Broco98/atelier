@@ -36,8 +36,8 @@ const ARMING_MS = 300;
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
 const 흐름 = (page: Page) => page.getByRole("main");
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
-/** 트레이의 잠긴 Work 칩(03 §5) — 첫 말 뒤의 칩은 보이기만 하고, Work에 이은 칩만 그 Work로 가는 단추다. */
-const 잠긴칩 = (page: Page) => page.locator('[data-slot="composer-tray"] [data-slot="work-chip"]');
+/** 입력창의 트레이 — 첫 말 전의 새 채팅에만 선다(restart 02b-2). 첫 말 뒤에는 없다(한때 상자 위에 잠긴 Work 칩을 실었다). */
+const 트레이 = (page: Page) => page.locator('[data-slot="composer-tray"]');
 
 /**
  * 두 기록의 세계가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — L1이 등록한 Project 둘(api-server · web-app)을, Service가 없어 모두
@@ -112,10 +112,9 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   // Work 없는 Thread가 제안 바로 앞까지 와 있다 — Host가 저장소를 읽으며 물은 승인은 모두 답했고, 이름은 Host가 바꿨다.
   const view: ThreadView = { ...FIXTURE_THREAD, title: titleThrough(work, ASKED.seq), live: true, lastSeq: ASKED.seq - 1 };
   await openThread(page, view, work);
-  // 상자 위 트레이의 Work 칩은 잠겨 「작업공간 없이 대화」를 보이기만 한다(03 §5 S3 — 누를 것이 없다).
+  // 첫 말 뒤의 입력창에는 트레이가 없다(restart 02b-2 — 한때 상자 위에 잠긴 Work 칩 「작업공간 없이 대화」가 섰다).
   await expect(입력칸(page)).toBeVisible();
-  await expect(잠긴칩(page)).toHaveText("작업공간 없이 대화");
-  await expect(잠긴칩(page).getByRole("button")).toHaveCount(0);
+  await expect(트레이(page)).toHaveCount(0);
   const threadGroup = 사이드바(page).getByRole("region", { name: "채팅", exact: true });
   await expect(threadGroup.getByText(view.title, { exact: true })).toBeVisible();
 
@@ -125,6 +124,8 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   await expect(card).toBeVisible();
   await expect(입력칸(page)).toHaveCount(0);
   await expect(card).toContainText(`${PROPOSED.title} · ${PROPOSED.reason}`);
+  // 입력창 자리 카드는 시안에 칸이 없어 둥글기만 입력창 · 물음 카드와 같은 22로 맞췄다(restart 02b-5 — `SLOT_CARD`).
+  expect(await card.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("22px");
   for (const one of PROPOSED.projects) {
     const box = card.getByRole("checkbox", { name: new RegExp(`^${one.name}`) });
     await expect(box).toHaveAttribute("aria-checked", String(one.recommended));
@@ -165,9 +166,9 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   await expect(workCard).toContainText(MADE.title);
   await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/, /^web-app\s*읽기만/]);
 
-  // 카드가 걷히면 입력창이 돌아온다 — 트레이의 잠긴 칩이 받아들인 그 Work 이름이 되고, 누르면 그 Work 화면으로 간다(03 §5 S3).
+  // 카드가 걷히면 입력창이 돌아온다 — 이은 작업공간은 탭 줄과 사이드바가 말하고 입력창에는 트레이가 없다(restart 02b-2).
   await expect(입력칸(page)).toBeVisible();
-  await expect(잠긴칩(page)).toHaveAccessibleName(`작업공간으로 가기: ${MADE.title}`);
+  await expect(트레이(page)).toHaveCount(0);
 
   // 사이드바 — 그 Thread는 Thread 묶음에서 빠지고, 새 Work 줄이 접힌 채 켜져 선다(지금 보는 Thread가 그 안이다). 펴면 그 Thread가 있다.
   await expect(threadGroup.getByText(linked.title, { exact: true })).toHaveCount(0);
@@ -181,6 +182,14 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   for (const path of WRITTEN) {
     await expect(흐름(page).locator(`[data-doc-card="${path}"]`)).toBeVisible();
     await expect(workCard.locator(`[data-doc="${path}"]`)).toBeVisible();
+  }
+  // 화면이 선 뒤 새로 선 문서 카드는 아래 12에서 320으로 올라온다(restart 02b-6 · Motion 「문서 · PR 카드가 선다」).
+  for (const path of WRITTEN) {
+    expect(
+      await 흐름(page)
+        .locator(`[data-doc-card="${path}"]`)
+        .evaluate((el) => el.getAnimations().map((one) => [(one as CSSAnimation).animationName, one.effect?.getTiming().duration])),
+    ).toEqual([["card-rise", 320]]);
   }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

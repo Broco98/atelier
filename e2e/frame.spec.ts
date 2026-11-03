@@ -625,7 +625,7 @@ for (const screen of LIST_SCREENS) {
 
 // **Projects의 ⌘Enter는 아무것도 하지 않는다**(codex-ds 결정 32) — 오른쪽 패널도 목록 칸도 없는 화면이다(03 판부터 본문 하나의 표 — 03 구현
 // 스펙 §16). 한때 이 키가 목록 칸을 접었고 그 접힘을 화면마다 로컬 저장에 적었다(`projects-panel-open` · `archive-panel-open`). 앱은 그
-// 값을 읽지 않고 지운다. 걷은 분할(restart 02a-13)의 열 비율(`work-split-ratio`)도 같은 길로 지운다. 「아무 일도 안 한다」는 둘로 잰다:
+// 값을 읽지 않고 지운다. 걷은 분할(restart 02a-13)의 열 비율(`work-split-ratio`)과 걷은 Archive 칸(restart 03-4)의 폭도 같은 길로 지운다. 「아무 일도 안 한다」는 둘로 잰다:
 // 화면(본문 칸 · `aside` 수)이 그대로이고, 그 키를 받아 막은(`preventDefault`) 리스너가 없다 — 화면만 재면 「받아서 다른 일을 했다」가
 // 초록으로 지나간다.
 test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 칸 · 걷은 분할의 저장값은 지워진다", async ({ page }) => {
@@ -633,16 +633,24 @@ test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 
     localStorage.setItem("projects-panel-open", "0");
     localStorage.setItem("archive-panel-open", "0");
     localStorage.setItem("work-split-ratio", "0.3");
+    localStorage.setItem("archive-panel-width", "300");
+    localStorage.setItem("archive-spec-panel-width", "300");
   });
   await installFixtureBackend(page);
   await page.goto("/projects");
   await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() =>
-      ["projects-panel-open", "archive-panel-open", "work-split-ratio"].map((key) => localStorage.getItem(key)),
+      [
+        "projects-panel-open",
+        "archive-panel-open",
+        "work-split-ratio",
+        "archive-panel-width",
+        "archive-spec-panel-width",
+      ].map((key) => localStorage.getItem(key)),
     ),
-    "접힘 값 · 분할 비율은 지워진다",
-  ).toEqual([null, null, null]);
+    "접힘 값 · 분할 비율 · 걷은 Archive 칸의 폭은 지워진다",
+  ).toEqual([null, null, null, null, null]);
 
   const 화면 = async () => ({
     main: await boxOf(page.locator("main")),
@@ -727,9 +735,15 @@ test("Works: 본문 카드 · spec 패널 카드 · 레일 카드가 8 틈으로
   // ⌘Enter로 접으면 틈이 카드와 함께 걷혀 본문 카드가 레일 앞 8까지 넓어진다 — 닫힌 카드 옆에 틈이 겹쳐 남지 않는다.
   await page.keyboard.press("Meta+Enter");
   await expect.poll(async () => (await boxOf(doc)).right).toBe(rail.x - 8);
+  // 다시 펴면 패널 카드가 본문 카드 뒤 8 틈 · 레일 앞 8까지다. 패널은 spring으로 펴져(02a-14) 틈이 8인 장면이 다 펴기 전에도 지나간다 — 두 값을
+  // 한 장면에서 함께 읽는다(한때 틈만 기다리고 오른쪽 끝을 한 번 읽어 부하 아래 1/20 빨갰다 — 02a-15b).
   await page.getByRole("button", { name: "작업공간 패널 펼치기", exact: true }).click();
-  await expect.poll(async () => (await boxOf(panel)).x - (await boxOf(doc)).right).toBe(8);
-  expect((await boxOf(panel)).right, "다시 펴면 레일 앞 8까지").toBe(rail.x - 8);
+  await expect
+    .poll(async () => {
+      const [shown, body] = [await boxOf(panel), await boxOf(doc)];
+      return [shown.x - body.right, shown.right];
+    }, { message: "다시 펴면 본문 뒤 8 틈 · 레일 앞 8까지" })
+    .toEqual([8, rail.x - 8]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -1476,10 +1490,11 @@ test("새 Thread: 모델 피커만 duration-dropdown · ease-enter-snappy로 30m
     animation.pause();
     animation.currentTime = 0;
     const style = getComputedStyle(el);
-    const { a, d } = new DOMMatrix(style.transform);
-    return { 길이: style.animationDuration, 크기: [a, d].map((one) => Math.round(one * 1000) / 1000), 불투명도: style.opacity };
+    const { a, d, f } = new DOMMatrix(style.transform);
+    return { 길이: style.animationDuration, 크기: [a, d].map((one) => Math.round(one * 1000) / 1000), 아래: Math.round(f * 1000) / 1000, 불투명도: style.opacity };
   });
-  expect(첫장면, "열림의 첫 장면").toEqual({ 길이: "60s", 크기: [0.98, 0.98], 불투명도: "0" });
+  // 첫 장면은 아래 2에서다(restart 02b-2 · Motion 「메뉴가 열린다」 — 위로 2).
+  expect(첫장면, "열림의 첫 장면").toEqual({ 길이: "60s", 크기: [0.98, 0.98], 아래: 2, 불투명도: "0" });
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -1594,11 +1609,11 @@ test("Works: 고른 작업이 없는 빈 화면에는 레일 · 패널 토글이
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 문서 위 경로 줄(codex-ds 스펙 §4 — `PathBar`) — 「지금 보는 것」의 경로 캡슐과 원문 전환 · 경로 복사가 선다. 문서는 이제 넓힌 카드
-// (`section[data-expanded]`)에서 열고 캡슐은 「문서 › … › 파일」이다(restart 02a-12 · 02a-13 — 한때 문서 탭 위 `slug › spec › … › 파일`).
-// 복사는 새 동작이 아니라 트리의 경로 복사가 선 자리 하나가 더 생긴 것이라, **같은 값**을 클립보드에 넣는다. 넓힌 카드가 서면 작업 패널이
-// 접히므로 트리의 복사를 먼저 받는다. 줄의 기하(48 · 캡슐 글자와 문서 글이 한 세로줄)는 `path-bar.spec.ts`가 잰다.
-test("Works: 넓힌 카드의 문서 위 경로 줄에 문서 › … › 파일 캡슐과 원문 전환 · 경로 복사가 서고, 복사가 트리의 경로 복사와 같은 값을 낸다", async ({
+// 넓힌 카드 보기의 머리(SummarySheet 보드 `.ra-vwhead` · restart 02b-8) — 「지금 보는 것」의 경로가 「/」로 이은 조각이고, 렌더 | 원문 · 경로 복사가
+// 선다. 문서는 넓힌 카드(`section[data-expanded]`)에서 열고 경로는 「문서 / … / 파일」이다(restart 02a-12 · 02a-13 — 한때 문서 탭 위 `slug › spec ›
+// … › 파일`, 02b-8 전에는 48 경로 줄의 캡슐 「문서 › … › 파일」 · 「원문 보기」). 복사는 새 동작이 아니라 트리의 경로 복사가 선 자리 하나가 더 생긴
+// 것이라, **같은 값**을 클립보드에 넣는다. 넓힌 카드가 서면 작업 패널이 접히므로 트리의 복사를 먼저 받는다. 머리의 기하는 `path-bar.spec.ts`가 잰다.
+test("Works: 넓힌 카드의 문서 위 머리에 문서 / … / 파일 경로와 렌더 | 원문 · 경로 복사가 서고, 복사가 트리의 경로 복사와 같은 값을 낸다", async ({
   page,
 }) => {
   const file = "목업/조각.html";
@@ -1618,8 +1633,8 @@ test("Works: 넓힌 카드의 문서 위 경로 줄에 문서 › … › 파일
   const doc = page.locator("section[data-expanded]");
   const capsule = doc.getByRole("navigation", { name: "위치", exact: true });
   await expect(capsule).toBeVisible();
-  expect(await capsule.locator("span").allTextContents()).toEqual(["문서", "목업", "조각.html"]);
-  await expect(doc.getByRole("button", { name: "원문 보기", exact: true })).toBeVisible();
+  expect(await capsule.locator("span").allTextContents()).toEqual(["문서", "/", "목업", "/", "조각.html"]);
+  await expect(doc.getByRole("group", { name: "문서 보기", exact: true }).getByRole("button")).toHaveText(["렌더", "원문"]);
 
   await doc.getByRole("button", { name: "경로 복사", exact: true }).click();
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);

@@ -416,21 +416,19 @@ pub(crate) enum OpenError {
     AuthRequired { program: PathBuf },
 }
 
+/// 열기 실패의 까닭 — 끊김 안내와 같은 자리(Session `died`)에 서는 한 줄이라 같은 결(「~어요」)이고 「에이전트」라는 말을 쓰지 않는다
+/// (restart 03-12a · `life::death_reason`). 한때 「에이전트를 실행할 수 없습니다: …」였다.
 impl fmt::Display for OpenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OpenError::Spawn { program, reason } => {
-                write!(f, "에이전트를 실행할 수 없습니다: {} — {reason}", program.display())
-            }
+            OpenError::Spawn { program, reason } => write!(f, "실행하지 못했어요: {} — {reason}", program.display()),
             OpenError::Protocol { program, reason } => {
-                write!(f, "에이전트가 ACP 세션을 열지 못했습니다: {} — {reason}", program.display())
+                write!(f, "ACP 세션을 열지 못했어요: {} — {reason}", program.display())
             }
             OpenError::TimedOut { program, limit } => {
-                write!(f, "에이전트가 {}초 안에 세션을 열지 않았습니다: {}", limit.as_secs_f32(), program.display())
+                write!(f, "{}초 안에 세션이 열리지 않았어요: {}", limit.as_secs_f32(), program.display())
             }
-            OpenError::AuthRequired { program } => {
-                write!(f, "에이전트가 로그인을 요구합니다: {}", program.display())
-            }
+            OpenError::AuthRequired { program } => write!(f, "로그인이 필요해요: {}", program.display()),
         }
     }
 }
@@ -632,7 +630,7 @@ pub(crate) fn open(
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             agent.shut_down();
-            Err(failed("답 없이 연결이 끝났습니다".to_string()))
+            Err(failed("답 없이 연결이 끝났어요".to_string()))
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             agent.shut_down();
@@ -677,7 +675,7 @@ async fn open_session(
         let version = initialize["agentInfo"]["version"].as_str();
         if version != Some(required.as_str()) {
             return Err(Refusal::Other(format!(
-                "판 어긋남 — 에이전트 {} · 앱 {required}. 앱을 다시 켜면 맞는 판이 뜹니다",
+                "판 어긋남 — Runtime {} · 앱 {required}. 앱을 다시 켜면 맞는 판이 떠요",
                 version.unwrap_or("(판 없음)")
             )));
         }
@@ -766,7 +764,7 @@ impl Step<'_> {
                             }
                             Ok(opened)
                         }
-                        None => Err(Refusal::Other(format!("{method}의 답에 sessionId가 없습니다: {session}"))),
+                        None => Err(Refusal::Other(format!("{method}의 답에 sessionId가 없어요: {session}"))),
                     },
                     Err(error) if i32::from(error.code) == AUTH_REQUIRED => Err(Refusal::AuthRequired),
                     Err(error) => Err(Refusal::Other(describe(method, &error))),
@@ -781,7 +779,7 @@ impl Step<'_> {
             }
             return Err(Refusal::Other(error));
         }
-        opened_rx.await.map_err(|_| Refusal::Other(format!("{method}에 답하지 않고 끝났습니다")))?
+        opened_rx.await.map_err(|_| Refusal::Other(format!("{method}에 답하지 않고 끝났어요")))?
     }
 }
 
@@ -822,7 +820,7 @@ async fn request(cx: &ConnectionTo<AgentRole>, method: &str, params: Value) -> R
 fn describe(method: &str, error: &agent_client_protocol::Error) -> String {
     if agent_client_protocol::is_incoming_transport_closed(error) {
         // 에이전트가 끝났거나 ACP가 아닌 프로그램이다 — 크레이트의 진단 JSON보다 이 한 줄이 읽힌다.
-        format!("{method}에 답하지 않고 끝났습니다")
+        format!("{method}에 답하지 않고 끝났어요")
     } else {
         format!("{method}: {error}")
     }
@@ -947,7 +945,7 @@ impl Turns {
                 sink(RuntimeEvent::TurnEnd(TurnEnd { result, cancelled_by_us: cancel_sent.load(Ordering::SeqCst), app_refusal: None }));
                 Ok(())
             })
-            .map_err(|error| format!("에이전트에 말을 보내지 못했습니다: {error}"))
+            .map_err(|error| format!("Runtime에 말을 보내지 못했어요: {error}"))
     }
 
     /// 도는 턴을 멈춘다 — `session/cancel`을 보낸다. 기다리지 않는다: 턴의 끝(`cancelled`)은 sink로 오고, 그 턴 끝에
@@ -965,7 +963,7 @@ impl Turns {
             .map_err(|error| error.to_string())?;
         self.connection
             .send_notification(message)
-            .map_err(|error| format!("에이전트에 멈추기를 보내지 못했습니다: {error}"))?;
+            .map_err(|error| format!("Runtime에 멈추기를 보내지 못했어요: {error}"))?;
         if let Some(sink) = self.sink.upgrade() {
             Permissions::withdraw_all(&mut pending, Withdrawal::Stopped, &sink);
         }
@@ -1037,13 +1035,13 @@ impl Turns {
                 let _ = answered.send(result.map(|_| ()).map_err(|error| describe(method, &error)));
                 Ok(())
             })
-            .map_err(|error| format!("에이전트에 {method}를 보내지 못했습니다: {error}"))?;
+            .map_err(|error| format!("Runtime에 {method}를 보내지 못했어요: {error}"))?;
         match answer.recv_timeout(limit) {
             Ok(result) => result,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                Err(format!("에이전트가 {}초 안에 {method}에 답하지 않았습니다", limit.as_secs_f32()))
+                Err(format!("Runtime이 {}초 안에 {method}에 답하지 않았어요", limit.as_secs_f32()))
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("{method}에 답하지 않고 끝났습니다")),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("{method}에 답하지 않고 끝났어요")),
         }
     }
 }
@@ -1055,5 +1053,33 @@ impl Drop for AgentProcess {
             self.begin_shutdown();
             self.finish_shutdown(Instant::now());
         }
+    }
+}
+
+#[cfg(test)]
+mod open_error_words {
+    use super::*;
+
+    // 열기 실패의 까닭은 끊김 안내와 같은 자리(Session `died`)에 선다 — 같은 결(「~어요」)이고 「에이전트」라는 말을 쓰지 않는다
+    // (restart 03-12a · `life::death_reason`).
+    #[test]
+    fn the_open_failure_reads_like_the_death_reason() {
+        let program = PathBuf::from("/bin/claude");
+        let all = [
+            OpenError::Spawn { program: program.clone(), reason: "No such file".into() },
+            OpenError::Protocol { program: program.clone(), reason: "답 없이 연결이 끝났어요".into() },
+            OpenError::TimedOut { program: program.clone(), limit: Duration::from_secs(30) },
+            OpenError::AuthRequired { program },
+        ];
+        let said: Vec<String> = all.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            said,
+            [
+                "실행하지 못했어요: /bin/claude — No such file",
+                "ACP 세션을 열지 못했어요: /bin/claude — 답 없이 연결이 끝났어요",
+                "30초 안에 세션이 열리지 않았어요: /bin/claude",
+                "로그인이 필요해요: /bin/claude",
+            ]
+        );
     }
 }

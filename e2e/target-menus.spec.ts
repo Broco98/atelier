@@ -262,8 +262,8 @@ test("Archive 패널의 spec 트리 파일 행 메뉴에서 「경로 복사」�
 });
 
 // ── 문서 글 (스토리 75) ──
-// 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사. 원문으로 보기는 경로 줄의 보기 묶음과 같은 상태를 바꾸고(이미 원문이면
-// 「문서로 보기」다), 보기를 못 바꾸는 파일(그림)에서는 서지 않는다. 경로 복사는 경로 줄의 동그란 복사와 같은 참조다.
+// 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사. 원문으로 보기는 보기 머리(넓힌 카드의 렌더 | 원문 · Archive 경로 줄의 보기 묶음)와
+// 같은 상태를 바꾸고(이미 원문이면 「문서로 보기」다), 보기를 못 바꾸는 파일(그림)에서는 서지 않는다. 경로 복사는 머리의 경로 복사와 같은 참조다.
 
 /**
  * 화면의 토스트 자리(「메시지」) 가운데 무언가 선 것 — 작업공간 화면에는 이 자리가 둘 선다(본문 카드 · 넓힌 카드). 빈 자리는 뺀다. 토스트
@@ -321,6 +321,8 @@ const 문서자리들 = [
     line: "한 줄.",
     heading: "개요",
     path: `~/.atelier/works/${pinnedWork.slug}/spec/overview.md`,
+    // 넓힌 카드 보기 머리의 렌더 | 원문(restart 02b-8 — 한때 경로 줄의 「문서로 보기」 · 「원문 보기」).
+    원문단추: "원문",
   },
   {
     name: "Archive 문서",
@@ -328,10 +330,11 @@ const 문서자리들 = [
     line: "한 줄.",
     heading: "기록 — 치운 일",
     path: `~/.atelier/archive/${shipped.slug}/${RECORD}`,
+    원문단추: "원문 보기",
   },
 ];
 
-for (const { name, open, line, heading, path } of 문서자리들) {
+for (const { name, open, line, heading, path, 원문단추 } of 문서자리들) {
   test(`${name}에서 글자를 고르고 우클릭하면 「복사」 하나가 서고, 고른 글자를 쓴 뒤 고름이 그대로다`, async ({ page }) => {
     await installFixtureBackend(page);
     await recordClipboard(page);
@@ -371,7 +374,7 @@ for (const { name, open, line, heading, path } of 문서자리들) {
     await open(page);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     const url = page.url();
-    const 원문보기 = 버튼(page, "원문 보기");
+    const 원문보기 = 버튼(page, 원문단추);
     await expect(원문보기).toHaveAttribute("aria-pressed", "false");
 
     // 글자 위의 우클릭 — macOS WebKit은 여기서 낱말을 고르지만, 메뉴는 누른 순간의 고름(없음)으로 서고 그 낱말 고름을 걷는다.
@@ -459,7 +462,7 @@ test("보기를 못 바꾸는 문서(그림)의 문서 글 메뉴에는 경로 �
   await recordClipboard(page);
   const image = pinnedWork.specFiles.find((file) => file.endsWith(".png"))!;
   await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent(image)}`);
-  await expect(버튼(page, "원문 보기")).toBeDisabled();
+  await expect(버튼(page, "원문")).toBeDisabled();
 
   await 우클릭한다(page, 문서글(page));
   await expect.poll(() => 줄차례(메뉴(page))).toEqual(["경로 복사"]);

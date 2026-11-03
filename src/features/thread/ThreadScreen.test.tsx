@@ -209,6 +209,14 @@ describe("새 채팅 화면", () => {
     );
   };
 
+  // 시안 Home 머리 줄 — 셸 컨트롤 뒤 세로선 다음에 「새 채팅」이 선다(Main 보드 `isHome`의 `.ra-crumb`, restart 03-12a). 한때 이름 없는 새
+  // 채팅이라 머리 줄 가운데가 비었다(02a-7). 바꿀 이름이 아니라 화면 이름이다 — 포커스를 받지 않고 ⋯도 요약 단추도 없다(S23).
+  it("머리 줄에 화면 이름 「새 채팅」이 서고, 그것뿐이다", () => {
+    const head = drawNew().match(/<header data-slot="screen-head">[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(head.replace(/<[^>]+>/g, "")).toBe("새 채팅");
+    expect(head).not.toMatch(/tabindex|<button/);
+  });
+
   // 첫 화면의 입력창은 물음 아래 가운데에 선다 — 바닥에 붙지 않아 지나갈 대화가 없다(보드 `.ra-home`).
   it("첫 말 전의 입력창은 바닥 자리(dock)가 아니다", () => {
     expect(drawNew()).not.toContain("data-dock");

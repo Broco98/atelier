@@ -100,8 +100,9 @@ test("`.html`은 토글이 안 잠기고, `.json`은 지금 그대로다", async
   await installFixtureBackend(page);
   await page.goto(`/works/${work.slug}?file=overview.md`);
 
-  const doc = page.getByRole("button", { name: "문서로 보기" });
-  const source = page.getByRole("button", { name: "원문 보기" });
+  // 넓힌 카드 보기 머리의 렌더 | 원문(restart 02b-8 — 한때 경로 줄의 「문서로 보기」 · 「원문 보기」).
+  const doc = page.getByRole("button", { name: "렌더", exact: true });
+  const source = page.getByRole("button", { name: "원문", exact: true });
   const frameEl = page.locator(`iframe[title="${HTML_FILE}"]`);
 
   // `.md`에서 원문을 켜 둔 채 `.html`로 옮긴다 — **소스가 선다**(결정 8). 「선 칸은 사람이

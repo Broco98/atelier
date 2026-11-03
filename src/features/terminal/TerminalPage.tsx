@@ -182,7 +182,7 @@ function TerminalPage() {
     // 탭 줄이 터미널 카드의 머리다(codex-ds 스펙 §4 「탭 줄」 — work 화면과 같은 규칙). 카드가 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
     // 머리 줄에는 화면 이름 「Terminal」 하나가 선다(codex-ds 스펙 §6) — 이 화면에는 머리에 둘 할 일이 없다(셸을 여는 `+`는
     // 탭 줄의 것이다). 이름 · 아이콘은 nav 항목에서 읽는다(`navItem`).
-    <Frame head={{ icon: PLACE.icon, name: PLACE.label }}>
+    <Frame head={{ name: PLACE.label }}>
       <Card
         as="main"
         label="터미널"

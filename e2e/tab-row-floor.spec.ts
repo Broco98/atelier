@@ -344,7 +344,7 @@ test("넓힌 카드의 문서가 창보다 넓어도 카드가 창을 밀지 않
   await fits("넓은 문서");
 
   // 원문 보기 — 줄바꿈 없는 코드뷰다.
-  await card.getByRole("button", { name: "원문 보기" }).first().click();
+  await card.getByRole("button", { name: "원문", exact: true }).click();
   await fits("넓은 문서 원문");
 });
 

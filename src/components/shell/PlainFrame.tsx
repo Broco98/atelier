@@ -3,7 +3,7 @@ import { InlineRename } from "@/components/ui/inline-rename";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { CARD_FACE, type HeadRename } from "./Frame";
-import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
+import { HEAD_CRUMB_GAP, HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 
 // **Thread · 첫 화면 · Projects · Service가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07 · 03 · restart 02a-2) — 틀은 앱 셸 하나다: 크롬
 // 맨 위 머리 줄(44)과 그 아래 사이드바 오른쪽 카드 자리(`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽
@@ -15,9 +15,9 @@ import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 //
 // - **머리 줄의 자리 · 끌기 · 세로선은 셸의 것이다** — 이름이 셸 컨트롤 뒤 세로선 다음에 서는 것도 셸이 든다(`ShellHeadRow`). 바꿀 수 있는
 //   이름은 포커스를 받는 요소라 Tauri가 끌기에서 스스로 비켜 둔다 — 끄는 자리의 두 번 클릭은 창 키우기라, 두 번 클릭이 이름 바꾸기인
-//   이름은 끌면 안 된다. 이름이 없는 새 Thread는 머리 줄 가운데가 빈다(F1-Home 보드).
-// - **Codex 머리 줄 모양이다**(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽은 이름 앞 · 이름이 틈 8로 한 줄이고, 오른쪽 끝은 28 아이콘 버튼들이
-//   틈 2로 선다(왼쪽과 적어도 12 띄움). 오른쪽 끝 여백 8은 셸의 화면 자리가 든다. 이름 글자 · 오른쪽 끝 묶음의 값은 머리 줄 부품 한
+//   이름은 끌면 안 된다. 새 채팅은 화면 이름 「새 채팅」을 보낸다(시안 Home — restart 03-12a, 한때 가운데가 비었다).
+// - **시안 Main 머리 줄 모양이다**(`.ra-crumb` · `.ra-tbtn`, restart 03-12a — 한때 Codex `.tb-c` · `.tb-r`) — 왼쪽은 이름 앞 · 이름이 틈 6으로 한
+//   줄이고, 오른쪽 끝은 28 아이콘 버튼들이 틈 없이 선다(왼쪽과 적어도 12 띄움). 오른쪽 끝 여백 8은 셸의 화면 자리가 든다. 이름 글자 · 오른쪽 끝 묶음의 값은 머리 줄 부품 한
 //   곳(`ShellHead`의 `HEAD_NAME` · `HeadEnd`)이 들고, 공용 틀 화면의 머리(`FrameHead`)도 같은 것을 쓴다 — 머리 줄은 한 결이다.
 // - **머리 줄 아래 선은 없다** — 본문 카드의 위끝이 경계다. 한때(02 S2) 본문이 제 카드 없이 흰 판에 곧장 섰다.
 // - **이름은 그 자리에서 바꾼다**(두 번 클릭 · F2) — 공용 틀 화면의 머리 줄 이름과 같은 길이다(`HeadRename` · `InlineRename`).
@@ -25,7 +25,7 @@ import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 interface PlainHeadProps {
   /** 이름 앞 — Thread가 이은 Work의 「폴더 · 작업공간 이름 ›」(02 §6 · S13). */
   lead?: ReactNode;
-  /** 머리 줄의 이름 — 없으면 머리 줄 가운데가 빈다(새 Thread). */
+  /** 머리 줄의 이름 — 없으면 머리 줄 가운데가 빈다. 새 채팅은 화면 이름 「새 채팅」이다(고치기 없음). */
   title?: { name: string; rename?: HeadRename };
   /** 이름 바로 뒤 — 그 이름의 ⋯(채팅 메뉴, restart 02a-7 · 시안 MainLoose `.ra-crumb` 뒤 `.ra-tbtn`). 이름과 틈 없이 붙는다. */
   menu?: ReactNode;
@@ -71,7 +71,7 @@ export function PlainHead({ lead, title, menu, end }: PlainHeadProps) {
   return (
     <>
       {(lead || title) && (
-        <div className="flex min-w-0 items-center gap-2">
+        <div className={cn("flex min-w-0 items-center", HEAD_CRUMB_GAP)}>
           {lead}
           {title && <PlainTitle name={title.name} rename={title.rename} />}
         </div>
@@ -83,7 +83,7 @@ export function PlainHead({ lead, title, menu, end }: PlainHeadProps) {
 }
 
 /**
- * 머리 줄의 이름 — 14/500 한 줄(보드 `.bar .title`). 바꿀 수 있으면 포커스를 받고 두 번 클릭 · F2가 고치기에 들며, 고치는 동안은 이름
+ * 머리 줄의 이름 — 13/18 한 줄(`HEAD_NAME` — 시안 `.ra-crumb`). 바꿀 수 있으면 포커스를 받고 두 번 클릭 · F2가 고치기에 들며, 고치는 동안은 이름
  * 자리에 입력칸이 선다. 키로 끝내면 포커스가 이 이름으로 돌아온다.
  */
 function PlainTitle({ name, rename }: { name: string; rename?: HeadRename }) {

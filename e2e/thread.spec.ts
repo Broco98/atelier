@@ -36,7 +36,7 @@ const 흐름 = (page: Page) => page.getByRole("main");
 const 접힌턴 = (page: Page, headline: string) => 흐름(page).getByRole("button", { name: headline, exact: true });
 const 도구줄 = (page: Page, phrase: string) => 흐름(page).getByRole("group", { name: phrase, exact: true });
 
-test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르다 턴 끝에 「N초 동안 작업」으로 접히며(도구 없는 턴은 구분선 없이), 도구 줄이 진행형에서 과거형이 된다", async ({
+test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르다 턴 끝에 「N초 동안 작업함」으로 접히며(말만 한 턴은 머리 없이), 도구 줄이 진행형에서 「동사 대상」이 된다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -59,11 +59,11 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await expect(흐름(page).getByText(first.text, { exact: true })).toBeVisible();
   await expect(입력칸(page)).toHaveValue("");
 
-  // 흐르는 답 — 턴이 도는 동안은 구분선 자리에 「N초 동안 작업 중입니다」가 서고, 답이 흐른다. 첫 턴은 도구 없이 답만 했다 — 턴이
-  // 끝나면 도는 줄이 걷히고 펼칠 것이 없어 구분선도 서지 않는다(02 §8). 끝난 마지막 답 아래에 「답 복사」가 선다.
+  // 흐르는 답 — 첫 턴은 도구 없이 답만 했다. 말만 하는 턴은 도는 동안에도 머리가 없고 답만 흐른다(restart 02b-1 · States 보드 — 첫 조각
+  // 전에는 「생각 중」이다). 턴이 끝나도 펼칠 것이 없어 머리가 서지 않는다(02 §8). 끝난 마지막 답 아래에 「답 복사」가 선다.
   await streamLines(page, started.id, linesThrough(linesAfter(twoTurns, FIRST_SENT), FIRST_END - 1));
   await expect(흐름(page).getByText("hello from turn", { exact: true })).toBeVisible();
-  await expect(흐름(page).locator("[data-work-divider]")).toHaveText([/동안 작업 중입니다$/]);
+  await expect(흐름(page).locator("[data-work-divider]")).toHaveCount(0);
   await streamLines(page, started.id, linesThrough(linesAfter(twoTurns, FIRST_END - 1), FIRST_END));
   await expect(흐름(page).getByRole("button", { name: "답 복사", exact: true })).toBeVisible();
   await expect(흐름(page).getByText(/동안 작업 중입니다$/)).toHaveCount(0);
@@ -78,35 +78,43 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   ]);
   await streamLines(page, started.id, linesThrough(linesAfter(twoTurns, FIRST_END), WRITE_STARTED));
   await expect(흐름(page).getByText(second.text, { exact: true })).toBeVisible();
-  await expect(도구줄(page, "notes.txt 쓰는 중")).toBeVisible();
+  // 도는 도구 줄은 「대상 진행형」이다(restart 02b-4 · Tools 보드 — 새 파일은 「만드는 중」).
+  await expect(도구줄(page, "notes.txt 만드는 중")).toBeVisible();
   await streamLines(page, started.id, linesAfter(twoTurns, WRITE_STARTED));
 
-  // 둘째 턴 끝 — 「10초 동안 작업」 구분선으로 접혀 도구 줄이 숨고 답 「5」만 남는다. 구분선을 누르면 세 도구가 과거형으로 펼쳐진다.
-  const 둘째 = 접힌턴(page, "10초 동안 작업");
+  // 둘째 턴 끝 — 「10초 동안 작업함」 머리로 접혀 도구 줄이 숨고 답 「5」만 남는다. 머리를 누르면 세 도구가 「동사 대상」으로 펼쳐진다
+  // (restart 02b-1 · 02b-4).
+  const 둘째 = 접힌턴(page, "10초 동안 작업함");
   await expect(둘째).toHaveAttribute("aria-expanded", "false");
   await expect(흐름(page).getByText("5", { exact: true })).toBeVisible();
-  await expect(도구줄(page, "notes.txt 작성함")).toHaveCount(0);
+  await expect(도구줄(page, "생성됨 notes.txt")).toHaveCount(0);
   const 꺾쇠 = 둘째.locator("svg");
   expect(await 꺾쇠.evaluate((el) => getComputedStyle(el).rotate)).toBe("none");
   await 둘째.click();
   await expect(둘째).toHaveAttribute("aria-expanded", "true");
-  for (const phrase of ["notes.txt 작성함", "notes.txt 읽음", "wc -c notes.txt 실행함"]) {
+  for (const phrase of ["생성됨 notes.txt", "읽음 notes.txt", "실행 완료 wc -c notes.txt"]) {
     await expect(도구줄(page, phrase)).toBeVisible();
   }
-  // 구분선의 모양(02 §8 · 티켓 09 — Codex 결) — 글 아래 9에 1px `separator-soft` 선이 열 폭으로 그어지고, 선에서 펼친 첫 줄까지 14다. 끝의
-  // 꺾쇠 12는 펼치면 90° 돈다. 도구 줄 앞 글리프는 14다.
+  // 머리의 모양(States 보드 `.ra-whblock` · restart 02b-1) — 글은 `fg-tertiary`이고, 선은 단추 밖 형제(0.5 `border-heavy`)로 글 줄 아래 9에
+  // 열 폭으로 그어진다. 선에서 펼친 첫 줄까지 12다. 끝의 꺾쇠 12는 펼치면 `ease-enter`로 90° 돈다. 도구 줄 앞 글리프는 14다.
+  const 선 = 둘째.locator("xpath=../div[@aria-hidden]");
+  // 누른 뒤 마우스가 머리 위에 남으면 `hover:text-fg-secondary`로 0.7까지 전이한다 — 쉬는 색을 재려고 마우스를 비키고 전이가 끝나기를 기다린다.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => 둘째.evaluate((el) => getComputedStyle(el).color)).toBe("rgba(26, 28, 31, 0.5)");
   expect(
-    await 둘째.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return [style.paddingBottom, style.borderBottomWidth, style.borderBottomColor];
+    await 선.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return [box.height, getComputedStyle(el).backgroundColor];
     }),
-  ).toEqual(["9px", "1px", "rgb(237, 237, 237)"]);
+  ).toEqual([0.5, "rgba(26, 28, 31, 0.12)"]);
+  const 위 = (target: typeof 선) => target.evaluate((el) => el.getBoundingClientRect().top);
+  const 아래 = (target: typeof 선) => target.evaluate((el) => el.getBoundingClientRect().bottom);
+  expect(Math.round((await 위(선)) - (await 아래(둘째)))).toBe(9);
   await expect.poll(() => 꺾쇠.evaluate((el) => getComputedStyle(el).rotate)).toBe("90deg");
+  expect(await 꺾쇠.evaluate((el) => getComputedStyle(el).transitionTimingFunction)).toBe("cubic-bezier(0.19, 1, 0.22, 1)");
   expect(await 꺾쇠.evaluate((el) => el.getBoundingClientRect().width)).toBe(12);
-  const 첫줄 = 도구줄(page, "notes.txt 작성함");
-  const 위 = (target: typeof 첫줄) => target.evaluate((el) => el.getBoundingClientRect().top);
-  const 아래 = (target: typeof 첫줄) => target.evaluate((el) => el.getBoundingClientRect().bottom);
-  await expect.poll(async () => Math.round((await 위(첫줄)) - (await 아래(둘째)))).toBe(14);
+  const 첫줄 = 도구줄(page, "생성됨 notes.txt");
+  await expect.poll(async () => Math.round((await 위(첫줄)) - (await 아래(선)))).toBe(12);
   expect(await 첫줄.locator("[data-glyph]").evaluate((el) => el.getBoundingClientRect().width)).toBe(14);
   // 마지막 턴의 끝난 편집을 세는 입력창 위 알약은 작업공간 밖 채팅에는 서지 않는다(restart 02a-7 — 바뀐 파일은 작업공간의 것이다). 이 채팅은 첫
   // 화면에서 작업공간 없이 보냈다.
@@ -133,8 +141,8 @@ test("다시 켜면 앱은 새 Thread로 열리고, 사이드바의 그 Thread�
   await expect(줄).toHaveAttribute("aria-current", "page");
 
   // 두 턴이 접힌 채 선다 — 떠 있는 Session이 없으니 도는 턴도 「작업 중」도 없다. 구분선은 도구를 쓴 둘째 턴에만 있다.
-  await expect(흐름(page).locator("[data-work-divider]")).toHaveText(["10초 동안 작업"]);
-  await expect(접힌턴(page, "10초 동안 작업")).toHaveAttribute("aria-expanded", "false");
+  await expect(흐름(page).locator("[data-work-divider]")).toHaveText(["10초 동안 작업함"]);
+  await expect(접힌턴(page, "10초 동안 작업함")).toHaveAttribute("aria-expanded", "false");
   for (const text of [first.text, "hello from turn", second.text, "5"]) {
     await expect(흐름(page).getByText(text, { exact: true })).toBeVisible();
   }

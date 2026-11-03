@@ -110,10 +110,9 @@ describe("drawnWidth", () => {
     vi.unstubAllGlobals();
   });
 
-  it("틈 자리면 부모 폭에서 틈을 뺀 카드의 폭이고, 가장자리 · 세로 선 자리면 부모 폭 그대로다", () => {
+  it("틈 자리면 부모 폭에서 틈을 뺀 카드의 폭이고, 가장자리 자리면 부모 폭 그대로다", () => {
     expect(drawnWidth(handle("gap", 348))).toBe(340);
     expect(drawnWidth(handle("edge", 348))).toBe(348);
-    expect(drawnWidth(handle("rule", 264))).toBe(264);
   });
 });
 

@@ -6,7 +6,7 @@ import { linesAfter, linesThrough, record, sentPayloads, streamLines, summaryOf 
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
 // v1 티켓 28(PR ③ e2e) 흐름 하나 — **한 세션이 잇달아 물으면 물음마다 카드가 입력창 자리에 서고, 카드 안에 남긴 말은 그 물음을 거부하며
-// 세션에게 간다**(v1 티켓 25 · 구현 스펙 §9 카드 · 스토리 80 · 83 · 경계 ② 「입력창 자리」 — 「아니요, 다르게」 입력칸).
+// 세션에게 간다**(v1 티켓 25 · 구현 스펙 §9 카드 · 스토리 80 · 83 · 경계 ② 「입력창 자리」 — 「거부」 입력칸, restart 02b-5).
 //
 // 줄은 L1이 축복한 기록(`thread-ask-turns.jsonl`)을 그대로 쏜다 — 첫 턴의 쓰기를 허락하고, 둘째 턴의 쓰기에 말을 남겨 거부한다. 보낸 말 ·
 // 남긴 말 · seq는 그 기록에서 읽는다(스토리 137). 물음이 함께 걸릴 때의 「1 / 2」와 다음 차례는 L2 `asks.test.ts`가 잰다.
@@ -30,7 +30,7 @@ const view: ThreadView = { ...FIXTURE_THREAD, title: first.text, live: true, las
 
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
 const 흐름 = (page: Page) => page.getByRole("main");
-const 카드 = (page: Page) => page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true });
+const 카드 = (page: Page) => page.getByRole("group", { name: "Claude Code가 이 파일을 편집하도록 허용할까요?", exact: true });
 
 test("한 세션이 잇달아 물으면 물음마다 카드가 서고, 카드 안에 남긴 말은 그 물음을 거부하며 세션에게 간다", async ({ page }) => {
   await installFixtureBackend(page, {
@@ -48,7 +48,7 @@ test("한 세션이 잇달아 물으면 물음마다 카드가 서고, 카드 �
   await expect(card).not.toContainText("1 / 2");
   await expect(card).not.toContainText("다음 ·");
 
-  // 첫 카드 — ↵는 「이번만 허용」이다.
+  // 첫 카드 — ↵는 「한 번만 허용」이다.
   await expect(card).toBeFocused();
   await page.waitForTimeout(ARMING_MS);
   await page.keyboard.press("Enter");
@@ -85,7 +85,7 @@ test("한 세션이 잇달아 물으면 물음마다 카드가 서고, 카드 �
   await streamLines(page, view.id, linesThrough(linesAfter(turns, SECOND_ASKED.seq), SECOND_REFUSED.seq));
   await expect(card).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
-  await expect(흐름(page).locator('[data-decision="refused"]')).toHaveText(`파일 고치기를 거부함「${WORDS}」`);
+  await expect(흐름(page).locator('[data-decision="refused"]')).toHaveText(`거부함「${WORDS}」`);
   await streamLines(page, view.id, linesThrough(linesAfter(turns, SECOND_REFUSED.seq), SECOND_ENDED.seq));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

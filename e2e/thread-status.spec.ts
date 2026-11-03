@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, 칠한값, 토큰색 } from "./harness";
+import { answerByArg, WORK_CHATS, workChatAnswers, WORKS } from "./fixtures";
+import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, workRow, 줄표시, 칠한값, 토큰색 } from "./harness";
 import { lineOf, linesAfter, linesThrough, record, seqOf, streamLines, summaryOf, threadOf } from "./thread-records";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
@@ -91,7 +91,7 @@ test("사이드바 Thread 줄이 내 차례 · 작업 중 · 새 결과 · 실�
   // 줄을 열어 답한다 — 답 줄이 오면 다시 작업 중이다. 턴이 끝나지 않았으니 읽은 자리는 아직 적지 않는다.
   await 줄(page, asking).click();
   await expect(page).toHaveURL(`/threads/${asking.id}`);
-  await page.getByRole("group", { name: "Claude Code가 이 파일을 고쳐도 될까요?", exact: true }).getByRole("button", { name: "이번만 허용", exact: true }).click();
+  await page.getByRole("group", { name: "Claude Code가 이 파일을 편집하도록 허용할까요?", exact: true }).getByRole("button", { name: "한 번만 허용", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args.thread))
     .toEqual([asking.id]);
@@ -127,5 +127,30 @@ test("사이드바 Thread 줄이 내 차례 · 작업 중 · 새 결과 · 실�
   await expect(줄(page, halted)).toHaveAttribute("data-status", "stopped");
   await expect(줄(page, cut)).toHaveAttribute("data-status", "failed");
   await expect(표시(page, cut)).toHaveAttribute("data-mark", "failed");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 펼친 작업공간 줄의 표시(restart 02b-9b · Main 보드 — 펼친 줄의 끝이 빈다) — 접힌 Work 줄 끝은 그 Work에 이은 채팅들 가운데 가장 센 표시(도는
+// 채팅의 스피너)다. ▸로 펼치면 채팅의 표시는 그 아래 제 줄이 말하고 Work 줄에는 셸 신호만 남는다(이 Work에는 셸이 없어 비었다).
+test("작업공간 줄은 접혀 있으면 도는 채팅의 스피너를 보이고, 펼치면 그 표시가 아래 채팅 줄로 가고 작업공간 줄 끝은 비어 셸 신호만 남는다", async ({ page }) => {
+  const [chat] = WORK_CHATS;
+  const sent = seqOf(twoTurns, "sent", 2);
+  const running: ThreadView = { ...chat, live: true, lastSeq: sent };
+  await installFixtureBackend(page, workChatAnswers([running], { [running.id]: linesThrough(twoTurns, sent) }));
+  await page.goto("/");
+  // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
+  await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
+  const work = WORKS.find((one) => one.slug === chat.work)!;
+  await expect(줄표시(page, work.slug)).toHaveAttribute("data-mark", "working");
+
+  await 사이드바(page).getByRole("button", { name: `${work.title}의 채팅 펼치기`, exact: true }).click();
+  const nested = 사이드바(page).locator(`[data-work-threads="${work.slug}"]`);
+  await expect(nested.getByRole("button").filter({ hasText: chat.title }).locator('[data-mark="working"]')).toHaveCount(1);
+  await expect(workRow(page, work.slug)).toBeVisible();
+  await expect(줄표시(page, work.slug)).toHaveCount(0);
+
+  // 다시 접으면 표시가 Work 줄로 돌아온다.
+  await 사이드바(page).getByRole("button", { name: `${work.title}의 채팅 접기`, exact: true }).click();
+  await expect(줄표시(page, work.slug)).toHaveAttribute("data-mark", "working");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

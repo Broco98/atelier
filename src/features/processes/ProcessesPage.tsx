@@ -220,7 +220,7 @@ function ProcessesPage() {
   return (
     // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 머리 줄에는 이 화면의 이름이 선다(nav의 이름 · 아이콘) — 시안 Main의 `.ra-crumb`.
     // 할 일([조용한 셸 모두 닫기])은 몸의 머리에 선다(시안 Processes `.pr-head` — restart 03-11). 한때 머리 줄의 할 일이었다.
-    <Frame head={{ icon: PLACE.icon, name: PLACE.label }}>
+    <Frame head={{ name: PLACE.label }}>
       {/* 카드 안에 고를 것이 없어 카드 머리가 없다 — 몸이 곧바로 선다. */}
       <Card as="main" label="Processes" className="flex-1">
         {/* **행 메뉴**(codex-ds 티켓 30 · 스펙 §9 대상 메뉴 표) — 메뉴가 있는 줄(`TreeRow`의 `menu` — 셸 자손 · 고아 · 채팅의 dev 서버)의

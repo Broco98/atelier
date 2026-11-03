@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useMutationState } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { ChevronDown, MoreHorizontal, Zap } from "lucide-react";
+import { ChevronDown, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot } from "@/components/shell/Frame";
@@ -928,13 +928,11 @@ function WorksPage({
   // `FrameHead`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위 줄의 오른쪽 끝 묶음에, 그다음 머리 카드에 섰다. 패널 토글은 화면이 건네지
   // 않는다 — 틀이 요약 단추 뒤 오른쪽 맨 끝에 세운다(레일이 서도 같다).
   //
-  // 지금 선 work(`selected`)가 없으면 머리 줄에는 화면 이름 「작업공간」 하나가 선다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
-  // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
+  // 지금 선 work(`selected`)가 없으면 머리 줄에는 화면 이름 「작업공간」 하나가 선다(codex-ds 스펙 §7). 걸 대상이 없어 할 일도 없다.
   const head: HeadSlot = selected
     ? {
         // 이름 앞의 흐린 Service(03 §10) — 누르면 Service 메뉴가 열리고 고르면 이 Work의 Service가 바뀐다. 없으면 흐린 「Service 없음」이다.
         lead: <WorkServiceCrumb work={selected} />,
-        icon: Zap,
         name: selected.title,
         nameMenu: (renderName) => (
           <WorkContextMenu
@@ -953,7 +951,7 @@ function WorksPage({
           onCommit: (title) => setTitle.mutate({ slug: selected.slug, title }),
           label: "작업공간 이름",
         },
-        // 이름 뒤의 ⑂ 브랜치 — 프로젝트가 붙은 work만 선다. 프로젝트가 없으면 이름이 미리 정해졌어도(`start_work`의 `branch`) 그
+        // 이름 뒤의 브랜치(시안 `.ra-crumb .br`) — 프로젝트가 붙은 work만 선다. 프로젝트가 없으면 이름이 미리 정해졌어도(`start_work`의 `branch`) 그
         // 이름을 가진 저장소도 worktree도 아직 없다 — ⑂는 실제 git 브랜치의 말이다(프로젝트 화면 Works 행도 worktree가 있을 때만 ⑂를
         // 세운다). 미리 정한 이름은 사이드바 행의 호버 카드가 말한다.
         branch: selected.projects.length > 0 ? (selected.branch ?? undefined) : undefined,
@@ -974,7 +972,7 @@ function WorksPage({
         // 채팅이 본문일 때만 섰다(02a-9). 그 앞에 서던 분할 토글은 걷혔다(restart 02a-13 — 시안 Main 창 머리에 없다).
         end: <SummaryToggle open={right.summaryOpen} onToggle={pressSummary} />,
       }
-    : { icon: Zap, name: WORKS_COPY.page };
+    : { name: WORKS_COPY.page };
 
   // 본문 — 넷 중 하나이고 모두 공용 틀의 카드다(ui-refresh 결정 4 · 15). **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든
   // 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 탭을 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라
@@ -1220,7 +1218,7 @@ function WorkMenu({
           <DropdownMenuTrigger
             disabled={busy}
             aria-busy={processing}
-            // **머리 줄의 아이콘 단추 한 벌이다**(`headButton` — 28 · 글리프 16, 펼친 동안 hover와 같은 면) — 세로선 너머 「요약 카드」 ·
+            // **머리 줄의 아이콘 단추 한 벌이다**(`headButton` — 28 · 글리프 15, 펼친 동안 hover와 같은 면) — 세로선 너머 「요약 카드」 ·
             // Thread의 「…」와 같은 상자다(02 결정 「머리 줄은 한 결이다(03 뒤)」) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
             className={cn(headButton(open ? "open" : "rest"), "disabled:pointer-events-none disabled:opacity-50")}
           />

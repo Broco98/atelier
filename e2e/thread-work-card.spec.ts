@@ -167,13 +167,16 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect.poll(() => 대화끝(page)).toBe(480);
   await expect.poll(사이드바폭).toBe(8);
 
-  // Host가 그 문서를 쓰는 중이다 — 보기의 머리와 카드의 줄에 「쓰는 중」이 선다. 다시 읽은 글은 바뀐 블록만 칠한다.
+  // Host가 그 문서를 쓰는 중이다 — 카드의 그 줄에 「쓰는 중」이 서고 그 줄이 소스 맨 위로 온다(restart 02b-8 — 보기 머리 끝의 「쓰는 중」은
+  // 걷었다). 다시 읽은 글은 바뀐 블록만 칠한다. PLAN을 쓰는 중으로 두면 그 줄이 OVERVIEW 앞으로 올라온다.
   const writing: WorkWritingEvent = {
     work: MADE.slug,
-    writing: [{ path: OVERVIEW, thread: view.id }],
+    writing: [{ path: PLAN, thread: view.id }],
   };
   await fireEvent(page, WORK_WRITING_EVENT, writing);
-  await expect(보기(page, "doc").locator(`[data-writer="${view.id}"]`)).toHaveText("쓰는 중");
+  await expect(카드(page).locator("[data-doc]")).toHaveText([new RegExp(`^${PLAN}\\s*쓰는 중$`), OVERVIEW]);
+  await expect(보기(page, "doc").locator("[data-writer]")).toHaveCount(0);
+  await fireEvent(page, WORK_WRITING_EVENT, { ...writing, writing: [{ path: OVERVIEW, thread: view.id }] });
   await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).toContainText("쓰는 중");
   const rewritten = `${WRITTEN[OVERVIEW]}\n## 정한 것\n\n거절한다.\n`;
   await replaceAnswer(page, "read_spec_file", answerByArg("path", { ...WRITTEN, [OVERVIEW]: rewritten }));
@@ -181,7 +184,7 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect(보기(page, "doc").getByRole("heading", { name: "정한 것", exact: true })).toBeVisible();
   await expect(보기(page, "doc").locator("[data-doc-flash]").first()).toBeVisible();
   await fireEvent(page, WORK_WRITING_EVENT, { ...writing, writing: [] });
-  await expect(보기(page, "doc").locator("[data-writer]")).toHaveCount(0);
+  await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).not.toContainText("쓰는 중");
 
   // 글을 골라 그 자리를 두고 말한다 — 입력창에 인용이 붙고, 보내면 인용이 말과 함께 간다(S41).
   const 문단 = 보기(page, "doc").locator("[data-src-start]").filter({ has: page.locator("p") }).first();
@@ -217,10 +220,13 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect(diff.getByText("환불 서비스 — 주문의 남은 금액 안에서 돌려준다.", { exact: false })).toBeVisible();
   expect((await ipcCallArgs(page, "read_worktree_file", "path")).map(({ args }) => args.path)).toEqual([SERVICE]);
 
-  // Project 줄 — 그 worktree의 트리다. 바뀐 파일을 누르면 그 diff가 열린다.
+  // Project 줄 — 그 worktree의 트리다(머리 「… · worktree …」 없이 — restart 02b-8). 바뀐 파일 위 폴더는 처음부터 펼쳐 있고 바뀐 파일은 표시가
+  // 선다. 그 파일을 누르면 그 diff가 열린다.
   await 카드(page).locator(`[data-project="${PROJECT}"]`).click();
-  await expect(보기(page, "project")).toContainText(`${PROJECT} · worktree ${MADE.branch}`);
-  await 보기(page, "project").getByRole("button", { name: "refund", exact: true }).click();
+  await expect(보기(page, "project")).not.toContainText(`worktree ${MADE.branch}`);
+  await expect(보기(page, "project").getByRole("button", { name: "refund", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(보기(page, "project").getByRole("button", { name: "tests", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(보기(page, "project").getByRole("button", { name: /service\.py$/ })).toHaveAttribute("data-changed", "");
   await 보기(page, "project").getByRole("button", { name: /service\.py$/ }).click();
   await expect(보기(page, "change")).toBeVisible();
   await expect(카드(page).locator(`[data-change="${SERVICE}"]`)).toHaveAttribute("aria-current", "true");

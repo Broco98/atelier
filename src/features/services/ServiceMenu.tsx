@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CrumbSlash } from "@/components/catalog/DetailParts";
+import { HEAD_CRUMB } from "@/components/shell/ShellHead";
+import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/hooks";
 import type { WorkView } from "@/features/works/types";
 import { useSetService, useServices } from "./hooks";
@@ -149,7 +151,8 @@ function MakeService() {
 /**
  * Work 화면 머리 줄 이름 앞의 Service(§10 · 시안 F4-KitChat 「작업공간 화면 · Service 있음」) — 「흐린 Service / 작업공간 이름」, Service가 없으면 흐린
  * 「Service 없음」이다. 누르면 Service 메뉴가 열리고, 고르면 그 Work의 Service가 바뀐다 — 그 Work의 Thread마다 Service 줄이 선다(S9). 글자는
- * 머리 줄의 흐린 글자(`fg-titlebar` — 시안 `.muted` #898a8b)이고 사이는 8이다(시안 `.tb-c` gap 8). Service 목록을 아직 못 읽었으면 slug다.
+ * 머리 줄의 흐린 앞 자리(`HEAD_CRUMB` — 시안 Main `.ra-crumb .svc` 「Atelier 앱 /」, 13/18 `fg-tertiary`)이고 「/」와 한 칸(4)이다(restart 03-12a —
+ * 한때 14 `fg-titlebar` · 사이 8). Service 목록을 아직 못 읽었으면 slug다.
  */
 export function WorkServiceCrumb({ work }: { work: Pick<WorkView, "slug" | "service"> }) {
   const { data: services } = useServices();
@@ -158,12 +161,15 @@ export function WorkServiceCrumb({ work }: { work: Pick<WorkView, "slug" | "serv
   const found = services?.find((one) => one.slug === linked);
   const label = found ? serviceName(found) : linked && !services ? linked : "Service 없음";
   return (
-    <span className="flex shrink-0 items-center gap-2">
+    <span className="flex shrink-0 items-center gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger
           data-slot="work-service"
           aria-label={found ? `Service: ${label}` : "Service: 없음"}
-          className="max-w-60 truncate rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring data-popup-open:text-fg"
+          className={cn(
+            "max-w-60 truncate rounded-md whitespace-nowrap transition-colors hover:text-fg focus-ring data-popup-open:text-fg",
+            HEAD_CRUMB,
+          )}
         >
           {label}
         </DropdownMenuTrigger>

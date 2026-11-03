@@ -462,7 +462,7 @@ fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_�
     let failed = host.start_thread("첫 말", ThreadLink::NoWork).expect_err("답하지 않으면 열지 않는다");
 
     assert!(started.elapsed() < Duration::from_secs(5), "한도에서 끊는다: {:?}", started.elapsed());
-    assert!(matches!(&failed, HostError::Open { reason, .. } if reason.contains("안에 세션을 열지 않았습니다")), "{failed:?}");
+    assert!(matches!(&failed, HostError::Open { reason, .. } if reason.contains("안에 세션이 열리지 않았어요")), "{failed:?}");
     let HostError::Open { thread, .. } = &failed else { unreachable!() };
     assert_eq!(
         events.thread_lists().first().map(|summary| summary.id.clone()).as_ref(),

@@ -22,7 +22,7 @@ const [work] = WORKS;
 
 /** 넓힌 카드의 Project 보기 — 트리가 여기 선다. */
 const 트리 = (page: Page) => page.locator('[data-viewer="project"]');
-/** 트리의 행 — 폴더 행은 이름이 곧 이름이고, 파일 행은 확장자 꼬리표가 앞에 붙는다(`TS index.ts`). */
+/** 트리의 행 — 이름이 곧 이름이다(파일 행의 확장자 꼬리표 글자는 이름에 들지 않는다 — restart 02b-8). */
 const 패널행 = (page: Page, name: string): Locator => 트리(page).getByRole("button", { name, exact: true });
 
 /** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일이든 센다. */
@@ -54,7 +54,7 @@ test("트리에서 파일을 누르면 묶음 끝에 파일 탭이 서고 주소
   await openFiles(page);
   await 패널행(page, "src").click();
 
-  await 패널행(page, "TS index.ts").click();
+  await 패널행(page, "index.ts").click();
 
   await expect(묶음(page).last()).toHaveAttribute("data-code", "billing/src/index.ts");
   await expect(파일탭이름(page, "billing/src/index.ts")).toHaveAttribute("aria-pressed", "true");
@@ -69,7 +69,7 @@ test("트리에서 파일을 누르면 묶음 끝에 파일 탭이 서고 주소
   await expect(page).toHaveURL(/tab=terminal/);
   await expect(파일탭이름(page, "billing/src/index.ts")).toHaveAttribute("aria-pressed", "false");
   await openFiles(page);
-  await 패널행(page, "TS index.ts").click();
+  await 패널행(page, "index.ts").click();
   await expect(파일탭이름(page, "billing/src/index.ts")).toHaveAttribute("aria-pressed", "true");
   await expect(코드카드(page, "billing/src/index.ts")).toBeVisible();
   await expect(파일탭들(page)).toHaveCount(1);
