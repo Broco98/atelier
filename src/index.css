@@ -2446,11 +2446,8 @@ body[data-palette-open] [data-scrollbar] {
    그대로 가리킨다: 줄 번호는 원문 보기(`SourceView`)의 줄 번호와 같은 흐린 글자, 글자는 `text-code`(13 / 20)다. 라이브러리의
    어림 줄 높이(가상화가 그리기 전에 쓰는 20px)도 이 값과 같다. 탭 폭 4는 원문 보기와 같다.
 
-   diff 보기(v1 티켓 35 · 넓힌 카드의 변경 — 캔버스 Layout-Expand 보드 `.dl.a` · `.dl.d` · `.hk` · `.fold`)의 색도 여기서 건넨다. 앱의 테마는
-   diff 색을 싣지 않아 라이브러리의 색 셈이 비어 있었다. 건네는 것은 바탕색 둘(`diff-added` · `diff-deleted`)이다 — −/+ 표가 그 색이고,
-   줄 바탕(줄 번호 칸까지 한 줄로)은 라이브러리가 면에 그 색을 12% 섞어 짓는다(DS `diff-added-line` · `diff-deleted-line`과 거의 같은 값이 된다
-   — 그 토큰을 그대로 건네면 다시 88% 흰 면에 섞여 거의 흰 줄이 된다). 바뀐 낱말은 더함만 DS 토큰(`diff-added-word`)이 있고 지움은
-   라이브러리가 바탕색에서 섞는다. 덩어리 사이의 접힌 줄은 옅은 면(`fill-soft`)이다. 줄 번호는 더하고 지운 줄도 같은 흐린 글자다(보드 `.o`). */
+   한때 넓힌 카드의 변경 보기도 이 라이브러리의 diff 보기라 diff 색(−/+ 표 · 줄 바탕 · 바뀐 낱말 · 접힌 줄의 면)을 여기서 건넸다. restart 03-15b가
+   그 보기를 문법색 없는 줄 목록(`WideDiff` — 시안 Summary `.ra-vwdiff`)으로 바꿔 걷었다. */
 [data-code-view] {
     --diffs-font-family: var(--font-mono);
     --diffs-font-features: var(--font-mono--font-feature-settings);
@@ -2458,12 +2455,6 @@ body[data-palette-open] [data-scrollbar] {
     --diffs-line-height: var(--text-code--line-height);
     --diffs-tab-size: 4;
     --diffs-fg-number-override: var(--fg-tertiary);
-    --diffs-addition-color-override: var(--diff-added);
-    --diffs-deletion-color-override: var(--diff-deleted);
-    --diffs-bg-addition-emphasis-override: var(--diff-added-word);
-    --diffs-fg-number-addition-override: var(--fg-tertiary);
-    --diffs-fg-number-deletion-override: var(--fg-tertiary);
-    --diffs-bg-separator-override: var(--fill-soft);
 }
 
 /* **동작 줄이기 — 한 곳**(코드-지도 §7.1). 모션을 줄여 둔 사람에게 앱의 움직임은 여기서 멎는다 — 움직임마다 제 자리에 갈래를 두면

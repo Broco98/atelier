@@ -1,26 +1,13 @@
-import {
-  FileCheck,
-  FileDigit,
-  FileImage,
-  FileStack,
-  FileType,
-  FileWarning,
-  FileX,
-  FolderX,
-  GitCompare,
-  Link2Off,
-  type LucideIcon,
-} from "lucide-react";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { cn } from "@/lib/utils";
+import { FileDigit, FileImage, FileStack, FileType, FileWarning, FileX, FolderX, Link2Off } from "lucide-react";
 import { expandHome } from "@/features/works/doc-refs";
 import { useHomeDir } from "@/features/works/hooks";
 import { ImageDoc } from "@/features/works/SpecViewer";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { codeRefOf } from "@/routes/-work-search";
 import { fileSize } from "./file-size";
-import { HighlightedCode, HighlightedDiff } from "./HighlightedCode";
-import { useCodeFile, useWorkDiff } from "./hooks";
+import { HighlightedCode } from "./HighlightedCode";
+import { useCodeFile } from "./hooks";
+import { Notice, ScrollBox } from "./Notice";
 import type { WorktreeFile } from "./types";
 
 /**
@@ -55,44 +42,6 @@ function CodeView({
   // 코어가 거절한 주소(`..` · 절대 경로)다 — 답의 갈래가 아니라 실패로 온다.
   if (error) return <Notice icon={FileWarning} title="읽지 못한 파일" detail={String(error)} />;
   return data ? <FileBody file={data} target={target} worktreeDir={worktreeDir} wide={wide} /> : null;
-}
-
-/**
- * **diff 보기의 몸**(v1 티켓 35 · 구현 스펙 §15 「변경」) — 넓힌 카드에서 변경 줄을 누르면 선다. 머리(경로 줄 · +/− · ×)는 넓힌 카드가
- * 세우고, 이것은 그 파일의 diff(`read_work_diff`)를 읽어 강조된 diff나 갈래별 안내를 낸다. 코드 보기와 같은 청크에 산다 — 강조
- * 라이브러리는 이 모듈 아래에서만 들어온다(`code-view-chunk.test.ts` — 넓힌 카드도 이 모듈을 `lazy`로 부른다).
- */
-export function DiffView({ slug, project, path, wide }: { slug: string; project: string; path: string; wide: boolean }) {
-  const { data, error } = useWorkDiff(slug, project, path);
-  if (error) return <Notice icon={FileWarning} title="diff를 읽지 못했어요" detail={String(error)} />;
-  if (!data) return null;
-  switch (data.kind) {
-    case "patch":
-      // 파일마다 새 보기다 — 같은 보기에 다른 파일을 넣으면 그 강조가 올 때까지 앞 파일이 선다(`FileBody`의 `text`와 같다).
-      return <HighlightedDiff key={`${project}\u0000${path}`} slug={slug} project={project} path={path} patch={data.patch} wide={wide} />;
-    case "binary":
-      return <Notice icon={FileDigit} title="바이너리 파일" detail="글로 견줄 수 없는 파일이라 diff를 보이지 않아요." />;
-    case "tooLarge":
-      return <Notice icon={FileStack} title="너무 큰 파일" detail="5MB를 넘는 파일은 diff를 열지 않아요." />;
-    case "unchanged":
-      return <Notice icon={FileCheck} title="바뀐 것이 없어요" detail="base와 같은 파일이에요." />;
-    case "worktreeMissing":
-      return <Notice icon={FolderX} title="워크트리 없음" detail={`이 작업공간에 ${project} 워크트리가 없어요.`} />;
-    case "baseUnknown":
-      return (
-        <Notice
-          icon={GitCompare}
-          title="견줄 base를 모르겠어요"
-          detail={data.base ? `base 브랜치 ${data.base}를 찾지 못했어요.` : "이 Project의 base 브랜치를 정하지 못했어요."}
-        />
-      );
-    case "unreadable":
-      return <Notice icon={FileWarning} title="diff를 읽지 못했어요" detail={data.reason} />;
-    default: {
-      const unhandled: never = data;
-      return unhandled;
-    }
-  }
 }
 
 /**
@@ -199,35 +148,6 @@ function WorktreeImage({ path, version, name }: { path: string | null; version: 
     <ScrollBox>
       <ImageDoc path={home && path ? expandHome(path, home) : null} version={version} name={name} />
     </ScrollBox>
-  );
-}
-
-/** 가운데 안내 — 제목과 까닭 한 줄. 큰 빈 화면 부품(`Empty`)을 그대로 쓴다. */
-function Notice({ icon: Icon, title, detail }: { icon: LucideIcon; title: string; detail: string }) {
-  return (
-    <ScrollBox className="items-center justify-center p-10">
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Icon />
-          </EmptyMedia>
-          <EmptyTitle>{title}</EmptyTitle>
-          <EmptyDescription>{detail}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    </ScrollBox>
-  );
-}
-
-/**
- * 그림 · 안내의 스크롤 상자 — 카드의 직계 flex 자식이라 남는 높이를 받고, 좁은 카드에서 넘치면 이 상자가 돈다. 강조된 코드는
- * 제 가상화 틀이 이 자리다(`HighlightedCode`).
- */
-function ScrollBox({ className, children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-      <div className={cn("flex min-h-full min-w-0 flex-col", className)}>{children}</div>
-    </div>
   );
 }
 
