@@ -20,7 +20,7 @@ const FIRST_END = seqOf(level, "turn-end", 1);
 const MODE = seqOf(level, "mode", 1);
 const ASKED = level.find((line) => line.kind === "permission" && (line.payload as { state: string }).state === "asked")!.seq;
 
-/** 「편집 자동」으로 막 선 Thread — Host의 Session이 이 앱에 떠 있고 기록은 첫 `sent`까지다. */
+/** 「편집 자동」으로 막 선 Thread — Runtime의 Session이 이 앱에 떠 있고 기록은 첫 `sent`까지다. */
 const started: ThreadView = { ...FIXTURE_THREAD, title: first.text, askLevel: "edits", live: true, lastSeq: FIRST_SENT };
 
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });

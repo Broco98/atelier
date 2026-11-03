@@ -27,7 +27,7 @@ const CHANGED = "refund/service.py";
 const CHANGES: ProjectChanges[] = [
   { project: OPENED.project, kind: "listed", base: OPENED.baseBranch, files: [{ path: CHANGED, additions: 6, deletions: 3 }] },
 ];
-/** 턴이 막 끝난 Thread — Host의 Session이 떠 있다. */
+/** 턴이 막 끝난 Thread — Runtime의 Session이 떠 있다. */
 const view: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(lines)[0].text, work: WORK.slug, live: true, lastSeq: TURN_END };
 
 const 흐름 = (page: Page) => page.getByRole("main");

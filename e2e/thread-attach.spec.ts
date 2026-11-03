@@ -10,7 +10,7 @@ import type { ThreadView } from "@/features/thread/types";
 //
 // 경로는 Tauri의 끌어다 놓기 이벤트가 준다(웹뷰의 HTML5 drop은 경로가 없다) — 이 검사가 그 이벤트를 쏜다. 경로를 잰 답(`describe_attachments`)과
 // 말풍선의 칩은 L1이 축복한 「첨부한 첫 말」(`thread-attach.jsonl`)의 `sent` 줄 그대로다 — 파일 하나(`error.log`, 12KB)와 폴더 하나(`재현
-// 화면`)를 붙인 말에 Host가 답한 한 턴이다. 화면이 칩으로 그리는 꼴과 엔진이 적는 꼴이 같은 사실이다(스토리 137).
+// 화면`)를 붙인 말에 Runtime이 답한 한 턴이다. 화면이 칩으로 그리는 꼴과 엔진이 적는 꼴이 같은 사실이다(스토리 137).
 
 const attach = record("thread-attach");
 const [sent] = sentPayloads(attach);
@@ -77,7 +77,7 @@ test("끌어다 놓은 파일 · 폴더가 입력창에 칩으로 서고 뺄 수
   await expect(칩들(page)).toHaveCount(1);
   await expect(칩들(page).getByRole("listitem")).toHaveText([new RegExp(`^${logName}`), folderName]);
 
-  // Host의 답이 그 아래로 흐르고 턴이 끝나도(끝난 답 아래 「답 복사」) 칩은 말풍선 위에 남는다.
+  // Runtime의 답이 그 아래로 흐르고 턴이 끝나도(끝난 답 아래 「답 복사」) 칩은 말풍선 위에 남는다.
   await streamLines(page, started.id, linesAfter(attach, SENT));
   await expect(흐름.getByRole("button", { name: "답 복사", exact: true })).toBeVisible();
   await expect(흐름.getByText("hello from turn", { exact: true })).toBeVisible();

@@ -10,7 +10,7 @@ import { AskCount } from "./AskTurnMarks";
 import type { PendingWork } from "./fold";
 import { branchHint, firstPicked } from "./work-proposal";
 
-// Work 만들기 카드(v1 티켓 30 · 구현 스펙 §11 · 스토리 89 · 90 · 91 · 캔버스 Cards 보드 「작업공간 만들기 · 묻는 중」) — Host가 Thread 도구
+// Work 만들기 카드(v1 티켓 30 · 구현 스펙 §11 · 스토리 89 · 90 · 91 · 캔버스 Cards 보드 「작업공간 만들기 · 묻는 중」) — Runtime이 Thread 도구
 // `propose_work`로 Work 만들기를 제안하면 **입력창 자리에** 선다(승인 카드와 같은 자리 · 같은 물음 차례 — `askTurn`). 제목 · 까닭,
 // 등록된 Project(추천과 그 까닭이 먼저 · 처음부터 골라 둠), 규칙 설명과 함께 고치는 브랜치, 「worktree는 처음 고칠 때 만듭니다」
 // 안내, 「작업공간 없이 계속」 · 「작업공간 만들기」다. 값은 순수 함수가 짓는다(`work-proposal.ts`). Service에 이은 Thread면 머리 아래에 새 Work로

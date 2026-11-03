@@ -215,8 +215,6 @@ describe("Codex 실측 색", () => {
     "fg-thinking": "#aeaeae",
     mine: "#2c67c5",
     "surface-tray": "#f4f4f4",
-    "border-panel": "#e8e8e8",
-    "border-summary": "#dadadb",
     "border-slot": "rgba(26, 28, 31, 0.078)",
     "border-faint": "rgba(0, 0, 0, 0.04)",
     separator: "#e5e5e5",
@@ -286,15 +284,14 @@ describe("Codex 실측 색", () => {
 });
 
 describe("Codex 실측 그림자", () => {
-  // 스펙 그대로다 — 흰 판의 위 그림자(§3) · 사람 메뉴(§5) · 요약 카드(§7) · 입력창(§9 — DS `composer`의 바깥 흐림 40이 80이다).
+  // 스펙 그대로다 — 사람 메뉴(§5 — 지금은 되돌리기 알림이 읽는다) · 요약 카드(§7). 흰 판의 위 그림자(§3) · 입력창(§9)의 값은 읽는 자리가 없어
+  // 걷었다(restart 코드 리뷰).
   const SHADOWS: Record<string, string> = {
-    "shadow-panel": "0 -1px 8px rgba(0, 0, 0, 0.03)",
     "shadow-menu": "0 0 0 0.5px rgba(26, 28, 31, 0.117), 0 8px 24px rgba(0, 0, 0, 0.08)",
     "shadow-summary": "0 6px 20px rgba(0, 0, 0, 0.06)",
-    "shadow-prompt": "0 0 0 1px #0000000a, 0 2px 8px #0000000a, 0 4px 80px 8px #00000006",
   };
 
-  // DS `composer`는 입력창 자리 카드 · 알림 카드도 읽는다 — 값을 고치지 않고 입력창의 새 이름(`prompt`)을 더했었다. restart 02b-2부터
+  // DS `composer`는 입력창 자리 카드 · 알림 카드도 읽는다 — 한때 값을 고치지 않고 입력창의 새 이름(`prompt`)을 더했었다. restart 02b-2부터
   // 입력창도 다시 이 값을 읽는다(시안 Composer `--shadow-composer`).
   it("DS 입력창 그림자는 그대로다", () => {
     expect(declared(blocks, "light", "shadow-composer")).toBe("0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006");

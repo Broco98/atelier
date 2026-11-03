@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { Copy, CopyX, FileCode, MessageSquare, Pencil, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
+import { Copy, CopyX, FileCode, MessageSquare, Pencil, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import {
   ContextMenu,
@@ -48,27 +48,6 @@ interface TabPress {
 }
 
 /**
- * 묶음 **앞에** 서는 고정 칸 하나(three-axes 결정 9 · S21) — 화면이 목록으로 넘긴다. 한때 `chat` 탭이 이 자리에 설 계획이었는데,
- * restart 02a-4가 채팅 탭을 **묶음의 칸**으로 세웠다(`ChatTab` — 셸 · 파일 탭과 같은 규칙으로 끌리고 닫힌다, 구현 스펙 「02a」). 지금 넘기는
- * 화면은 없다. 한때 그 앞에 고정 칸 `spec`(문서 탭)이 섰다 — restart 02a-13이 걷었다.
- *
- * **묶음의 칸이 아니라서 셸 칸의 성질을 하나도 안 갖는다.** 숫자 키를 받지 않고(번호는 묶음의 칸끼리만 센다), 순서를 바꾸지 않고,
- * `×`가 없다.
- *
- * `id`는 칸의 `data-tab` 값이다 — `shell` · `code`(파일 탭) · `chat`(채팅 탭) · `new-chat`(새 채팅 탭) · `new`는 이 줄이 이미
- * 쓰므로 고르지 않는다. 묶음에 칸
- * 종류가 늘면 그 표식도 여기 더한다. 글리프는 값으로 받는다: 이 줄은 `features/works`를 모른다(머리말).
- */
-export interface FixedTab {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  /** 본문이 이 칸의 것인가. */
-  on: boolean;
-  onSelect: () => void;
-}
-
-/**
  * **채팅 탭**의 몫(restart 02a-4 · 02a-5) — 칸은 채팅 id만 들고(`BundleTab`), 이름 · 이름 바꾸기 · 채팅의 ⋯ 항목은 채팅 쪽이 안다. 이 줄은
  * 채팅 기능을 모르는 그림이라(`features/thread`를 부르면 그 무게가 `/terminal`까지 따라온다) 부르는 쪽(작업공간 화면)이 준다.
  *
@@ -105,12 +84,6 @@ interface ShellTabsProps {
   owner: ShellOwner;
   /** 이 Work의 프로젝트들. 둘 이상이면 `+`가 어디에 띄울지 물어본다(결정 24). */
   projects: string[];
-  /**
-   * 묶음 앞에 서는 고정 칸들(`FixedTab`) — 넘긴 순서대로 선다. 한때 그 앞에 문서 칸 `spec`이 늘 섰다(결정 7 · 8 — restart 02a-13이 걷었다.
-   * 이제 두 화면 모두 묶음부터 서고 ⌘1이 첫 칸이다). **선택이다**: `/terminal`처럼 넘길 것이 없는
-   * 화면은 안 준다. 빠뜨려도 조용히 망가지는 것이 없어서다 — 끄는 콜백을 필수로 둔 까닭(아래 `onDragTab`)과 반대다.
-   */
-  fixed?: readonly FixedTab[];
   /**
    * **본문이 이 화면의 묶음을 보여주는가** — 셸이든 파일 탭이든 묶음의 지금 탭이 본문에 서 있는가. 켜진 칸 표시를 그때만 준다.
    *
@@ -186,21 +159,13 @@ interface ShellTabsProps {
    * 계약) 값으로 받는다. 틈 알림은 받는 쪽(`hoverSlot`)이 거르지만 스크롤은 이 줄이 스스로 하는 일이다.
    */
   dragging: boolean;
-  /**
-   * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
-   * 자리가 안 움직인다.
-   *
-   * 무엇이 오는지는 화면이 정한다 — 지금 두는 화면은 없다(한때 work 화면이 분할의 터미널 열을 닫는 `×`를 두었다 — codex-ds 스펙 S14,
-   * restart 02a-13이 분할을 걷었다). 상태 배지 · ⋯ · 요약 카드는 이 줄이 아니라 머리 줄에 선다(`WorksPage`).
-   */
-  actions?: React.ReactNode;
   /** 검사가 이 줄을 정체성으로 집는 표식 — 줄의 머리 상자에 그대로 단다. */
   [mark: `data-${string}`]: string | undefined;
 }
 
-// 본문 카드 머리의 **가로 탭 줄**(결정 7·8·10). `[고정 칸…][묶음…][+]`가 왼쪽부터 차고 오른쪽 끝에
-// 조작이 고정된다. 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아온 것이다(adr-03).
-// 고정 칸은 화면이 넘기는 `FixedTab`이다(three-axes 결정 9) — 숫자 키를 안 받아 아래 순서의 셈에 안 든다.
+// 본문 카드 머리의 **가로 탭 줄**(결정 7·8·10). `[묶음…][+]`가 왼쪽부터 찬다. 셸을 고르는 자리가 사이드바 가지에서 화면 안으로
+// 되돌아온 것이다(adr-03). 한때 묶음 앞에 화면이 넘기는 고정 칸(`FixedTab` — three-axes 결정 9)이, 오른쪽 끝에 조작(`actions`)이 설 자리가
+// 있었다 — 넘기는 화면이 없어 걷었다(restart 코드 리뷰).
 // **묶음**(CONTEXT)은 스크롤 상자 안의 칸들이고 그 차례는 레지스트리가 든다(`bundleOf`) — 셸 칸과 **파일 탭** 칸이 구분선 없이
 // 한 차례로 선다(git-integration 결정 31). 파일 탭의 표시(이름 · 툴팁)는 칸이 든 정체에서 나온다 — 이 줄이 따로 받지 않는다.
 //
@@ -215,7 +180,7 @@ interface ShellTabsProps {
 // 카드의 바닥(`panel-layout`의 `TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 그 표식으로 줄을 가른다. 카드 안이라 창을 끄는 자리가
 // 아니다 — 끄는 자리는 크롬 맨 위 머리 줄 하나다(`ShellHeadRow` · `Frame` 머리말).
 //
-// **칸은 Tab으로 다닌다**(codex-ds 스펙 §9 — 목록이 아니라 roving이 없다). 고정 칸 · 셸 칸과 파일 탭의 이름 · 닫기 · `+`가
+// **칸은 Tab으로 다닌다**(codex-ds 스펙 §9 — 목록이 아니라 roving이 없다). 셸 칸과 파일 탭의 이름 · 닫기 · `+`가
 // 저마다 정류장이고 `tabIndex`를 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
 //
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
@@ -228,7 +193,6 @@ function ShellTabs({
   owner,
   projects,
   defaultCwd,
-  fixed = [],
   showing,
   chat,
   onSelect,
@@ -243,7 +207,6 @@ function ShellTabs({
   onSlot,
   onDropSlot,
   dragging,
-  actions,
   ...marks
 }: ShellTabsProps) {
   // 상한도 그리는 것도 **이 화면**의 것이다(결정 23). 두 값이 같은 상태에서 같은 범위로
@@ -437,47 +400,15 @@ function ShellTabs({
       onPointerUp={tabHandlers.onSlotDrop}
       className="relative flex h-(--size-tab-row) shrink-0 items-center gap-0.5 bg-surface px-2 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border"
     >
-      {/* 묶음 앞의 고정 칸들(three-axes 결정 9). **묶음 상자 밖, 세로선 앞이다** — 상자 안에 들면 켜진 칸 `scrollIntoView`
-          · 틈 번호 · 줄어드는 몫이 이 칸까지 세어 묶음 칸의 셈이 밀린다. 알약은 묶음의 칸과 같은 결이고(결정 25 — 안 줄어든다)
-          **`onPointerDown`이 없다**: 순서에 안 낀다(`FixedTab`). 한때 그 앞에 문서 칸 `spec`이 늘 섰다(restart 02a-13이 걷었다). */}
-      {fixed.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          data-tab={tab.id}
-          aria-pressed={tab.on}
-          tabIndex={0}
-          onClick={tab.onSelect}
-          className={fixedTabClass(tab.on)}
-        >
-          <tab.icon className={TAB_GLYPH} />
-          <span className="min-w-0 truncate">{tab.label}</span>
-        </button>
-      ))}
-
-      {/* 고정 칸과 묶음 **사이**의 세로선(결정 25). 말하는 것은 「여기서부터 묶음이다」 하나다 —
-          왼쪽은 고정된 칸이고 오른쪽은 스크롤하는 상자(묶음)다.
-
-          **고정 칸이 있을 때만 선다.** 없으면 가를 것이 없는데, 조건 없이 두면 줄 맨 앞에 이유 없는 선 하나가 남는다. */}
-      {fixed.length > 0 && (
-        <span
-          aria-hidden
-          data-tab-rule
-          // 좌우 2px이다 — 줄의 gap 4px과 합쳐 8px씩 벌어진다. 더 벌리면 **900px 창에서 줄이
-          // 넘친다**(결정 20의 산술이 이 선까지 센다: mx-1이면 1px 모자랐다, 실측).
-          className="mx-0.5 h-[18px] w-px shrink-0 bg-border-heavy"
-        />
-      )}
-
-      {/* 묶음의 칸만 **가로로 스크롤한다**(결정 20). 고정 칸·`+`·조작은 이 상자 밖이라 자리가
+      {/* 묶음의 칸만 **가로로 스크롤한다**(결정 20). `+`는 이 상자 밖이라 자리가
           고정이고, 줄이 넘치는 몫은 이 상자 하나가 받는다 — 형제가 모두 `shrink-0`이고
-          여기만 줄어들 수 있어서다. 그래서 **탭 줄 자체는 넘치지 않는다**: 조작이
+          여기만 줄어들 수 있어서다. 그래서 **탭 줄 자체는 넘치지 않는다**: 한때 줄 끝 조작이
           창 밖으로 밀려나던 것이 그것 때문이었다.
 
           칸은 그 전에 먼저 균등하게 줄어든다(결정 11). 스크롤은 여덟 칸이 다 최소 폭에
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
           여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 그 옆에 자리가 고정된 것들
-          (`+` · 조작 · 줄 사이 gap · 좌우 안쪽)이 이어 선다.
+          (`+` · 줄 사이 gap · 좌우 안쪽)이 이어 선다.
           **줄의 폭은 창 폭이 아니다** — 이 줄을 머리에 인 카드의 폭이라 창에서 사이드바 · 열린 작업 패널 · 레일 열(칸이 둘
           이상일 때만 선다)을 뺀 나머지다. 창이 더 작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도
           안 들어간다.
@@ -643,46 +574,12 @@ function ShellTabs({
         />
       )}
 
-      {/* 오른쪽 끝 조작 — 조작이 있을 때만 선다(지금 두는 화면은 없다 — 한때 분할의 터미널 열을 닫는 `×`였다). 앞의 빈 자리가
-          탭과 조작 사이의 남는 폭을 먹어 조작을 줄 끝에 붙이고, `min-w-4`는 칸이 꽉 찼을 때도 `+`와 조작이 맞붙지 않게
-          남기는 값이다. 조작이 없는 줄에는 빈 자리도 없다 — 줄의 바닥(min-content)에 쓸모없는 16px이 들지 않게.
-
-          조작이 여럿이면 그 사이는 DS 툴바의 4다(`.at-toolbar` — 줄 안 칸 사이와 같은 값). 한때 셸 컨트롤 간격
-          (`--titlebar-control-gap`)을 빌렸는데, 그 값은 창 컨트롤의 Codex 값(2)이 되어 이 줄의 것이 아니다. */}
-      {actions && (
-        <>
-          <span className="min-w-4 flex-1" />
-          <div data-tab-actions className="flex shrink-0 items-center gap-1">
-            {actions}
-          </div>
-        </>
-      )}
     </div>
   );
 }
 
 /**
- * 고정 칸(`FixedTab`)의 알약. 한때 문서 칸 `spec`과 한 규격이었다(restart 02a-13이 그 칸을 걷었다).
- *
- * **이 칸은 안 줄어든다**(결정 20). 고정 탭이라 이름이 짧게 고정이고, 줄일 것이 애초에 없다 — 그런데 `shrink`가
- * 살아 있으면 넘칠 때 flex가 **폭에 비례해서** 깎아, 좁은 칸(66px)과 셸 칸(180px)이 나란히 6할씩 잃는다. 그러면 이 칸이
- * 글리프도 못 담는 27px가 되면서 정작 셸 칸은 73px로 멀쩡하다. 줄어드는 것을 셸 칸 여덟으로 몰아 두는 것이 「균등」이
- * 성립하는 조건이다.
- *
- * **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를 가르는 안은 실물에서 접었다 — 그 칸만 규격이
- * 갈리면 줄에서 튄다. 「다른 종류」는 옆의 세로선 하나가 말한다.
- *
- * **높이 · 모양 · 켜짐 · 글자색은 시안 `.ra-tabx`다**(restart 02a-5 — Shell 「탭 상태」 · Main 탭 줄) — 28px · 둥글기 4(`rounded-ctl`) ·
- * `chat-meta`이고, 켜진 칸은 불투명한 면에 0.5px 링 · `fg`(`tab-on`)다. 꺼진 칸의 글자는 `fg-tertiary`이고 가리키면 옅은 면에
- * `fg-secondary`다. 켜져도 글자 무게는 그대로다 — 묶음의 칸은 글자 폭이라(`BUNDLE_CELL`) 무게가 바뀌면 칸이 넓어져 줄이 흔들린다. 글리프는
- * 늘 `fg-tertiary`다(`.ra-tabx .ic`). 한때 DS `.at-tab`(`radius-lg` · 켜짐 `fill-hover` · 꺼짐 `fg-secondary`)이었다.
- */
-function fixedTabClass(on: boolean): string {
-  return cn("flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-ctl pl-2 pr-1.5 text-chat-meta transition-colors focus-ring", tabTone(on));
-}
-
-/**
- * 탭의 켜짐 · 꺼짐 색 — 고정 칸과 묶음의 칸이 한 벌이다(시안 `.ra-tabx` · `.ra-tabx.on`). 켜진 칸의 면은 hover에 안 바뀐다 — 꺼진 칸의
+ * 탭의 켜짐 · 꺼짐 색 — 묶음의 칸이 모두 한 벌이다(시안 `.ra-tabx` · `.ra-tabx.on`). 켜진 칸의 면은 hover에 안 바뀐다 — 꺼진 칸의
  * hover를 같은 요소에 함께 얹으면 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
  */
 function tabTone(on: boolean): string {

@@ -5,7 +5,7 @@ import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 import { linesAfter, linesThrough, record, sentPayloads, seqOf, streamLines, summaryOf } from "./thread-records";
 import type { ThreadView } from "@/features/thread/types";
 
-// v1 티켓 10(PR ① e2e) 흐름 하나 — **앱을 열면 새 Thread가 뜨고, 보낸 말에 Host의 답이 흘러 턴 끝에 「N초 동안 작업」 구분선으로
+// v1 티켓 10(PR ① e2e) 흐름 하나 — **앱을 열면 새 Thread가 뜨고, 보낸 말에 Runtime의 답이 흘러 턴 끝에 「N초 동안 작업」 구분선으로
 // 접히며, 다시 켜도 같은 Thread가 기록으로 이어진다**(v1 티켓 05 · 구현 스펙 §13 · §14 · S26). 펼칠 것 없이 답만 한 턴에는 구분선이
 // 서지 않는다(02 구현 스펙 §8 · 02 티켓 09 — 이 판의 「도구 없는 턴의 구분선 사라짐」은 여기서 한 번 잰다).
 //
@@ -24,7 +24,7 @@ const WRITE_STARTED = twoTurns.find(
 )!.seq;
 
 /**
- * 첫 말로 막 선 Thread — Host의 Session이 이 앱에 떠 있고 기록은 첫 `sent`까지다. 엔진은 Session이 열린 뒤에 새 id를 돌려주므로 그때
+ * 첫 말로 막 선 Thread — Runtime의 Session이 이 앱에 떠 있고 기록은 첫 `sent`까지다. 엔진은 Session이 열린 뒤에 새 id를 돌려주므로 그때
  * 적힌 줄(들어옴 · 띄움 · 열림 · 명령 목록 · 보낸 말)을 화면이 기록 읽기로 받고, 그 뒤는 기록 줄 이벤트로 받는다.
  */
 const started: ThreadView = { ...FIXTURE_THREAD, live: true, lastSeq: FIRST_SENT };
@@ -36,7 +36,7 @@ const 흐름 = (page: Page) => page.getByRole("main");
 const 접힌턴 = (page: Page, headline: string) => 흐름(page).getByRole("button", { name: headline, exact: true });
 const 도구줄 = (page: Page, phrase: string) => 흐름(page).getByRole("group", { name: phrase, exact: true });
 
-test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르다 턴 끝에 「N초 동안 작업함」으로 접히며(말만 한 턴은 머리 없이), 도구 줄이 진행형에서 「동사 대상」이 된다", async ({
+test("첫 화면에서 보낸 말로 새 Thread가 서고, Runtime의 답이 흐르다 턴 끝에 「N초 동안 작업함」으로 접히며(말만 한 턴은 머리 없이), 도구 줄이 진행형에서 「동사 대상」이 된다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {

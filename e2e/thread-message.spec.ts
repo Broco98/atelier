@@ -1,7 +1,7 @@
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 import { expect, test, type Locator, type Page } from "./evidence";
 import { answerByArg, FIXTURE_THREAD } from "./fixtures";
-import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCalls, 토큰색 } from "./harness";
+import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCalls, 시계를세운다, 토큰색 } from "./harness";
 import { record, seqOf, summaryOf } from "./thread-records";
 
 // restart 02b-9a — **내 말 · 긴 말 · 복사**(restart 02b-6 · Cards 보드 「기본」 · 「호버」 · 「긴 말」 · `시안-비교/02b-6/차이.md`). 내 말 아래 말 머리
@@ -118,29 +118,25 @@ test("8줄 넘는 말은 112에서 잘려 아래가 옅어지고, 「더 보기�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **✓가 선 시간은 `page.clock`으로 잰다** — 페이지를 열기 전에 시계를 걸고, 누르기 직전에 세워 손으로 돌린다(1599ms에는 ✓, 1600ms면 돌아온다).
+// 한때 벽시계로 ✓가 선 프레임부터 걷힌 프레임까지를 재(1550–1900ms) 느린 러너에서 흔들렸다.
 test("복사 단추는 누르면 그 글을 클립보드에 쓰고 글리프가 1.6초 동안 ✓였다가 돌아온다", async ({ page }) => {
   await recordClipboard(page);
+  await page.clock.install();
   await openEnded(page);
   const first = 흐름(page).locator("[data-user-message]").first();
   await first.hover();
   const copy = first.getByRole("button", { name: "메시지 복사", exact: true });
-  await expect(copy.locator("svg")).toHaveClass(/lucide-copy/);
-  const shown = await copy.evaluate(
-    (el) =>
-      new Promise<number>((done) => {
-        let start = 0;
-        const frame = () => {
-          const checked = el.querySelector("svg")?.classList.contains("lucide-check") === true;
-          if (checked && start === 0) start = performance.now();
-          if (!checked && start !== 0) return done(performance.now() - start);
-          requestAnimationFrame(frame);
-        };
-        (el as HTMLElement).click();
-        requestAnimationFrame(frame);
-      }),
-  );
-  expect(shown, `✓가 선 시간 ${Math.round(shown)}ms`).toBeGreaterThanOrEqual(1550);
-  expect(shown).toBeLessThan(1900);
+  const glyph = copy.locator("svg");
+  await expect(glyph).toHaveClass(/lucide-copy/);
+  await 시계를세운다(page);
+  await copy.click();
+  await expect(glyph).toHaveClass(/lucide-check/);
+  await page.clock.runFor(1599);
+  await expect(glyph).toHaveClass(/lucide-check/);
+  await page.clock.runFor(1);
+  await expect(glyph).toHaveClass(/lucide-copy/);
+  await page.clock.resume();
   expect(await clipboardWrites(page)).toEqual([ended.title]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

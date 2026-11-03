@@ -713,9 +713,9 @@ function WorksPage({
   // 인용은 탭마다의 열쇠에 산다(`newChatKey`). 첫 말의 답이 오면 그 칸이 그 채팅의 채팅 탭이 된다(`settleNewChat` — 켜짐은 그대로다).
   // 켜져 있었으면 「묶음 → 주소」가 주소를 그 채팅으로 옮기고, 꺼져 있었으면 주소는 그대로다 — 그 탭으로 끌고 오지 않는다.
   //
-  // **숨은 새 채팅 탭은 내리지 않는다**(구현 스펙 「02a — 숨은 탭」의 예외). 고른 서비스 · 보내는 중 상태는 그 몸의 지역 상태라 내리면
-  // 사라진다 — 채팅 탭처럼 스토어에 쥘 것이 없다. 그래서 그 작업공간의 새 채팅 탭을 **모두** 꽂고 켜진 하나만 보인다. 본문 카드마다 같은
-  // 자리(첫 자식)에 꽂는다 — 카드가 하나라(`Card`) 셸 · 파일 · 채팅을 오가도 그 자리의 몸이 그대로 산다. 작업공간을 옮기면 내려간다.
+  // **숨은 새 채팅 탭은 내리지 않는다**(구현 스펙 「02a — 숨은 탭」의 예외). 그 작업공간의 새 채팅 탭을 **모두** 꽂고 켜진 하나만 보인다. 본문
+  // 카드마다 같은 자리(첫 자식)에 꽂는다 — 카드가 하나라(`Card`) 셸 · 파일 · 채팅을 오가도 그 자리의 몸이 그대로 산다. 작업공간을 옮기면 몸은
+  // 내려가지만 고른 Runtime · 모델 · 생각 깊이 · 모드 · 범위와 보내는 중인 첫 말은 탭의 글 열쇠로 쥐어(`newChatStore`) 돌아오면 그대로다.
   //
   // **켜진 새 채팅 탭에 오른쪽 자리를 건넨다**(restart 02a-11) — 채팅 탭 몸과 같은 값(`right.card`)이라 요약 카드 · 넓힌 카드가 선다. 숨은 탭은
   // 받지 않는다 — 카드가 보이지 않는 곳에서 변경 · PR을 읽지 않게.
@@ -1013,12 +1013,12 @@ function WorksPage({
           <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
           <EmptyDescription>
             {needsProject
-              ? "작업공간은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+              ? "작업공간은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 터미널의 에이전트에게 맡겨도 돼요."
               : emptyScreen.body}
           </EmptyDescription>
         </EmptyHeader>
-        {/* 할 일 — 실제로 통하는 경로만 안내한다. CLI에는 등록·시작 명령이 없고, 에이전트가
-            atelier_add_project / atelier_start_work를 부른다.
+        {/* 할 일 — 실제로 통하는 경로만 안내한다. CLI에는 등록·시작 명령이 없고, 터미널의 에이전트가(설정의 「에이전트 훅」 · spec 레이아웃과
+            같은 말 — 대화의 Runtime이 아니다) atelier_add_project / atelier_start_work를 부른다.
             아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
         <EmptyContent>
           <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-xs text-fg-secondary">
@@ -1035,7 +1035,7 @@ function WorksPage({
     //
     // 탭 줄의 바닥은 그 줄을 이는 카드가 들고(`TAB_ROW_CARD`), 모자라면 틀의 본문 열이 사이드바에게 자리를 요구한다
     // (`TAB_ROW_COLUMN`) — 카드가 제 몸을 격리하므로 넓은 문서 · xterm이 그 바닥을 부풀리지 않고, spec 패널은 같은 카드 자리 줄에서 제
-    // 최소 폭까지 본문 카드에 자리를 내준다(`Frame`의 `PanelBox`).
+    // 최소 폭까지 본문 카드에 자리를 내준다(`WorkTools`의 `PanelBox`).
     <>
       <Frame
         head={head}

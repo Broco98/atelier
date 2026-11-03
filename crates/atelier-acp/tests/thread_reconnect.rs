@@ -173,9 +173,9 @@ fn 읽기만_된_thread는_다시_잇지_않는다() {
     host.shut_down();
 }
 
-#[test]
-fn 다시_잇지_못하면_까닭을_돌려주고_기록에_남기며_다시_부르면_열린다() {
-    let sandbox = Sandbox::new();
+/// 첫 턴이 도는 Thread와 변환기를 막는 표지 — 표지가 서 있으면 변환기가 뜨자마자 끝난다(다시 잇기의 실패). `extra`는 가짜 claude에게
+/// 주는 env다.
+fn turning_gated(sandbox: &Sandbox, extra: &[(&str, &str)]) -> (ConversationHost, String, std::path::PathBuf) {
     let gate = sandbox.bin("gated-translator");
     let blocked = gate.join("blocked");
     let wrapper = gate.join("acp-claude");
@@ -184,11 +184,25 @@ fn 다시_잇지_못하면_까닭을_돌려주고_기록에_남기며_다시_부
         &format!("#!/bin/sh\n[ -e '{}' ] && exit 7\nexec '{}'\n", blocked.display(), env!("CARGO_BIN_EXE_claude-translator")),
     );
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")]);
+    let mut env = vec![("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")];
+    env.extend_from_slice(extra);
+    let shell = sandbox.claude_login_shell("normal", &env);
     let translator = TranslatorCommand::new(&wrapper, Vec::<String>::new());
     let host = sandbox.host_builder_with_translator(shell, translator, |_| {}).build();
     let thread = host.start_thread(HELD_TURN, ThreadLink::NoWork).expect("첫 말");
-    wait_tool_line(&sandbox, &thread);
+    wait_tool_line(sandbox, &thread);
+    (host, thread, blocked)
+}
+
+/// 대기 줄의 글 — 화면이 Thread를 열 때 읽는 것.
+fn queued_texts(host: &ConversationHost, thread: &str) -> Vec<String> {
+    host.thread(thread).unwrap().queue.into_iter().map(|queued| queued.text).collect()
+}
+
+#[test]
+fn 다시_잇지_못하면_까닭을_돌려주고_기록에_남기며_다시_부르면_열린다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, blocked) = turning_gated(&sandbox, &[]);
     let session = sandbox.thread_session_id(&thread);
     cut(&sandbox, &thread);
     std::fs::write(&blocked, "").unwrap();
@@ -206,6 +220,30 @@ fn 다시_잇지_못하면_까닭을_돌려주고_기록에_남기며_다시_부
 
     assert_eq!(common::opened_hows(&sandbox.thread_record(&thread)), ["new", "resumed"]);
     assert_eq!(heard(&sandbox, &session), 1, "끊긴 턴은 그때도 가지 않는다");
+    host.shut_down();
+}
+
+#[test]
+fn 다시_잇지_못해도_대기_줄은_남고_세션이_열리면_맨_앞부터_간다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, blocked) =
+        turning_gated(&sandbox, &[("FAKE_CLAUDE_LAUNCH_FIXTURES", r#"[null, "2.1.309/twoturn-tools"]"#)]);
+    host.send_to_thread(&thread, "앞의 말").expect("도는 동안의 말");
+    host.send_to_thread(&thread, "뒤의 말").expect("도는 동안의 말");
+    cut(&sandbox, &thread);
+    std::fs::write(&blocked, "").unwrap();
+
+    host.reconnect_thread(&thread).expect_err("변환기가 뜨지 못한다");
+    assert_eq!(queued_texts(&host, &thread), ["앞의 말", "뒤의 말"], "사람이 이미 보낸 말이라 남는다");
+    host.send_to_thread(&thread, "새 말").expect_err("새 말도 세션을 열지 못한다 — 입력창에 남는다");
+    assert_eq!(queued_texts(&host, &thread), ["앞의 말", "뒤의 말"], "열지 못한 말은 대기 줄에 끼지 않는다");
+
+    std::fs::remove_file(&blocked).unwrap();
+    host.reconnect_thread(&thread).expect("다시 부르면 열린다");
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    assert_eq!(sent_texts(&record), [HELD_TURN, "앞의 말", "뒤의 말"], "{}", common::lines_text(&record));
+    assert!(host.thread(&thread).unwrap().queue.is_empty());
     host.shut_down();
 }
 
@@ -231,5 +269,42 @@ fn 로그인이_필요하면_실패가_아니라_로그인_필요_줄이_서고_
     host.reconnect_thread(&thread).expect("로그인 창구가 이미 쥐었다");
     assert_eq!(spawns(&sandbox.thread_record(&thread)), spawned, "로그인을 기다리는 동안은 띄우지 않는다");
 
+    host.shut_down();
+}
+
+#[test]
+fn 로그인이_필요해도_대기_줄은_남고_로그인하면_맨_앞부터_간다() {
+    let sandbox = Sandbox::new();
+    sandbox.log_in(Agent::Claude);
+    sandbox.log_in(Agent::Codex);
+    let version = env!("CARGO_PKG_VERSION");
+    let env = [("FAKE_ACP_VERSION", version), ("FAKE_ACP_AUTH_PAUSES", "1")];
+    let shell = sandbox.login_shell_for_login("needs-auth", NO_BROWSER, &env);
+    let agent = TranslatorCommand::new(env!("CARGO_BIN_EXE_fake-acp-agent"), Vec::<String>::new());
+    let host = sandbox.host_builder_with_translator(shell, agent, |_| {}).build();
+    let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    // 로그인이 풀린 뒤의 말은 답을 붙든다 — 그 턴이 도는 동안 대기 줄을 세운다.
+    sandbox.log_out(Agent::Codex);
+    host.send_to_thread(&thread, "둘째 말").expect("세션은 떠 있다");
+    host.send_to_thread(&thread, "앞의 말").expect("도는 동안의 말");
+    host.send_to_thread(&thread, "뒤의 말").expect("도는 동안의 말");
+    let pid = sandbox.acp_launches()[0]["pid"].as_u64().unwrap() as i32;
+    // SAFETY: 이 시험이 띄운 가짜 에이전트에 신호를 보낼 뿐이다.
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+    sandbox.wait_thread_record(&thread, |record| record.iter().any(|line| line["payload"]["state"] == "died"));
+
+    host.reconnect_thread(&thread).expect("로그인 필요는 실패가 아니다");
+    let record = sandbox.thread_record(&thread);
+    assert_eq!(record.last().unwrap()["payload"], json!({"state": "login-required"}), "{}", common::lines_text(&record));
+    assert_eq!(queued_texts(&host, &thread), ["앞의 말", "뒤의 말"], "사람이 이미 보낸 말이라 남는다");
+
+    // 터미널에서 로그인하고 「다시 확인」을 눌렀다.
+    sandbox.log_in(Agent::Codex);
+    host.check_engine(Agent::Claude, true).expect("다시 확인");
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    assert_eq!(sent_texts(&record), ["첫 말", "둘째 말", "앞의 말", "뒤의 말"], "{}", common::lines_text(&record));
+    assert!(host.thread(&thread).unwrap().queue.is_empty());
     host.shut_down();
 }

@@ -1,8 +1,7 @@
-import { THREAD_RECORD_EVENT } from "@/features/thread/events";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 import { expect, test, type Locator, type Page } from "./evidence";
 import { answerByArg, FIXTURE_THREAD } from "./fixtures";
-import { eventHandler, installFixtureBackend, unknownIpcCalls, 토큰색 } from "./harness";
+import { installFixtureBackend, unknownIpcCalls, 시계를세운다, 토큰색 } from "./harness";
 import { linesThrough, record, sentPayloads, seqOf, streamLines, summaryOf } from "./thread-records";
 
 // restart 02b-9a — **작업 로그**(restart 02b-4 · Tools 보드 · States 05 · 07 · 08 · 14 · `시안-비교/02b-4/차이.md` 「같은 것」). 명령 출력은 `surface-tool`
@@ -41,9 +40,12 @@ const update = (seq: number, body: Record<string, unknown>): RecordLine => ({
   payload: { sessionId: "fake-session", update: body },
 });
 
+// **접히는 때는 `page.clock`으로 잰다** — 페이지를 열기 전에 시계를 걸고, 끝 줄을 쏘기 직전에 세워 손으로 돌린다(699ms에는 펼친 채, 700ms면
+// 접힌다). 한때 벽시계로 쏜 순간부터 접힐 때까지를 재(680–1200ms) 느린 러너에서 흔들렸다.
 test("도는 명령의 출력은 9 12 9 9 · 둥근 12 · surface-tool · 13 / 20 상자에 144까지 끝 줄이 보이고 위 24가 옅으며, 성공하면 끝나고 700ms에 스스로 접힌다", async ({
   page,
 }) => {
+  await page.clock.install();
   await open(page, running, linesThrough(twoTurns, SECOND_SENT));
   const id = "toolu_worklog_run";
   const output = Array.from({ length: 20 }, (_, at) => `출력 ${at + 1}째 줄`).join("\n");
@@ -91,27 +93,16 @@ test("도는 명령의 출력은 9 12 9 9 · 둥근 12 · surface-tool · 13 / 2
   expect(ends.lastMiddle, "끝 줄이 바닥").toBeLessThan(bottom);
   expect(ends.firstTop, "첫 줄은 위로 넘친다").toBeLessThan(outBox!.y - 100);
 
-  // 성공 — 끝 줄을 쏜 순간부터 그 줄의 펼침 단추가 접힐 때까지를 잰다.
-  const onLine = await eventHandler(page, THREAD_RECORD_EVENT);
-  const done = update(SECOND_SENT + 3, { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed" });
-  const folded = await page.evaluate(
-    ({ onLine, lineEvent, thread, line }) =>
-      new Promise<number>((resolve) => {
-        const internals = (window as unknown as { __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void } }).__TAURI_INTERNALS__;
-        const start = performance.now();
-        internals.runCallback(onLine, { event: lineEvent, id: 0, payload: { thread, seq: line.seq, line } });
-        const frame = () => {
-          const head = document.querySelector('[role="group"][aria-label="실행 완료 pnpm test"] button[aria-expanded]');
-          if (head?.getAttribute("aria-expanded") === "false") return resolve(performance.now() - start);
-          if (performance.now() - start > 3000) return resolve(-1);
-          requestAnimationFrame(frame);
-        };
-        requestAnimationFrame(frame);
-      }),
-    { onLine, lineEvent: THREAD_RECORD_EVENT, thread: running.id, line: done },
-  );
-  expect(folded, `접힌 때 ${Math.round(folded)}ms`).toBeGreaterThanOrEqual(680);
-  expect(folded).toBeLessThan(1200);
+  // 성공 — 끝 줄이 선 때부터 그 줄의 펼침 단추가 접힐 때까지를 세운 시계로 잰다(`--delay-fold` 700ms).
+  await 시계를세운다(page);
+  await streamLines(page, running.id, [update(SECOND_SENT + 3, { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed" })]);
+  const head = 흐름(page).getByRole("group", { name: "실행 완료 pnpm test", exact: true }).locator("button[aria-expanded]").first();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  await page.clock.runFor(699);
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  await page.clock.runFor(1);
+  await expect(head).toHaveAttribute("aria-expanded", "false");
+  await page.clock.resume();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

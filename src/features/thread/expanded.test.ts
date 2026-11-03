@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolEntry, Turn } from "./fold";
-import { createdDocs, freshLines, isOpened, treePick, viewerPath, type Opened } from "./expanded";
+import { createdDocs, freshLines, isOpened, reviewOf, treePick, viewerPath, type Opened } from "./expanded";
 
 // 넓힌 카드(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand · Messages · Motion 보드) — 카드가 무엇을 열었나(`Opened`)와 그 보기의
 // 경로 줄, 다시 읽은 문서에서 칠할 줄, 대화 속 문서 카드를 짓는 순수 함수다. 그리는 쪽(`SummaryCard.tsx` · `ExpandedViewer.tsx` ·
@@ -45,6 +45,30 @@ describe("Project 트리에서 누른 파일", () => {
       project: "api-server",
       path: "package.json",
     });
+  });
+});
+
+// SummarySheet 표 넷째 줄 — 바뀐 파일 알약의 「검토」는 문서 카드 · PR의 「변경 사항 보기」처럼 카드를 넓힌다. 그 턴이 바꾼 파일(Runtime이 준 절대
+// 경로)을 이 작업공간의 worktree에서 찾아 그 Project의 변경으로 연다.
+describe("바뀐 파일 알약의 「검토」가 여는 것", () => {
+  const trees = [
+    { project: "api", root: "/Users/me/.atelier/works/w/trees/api" },
+    { project: "api-web", root: "/Users/me/.atelier/works/w/trees/api-web" },
+  ];
+
+  it("그 턴이 바꾼 첫 파일을 그 worktree의 Project 변경으로 연다", () => {
+    expect(reviewOf(["/Users/me/.atelier/works/w/trees/api-web/src/app.ts", "/Users/me/.atelier/works/w/trees/api/b.rs"], trees)).toEqual({
+      kind: "change",
+      project: "api-web",
+      path: "src/app.ts",
+    });
+  });
+
+  it("worktree 밖의 파일은 건너뛰고, 열 파일이 없으면 null이다", () => {
+    expect(reviewOf(["/tmp/notes.txt", "/Users/me/.atelier/works/w/trees/api/b.rs"], trees)).toEqual({ kind: "change", project: "api", path: "b.rs" });
+    expect(reviewOf(["/Users/me/.atelier/works/w/trees/api"], trees)).toBeNull();
+    expect(reviewOf(["/tmp/notes.txt"], trees)).toBeNull();
+    expect(reviewOf([], trees)).toBeNull();
   });
 });
 

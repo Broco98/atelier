@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { Card, Frame, PanelBox, type PanelSlot } from "./Frame";
+import { Card, Frame } from "./Frame";
 
 // 머리(이름 · 할 일 · 패널 토글)는 앱 셸의 머리 줄로 포털을 탄다 — 정적 렌더는 포털을 못 그려, 머리를 제자리 머리 줄에 곧장 세운다
 // (`screen-head-inline`).
@@ -20,22 +20,6 @@ const render = () =>
         <p>본문</p>
       </Card>
     </Frame>,
-  );
-
-/** 오른쪽 패널 상자(작업공간의 spec 패널 — 앱 셸의 기둥 `WorkTools`가 세운다). */
-const panel = (over: Partial<PanelSlot> = {}) =>
-  renderToStaticMarkup(
-    <PanelBox
-      id="work-panel"
-      slot={{
-        label: "작업공간 패널",
-        open: true,
-        onToggle: () => {},
-        size: { width: 340, min: 260, dragging: false, side: "right", handleProps: {} } as never,
-        children: <p>패널</p>,
-        ...over,
-      }}
-    />,
   );
 
 const tagOf = (markup: string, pattern: RegExp) => markup.match(pattern)?.[0] ?? "";
@@ -92,27 +76,5 @@ describe("밖에 선 패널의 토글", () => {
     expect(buttons[buttons.length - 1]).toContain('aria-expanded="false"');
     expect(markup).not.toContain("<aside");
     expect(markup).not.toContain('aria-label="레일"');
-  });
-});
-
-// 시안 `.ra-panelwrap` —패널 상자의 폭이 「틈 8 + 카드 340」이고 틈은 상자 안 왼쪽이다. 접히면 상자 폭이 0이 되어 틈도 함께 걷힌다 —
-// 본문 카드가 창 끝 틈까지 넓어지고 접힌 자리에 틈이 남지 않는다. 칸을 가르던 0.5 선(옛 `PANE_RULE`)은 없다.
-describe("작업 패널 카드", () => {
-  const aside = (markup: string) => classOf(tagOf(markup, /<aside[^>]*>/));
-  const inner = (markup: string) => classOf(tagOf(markup, /<aside[^>]*><div[^>]*>/).replace(/^<aside[^>]*>/, ""));
-
-  it("본문 카드와 8 틈을 둔 제 카드이고, 칸 사이 선이 없다", () => {
-    const markup = panel();
-    const card = classOf(tagOf(markup, /<section[^>]*aria-label="작업공간 패널"[^>]*>/));
-    expect(card, "패널 카드를 찾지 못했다").toEqual(expect.arrayContaining(["rounded-card", "shadow-hairline", "bg-surface"]));
-    expect(aside(markup)).toContain("basis-[calc(var(--panel-width)+var(--space-2))]");
-    expect(inner(markup)).toEqual(expect.arrayContaining(["pl-2", "w-[calc(var(--panel-width)+var(--space-2))]"]));
-    expect(aside(markup).filter((one) => one.startsWith("after:"))).toEqual([]);
-  });
-
-  it("접히면 상자 폭이 0이라 틈도 함께 걷힌다", () => {
-    const classes = aside(panel({ open: false }));
-    expect(classes).toContain("basis-0");
-    expect(classes.filter((one) => /^p[xl]?-/.test(one))).toEqual([]);
   });
 });

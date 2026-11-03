@@ -47,9 +47,9 @@ pub enum RecordKind {
     /// 권한 — 요청 원문(물음), 그 뒤에 같은 요청 id로 답(고른 optionId)이나 거둬짐(까닭)이 한 줄 더 선다(three-axes 티켓 08).
     /// v1은 판정 결과(허용 · 거절 · 물음)와 그 까닭을 함께 담는다.
     Permission,
-    /// 사람이 바꾼 것 — 바꾼 칸과 새 값(에이전트 · 모델 · 모드 · 계획).
+    /// 사람이 바꾼 것 — 바꾼 칸과 새 값(모델 · 생각 깊이 · 모드).
     Config,
-    /// Agent가 낸 질문과 답. Work 만들기 카드도 이 종류다.
+    /// Runtime이 낸 질문과 답. Work 만들기 카드도 이 종류다.
     Question,
     /// Work 연결 · worktree 생성 · Project 붙임.
     Work,

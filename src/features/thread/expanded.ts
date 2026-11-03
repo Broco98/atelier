@@ -29,6 +29,21 @@ export function treePick(project: string, path: string, changed: readonly string
   return { kind: changed.includes(path) ? "change" : "file", project, path };
 }
 
+/**
+ * **바뀐 파일 알약의 「검토」가 넓힌 카드에서 여는 것**(SummarySheet 표 넷째 줄 — 문서 카드 · PR의 「변경 사항 보기」 · 알약의 「검토」 · spec 패널의 문서
+ * 줄은 카드를 넓힌다) — 그 턴이 바꾼 파일(`files` — Runtime이 준 절대 경로) 중 이 작업공간의 worktree(`worktrees` — 절대 경로의 뿌리) 안에 든 첫
+ * 파일을 그 Project의 변경으로 연다. worktree 밖의 파일은 변경 보기가 없어 건너뛴다. 열 파일이 없으면 `null`이다 — 작은 카드만 연다.
+ */
+export function reviewOf(files: readonly string[], worktrees: readonly { project: string; root: string }[]): Opened | null {
+  for (const file of files) {
+    for (const tree of worktrees) {
+      const root = tree.root.replace(/\/+$/, "");
+      if (file.startsWith(`${root}/`)) return { kind: "change", project: tree.project, path: file.slice(root.length + 1) };
+    }
+  }
+  return null;
+}
+
 /** 그 줄이 지금 넓힌 카드가 연 것인가 — 그 줄이 고른 면(`selected-row`)으로 선다(보드 `.wr.on`). */
 export function isOpened(opened: Opened | null, row: RowTarget): boolean {
   if (opened === null || opened.kind !== row.kind) return false;

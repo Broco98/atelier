@@ -189,6 +189,10 @@ pub struct ThreadView {
 pub(super) struct Threads {
     /// 떠 있는 Session들 — 세션 열쇠는 채팅 id 하나다.
     sessions: Mutex<HashMap<String, Session>>,
+    /// 다시 열지 못한 Session의 대화(restart 스펙 「01b」 다시 잇기) — 다시 띄우다 실패했거나 로그인을 기다린다. 대기 줄은 사람이 이미
+    /// 보낸 말이라 버리지 않고 대화째 둔다. 다음 되살리기가 이것을 이어 쥐고, 세션이 열리면 대기 줄이 맨 앞부터 간다. 대기 줄이 빈 대화는
+    /// 두지 않는다. 잠금 차례는 Session 표와 같은 자리다.
+    stranded: Mutex<HashMap<String, Arc<Conv>>>,
     /// 연 기록 — Thread마다 하나다. Session들의 쓰는 손이 쥐고, 다 놓으면 닫힌다.
     logs: Mutex<HashMap<String, Weak<ThreadLog>>>,
     /// 모든 `thread.json`의 색인 — 처음 쓸 때 한 번 읽고, 엔진이 쓸 때마다 고친다(S7). 기록이 줄을 적을 때도 그 손이 마지막 줄 시각을
@@ -227,15 +231,49 @@ impl Threads {
         self.sessions.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// 떠 있는 Session들의 대화 — 끌 때 셈이 센다.
-    pub(super) fn live_convs(&self) -> Vec<Arc<Conv>> {
-        self.lock_sessions().values().map(|session| Arc::clone(&session.conv)).collect()
+    /// 떠 있는 Session들과 다시 열지 못해 둔 대화 — 끌 때 셈이 센다. 둔 대화의 대기 줄도 끄면 사라진다.
+    pub(super) fn held_convs(&self) -> Vec<Arc<Conv>> {
+        let mut convs: Vec<Arc<Conv>> = self.lock_sessions().values().map(|session| Arc::clone(&session.conv)).collect();
+        convs.extend(self.lock_stranded().values().cloned());
+        convs
     }
 
-    /// 떠 있는 Session을 모두 꺼낸다 — 호스트 끄기. 서 있는 Work 만들기 카드도 닫는다 — 기다리던 도구 호출이 풀린다.
+    /// 떠 있는 Session을 모두 꺼낸다 — 호스트 끄기. 서 있는 Work 만들기 카드도 닫는다 — 기다리던 도구 호출이 풀린다. 다시 열지 못해 둔
+    /// 대화도 놓는다 — 대기 줄은 메모리에만 있다.
     pub(super) fn drain_sessions(&self) -> Vec<Session> {
         self.proposals.close_all();
+        self.lock_stranded().clear();
         self.lock_sessions().drain().map(|(_, session)| session).collect()
+    }
+
+    fn lock_stranded(&self) -> MutexGuard<'_, HashMap<String, Arc<Conv>>> {
+        self.stranded.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 다시 열지 못한 Session의 대화를 대기 줄째 둔다 — 대기 고치기 · 지우기가 닿도록 꺼냄 표시를 걷는다.
+    fn strand(&self, thread: &str, conv: Arc<Conv>) {
+        conv.lock_state().taken = false;
+        self.lock_stranded().insert(thread.to_owned(), conv);
+    }
+
+    /// 둔 대화를 꺼낸다 — 되살리기가 이어 쥔다. 꺼낸 대화라고 적는다([`mark_taken`]) — 표에 넣을 때 걷힌다.
+    fn unstrand(&self, thread: &str) -> Option<Arc<Conv>> {
+        let conv = self.lock_stranded().remove(thread);
+        mark_taken(conv.iter().map(|conv| &**conv));
+        conv
+    }
+
+    /// 고른 둔 대화들을 꺼낸다 — 읽기만 된 Thread · 사라진 Thread의 것이다. 고르기는 이 표의 잠금 안에서 대화의 잠금을 쥔다.
+    pub(super) fn unstrand_picked(&self, pick: impl Fn(&str, &Conv) -> bool) -> Vec<Arc<Conv>> {
+        let mut stranded = self.lock_stranded();
+        let picked: Vec<String> =
+            stranded.iter().filter(|(thread, conv)| pick(thread.as_str(), conv.as_ref())).map(|(thread, _)| thread.clone()).collect();
+        picked.iter().filter_map(|thread| stranded.remove(thread)).collect()
+    }
+
+    /// 그 Thread의 대화 — 떠 있는 Session의 것, 없으면 다시 열지 못해 둔 것. 대기 줄을 읽고 고치는 명령이 쓴다.
+    fn find_queue(&self, thread: &str) -> Option<Arc<Conv>> {
+        self.find(thread).or_else(|| self.lock_stranded().get(thread).cloned())
     }
 
     /// 그 Thread가 Work에 이어졌다 — 떠 있는 Session의 판정 · 쓰기 자리가 곧바로 그 Work를 쓴다(v1 티켓 30).
@@ -321,7 +359,7 @@ impl ConversationHost {
         let file = self.read_thread_file(thread)?;
         let mut live = false;
         let mut queue = Vec::new();
-        let conv = self.threads.find(thread);
+        let conv = self.threads.find_queue(thread);
         if let Some(state) = conv.as_ref().and_then(|conv| conv.lock_found()) {
             live = state.is_up();
             queue = state.order.queue();
@@ -1034,7 +1072,8 @@ impl ConversationHost {
 
     /// 떠 있지 않거나 죽은 Session을 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 Session과 죽은 Session은 말을 보낼 때와 사람이
     /// 다시 이을 때 띄운다(three-axes 결정 19 · restart 01b-6). `thread.json`의 Session id로 resume → load → 새로 순이고, 떠 있던(죽은) Session은 쓰는 손과 대기 줄을
-    /// 그대로 이어 쓴다. 다시 뜨지 못하면 대기 줄은 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
+    /// 그대로 이어 쓴다. 다시 뜨지 못하거나 로그인을 기다리면 대기 줄이 남은 대화를 그대로 두고 다음 되살리기가 이어 쥔다 —
+    /// 대기 줄은 사람이 이미 보낸 말이라 세션이 열리면 맨 앞부터 간다(restart 스펙 「01b」 다시 잇기 · 스토리 37).
     ///
     /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다. Session마다 하나씩 돈다 — 앞선 것이 되살렸으면 아무것도 하지 않는다.
     fn revive_session(&self, thread: &str, when: Revive) -> Result<(), HostError> {
@@ -1056,12 +1095,15 @@ impl ConversationHost {
                 end_together(vec![(&mut session.agent, &*session.conv)]);
                 session.conv
             }
-            None => self.session_conv(thread, runtime.into())?,
+            None => match self.threads.unstrand(thread) {
+                Some(stranded) => stranded,
+                None => self.session_conv(thread, runtime.into())?,
+            },
         };
-        let queued = conv.lock_state().order.queued() > 0;
         let opened = self.open_session(thread, &file, Arc::clone(&conv), &env, &programs);
+        let queued = conv.lock_state().order.queued() > 0;
         if queued && self.threads.find(thread).is_none() {
-            conv.recorder.queue_changed(Vec::new());
+            self.threads.strand(thread, conv);
         }
         opened
     }
@@ -1218,9 +1260,9 @@ impl ConversationHost {
         Ok(log)
     }
 
-    /// 그 대기 id의 말을 쥔 Session의 대화.
+    /// 그 대기 id의 말을 쥔 대화 — 떠 있는 Session의 것이거나, 다시 열지 못해 둔 것.
     fn holding(&self, thread: &str, queued: &str) -> Option<Arc<Conv>> {
-        self.threads.find(thread).filter(|conv| conv.lock_found().is_some_and(|state| state.order.contains(queued)))
+        self.threads.find_queue(thread).filter(|conv| conv.lock_found().is_some_and(|state| state.order.contains(queued)))
     }
 
     /// Thread의 작업 폴더(v1 구현 스펙 S11)와 함께 여는 폴더(03 구현 스펙 §7). 함께 여는 폴더는 Runtime마다 다르다.

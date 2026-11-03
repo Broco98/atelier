@@ -334,7 +334,7 @@ export function scopeMenu(
 
 /**
  * 「대화로 만들기」(§14 S16 — 목록 「새 Service ⌄」의 기본 · Service 메뉴에 Service가 하나도 없을 때의 「대화로 Service 만들기」) — 작업공간 없는
- * 채팅과 이 입력 글. Host는 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
+ * 채팅과 이 입력 글. Runtime은 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
  */
 export const HOST_MAKE: NewThreadSearch = {
   new: "thread",

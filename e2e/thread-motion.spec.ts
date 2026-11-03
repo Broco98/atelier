@@ -18,7 +18,7 @@ import type { ThreadView } from "@/features/thread/types";
 const permission = record("thread-permission");
 const ASKED = lineOf(permission, "permission", "asked");
 const ANSWERED = lineOf(permission, "permission", "answered");
-/** 첫 말로 막 선 Thread — Host의 Session이 이 앱에 떠 있고 기록은 물음 바로 앞까지다. */
+/** 첫 말로 막 선 Thread — Runtime의 Session이 이 앱에 떠 있고 기록은 물음 바로 앞까지다. */
 const view: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(permission)[0].text, live: true, lastSeq: ASKED.seq - 1 };
 
 /**

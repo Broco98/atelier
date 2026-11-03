@@ -21,7 +21,7 @@ import type { ReadingScope } from "@/features/services/scope";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 import type { WorkView } from "@/features/works/types";
 
-// v1 티켓 40(PR ④ e2e) 흐름 하나 — **Host가 Work 만들기를 카드로 물어 사람이 만들면 Thread가 그 Work에 이어지고, 머리 줄 이름 앞에 그
+// v1 티켓 40(PR ④ e2e) 흐름 하나 — **Runtime이 Work 만들기를 카드로 물어 사람이 만들면 Thread가 그 Work에 이어지고, 머리 줄 이름 앞에 그
 // Work 이름이, 오른쪽 위에 요약 카드가 선다**(v1 티켓 30 · 34 · 37 · 구현 스펙 §11 · §15 · S31 · S32 · 스토리 97 · 104 · 112 · 02 §6 ·
 // §7). Thread 안의 입력창에는 Work 칩이 없다(02 §9 · 티켓 10 — 이은 Work는 머리 줄이 말한다. 이 판의 「채팅 안에 작업공간 칩 없음」은
 // 여기서 잰다). 이어진 Thread가 처음 고칠 때 Work 밖 Project를 묻는
@@ -106,10 +106,10 @@ const MADE = CREATED.payload as { slug: string; title: string; branch: string; p
 /** 턴이 spec 폴더에 쓴 새 문서(`Write`) — spec 기준 경로. */
 const WRITTEN = Object.keys(specWrites(work, MADE.slug));
 
-test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만들면 Thread가 그 Work에 이어져 결정 줄 · 머리 줄 Work 이름 · 요약 카드 · 사이드바 Work 줄이 서고, 턴이 쓴 문서가 문서 카드로 선다", async ({
+test("Runtime의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만들면 Thread가 그 Work에 이어져 결정 줄 · 머리 줄 Work 이름 · 요약 카드 · 사이드바 Work 줄이 서고, 턴이 쓴 문서가 문서 카드로 선다", async ({
   page,
 }) => {
-  // Work 없는 Thread가 제안 바로 앞까지 와 있다 — Host가 저장소를 읽으며 물은 승인은 모두 답했고, 이름은 Host가 바꿨다.
+  // Work 없는 Thread가 제안 바로 앞까지 와 있다 — Runtime이 저장소를 읽으며 물은 승인은 모두 답했고, 이름은 Runtime이 바꿨다.
   const view: ThreadView = { ...FIXTURE_THREAD, title: titleThrough(work, ASKED.seq), live: true, lastSeq: ASKED.seq - 1 };
   await openThread(page, view, work);
   // 첫 말 뒤의 입력창에는 트레이가 없다(restart 02b-2 — 한때 상자 위에 잠긴 Work 칩 「작업공간 없이 대화」가 섰다).
@@ -118,7 +118,7 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   const threadGroup = 사이드바(page).getByRole("region", { name: "채팅", exact: true });
   await expect(threadGroup.getByText(view.title, { exact: true })).toBeVisible();
 
-  // 제안 줄 — 입력창 자리에 카드가 선다. 이름 · 까닭, Host가 추천한 Project가 골라져 있고 브랜치는 Host가 고른 이름이다.
+  // 제안 줄 — 입력창 자리에 카드가 선다. 이름 · 까닭, Runtime이 추천한 Project가 골라져 있고 브랜치는 Runtime이 고른 이름이다.
   await streamLines(page, view.id, [ASKED]);
   const card = page.getByRole("group", { name: "이 일을 작업공간으로 묶을까요?", exact: true });
   await expect(card).toBeVisible();
@@ -202,10 +202,10 @@ type ProjectAsk = { requestId: string; project: string; reason: string; work: st
 const ASK = PROJECT_ASKED.payload as ProjectAsk;
 const TREE = PLANTED.payload as { project: string; branch: string };
 
-test("이은 Thread에서 Host가 Work 밖 Project를 고치려 하면 카드가 묻고, 「붙이고 고치기」면 그 Project가 붙어 worktree 줄이 서고 요약 카드에서 고치는 중이 된다", async ({
+test("이은 Thread에서 Runtime이 Work 밖 Project를 고치려 하면 카드가 묻고, 「붙이고 고치기」면 그 Project가 붙어 worktree 줄이 서고 요약 카드에서 고치는 중이 된다", async ({
   page,
 }) => {
-  // Work에 이은 Thread가 첫 말을 받아 Host가 `start_editing`을 부른 자리까지 왔다 — Work에는 api-server만 붙어 있고 worktree는 아직 없다.
+  // Work에 이은 Thread가 첫 말을 받아 Runtime이 `start_editing`을 부른 자리까지 왔다 — Work에는 api-server만 붙어 있고 worktree는 아직 없다.
   const view: ThreadView = {
     ...FIXTURE_THREAD,
     title: sentPayloads(project)[0].text,

@@ -360,7 +360,7 @@ test("돌던 턴이 있는 채팅이 처음 작업공간에 이으면 주소만 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** Host가 Work 밖 Project를 묻는 턴과 파일 쓰기를 묻는 턴 — 둘 다 나를 기다린다. Project 물음이 1초 먼저다. */
+/** Runtime이 Work 밖 Project를 묻는 턴과 파일 쓰기를 묻는 턴 — 둘 다 나를 기다린다. Project 물음이 1초 먼저다. */
 const projectAsk = record("thread-project");
 const PROJECT_ASKED = lineOf(projectAsk, "question", "asked");
 const permissionAsk = record("thread-permission");

@@ -278,7 +278,7 @@ pub(crate) struct TurnEnd {
     /// (워크플로 함정 14).
     pub cancelled_by_us: bool,
     /// 앱이 거절해 멈춘 턴이면 그 까닭(restart 01c-7) — 런타임은 늘 비워 넘기고, 판정을 쥔 Session의 손(`host/thread/seat.rs`)이 단다.
-    pub app_refusal: Option<String>,
+    pub app_refusal: Option<crate::policy::AppRefusal>,
 }
 
 /// 런타임의 일을 받는 곳. 수신 루프 · stderr 스레드 · 죽음을 지켜보는 스레드에서 불리므로 **이 안에서 런타임이나 호스트를 다시 부르지

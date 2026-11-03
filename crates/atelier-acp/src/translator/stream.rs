@@ -27,6 +27,8 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use super::DISCARD_MESSAGE_KEY;
+
 /// 사용량 `used`로 더하는 네 칸 — `result.usage.iterations` 마지막 원소의 것(워크플로 함정 1).
 const USED: [&str; 4] = ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"];
 
@@ -156,7 +158,7 @@ impl Stream {
     fn discard(&mut self) -> Option<Value> {
         let message = self.open.take()?;
         self.sent.retain(|(id, _), _| *id != message);
-        Some(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"discardMessage": message}}}))
+        Some(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {DISCARD_MESSAGE_KEY: message}}}))
     }
 
     /// `stream_event`의 글 조각 → ACP 조각. 메시지 id는 조각마다 실려 온다(`api_message_id`). 글이 빈 조각은 내지 않는다.

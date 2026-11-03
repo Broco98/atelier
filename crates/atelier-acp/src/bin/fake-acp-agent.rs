@@ -63,6 +63,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use atelier_acp::DISCARD_MESSAGE_KEY;
 use serde_json::{json, Value};
 
 #[path = "../fakes/codex_replay.rs"]
@@ -291,7 +292,7 @@ fn streams_then_discards(fake: &mut Fake) {
                        "content": {"type": "text", "text": text}}),
             );
         }
-        fake.update(session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"discardMessage": "msg_fake_cut"}}}));
+        fake.update(session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {DISCARD_MESSAGE_KEY: "msg_fake_cut"}}}));
         fake.wire.notify("_auth/status_update", json!({"authStatus": {"kind": "chatgpt"}}));
         if fake.await_cancel() {
             fake.wire.reply(id, json!({"stopReason": "cancelled"}));

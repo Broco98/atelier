@@ -23,7 +23,7 @@ const lineOf = (lines: readonly RecordLine[], kind: "permission" | "question", s
   return found;
 };
 
-/** 첫 말로 막 선 Thread — Host의 Session이 이 앱에 떠 있고 기록은 물음 바로 앞까지다. */
+/** 첫 말로 막 선 Thread — Runtime의 Session이 이 앱에 떠 있고 기록은 물음 바로 앞까지다. */
 const openedBefore = (lines: readonly RecordLine[], asked: RecordLine): ThreadView => ({
   ...FIXTURE_THREAD,
   title: sentPayloads(lines)[0].text,
@@ -95,7 +95,7 @@ test("승인 카드가 입력창 자리에 서서 무엇을 묻는지 보이고,
   await expect(card).toBeFocused();
   expect(await ipcCallArgs(page, "thread_answer_permission", "thread")).toEqual([]);
 
-  // 숫자 키와 ↑↓는 아무것도 고르지 않는다(S25 — 번호 줄이 단추 줄이 됐다). Enter는 「한 번만 허용」이다 — 답은 물은 참여자 · 요청 id와
+  // 숫자 키와 ↑↓는 아무것도 고르지 않는다(S25 — 번호 줄이 단추 줄이 됐다). Enter는 「한 번만 허용」이다 — 답은 그 채팅 · 요청 id와
   // 함께 가고, 다시 묻지 않기로 적지 않는다.
   for (const key of ["1", "2", "3", "ArrowDown", "ArrowUp"]) await page.keyboard.press(key);
   await expect(할말).toHaveCount(0);

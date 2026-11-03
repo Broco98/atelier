@@ -233,6 +233,28 @@ test("동작 줄이기면 바닥 따라가기와 「맨 아래로」가 한 프�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 「맨 아래로」를 누르면 원이 걷히며 포커스가 입력창(「보낼 말」)으로 돌아간다 — 내려가서 이어 쓰는 손이고, 누른 단추가 사라져 포커스가 문서
+// 맨 앞으로 떨어지지 않는다. 키보드로 눌러도 같다. 쓰던 글의 커서 자리는 그대로다.
+test("「맨 아래로」를 누르면 원이 걷히고 포커스가 입력창으로 돌아간다 — 키보드로 눌러도 같다", async ({ page }) => {
+  await openRunning(page);
+  const 보낼말 = page.getByRole("textbox", { name: "보낼 말", exact: true });
+  await 보낼말.fill("이어 쓰던 말");
+  await 보낼말.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(2, 2));
+
+  await 굴린다(page, ({ top }) => top - 500);
+  await 맨아래로(page).click();
+  await expect(맨아래로(page)).toHaveCount(0);
+  await expect(보낼말).toBeFocused();
+  expect(await 보낼말.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd]), "커서 자리 그대로").toEqual([2, 2]);
+
+  await 굴린다(page, ({ top }) => top - 500);
+  await 맨아래로(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(맨아래로(page)).toHaveCount(0);
+  await expect(보낼말).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("「맨 아래로」는 바깥 1px border-heavy 고리의 32 원이고 아래 6에서 떠오르며, 일하는 동안 점 셋이 서고 가리키면 점이 옅어지며 같은 자리에 ↓가 선다(150ms · 원 글자색 그대로)", async ({
   page,
 }) => {

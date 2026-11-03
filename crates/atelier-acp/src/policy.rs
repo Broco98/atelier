@@ -210,8 +210,46 @@ pub(crate) struct Case<'a> {
     pub cwd: &'a Path,
     /// 등록된 Project — (slug, 폴더).
     pub projects: &'a [(String, PathBuf)],
-    /// 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 돌려줄 글(§10).
-    pub seat: Option<&'a str>,
+    /// 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 그 거절(§10).
+    pub seat: Option<&'a AppRefusal>,
+}
+
+/// **앱이 편집을 거절한 까닭**(restart 01c-7 · Cards 보드 「앱이 막음」) — Runtime에게 돌려줄 글(`message`)과 그 갈래(`why`)다. 글은 모델에게 할 말이라
+/// 경로와 채팅 도구 이름이 든다. 갈래는 Codex 턴의 끝 줄(`appRefusal`)에 글과 함께 실려 화면이 사람의 말로 옮긴다 — 화면은 글의 머리를 맞춰 보지
+/// 않는다. 기록에는 `{"kind": …, 갈래의 값…, "message": …}` 한 칸으로 선다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct AppRefusal {
+    #[serde(flatten)]
+    pub why: RefusalKind,
+    pub message: String,
+}
+
+/// 앱이 편집을 거절한 갈래 — 화면이 사람의 말을 고르는 데 드는 값만 싣는다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub(crate) enum RefusalKind {
+    /// 고칠 수 있는 자리 밖의 파일 — 작업공간에 이은 채팅이면 작업공간 밖(`in_work`), 아니면 채팅 폴더 `work/` 밖이다. 그 파일이 등록된 Project
+    /// 안이면 그 Project다 — 고치려면 그 Project를 작업공간에 붙이거나(작업공간 채팅) 그 Project로 작업공간을 만든다.
+    Outside {
+        #[serde(rename = "inWork")]
+        in_work: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        project: Option<String>,
+    },
+    /// Atelier만 쓰는 채팅 기록 파일(`thread.json` · `events.jsonl` · `.policy.json`).
+    Kept,
+    /// 다른 채팅이 이 작업공간의 쓰기 자리를 쥐었다(§10) — 그 채팅의 이름.
+    Busy { chat: String },
+}
+
+impl AppRefusal {
+    /// 쓰기 자리를 쥔 채팅(§10) — 그 채팅의 이름으로 부른다.
+    pub(crate) fn busy(chat: &str) -> Self {
+        Self {
+            message: format!("「{chat}」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요"),
+            why: RefusalKind::Busy { chat: chat.to_owned() },
+        }
+    }
 }
 
 /// 판정이 내는 것(§9).
@@ -219,8 +257,8 @@ pub(crate) struct Case<'a> {
 pub(crate) enum Verdict {
     /// 묻지 않고 허용한다 — 「자동으로 허용함」 줄의 까닭과 함께.
     Allow { reason: String },
-    /// 묻지 않고 거절한다 — Runtime에게 돌려줄 글과 함께.
-    Refuse { message: String },
+    /// 묻지 않고 거절한다 — Runtime에게 돌려줄 글과 그 갈래.
+    Refuse { refusal: AppRefusal },
     /// 사람에게 묻는다 — 카드 종류와 왜 묻는지와 함께. `grant`는 사람이 「다시 묻지 않기」를 고르면 줄 허락(허락의 이름들)이고, 비었으면
     /// 그 선택지가 서지 않는다(머리말).
     Ask { card: Card, policy: String, grant: Vec<String> },
@@ -232,7 +270,7 @@ pub(crate) fn judge(case: &Case) -> Verdict {
         return bounded;
     }
     if let (Act::Edit(_), Some(busy)) = (case.act, case.seat) {
-        return Verdict::Refuse { message: busy.to_owned() };
+        return Verdict::Refuse { refusal: busy.clone() };
     }
     let (level, grants) = match case.rules {
         Rules::Claude { level, grants } => (level, grants),
@@ -273,10 +311,10 @@ fn app_boundary(case: &Case) -> Option<Verdict> {
             // 기록 파일은 고칠 수 있는 자리(`work/`) 밖이지만, 밖이라는 글보다 기록이라는 글이 Runtime에게 맞다.
             let kept = paths.iter().find(|path| case.kept.iter().any(|kept| path.starts_with(kept) || kept.starts_with(path)));
             if let Some(kept) = kept {
-                return Some(Verdict::Refuse { message: kept_message(kept) });
+                return Some(Verdict::Refuse { refusal: kept_refusal(kept) });
             }
             let outside = paths.iter().find(|path| !case.roots.iter().any(|root| path.starts_with(root)));
-            outside.map(|outside| Verdict::Refuse { message: outside_message(outside, case) })
+            outside.map(|outside| Verdict::Refuse { refusal: outside_refusal(outside, case) })
         }
         Act::Command(text) if mentions_kept(text, case.kept, case.cwd) => ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"),
         _ => None,
@@ -306,32 +344,35 @@ fn by_level(act: &Act, level: AskLevel) -> Verdict {
     }
 }
 
-/// 밖 편집의 글 — 등록된 Project 안이면 그 Project의 worktree를 세우는(Work에 없으면 붙일지 묻는) Thread 도구를 가리킨다. Work가
+/// 밖 편집의 거절 — 등록된 Project 안이면 그 Project의 worktree를 세우는(Work에 없으면 붙일지 묻는) Thread 도구를 가리킨다. Work가
 /// 없는 Thread면 붙일 Work가 없으므로 Work 만들기 제안부터다. Work 없는 Thread의 자리는 채팅 폴더가 아니라 그 안 `work/`다(스펙
 /// 「01c — Codex」 작업 폴더).
-fn outside_message(path: &Path, case: &Case) -> String {
+fn outside_refusal(path: &Path, case: &Case) -> AppRefusal {
     let place = if case.in_work { "작업공간" } else { "`work/`" };
     let head = format!("{place} 밖의 파일이라 고칠 수 없어요: {}", path.display());
     let start = crate::thread_tools::START_EDITING;
-    match case.projects.iter().find(|(_, folder)| path.starts_with(folder)) {
-        Some((project, _)) if case.in_work => {
+    let project = case.projects.iter().find(|(_, folder)| path.starts_with(folder)).map(|(project, _)| project.clone());
+    let message = match &project {
+        Some(project) if case.in_work => {
             format!("{head} — `{project}` Project를 고치려면 먼저 채팅 도구 `{start}`(Project 고치기 시작)을 부르세요")
         }
-        Some((project, _)) => format!(
+        Some(project) => format!(
             "{head} — `{project}` Project를 고치려면 먼저 채팅 도구 `{}`로 그 Project를 넣은 작업공간을 만든 뒤 `{start}`을 부르세요",
             crate::thread_tools::PROPOSE_WORK
         ),
         None if case.in_work => format!("{head} — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
         None => format!("{head} — 작업공간이 없는 채팅은 채팅 폴더의 `work/` 안에서만 고쳐요"),
-    }
+    };
+    AppRefusal { why: RefusalKind::Outside { in_work: case.in_work, project }, message }
 }
 
-/// Atelier만 쓰는 파일의 글 — Work 밖 거절과 같은 꼴이다.
-fn kept_message(path: &Path) -> String {
-    format!(
+/// Atelier만 쓰는 파일의 거절 — Work 밖 거절과 같은 꼴의 글이다.
+fn kept_refusal(path: &Path) -> AppRefusal {
+    let message = format!(
         "채팅 기록이라 고칠 수 없어요: {} — 채팅 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요",
         path.display()
-    )
+    );
+    AppRefusal { why: RefusalKind::Kept, message }
 }
 
 /// 명령 글에 Atelier만 쓰는 Thread 파일이 나오나(코드 리뷰 2차 A3) — 글자로만 본다. 경로 낱말의 마디에 `<Thread 폴더>/<그 파일>`이
@@ -515,7 +556,7 @@ mod tests {
         kept: Vec<PathBuf>,
         cwd: PathBuf,
         projects: Vec<(String, PathBuf)>,
-        seat: Option<String>,
+        seat: Option<AppRefusal>,
     }
 
     impl Given {
@@ -544,7 +585,7 @@ mod tests {
                 kept: &self.kept,
                 cwd: &self.cwd,
                 projects: &self.projects,
-                seat: self.seat.as_deref(),
+                seat: self.seat.as_ref(),
             })
         }
     }
@@ -565,8 +606,20 @@ mod tests {
         Verdict::Allow { reason: reason.to_owned() }
     }
 
-    fn refuse(message: &str) -> Verdict {
-        Verdict::Refuse { message: message.to_owned() }
+    fn refuse(why: RefusalKind, message: &str) -> Verdict {
+        Verdict::Refuse { refusal: AppRefusal { why, message: message.to_owned() } }
+    }
+
+    fn outside(in_work: bool, project: Option<&str>) -> RefusalKind {
+        RefusalKind::Outside { in_work, project: project.map(str::to_owned) }
+    }
+
+    /// 판정이 낸 거절의 갈래 — 거절이 아니면 없다.
+    fn refused_why(verdict: Verdict) -> Option<RefusalKind> {
+        match verdict {
+            Verdict::Refuse { refusal } => Some(refusal.why),
+            _ => None,
+        }
     }
 
     /// 앱 경계 · 계획 넘어가기 · 그 밖의 도구의 물음 — 「다시 묻지 않기」가 없다.
@@ -580,6 +633,11 @@ mod tests {
     }
 
     const BUSY: &str = "「장바구니」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요";
+
+    /// 「장바구니」 채팅이 쓰기 자리를 쥐었다.
+    fn busy() -> AppRefusal {
+        AppRefusal::busy("장바구니")
+    }
 
     /// 물어보는 정도 넷 — 표를 도는 시험이 쓴다.
     const LEVELS: [AskLevel; 4] = [AskLevel::Always, AskLevel::Edits, AskLevel::Plan, AskLevel::Auto];
@@ -675,14 +733,14 @@ mod tests {
             let mut given = Given::act(act);
             given.level = level;
             given.grants = names(&["edit", "Bash(cat *)"]);
-            given.seat = Some(BUSY.to_owned());
+            given.seat = Some(busy());
             given.cwd = "/t/20261023-101010/work".into();
             given.judged()
         };
         for level in LEVELS {
-            assert!(matches!(judged(edit("/etc/hosts"), level), Verdict::Refuse { message } if message.contains("밖의 파일")), "{level:?} 밖 편집");
+            assert_eq!(refused_why(judged(edit("/etc/hosts"), level)), Some(outside(true, None)), "{level:?} 밖 편집");
             let kept = judged(edit("/t/20261023-101010/events.jsonl"), level);
-            assert!(matches!(kept, Verdict::Refuse { message } if message.starts_with("채팅 기록이라")), "{level:?} 기록 파일 편집");
+            assert_eq!(refused_why(kept), Some(RefusalKind::Kept), "{level:?} 기록 파일 편집");
             assert_eq!(
                 judged(Act::Edit(Vec::new()), level),
                 ask(Card::Edit, "경로를 읽을 수 없는 편집이라 묻기"),
@@ -714,29 +772,30 @@ mod tests {
         assert_eq!(judged(Act::App), allow("앱 기능 도구"), "앱 기능 도구는 카드 없이 지나간다");
 
         // 앱 경계는 Codex에도 먼저 걸린다.
-        assert!(matches!(judged(edit("/etc/hosts")), Verdict::Refuse { message } if message.contains("밖의 파일")), "작업공간 밖 편집");
+        assert_eq!(refused_why(judged(edit("/etc/hosts"))), Some(outside(true, None)), "작업공간 밖 편집");
         let kept = judged(edit("/t/20261023-101010/events.jsonl"));
-        assert!(matches!(kept, Verdict::Refuse { message } if message.starts_with("채팅 기록이라")), "기록 파일 편집");
+        assert_eq!(refused_why(kept), Some(RefusalKind::Kept), "기록 파일 편집");
         assert_eq!(judged(Act::Edit(Vec::new())), ask(Card::Edit, "경로를 읽을 수 없는 편집이라 묻기"));
         let mentioned = judged(command("rm ../../threads/20261023-101010/events.jsonl"));
         assert_eq!(mentioned, ask(Card::Command, "채팅 기록을 건드리기 전에 묻기"));
 
         // 쓰기 자리를 다른 채팅이 쥔 편집은 거절한다.
         let mut busy = codex(edit("/w/cart/trees/fe/src/cart.ts"));
-        busy.seat = Some(BUSY.to_owned());
-        assert_eq!(busy.judged(), refuse(BUSY));
+        busy.seat = Some(self::busy());
+        assert_eq!(busy.judged(), refuse(RefusalKind::Busy { chat: "장바구니".into() }, BUSY));
     }
 
     #[test]
     fn 판정은_앱_경계_쓰기_자리_허락_물어보는_정도의_차례로_처음_걸린_것을_낸다() {
         // 모든 칸에 걸리는 편집 하나에서 앞 칸을 하나씩 걷어 낸다 — 걷을 때마다 다음 칸이 답한다.
         let mut given = Given::act(edit("/repos/fe/src/cart.ts"));
-        given.seat = Some(BUSY.to_owned());
+        given.seat = Some(busy());
         given.grants = names(&["edit"]);
         given.level = AskLevel::Auto;
         assert_eq!(
             given.judged(),
             refuse(
+                outside(true, Some("fe")),
                 "작업공간 밖의 파일이라 고칠 수 없어요: /repos/fe/src/cart.ts — `fe` Project를 고치려면 먼저 채팅 도구 \
                  `start_editing`(Project 고치기 시작)을 부르세요"
             ),
@@ -744,7 +803,7 @@ mod tests {
         );
 
         given.act = edit("/w/cart/trees/fe/src/cart.ts");
-        assert_eq!(given.judged(), refuse(BUSY), "2. 쓰기 자리");
+        assert_eq!(given.judged(), refuse(RefusalKind::Busy { chat: "장바구니".into() }, BUSY), "2. 쓰기 자리");
 
         given.seat = None;
         assert_eq!(given.judged(), allow("이 Work에서는 다시 묻지 않기"), "3. 허락");
@@ -995,17 +1054,18 @@ mod tests {
         assert_eq!(judged("/w/cart/trees/fe/a.ts", true), allow("묻지 않음"));
         assert_eq!(
             judged("/w/cart/trees/fe-old/a.ts", true),
-            refuse("작업공간 밖의 파일이라 고칠 수 없어요: /w/cart/trees/fe-old/a.ts — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
+            refuse(outside(true, None), "작업공간 밖의 파일이라 고칠 수 없어요: /w/cart/trees/fe-old/a.ts — 이 작업공간의 worktree · spec 폴더 안에서만 고쳐요"),
             "경로는 낱말(폴더) 단위로 견준다 — 경로 하나라도 밖이면 거절이다"
         );
         // Work 없는 Thread — 고칠 수 있는 자리는 Thread 폴더가 아니라 그 안 `work/`다(스펙 「01c — Codex」 작업 폴더).
         let no_work = "작업공간이 없는 채팅은 채팅 폴더의 `work/` 안에서만 고쳐요";
         for path in ["/etc/hosts", "/t/20261023-101010/notes.md", "/t/20261023-101010/work-old/a.md"] {
-            assert_eq!(judged(path, false), refuse(&format!("`work/` 밖의 파일이라 고칠 수 없어요: {path} — {no_work}")), "{path}");
+            assert_eq!(judged(path, false), refuse(outside(false, None), &format!("`work/` 밖의 파일이라 고칠 수 없어요: {path} — {no_work}")), "{path}");
         }
         assert_eq!(
             judged("/repos/fe/a.ts", false),
             refuse(
+                outside(false, Some("fe")),
                 "`work/` 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 채팅 도구 `propose_work`로 \
                  그 Project를 넣은 작업공간을 만든 뒤 `start_editing`을 부르세요"
             )
@@ -1024,9 +1084,10 @@ mod tests {
             given.judged()
         };
         let refused = |path: &str| {
-            refuse(&format!(
-                "채팅 기록이라 고칠 수 없어요: {path} — 채팅 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요"
-            ))
+            refuse(
+                RefusalKind::Kept,
+                &format!("채팅 기록이라 고칠 수 없어요: {path} — 채팅 폴더의 `thread.json` · `events.jsonl` · `.policy.json`은 Atelier만 써요"),
+            )
         };
         for path in [
             "/t/20261023-101010/thread.json",
@@ -1037,7 +1098,7 @@ mod tests {
             assert_eq!(judged(path), refused(path), "{path}");
         }
         assert!(
-            matches!(judged("/t/20261023-101010/thread.json.md"), Verdict::Refuse { message } if message.starts_with("`work/` 밖의")),
+            matches!(judged("/t/20261023-101010/thread.json.md"), Verdict::Refuse { refusal } if refusal.message.starts_with("`work/` 밖의")),
             "경로는 마디 단위로 견준다"
         );
         for path in ["/t/20261023-101010/work/notes.md", "/t/20261023-101010/work/thread.json", "/t/20261023-101010/work/.policy.json"] {

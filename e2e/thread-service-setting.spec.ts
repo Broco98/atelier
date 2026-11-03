@@ -6,7 +6,7 @@ import { lineOf, linesAfter, linesThrough, record, seqOf, streamLines, summaryOf
 import { PAYMENTS, REFUND, SCOPE_BY_SERVICE, SCOPES, SETTLEMENT, TOOLS, WORLD, WORLD_PROJECTS, WORLD_SERVICE_DETAILS } from "./thread-service-world";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
-// 03 티켓 13 흐름 「대화 속 Service와 설정」(캔버스 v52 F4-KitChat) — **Host가 다루는 Project로 Service를 붙일 때 물을 땐 지금의 질문 카드로
+// 03 티켓 13 흐름 「대화 속 Service와 설정」(캔버스 v52 F4-KitChat) — **Runtime이 다루는 Project로 Service를 붙일 때 물을 땐 지금의 질문 카드로
 // 묻고(답하면 한 줄로 접힌다), 「묻지 않음」면 묻지 않고 회색 한 줄만 남기며, Service가 바뀔 때마다 흐름에 그 한 줄이 선다. 대화로 한 설정은 결과
 // 카드 한 장이고 「열기」가 그 화면으로 간다. git이 아닌 폴더는 화면 추가 창과 같은 질문 카드로 묻는다. Work 없는 대화의 머리 줄은 「흐린
 // Service / 이름」이고, Work 화면 머리 줄의 흐린 Service는 Service 메뉴를 연다**(03 구현 스펙 §9 · §10 · §11 · §12 · 티켓 05 · 06 · 07 · 08 · 12).
@@ -16,9 +16,9 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 //                   줄이 오면 따라오는 머리 줄 · 결과 카드 넷과 「열기」(목록에 없으면 꺼짐) · Project 추가 질문 카드와 답한 뒤 ·
 //                   머리 줄 셋(Work 없음 · Service 없음 / Work 없음 · Service 있음 / Work 화면 · Service 메뉴) · Work 만들기 카드의 Service 줄
 //   다른 spec이 잰다 트레이의 범위 칩 · 범위 줄(흐름 「트레이」 — `thread-tray`) · Work 만들기 카드의 나머지와 받아들인 뒤(`thread-work`) ·
-//                   지우기 확인 창 · 토스트(흐름 「Service」 — 13c) · 「지우기를 부탁받음」(Host의 말 — 진짜 앱 손 점검, 13d)
+//                   지우기 확인 창 · 토스트(흐름 「Service」 — 13c) · 「지우기를 부탁받음」(Runtime의 말 — 진짜 앱 손 점검, 13d)
 //
-// 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Host가 물은 Service 카드(`thread-service-ask`) · 「묻지 않음」 붙임(`thread-service-attached`) · 사람이
+// 줄은 L1이 축복한 기록을 그대로 쏜다(스토리 137) — Runtime이 물은 Service 카드(`thread-service-ask`) · 「묻지 않음」 붙임(`thread-service-attached`) · 사람이
 // 칩으로 붙이고 뺀 대화(`thread-service`) · 이은 Service가 지워지고 되돌려진 대화(`thread-service-deleted`) · 대화로 한 설정 넷(`thread-setting`) ·
 // git이 아닌 폴더의 추가(`thread-project-add`). Work 만들기 카드의 Service 줄만 축복한 장면이 없어, Work 만들기 기록(`thread-work`)의 물음 줄에
 // L1(`thread_work.rs` 「thread의 service는 work 만들기 카드에 서고 …」)이 잰 그 칸 하나를 더한다. 세계는 그 기록의 세계와 이름이 같은 시안의
@@ -85,14 +85,14 @@ const asking = record("thread-service-ask");
 const SERVICE_ASKED = lineOf(asking, "question", "asked");
 const SERVICE_REQUEST = (SERVICE_ASKED.payload as { requestId: string }).requestId;
 
-test("Service 질문 카드 — Host가 물으면 입력창 자리에 「Claude Code · 질문」 카드가 추천 · 다른 후보 · Service 없이를 세우고, ↵ · ↓↵ · 3 · esc가 그 답으로 가며, 답하면 한 줄로 접힌다", async ({
+test("Service 질문 카드 — Runtime이 물으면 입력창 자리에 「Claude Code · 질문」 카드가 추천 · 다른 후보 · Service 없이를 세우고, ↵ · ↓↵ · 3 · esc가 그 답으로 가며, 답하면 한 줄로 접힌다", async ({
   page,
 }) => {
   const view = threadOf("20261025-090000", asking, { live: true, lastSeq: SERVICE_ASKED.seq });
   await withThreads(page, [{ view, lines: asking }]);
   await openThread(page, view);
 
-  // 카드(F4-KitChat 「질문 카드」) — 따로 그린 카드가 아니라 지금의 질문 카드다. 머리 · 물음 · 아래 한 줄, 번호 줄은 추천(Host가 넘긴 Service)
+  // 카드(F4-KitChat 「질문 카드」) — 따로 그린 카드가 아니라 지금의 질문 카드다. 머리 · 물음 · 아래 한 줄, 번호 줄은 추천(Runtime이 넘긴 Service)
   // 먼저 · 다른 후보 · 「Service 없이」(등록된 전부를 읽는다)다. 바닥은 「↑↓ 고르기 · esc 닫기」와 「나중에」 · 「고르기 ↵」.
   const card = page.getByRole("group", { name: "어느 Service에서 할까요?", exact: true });
   await expect(card).toBeVisible();
@@ -298,7 +298,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
   await openThread(page, view);
 
   // 카드(F4-KitChat 「git이 아닌 폴더를 부탁받음」) — 「git init 하고 추가」(추천 · 빈 레포를 만들고 기준 브랜치 main) · 「추가하지 않기」, 바닥은
-  // 「고르기 ↵」 하나다(미루면 Host가 할 일이 없다 — 03 결정 「12」).
+  // 「고르기 ↵」 하나다(미루면 Runtime이 할 일이 없다 — 03 결정 「12」).
   const card = page.getByRole("group", { name: ADD_QUESTION, exact: true });
   await expect(card).toBeVisible();
   await expect(card).toContainText("Claude Code · 질문");

@@ -1,7 +1,7 @@
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 import { expect, test, type Locator, type Page } from "./evidence";
 import { WORK_CHATS, workChatAnswers } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls, 토큰색 } from "./harness";
+import { installFixtureBackend, ipcArgs, unknownIpcCalls, 토큰색 } from "./harness";
 import { linesAfter, linesThrough, record, seqOf, streamLines } from "./thread-records";
 
 // restart 02b-9a — **바뀐 파일 알약의 때 · 셈 · 모양**(restart 02b-9b · Cards 보드 「바뀐 파일 알약」 · States 08 · 13 · 14 · 15 · `시안-비교/02b-9b/차이.md`
@@ -80,6 +80,30 @@ test("알약은 도는 동안 없고 턴이 끝나면 chip-in으로 서며(34 ·
   await streamLines(page, working.id, [next]);
   await expect(흐름(page).getByText("이어서 테스트도 돌려 줘", { exact: true })).toBeVisible();
   await expect(알약(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// SummarySheet 표 넷째 줄 — 「바뀐 파일 알약의 검토」는 문서 카드 · PR의 「변경 사항 보기」처럼 카드를 넓힌다: spec 패널과 사이드바가 접히고 넓힌
+// 카드가 그 턴이 바꾼 파일의 변경을 연다. 녹음의 작업 폴더(`/tmp/gate/ws/g3/wt`)를 이 작업공간의 `billing` worktree로 옮겨 쓴다.
+test("「검토」를 누르면 카드가 넓어져 그 턴이 바꾼 파일의 변경을 열고, spec 패널과 사이드바가 접힌다", async ({ page }) => {
+  const tree = "/Users/tester/.atelier/works/pinned-work/trees/billing";
+  const moved = JSON.parse(JSON.stringify(twoTurns).split("/tmp/gate/ws/g3/wt").join(tree)) as RecordLine[];
+  const done: ThreadView = { ...chat, live: true, lastSeq: moved[moved.length - 1].seq };
+  await installFixtureBackend(page, workChatAnswers([done], { [done.id]: moved }));
+  await page.goto(`/works/${chat.work}?tab=chat&thread=${done.id}`);
+  const pill = 알약(page);
+  await expect(pill).toHaveAccessibleName("1개 파일 변경됨", { timeout: 20_000 });
+  const 패널 = page.getByRole("region", { name: "작업공간 패널", exact: true });
+  await expect(패널).toBeVisible();
+
+  await pill.getByRole("button", { name: "검토", exact: true }).click();
+
+  await expect(page.locator('section[data-expanded] [data-viewer="change"]')).toBeVisible();
+  await expect.poll(() => ipcArgs(page, "read_work_diff", "path")).toEqual([expect.objectContaining({ project: "billing", path: "notes.txt" })]);
+  await expect(패널).toHaveCount(0);
+  await expect.poll(() => page.locator("aside[data-sidebar]").evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBeLessThan(20);
+  // 그 턴의 작업 로그는 펼치지 않는다 — 넓힌 카드가 그 자리다.
+  await expect(흐름(page).getByRole("group", { name: "생성됨 notes.txt", exact: true })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

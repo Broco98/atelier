@@ -364,6 +364,8 @@ function ThreadComposer({
             <textarea
               ref={field}
               aria-label="보낼 말"
+              // 화면이 포커스를 돌려줄 자리(「맨 아래로」 — `ThreadScreen`).
+              data-composer-field=""
               rows={1}
               value={draft}
               readOnly={busy}

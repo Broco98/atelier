@@ -25,7 +25,7 @@ use std::sync::Arc;
 use atelier_core::{PolicyPlace, Runtime};
 
 use super::seat::{allowing, options_of, rejecting, Writer};
-use crate::policy::{self, Act, AskLevel, Card, Case, Rules, Verdict};
+use crate::policy::{self, Act, AppRefusal, AskLevel, Card, Case, Rules, Verdict};
 use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 
 /// Session 하나의 판정 문 — Session을 열 때마다 짓는다.
@@ -90,7 +90,7 @@ impl Gate {
             kept: &kept,
             cwd: &cwd,
             projects: &projects,
-            seat: seat.as_deref(),
+            seat: seat.as_ref(),
         });
         let options = options_of(&asked.request);
         // 판정의 답으로 닫지 못해 묻는 것(고를 선택지가 없다) — 판정이 넘기지 않을 일이라 「다시 묻지 않기」를 주지 않는다.
@@ -106,18 +106,18 @@ impl Gate {
                 }
                 Judgement::Decide(Ruling { option_id, reason })
             }
-            Verdict::Refuse { message } => self.refuse(asked, &act, options, message, unsure),
+            Verdict::Refuse { refusal } => self.refuse(asked, &act, options, refusal, unsure),
             Verdict::Ask { card, policy, grant } => self.ask(asked, &act, options, Asking { card, policy, grant }),
         }
     }
 
-    /// 거부 선택지로 닫는다 — 없으면 묻는다. 닫으면 그 글을 쓰기 자리 손에 적어 둔다 — Codex는 그 글을 읽지 않고 턴을 `cancelled`로
-    /// 끝내므로, 그 끝 줄에 까닭을 단다(restart 01c-7, [`super::seat::Writer::refused`]).
-    fn refuse(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, message: String, unsure: Asking) -> Judgement {
+    /// 거부 선택지로 닫는다 — 없으면 묻는다. 닫으면 그 거절을 쓰기 자리 손에 적어 둔다 — Codex는 그 글을 읽지 않고 턴을 `cancelled`로
+    /// 끝내므로, 그 끝 줄에 까닭을 단다(restart 01c-7, [`super::seat::Writer::refused`]). Runtime에게는 글이 간다.
+    fn refuse(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, refusal: AppRefusal, unsure: Asking) -> Judgement {
         match rejecting(&options) {
             Some(option_id) => {
-                self.writer.refused(&message);
-                Judgement::Decide(Ruling { option_id, reason: message })
+                self.writer.refused(&refusal);
+                Judgement::Decide(Ruling { option_id, reason: refusal.message })
             }
             None => self.ask(asked, act, options, unsure),
         }

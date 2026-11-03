@@ -68,6 +68,8 @@ describe("결과 카드의 모양", () => {
   it("글리프 상자는 32 · 둥근 8이고 글리프는 15, 단추는 28 알약이다", () => {
     expect(classes(/<span class="([^"]*size-8[^"]*)"/)).toEqual(expect.arrayContaining(["rounded-md", "bg-fill-soft"]));
     expect(markup).toMatch(/<svg[^>]*class="[^"]*\bsize-3\.75\b/);
-    expect(classes(/<button[^>]*class="([^"]*)"/)).toEqual(expect.arrayContaining(["h-7", "rounded-full", "px-3", "font-normal"]));
+    const button = classes(/<button[^>]*class="([^"]*)"/);
+    expect(button).toEqual(expect.arrayContaining(["h-7", "rounded-full", "px-3", "inset-ring-border-heavy"]));
+    expect(button).not.toContain("font-medium");
   });
 });

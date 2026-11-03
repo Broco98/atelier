@@ -384,7 +384,7 @@ test("요약 카드 — 첫 화면에는 없고, Work 없는 Thread에는 소스
 test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작업공간의 모든 편집 허용」이고, 고르면 다시 묻지 않기로 적어 답한다. 카드는 입력창 자리의 한 겉이다", async ({
   page,
 }) => {
-  // Work를 만든 뒤 Host가 spec 폴더에 첫 문서를 쓰려고 묻기 바로 앞이다.
+  // Work를 만든 뒤 Runtime이 spec 폴더에 첫 문서를 쓰려고 묻기 바로 앞이다.
   const ASKED = made.find((line) => line.kind === "permission" && line.seq > seqOf(made, "work") && (line.payload as { state: string }).state === "asked")!;
   const view: ThreadView = { ...linkedView, live: true, lastSeq: ASKED.seq - 1 };
   await openThread(page, view, linesThrough(made, view.lastSeq), { list_works: [...WORKS, workView(MADE)] });
@@ -423,7 +423,7 @@ test("승인 카드 — Work에 이은 Thread에서는 늘 허용이 「이 작�
 });
 
 const TWO_SECOND_SENT = seqOf(twoTurns, "sent", 2);
-/** 둘째 턴이 도는 Thread — 이 앱에 Host의 Session이 떠 있고 기록은 둘째 턴의 첫 도구까지다. */
+/** 둘째 턴이 도는 Thread — 이 앱에 Runtime의 Session이 떠 있고 기록은 둘째 턴의 첫 도구까지다. */
 const runningView: ThreadView = {
   ...FIXTURE_THREAD,
   live: true,
