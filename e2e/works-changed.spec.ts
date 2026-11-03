@@ -78,10 +78,14 @@ test("작업 화면 · Service 상세 · 아카이브에 차례로 서도 works:
   await expect(page.getByRole("region", { name: "작업공간", exact: true }).getByRole("link", { name: serviceWork.title })).toBeVisible();
   expect(await liveSubscriptions(page, EVENT), "Service 상세").toBe(1);
 
+  // 사이드바 「Archive」는 목록이다(restart 03-4 — 한때 마지막으로 보던 아카이브 `/archive/<slug>`로 곧장 갔다). 줄을 눌러 상세로 간다.
   await 가는곳으로간다(page, "Archive");
+  await expect(page).toHaveURL("/archive");
+  expect(await liveSubscriptions(page, EVENT), "아카이브 목록").toBe(1);
+  await page.getByRole("table", { name: "Archive 목록", exact: true }).getByRole("link", { name: shipped.title, exact: true }).click();
   await expect(page).toHaveURL(`/archive/${shipped.slug}`);
   await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
-  expect(await liveSubscriptions(page, EVENT), "아카이브").toBe(1);
+  expect(await liveSubscriptions(page, EVENT), "아카이브 상세").toBe(1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

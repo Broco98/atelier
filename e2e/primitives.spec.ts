@@ -214,14 +214,15 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
 // 것(`focus-ring`) 전부로 넓힌다. 링은 포커스가 있어야 칠해지지만 자르는 상자의 기하는 포커스와 상관없다 — 그래서 포커스 없이
 // 상자만 잰다. 넘침을 자르는 상자(구르는 목록 · 접히는 구획 · 가로로 구르는 탭 줄)의 끝에 붙어 선 것은 그 변의 링이 통째로
 // 사라진다 — 한 자리를 고쳐도 옆 화면의 같은 모양이 남았다(셸 탭 줄 · 사이드바 구획 · 프로젝트 · 아카이브 목록의 첫 행 ·
-// 아카이브 문서 트리 · 편집기 트리). 굴러서 상자 밖으로 나간 것과 접힌 구획 안의 것은 세지 않는다(`잘린링`). 03이 세운 Projects ·
-// Service의 목록 · 상세도 같은 상자 안에 선다(표의 이름 · ⋯, 레일의 칸).
+// 아카이브 문서 트리 · 편집기 트리). 굴러서 상자 밖으로 나간 것과 접힌 구획 안의 것은 세지 않는다(`잘린링`). 공용 목록 · 상세 틀(restart
+// 03-1 ~ 03-4 — Projects · Services · Archive)도 같은 상자 안에 선다(표의 이름 링크 · ⋯, 위 카드의 기준 브랜치, 문서 트리).
 test("링을 다는 것은 어느 화면에서도 넘침을 자르는 상자에 링이 잘리지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   const 화면들: [string, Locator][] = [
     ["/projects", page.getByRole("table", { name: "Project 목록", exact: true })],
-    [`/projects/${project.slug}`, page.getByRole("complementary", { name: "Project 정보", exact: true })],
+    [`/projects/${project.slug}`, page.getByRole("combobox", { name: "기준 브랜치", exact: true })],
     ["/services", page.getByRole("table", { name: "Service 목록", exact: true })],
+    ["/archive", page.getByRole("table", { name: "Archive 목록", exact: true })],
     [`/archive/${ARCHIVE[0].slug}`, page.getByRole("heading", { name: "기록 — 치운 일" })],
     ["/processes", processesTitle(page)],
     ["/settings/terminal", page.getByRole("textbox", { name: "터미널 글꼴", exact: true })],
@@ -270,8 +271,9 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   // 03이 Projects를 시안의 표로 바꿔(알약 찾기 칸 · 둥근 「Project 추가」) DS 부품의 자리는 설정 머리 줄 · Archive 목록 머리로 옮겼다.
   await page.goto("/settings/terminal");
 
-  // 머리 줄의 글자 버튼 — `Button`의 `top`(28 · `radius-lg` — 머리 줄의 아이콘 단추와 같은 높이, 02 결정 「머리 줄은 한 결이다(03 뒤)」).
-  // 머리 줄에 서는 단추는 모두 28이다(창 컨트롤 · 작업 ⋯ · 요약 카드와 같다). 한때 머리 카드의 24 · `radius-md`였다. 설정의 「저장」이 그 단이다.
+  // 머리 줄의 글자 버튼 — `Button`의 `top`(28 · 완전히 둥글게 — 머리 줄의 아이콘 단추와 같은 높이, 02 결정 「머리 줄은 한 결이다(03 뒤)」). 머리
+  // 줄에 서는 단추는 모두 28이다(창 컨트롤 · 작업 ⋯ · 요약 카드와 같다). 둥글기는 시안의 글자 단추가 모두 그런 `radius-full`이다(restart 03-12a —
+  // 한때 `radius-lg` 10). 한때 머리 카드의 24 · `radius-md`였다. 설정의 「저장」이 그 단이다.
   const 버튼반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   expect(버튼반경, "radius-lg").toBe("10px");
   const 작은반경 = await 토큰값(page, "border-top-left-radius", "--radius-md");
@@ -281,7 +283,7 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   expect(
     await 칠한값(화면머리(page).getByRole("button", { name: "저장", exact: true }), "height", "border-top-left-radius"),
     "머리 줄의 글자 버튼",
-  ).toEqual([컨트롤, 버튼반경]);
+  ).toEqual([컨트롤, "9999px"]);
 
   // 입력칸 — DS `.at-input`(32 · `radius-md`).
   expect(
@@ -296,22 +298,21 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
     "카드 안의 글자 버튼",
   ).toEqual(["32px", 버튼반경]);
 
-  // Archive 목록 머리 — 아이콘 버튼(정렬 · 거르기)은 Codex `IconButton`(`size-control` 정사각 · `radius-lg`)이다. 동그란 아이콘 버튼은
-  // 걷혔다. 검색칸은 DS `.at-search`(32 · `radius-lg` · `fill-soft` 면) — 알약이 아니다.
+  // 목록의 찾기 칸은 보드 `.pl-search`(34 · 완전히 둥글게 — restart 03-1 · 03-4 공용 목록 틀)다. 한때 Archive 목록 머리의 DS `.at-search`(32 ·
+  // `radius-lg` · `fill-soft` 면)와 아이콘 버튼(정렬 · 거르기 — Codex `IconButton`)이 이 자리였다 — 03-4가 Archive를 공용 목록 틀로 옮기며 걷었다.
   await page.goto("/archive");
   expect(
-    await 칠한값(
-      page.getByRole("button", { name: "정렬 · 거르기", exact: true }),
-      "width",
-      "height",
-      "border-top-left-radius",
-    ),
+    await 칠한값(page.getByRole("searchbox", { name: "Archive 찾기", exact: true }).locator(".."), "height", "border-top-left-radius"),
+    "목록 찾기 칸",
+  ).toEqual(["34px", "9999px"]);
+
+  // 창 안의 아이콘 버튼 — Codex `IconButton`(`size-control` 정사각 · `radius-lg`, Project 추가 창의 「닫기」). 동그란 아이콘 버튼은 걷혔다.
+  await page.goto("/projects");
+  await page.getByRole("button", { name: "Project 추가", exact: true }).click();
+  expect(
+    await 칠한값(page.getByRole("dialog", { name: "Project 추가", exact: true }).getByRole("button", { name: "닫기", exact: true }), "width", "height", "border-top-left-radius"),
     "아이콘 버튼",
   ).toEqual([컨트롤, 컨트롤, 버튼반경]);
-  expect(
-    await 칠한값(page.locator("[data-slot=input-group]"), "height", "border-top-left-radius", "background-color"),
-    "검색칸",
-  ).toEqual(["32px", 버튼반경, await 토큰색(page, "--fill-soft")]);
 
   // 머리 줄의 아이콘 버튼 — 작업 ⋯와 요약 카드도 `size-control` 28 정사각이다. 머리 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가
   // 다르면 하나만 튀어 보인다. 둥글기는 시안 `.ra-tbtn`의 4(`radius-ctl`)다(restart 02b-6b — 셸 컨트롤 넷과 같다, 한때 `radius-lg` 10). 한때 머리

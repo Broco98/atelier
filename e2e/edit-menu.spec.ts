@@ -103,17 +103,21 @@ const 고름 = (field: Locator) =>
 // ── 입력칸 ──
 
 /**
- * 메뉴를 받는 칸들. `ring`은 대상 테두리가 서는 자리 — 그 칸이 포커스 링을 입는 자리다. 검색칸은 감싼 상자가 입고(`InputGroup`),
+ * 메뉴를 받는 칸들. `ring`은 대상 테두리가 서는 자리 — 그 칸이 포커스 링을 입는 자리다. 목록의 찾기 칸은 감싼 상자가 입고(`PlaceSearch`),
  * 링을 두지 않는 칸(팔레트의 입력 줄)은 `null`이다. 칸은 **메뉴가 열린 동안에도 찾는다**(`includeHidden`) — 메뉴가 열리면 부품이
  * 바깥을 보조 기술에서 숨겨(`aria-hidden`) 역할로는 칸이 안 잡힌다. 열린 동안 칸의 자리 · 테두리 · 포커스를 재야 한다.
  */
 const 입력칸들: Array<{ name: string; setUp: (page: Page) => Promise<Locator>; ring: (field: Locator) => Locator | null }> = [
+  // 목록의 찾기 칸(restart 03-4 — 공용 목록 틀의 알약 칸, 감싼 상자가 링을 입는다). 한때 Archive 목록 칸 머리의 「아카이브 검색」(`InputGroup`)이었다.
   {
-    name: "Archive의 검색칸",
+    name: "Archive의 찾기 칸",
     ring: (field) => field.locator(".."),
     setUp: async (page) => {
-      await page.goto("/archive/shipped-work");
-      const field = page.getByRole("textbox", { name: "아카이브 검색", exact: true, includeHidden: true });
+      // 찾기 칸은 판 머리의 오른쪽 끝이라 기본 창(1280)에서는 그 자리를 우클릭하면 카드(248)가 창 안에 들려고 왼쪽으로 뒤집혀 서서 「커서
+      // 자리」를 잴 수 없다. 창을 넓혀 카드가 설 자리를 준다(가운데 열은 1120에서 멈춘다).
+      await page.setViewportSize({ width: 1680, height: 720 });
+      await page.goto("/archive");
+      const field = page.getByRole("searchbox", { name: "Archive 찾기", exact: true, includeHidden: true });
       await expect(field).toBeVisible();
       return field;
     },
@@ -138,8 +142,8 @@ const 입력칸들: Array<{ name: string; setUp: (page: Page) => Promise<Locator
     // 검색 팔레트의 입력 줄은 링을 두지 않는다 — 카드가 떠 있는 동안 포커스가 늘 그 칸에 있다(Input의 `bare`).
     ring: () => null,
     setUp: async (page) => {
-      await page.goto("/archive/shipped-work");
-      await expect(page.getByRole("textbox", { name: "아카이브 검색", exact: true })).toBeVisible();
+      await page.goto("/archive");
+      await expect(page.getByRole("searchbox", { name: "Archive 찾기", exact: true })).toBeVisible();
       await 검색팔레트를연다(page);
       const palette = page.getByRole("dialog", { name: "검색", includeHidden: true });
       const field = palette.getByRole("textbox", { name: "검색어", exact: true, includeHidden: true });
@@ -242,11 +246,10 @@ test("입력칸 메뉴가 고른 글자를 복사하고 잘라 내고, 클립보
   page.on("pageerror", (error) => errors.push(String(error)));
   await recordClipboard(page);
   await installFixtureBackend(page);
-  await page.goto("/archive/shipped-work");
-  const field = page.getByRole("textbox", { name: "아카이브 검색", exact: true });
-  // 목록의 두 아카이브 — 검색어가 무엇을 남기는지가 「화면의 상태(검색어)가 칸의 값을 따라왔다」를 말한다. 머리 띠에도 보는 아카이브의
-  // 이름이 서므로 목록 안에서 찾는다.
-  const 목록 = page.getByRole("region", { name: "아카이브 목록", exact: true });
+  await page.goto("/archive");
+  const field = page.getByRole("searchbox", { name: "Archive 찾기", exact: true });
+  // 목록의 두 아카이브 — 찾는 글이 무엇을 남기는지가 「화면의 상태(찾는 글)가 칸의 값을 따라왔다」를 말한다. 목록 표 안에서 찾는다.
+  const 목록 = page.getByRole("table", { name: "Archive 목록", exact: true });
   const 치운일 = 목록.getByText("치운 일", { exact: true });
   const 남은것 = 목록.getByText("문서가 남지 않은 것", { exact: true });
   await field.fill("zzz치운");
@@ -330,8 +333,8 @@ test("검색 팔레트의 검색어 칸에서 메뉴로 복사 · 붙여넣기�
   // 메뉴 카드는 팔레트(모달 창) 밖 — body 끝의 포털 — 에 선다. 그 카드의 줄을 눌러도 창이 「바깥을 눌렀다」로 닫히지 않아야 한다.
   await recordClipboard(page);
   await installFixtureBackend(page);
-  await page.goto("/archive/shipped-work");
-  await expect(page.getByRole("textbox", { name: "아카이브 검색", exact: true })).toBeVisible();
+  await page.goto("/archive");
+  await expect(page.getByRole("searchbox", { name: "Archive 찾기", exact: true })).toBeVisible();
   await 검색팔레트를연다(page);
   const palette = page.getByRole("dialog", { name: "검색" });
   const field = 검색어칸(palette);

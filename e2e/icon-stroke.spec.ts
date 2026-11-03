@@ -23,21 +23,21 @@ const 아이콘들 = (page: Page) =>
 
 test("16px 아이콘의 그려진 선이 1.5px다", async ({ page }) => {
   await installFixtureBackend(page);
-  // 두 화면에서 잰다. 작업 화면에는 작업 패널 머리의 spec 폴더 열기(칸 안 16px)가 서고, 문서를 연 넓힌 카드(restart 02a-13 — 한때
-  // 본문의 문서 탭이었다)에는 경로 줄의 경로 복사 · 원문 전환이 선다. 넓힌 카드는 작업 패널을 접고 서서 한 화면에 둘이 안 선다. 머리
-  // 줄의 창 컨트롤은 15라(02 구현 스펙 §3 — `frame.spec.ts`가 잰다) 아래 고르기에 들지 않고, 머리 줄의 아이콘 단추(⋯ · 패널 토글)는
-  // 16이라 든다(02 티켓 03b).
+  // 두 화면에서 잰다. 작업 화면에는 사이드바 nav의 spec 글리프가, Project 추가 창에는 「닫기」 · 소스 폴더 고르개 · 빈 자리의 글리프가 16으로
+  // 선다. 머리 줄의 창 컨트롤 · 아이콘 단추(⋯ · 패널 토글)는 15이고(restart 03-12a — 시안 `.ra-tbtn`, 한때 아이콘 단추는 16), 패널 머리의 spec
+  // 폴더 열기 · 넓힌 카드 보기 머리의 경로 복사는 14라 아래 고르기에 들지 않는다 — 한때 그 둘이 이 시험의 16이었다.
   await page.goto(`/works/${WORKS[0].slug}`);
   await expect(page.getByRole("button", { name: "spec 폴더 열기", exact: true })).toBeVisible();
   const 작업화면 = await 아이콘들(page);
 
-  await page.goto(`/works/${WORKS[0].slug}?file=${encodeURIComponent("overview.md")}`);
-  await expect(page.locator("section[data-expanded]").getByRole("button", { name: "경로 복사", exact: true })).toBeVisible();
-  const 넓힌카드 = await 아이콘들(page);
+  await page.goto("/projects");
+  await page.getByRole("button", { name: "Project 추가", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Project 추가", exact: true }).getByRole("button", { name: "닫기", exact: true })).toBeVisible();
+  const 추가창 = await 아이콘들(page);
 
   // **먼저 잰 것이 있음을 센다** — 고를 아이콘이 하나도 없으면 아래 「어긋난 것 없음」이 저절로 초록이 된다.
-  expect(작업화면.length).toBeGreaterThan(3);
-  expect(넓힌카드.length).toBeGreaterThan(0);
-  expect([...작업화면, ...넓힌카드].filter(({ drawn }) => drawn !== 1.5)).toEqual([]);
+  expect(작업화면.length).toBeGreaterThan(0);
+  expect(추가창.length).toBeGreaterThan(3);
+  expect([...작업화면, ...추가창].filter(({ drawn }) => drawn !== 1.5)).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

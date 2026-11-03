@@ -1500,7 +1500,9 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // 보여준다. 마퀴는 제목 자리에서 일부를 흘려 보이고 카드가 완전한 답이라 이 판은 카드를 안 건드린다.
   await expect(page.locator("[data-popover]")).toContainText(pinnedWork.title);
 
-  // **끝에서 멈춘다 — 반복하지 않는다**(결정 11). 왕복 루프는 시선을 계속 잡아끈다.
+  // **끝에서 멈춘다 — 반복하지 않는다**(결정 11). 왕복 루프는 시선을 계속 잡아끈다. 위 기다림은 끝 2px 안이면 풀려, 흐름이 마지막 한 픽셀을 아직
+  // 가는 중일 수 있다 — 흐름(트랜지션)이 다 끝난 뒤의 자리를 잡는다(restart 03-13 — 한 벌 전체 L3의 부하에서 0.75px 차로 빨갰다).
+  await expect.poll(() => 긴제목.locator("span").evaluate((el) => el.getAnimations().length), { message: "흐름이 끝났다" }).toBe(0);
   const 멈춘자리 = await shiftOf(긴제목);
   await page.waitForTimeout(600);
   expect(await shiftOf(긴제목)).toBe(멈춘자리);
@@ -2014,10 +2016,10 @@ test("nav 줄은 30 · radius-ctl · 13/18 400 · 글리프 15 fg-secondary이�
   await 글자가된다(지나는work, 쉬는글자);
 
   // **사이드바 밖 카드 안 목록의 고른 줄은 불투명한 `fill-selected`다**(DS `.at-tree-row.is-on`) — 사이드바 안의 고른 줄만 면 알파로
-  // 갈린다(`index.css`의 `selected-row` 사이드바 갈래). Archive spec 목록 패널(둘째 `aside`)의 트리에서 지금 연 문서의 줄이다 — 작업 패널의
-  // 트리는 문서를 넓힌 카드로 열어 고른 줄이 없다(restart 02a-12).
+  // 갈린다(`index.css`의 `selected-row` 사이드바 갈래). Archive 상세 「문서」 트리(판 안 `nav` — restart 03-4, 한때 둘째 `aside`인 spec 목록
+  // 패널)에서 지금 연 문서의 줄이다 — 작업 패널의 트리는 문서를 넓힌 카드로 열어 고른 줄이 없다(restart 02a-12).
   await page.goto(`/archive/${ARCHIVE[0].slug}`);
-  const 고른트리 = page.locator("aside").nth(1).locator(".selected-row");
+  const 고른트리 = page.locator('main nav[aria-label="문서"] .selected-row');
   await expect(고른트리).toHaveCount(1);
   await 면이된다(고른트리, await 토큰색(page, "--fill-selected"));
 

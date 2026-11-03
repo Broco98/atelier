@@ -89,14 +89,15 @@ const 본문카드 = (page: Page) =>
 // 카드 자리(창 오 · 아래 끝 8 — 앱 셸 줄의 `pr-2 pb-2`)가 선다. 카드 자리에 겉은 없고 화면의 카드들이 8 틈으로 선다 — 카드는 둥글기 8 ·
 // 0.5 링(`shadow-hairline`) · 면 `surface`다. **사이드바는 카드 밖 크롬 위다** — 바탕도 선도 없이 머리 줄 아래에서 창 아래 끝 8 앞까지 선다.
 // 화면 자리는 사이드바와 상관없이 셸 컨트롤 끝 + 6에서 시작하고 앞에 세로선(0.5 × 16 `border-heavy`, 위아래 14)이 선다 — 화면이 아무것도
-// 보내지 않으면(새 Thread) 선도 없다(02a-7). 머리 줄 아래에는 선이 없다.
+// 보내지 않으면 선도 없다(02a-7 — 한때 새 Thread가 그랬다. 이제 새 채팅도 화면 이름 「새 채팅」을 보낸다, restart 03-12a). 머리 줄 아래에는
+// 선이 없다.
 //
 // 한때(02 §3 S2 – 02a-1) 카드 자리에 흰 판 한 장(오 · 아래 5, 0.5 `border-panel`, 둥글기 12, 위 그림자 `shadow-panel`)이 서고 사이드바가 창
 // 왼쪽 + 5에 섰으며, 화면 자리는 판 안 왼쪽 끝에서 1 × 24 `separator` 세로선 뒤에 섰다 — 02a-2가 판을 걷고 02a-7이 화면 자리를 옮겼다.
 //
 // 주소마다 하나씩 잰다 — 틀이 둘로 갈려 한 벌만 고쳐진 날 그 벌의 주소만 빨개진다.
 const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown>; ready: (page: Page) => Locator; head: boolean }[] = [
-  { name: "새 채팅", url: "/", overrides: THREAD_ANSWERS, ready: 첫화면, head: false },
+  { name: "새 채팅", url: "/", overrides: THREAD_ANSWERS, ready: 첫화면, head: true },
   {
     name: "채팅",
     url: `/threads/${thread.id}`,
@@ -108,7 +109,7 @@ const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown
   {
     name: "Project 상세",
     url: `/projects/${PROJECTS[0].slug}`,
-    ready: (page) => page.getByRole("complementary", { name: "Project 정보", exact: true }),
+    ready: (page) => page.getByRole("combobox", { name: "기준 브랜치", exact: true }),
     head: true,
   },
   { name: "Service", url: "/services", ready: (page) => page.getByRole("table", { name: "Service 목록", exact: true }), head: true },
@@ -117,7 +118,7 @@ const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown
   {
     name: "Archive",
     url: `/archive/${ARCHIVE[0].slug}`,
-    ready: (page) => page.getByRole("region", { name: "아카이브 목록", exact: true }),
+    ready: (page) => page.getByRole("main", { name: "Archive 상세", exact: true }).getByRole("navigation", { name: "문서", exact: true }),
     head: true,
   },
   { name: "Settings", url: "/settings/terminal", ready: (page) => 화면머리(page).getByText("Settings", { exact: true }), head: true },
@@ -569,16 +570,16 @@ test("위 칸에 가는 곳 다섯이 사이드바 줄의 결로 서고 — Proc
 
 // codex-ds 티켓 14 · 02 티켓 03 — **어느 화면이든 머리 줄의 같은 자리에서 그 화면의 이름과 할 일을 찾는다**(codex-ds 스펙 §7 · 스토리 27 · 52 ·
 // 59 · 60 · 02 구현 스펙 §3 S2). 한때 그 자리에 머리 카드가 떴다 — 카드의 겉만 버리고 안은 그대로 머리 줄에 바로 선다. 왼쪽은 그 화면 · 고른
-// 것의 아이콘과 이름(과 그 안의 위치)이고, 오른쪽 끝은 그 화면의 머리 조작이다. 캔버스에만 있던 조작(Projects 「LLM이 받는 텍스트」 ·
-// Processes 「새로 고침」 · 「고아 정리」 · Archive 「되살리기」)은 짓지 않았다(codex-ds 스펙 S13 · 결정 31). 조작은 역할 · 이름으로 집고, 모두
-// 28로(아이콘 단추 · 글자 단추 — Thread 머리 줄과 한 벌, 02 티켓 03b) 머리 줄 가운데에 선다. 본문 칸에 고를 것이 남지 않은 화면은 본문 칸에
-// 머리가 없다. 작업 화면의 머리 줄은 `frame.spec.ts`가 잰다. Projects는 03 판에서 이 표를 떠났다 — 아래 「Projects · Service」 시험.
+// 것의 이름(과 그 안의 위치)이고, 오른쪽 끝은 그 화면의 머리 조작이다. **이름 앞에 아이콘이 없다**(restart 03-12a · 시안 Main — 한때 화면마다
+// nav 아이콘 · 작업공간 ⚡가 섰다). 이름은 13/18 · 400이고(한때 14/500) 이름 상자가 안쪽 6 · 바깥 −6이라 글자가 흐름 자리(세로선 뒤 10)에
+// 선다. 캔버스에만 있던 조작(Projects 「LLM이 받는 텍스트」 · Processes 「새로 고침」 · 「고아 정리」)은 짓지 않았다(codex-ds 스펙 S13 · 결정 31).
+// 조작은 역할 · 이름으로 집고, 모두 28로(아이콘 단추 · 글자 단추 — Thread 머리 줄과 한 벌, 02 티켓 03b) 머리 줄 가운데에 선다. 본문 칸에 고를
+// 것이 남지 않은 화면은 본문 칸에 머리가 없다. 작업 화면의 머리 줄은 `frame.spec.ts`가 잰다. Projects · Services · Archive는 03 판에서 이 표를
+// 떠났다 — 아래 「Projects · Services · Archive」 시험(restart 03-4 — 한때 Archive 상세의 머리 줄에 아카이브 메뉴 · spec 목록 접기가 섰다).
 const HEAD_SCREENS: {
   name: string;
   url: string;
   overrides?: Record<string, unknown>;
-  /** 이름 상자 왼쪽 아이콘의 lucide 이름. */
-  icon: string;
   /** 머리 줄에 보이는 이름과 그 뒤의 글자 — 왼쪽부터. 첫째는 이름이다. 날짜처럼 그리는 규칙이 따로 정하는 글자는 정규식이다. */
   words: readonly [string, ...(string | RegExp)[]];
   /** 이름 바로 뒤(`words`의 둘째)가 옅은 글자(`sub`)인가. */
@@ -593,22 +594,8 @@ const HEAD_SCREENS: {
   absent: readonly string[];
 }[] = [
   {
-    name: "Archive",
-    url: `/archive/${ARCHIVE[0].slug}`,
-    icon: "zap",
-    // 제목 뒤 옅은 글자는 걸쳤던 프로젝트와 치운 날이다 — 문서 칸의 머리 자리를 경로 줄이 가져 이리 왔다.
-    words: [ARCHIVE[0].title, new RegExp(`^${ARCHIVE[0].projects.join(" · ")} · .+에 치움$`), ARCHIVE[0].status],
-    sub: true,
-    // 배지는 보이기만 한다 — 버튼이 아니다. 할 일은 ⋯ 아카이브 메뉴이고, 세로선 너머가 spec 목록 패널의 토글이다(codex-ds 티켓 21 —
-    // 메뉴 안과 여닫기는 `archive-docs.spec.ts`).
-    controls: ["아카이브 메뉴", "spec 목록 접기"],
-    splitBefore: "spec 목록 접기",
-    absent: ["되살리기"],
-  },
-  {
     name: "Processes",
     url: "/processes",
-    icon: "activity",
     words: ["Processes"],
     // 머리 줄에는 이름만 선다 — [조용한 셸 모두 닫기]는 몸의 머리(h1 「Processes」 옆)로 옮겼다(restart 03-11 · 시안 Processes `.pr-head`).
     controls: [],
@@ -617,7 +604,6 @@ const HEAD_SCREENS: {
   {
     name: "Settings",
     url: "/settings/terminal",
-    icon: "settings",
     words: ["Settings", "터미널"],
     sub: true,
     controls: ["저장"],
@@ -626,18 +612,16 @@ const HEAD_SCREENS: {
   {
     name: "레이아웃 편집기",
     url: SPEC_LAYOUT_EDITOR,
-    icon: "settings",
     words: ["Settings", "spec 레이아웃", "Atelier"],
     sub: true,
     controls: ["설정으로 돌아가기", "LLM이 받는 텍스트", "저장"],
     absent: [],
   },
-  { name: "Terminal", url: "/terminal", icon: "square-terminal", words: ["Terminal"], controls: [], absent: [] },
+  { name: "Terminal", url: "/terminal", words: ["Terminal"], controls: [], absent: [] },
   {
     name: "Works(고른 작업 없음)",
     url: "/works",
     overrides: { list_works: [] },
-    icon: "zap",
     words: ["작업공간"],
     controls: [],
     absent: [],
@@ -652,24 +636,30 @@ for (const screen of HEAD_SCREENS) {
     await expect(head.getByText(screen.words[0], { exact: true })).toBeVisible();
     await expect(head).toHaveCount(1);
 
-    // 왼쪽 — 아이콘 하나와 이름(그 뒤 위치)이 차례로 선다. 이름을 글자로 집으면 이름 상자(DS `.at-wtitle` — 아이콘 · 이름을 품는다)가
-    // 잡혀, 이름 글자의 자리는 그 안 글자 마디로 잰다(`첫글자`).
-    await expect(head.locator(`svg.lucide-${screen.icon}`)).toHaveCount(1);
-    const iconBox = await boxOf(head.locator(`svg.lucide-${screen.icon}`));
+    // 왼쪽 — 아이콘 없이 이름(그 뒤 위치)이 차례로 선다. 이름을 글자로 집으면 이름 상자(DS `.at-wtitle`)가 잡혀, 이름 글자의 자리는 그 안
+    // 글자 마디로 잰다(`첫글자`). 이름 앞에는 단추 밖의 글리프가 없다(단추 안의 글리프 — 「설정으로 돌아가기」 — 는 할 일이고, 위치 사이의
+    // 꺾쇠는 이름 뒤다).
+    const slot = await boxOf(head);
     const words = await Promise.all(
       screen.words.map((word) => boxOf(head.getByText(word, typeof word === "string" ? { exact: true } : undefined))),
     );
-    const nameText = await 첫글자(head.getByText(screen.words[0], { exact: true }));
-    expect(nameText.x, "이름은 아이콘 뒤").toBeGreaterThan(iconBox.right);
+    const name = head.getByText(screen.words[0], { exact: true });
+    const nameText = await 첫글자(name);
+    const 앞글리프 = await head.evaluate(
+      (el, 끝) => [...el.querySelectorAll("svg")].filter((svg) => !svg.closest("button") && svg.getBoundingClientRect().right <= 끝).length,
+      nameText.x,
+    );
+    expect(앞글리프, "이름 앞 아이콘 없음").toBe(0);
+    expect(await 칠한값(name, "font-size", "font-weight"), "이름 13 · 400").toEqual(["13px", "400"]);
+    expect(nameText.x - slot.x, "이름 글자 — 세로선 뒤 10").toBeGreaterThanOrEqual(10);
     for (let at = 1; at < words.length; at += 1) {
       expect(words[at].x, `${screen.words[at]}가 앞 글자 뒤에 선다`).toBeGreaterThanOrEqual(words[at - 1].right);
     }
-    // 이름 끝에서 그 뒤 옅은 글자(`sub`)까지는 DS 14다 — 이름 상자의 오른쪽 안쪽 8 + 위치의 왼쪽 6(DS `.at-wtitle` · `.at-winhead`의 사이 4 +
-    // `.sub`의 왼쪽 2).
-    if (screen.sub) expect(words[1].x - nameText.right, "이름 끝 → 위치").toBeCloseTo(14, 1);
+    // 이름 끝에서 그 뒤 옅은 글자(`sub`)까지는 6이다 — 이름 상자가 바깥 −6으로 제 안쪽을 되돌려 위치의 왼쪽 6만 남는다(restart 03-12a —
+    // 한때 이름 상자의 오른쪽 안쪽 8 + 위치의 왼쪽 6 = 14).
+    if (screen.sub) expect(words[1].x - nameText.right, "이름 끝 → 위치").toBeCloseTo(6, 1);
 
     // 오른쪽 끝 — 할 일은 이 버튼들뿐이고 차례가 이렇다. 모두 28이고 머리 줄 가운데에, 화면 자리 안에 선다.
-    const slot = await boxOf(head);
     const middle = slot.y + slot.height / 2;
     await expect(head.getByRole("button")).toHaveCount(screen.controls.length);
     const controls = await Promise.all(
@@ -695,9 +685,8 @@ for (const screen of HEAD_SCREENS) {
       await expect(page.getByRole("button", { name, exact: true }), `${name}는 캔버스에만 있다`).toHaveCount(0);
     }
 
-    // 창 끌기 — 머리 줄의 빈 자리와 보이기만 하는 것(아이콘 · 이름 · 위치 · 배지 글자)을 누르면 창이 끌린다. 누를 것(조작 · 메뉴가 있거나
-    // 바꿀 수 있는 이름과 그 안의 아이콘)은 끌지 않는다.
-    expect(await 끄는자리(page, iconBox.x + iconBox.width / 2, middle), "아이콘").toBe(!screen.target);
+    // 창 끌기 — 머리 줄의 빈 자리와 보이기만 하는 것(이름 · 위치 · 배지 글자)을 누르면 창이 끌린다. 누를 것(조작 · 메뉴가 있거나 바꿀 수
+    // 있는 이름)은 끌지 않는다.
     for (const [at, box] of words.entries()) {
       const 끈다 = at === 0 ? !screen.target : true;
       expect(await 끄는자리(page, box.x + Math.min(4, box.width / 2), middle), `${screen.words[at]}`).toBe(끈다);
@@ -715,8 +704,8 @@ for (const screen of HEAD_SCREENS) {
     const 글자끝 = Math.max(...words.filter((box) => box.x < 할일앞).map((box) => box.right));
     expect(할일앞 - 글자끝, "앵커: 글자와 할 일 사이에 빈 자리가 있다").toBeGreaterThan(8);
     expect(await 끄는자리(page, (글자끝 + 할일앞) / 2, middle), "화면 자리 안 빈 자리").toBe(true);
-    // 왼쪽 안쪽은 세로선과 첫 글자 사이다 — 첫 글자는 자리 + 10이고, 당김 6을 둔 조작(편집기의 「설정으로 돌아가기」 · Works의 Service)은
-    // 자리 + 4에서 시작한다(02a-7). 그 앞 + 2를 누른다.
+    // 왼쪽 안쪽은 세로선과 첫 글자 사이다 — 첫 글자는 자리 + 10이고, 당김 6을 둔 조작(편집기의 「설정으로 돌아가기」)은 자리 + 4에서
+    // 시작한다(02a-7 — Works의 Service는 restart 03-12a부터 자리 + 10). 그 앞 + 2를 누른다.
     expect(await 끄는자리(page, slot.x + 2, middle), "화면 자리 왼쪽 안").toBe(true);
 
     // 고를 것이 남지 않은 본문 칸에는 머리가 없다 — 위치와 할 일은 머리 줄이 말한다(목록 칸의 찾기 칸 · 머리는 `main` 밖이다).
@@ -725,18 +714,21 @@ for (const screen of HEAD_SCREENS) {
   });
 }
 
-// **Projects · Service 화면의 머리 줄은 Thread 화면들과 한 결이다**(03 구현 스펙 §14 · §16 · 캔버스 F1-Projects · F1-ProjectDetail · F1-Spaces ·
-// F1-SpaceDetail) — 아이콘 없이 14/500 이름 하나이고, 상세는 이름 앞에 목록으로 가는 「Projects /」 · 「Service /」가 선다. 머리 줄에 할 일이 없다
-// — 목록의 「Project 추가」 · 「새 Service」와 상세의 할 일은 본문 맨 위 줄에 선다. 한때 Projects는 위 표의 한 칸이었다(폴더 아이콘 · 「폴더 열기」 ·
-// 「제거」). 그 안의 칸 · 단추는 Projects · Service 흐름 spec이 잰다.
+// **Projects · Services · Archive 화면의 머리 줄은 Thread 화면들과 한 결이다**(03 구현 스펙 §14 · §16 · 캔버스 F1-Projects · F1-ProjectDetail ·
+// F1-Spaces · F1-SpaceDetail · restart 03-4) — 아이콘 없이 이름 하나(13/18 · 400 — restart 03-12a, 한때 14/500)이고, 상세는 이름 앞에 목록으로
+// 가는 「Projects /」 · 「Services /」 · 「Archive /」가 선다. 머리 줄에 할 일이 없다 — 목록의 「Project 추가」 · 「만들기」와 상세의 할 일은
+// 판 머리에 선다. 한때 Projects는 위 표의 한 칸이었다(폴더 아이콘 · 「폴더 열기」 · 「제거」), Archive 상세는 머리 줄에 아카이브 메뉴 · spec
+// 목록 접기를 세웠다. 그 안의 칸 · 단추는 Projects · Service · Archive 흐름 spec이 잰다.
 const PLACE_HEADS: { url: string; main: string; words: string[]; crumb?: string }[] = [
   { url: "/projects", main: "Projects", words: ["Projects"] },
   { url: `/projects/${PROJECTS[0].slug}`, main: "Projects 상세", words: ["Projects", "/", PROJECTS[0].name], crumb: "Projects" },
   { url: "/services", main: "Services", words: ["Services"] },
   { url: `/services/${encodeURIComponent(SERVICES[0].slug)}`, main: "Services 상세", words: ["Services", "/", SERVICES[0].name], crumb: "Services" },
+  { url: "/archive", main: "Archive", words: ["Archive"] },
+  { url: `/archive/${ARCHIVE[0].slug}`, main: "Archive 상세", words: ["Archive", "/", ARCHIVE[0].title], crumb: "Archive" },
 ];
 
-test("Projects · Service 목록과 상세: 머리 줄에 아이콘 없는 이름이 서고, 상세는 목록으로 가는 이름 앞이 서며 할 일이 없다", async ({ page }) => {
+test("Projects · Services · Archive 목록과 상세: 머리 줄에 아이콘 없는 이름이 서고, 상세는 목록으로 가는 이름 앞이 서며 할 일이 없다", async ({ page }) => {
   await installFixtureBackend(page);
   for (const screen of PLACE_HEADS) {
     await page.goto(screen.url);
@@ -746,7 +738,7 @@ test("Projects · Service 목록과 상세: 머리 줄에 아이콘 없는 이�
     await expect(head.locator("svg"), `${screen.url} — 아이콘 없음`).toHaveCount(0);
     await expect(head.getByRole("button"), `${screen.url} — 머리 줄의 단추는 이름 앞뿐`).toHaveText(screen.crumb ? [screen.crumb] : []);
     const name = head.getByText(screen.words[screen.words.length - 1], { exact: true });
-    expect(await 칠한값(name, "font-size", "font-weight"), `${screen.url} — 이름 14/500`).toEqual(["14px", "500"]);
+    expect(await 칠한값(name, "font-size", "line-height", "font-weight"), `${screen.url} — 이름 13/18 · 400`).toEqual(["13px", "18px", "400"]);
   }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

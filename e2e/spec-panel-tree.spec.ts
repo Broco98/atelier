@@ -27,18 +27,18 @@ test("work를 옮겨 다니는 동안 spec 트리를 따로 묻지 않는다 —
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
-  // 나침반을 받은 행은 확장자 라벨이 없어 이름이 파일 이름 그대로다
+  // 트리 줄의 이름은 파일 이름 그대로다 — 확장자 글자(`data-ext`)는 이름에서 빠진다(restart 03-12a — 한때 「MD 넓은.md」처럼 라벨이 앞에 붙었다).
   await expect(page.getByRole("button", { name: "overview.md", exact: true })).toBeVisible();
   const settled = (await readIpcRecord(page))?.calls.length ?? 0;
 
   // 앱 안에서 주소로 옮긴다 — 사이드바 Work 줄은 이제 그 Work의 Thread로 가고(v1 티켓 37), ⌘K로 옮기면 팔레트의 `search`가 아래
   // 기록에 섞인다.
   await 주소로간다(page, `/works/${multiWork.slug}`);
-  await expect(page.getByRole("button", { name: "MD 넓은.md", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "넓은.md", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "overview.md", exact: true })).toHaveCount(0);
   await 주소로간다(page, `/works/${pinnedWork.slug}`);
   await expect(page.getByRole("button", { name: "overview.md", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "MD 넓은.md", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "넓은.md", exact: true })).toHaveCount(0);
 
   const sent = ((await readIpcRecord(page))?.calls ?? [])
     .slice(settled)

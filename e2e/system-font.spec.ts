@@ -20,17 +20,17 @@ const [project] = PROJECTS;
 // `theme-tokens`와 함께 쓴다). computed 값에서 이름에 따옴표를 붙일지는 엔진이 정하므로 따옴표를 떼고 견준다(`fontList`).
 const 글꼴 = async (target: Locator) => fontList(await target.evaluate((el) => getComputedStyle(el).fontFamily));
 
-test("본문 글자는 시스템 글꼴 줄이고, 코드 · 경로 값은 시스템 mono 줄이다", async ({ page }) => {
+test("본문 글자는 시스템 글꼴 줄이고, 코드는 시스템 mono 줄이다 — Project 상세 위 카드의 경로 값은 본문 줄이다", async ({ page }) => {
   await installFixtureBackend(page);
 
-  // Project 상세 — 오른쪽 칸의 묶음 이름은 본문, 경로 값은 mono다(DS 「글자」 표의 `code` — 경로 값 · 03 시안 `.rl` 아래 mono 값).
+  // Project 상세 — 위 카드의 이름 · 값은 본문이다(restart 03-2 · 보드 Places `.pl-fact .v` — 글꼴을 따로 두지 않는다). 한때(03 시안 `.rl`)
+  // 오른쪽 칸의 경로 값이 mono였다.
   await page.goto(`/projects/${project.slug}`);
-  const 칸 = page.getByRole("region", { name: "경로", exact: true });
-  const 경로 = 칸.getByText(project.path, { exact: true });
+  const 경로 = page.getByRole("main", { name: "Projects 상세", exact: true }).getByTitle(project.path, { exact: true });
   await expect(경로).toBeVisible();
   expect(await 글꼴(page.locator("body"))).toBe(fontList(SYSTEM_SANS));
-  expect(await 글꼴(칸.getByRole("heading", { name: "경로", exact: true }))).toBe(fontList(SYSTEM_SANS));
-  expect(await 글꼴(경로)).toBe(fontList(SYSTEM_MONO));
+  expect(await 글꼴(경로.locator("xpath=preceding-sibling::*[1]"))).toBe(fontList(SYSTEM_SANS));
+  expect(await 글꼴(경로)).toBe(fontList(SYSTEM_SANS));
 
   // 문서 — 제목은 본문 줄, 코드 블록은 mono다.
   await page.goto(`/works/${multiWork.slug}?file=${encodeURIComponent("넓은.md")}`);

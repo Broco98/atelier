@@ -101,11 +101,11 @@ test("머리 줄 — 작업공간 밖 Thread는 이름이 서서 그 자리에�
 }) => {
   await openThread(page, looseA, twoTurns);
 
-  // 이름 14/500(02 §6 · 시안 `.tb-c`).
+  // 이름 13/18 · 400(restart 03-12a · 시안 Main `.ra-title` — 한때 14/500, 02 §6 · 시안 `.tb-c`).
   const name = 머리줄(page).getByText(looseA.title, { exact: true });
   await expect(name).toBeVisible();
   await expect(page.getByRole("button", { name: /^작업공간 열기: / })).toHaveCount(0);
-  expect(await 모양(name, ["font-size", "font-weight"])).toEqual({ "font-size": "14px", "font-weight": "500" });
+  expect(await 모양(name, ["font-size", "font-weight"])).toEqual({ "font-size": "13px", "font-weight": "400" });
 
   // 「…」는 이름 바로 뒤(틈 0 — 시안 `.ra-crumb` 뒤 `.ra-tbtn`, restart 02a-7)이고, 오른쪽 끝에는 요약 단추만 28 · 창 오른쪽 끝 8에 선다. 오른쪽
   // 자리는 처음엔 비어 있어(02a-9 — `/threads/<id>`의 처음 값) 단추가 꺼져 있다.

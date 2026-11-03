@@ -255,7 +255,8 @@ test("카드가 시안 카드다 — CPU 1.7 : 옆 1 · 사이 8, 옆 카드 둘
     expect([아이콘.width, 아이콘.height], `${name} 앞 아이콘`).toEqual([14, 14]);
   }
 
-  // 큰 수 — CPU는 `heading-xl`, 옆 카드는 `heading-md`.
+  // 큰 수 — CPU는 `heading-xl`, 옆 카드는 `heading-md`의 크기 · 굵기에 줄 높이 28이다(restart 03-12c · 시안 Processes — 한때 토큰의 26). 둘 다
+  // 자간 −0.02em이다.
   const 단계 = async (name: string) => [
     await 토큰값(page, "font-size", `--text-${name}`),
     await 토큰값(page, "line-height", `--text-${name}--line-height`),
@@ -265,8 +266,10 @@ test("카드가 시안 카드다 — CPU 1.7 : 옆 1 · 사이 8, 옆 카드 둘
   expect(큰단계, "heading-xl").toEqual(["32px", "38px", "600"]);
   expect(옆단계, "heading-md").toEqual(["20px", "26px", "600"]);
   expect(await 칠한값(칸(page, "cpu"), "font-size", "line-height", "font-weight"), "CPU 큰 수").toEqual(큰단계);
+  expect(await 칠한값(칸(page, "cpu"), "letter-spacing"), "CPU 큰 수 자간 — −0.02em").toEqual([`${-0.02 * 32}px`]);
   for (const figure of ["total", "strays"]) {
-    expect(await 칠한값(칸(page, figure), "font-size", "line-height", "font-weight"), `옆 큰 수 ${figure}`).toEqual(옆단계);
+    expect(await 칠한값(칸(page, figure), "font-size", "line-height", "font-weight"), `옆 큰 수 ${figure}`).toEqual([옆단계[0], "28px", 옆단계[2]]);
+    expect(await 칠한값(칸(page, figure), "letter-spacing"), `옆 큰 수 ${figure} 자간 — −0.02em`).toEqual([`${-0.02 * 20}px`]);
   }
 
   // 아래 줄 — 12/18 `fg-tertiary`.

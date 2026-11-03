@@ -12,6 +12,8 @@ import { callCount, installFixtureBackend, ipcArgs, unknownIpcCalls } from "./ha
 
 const [project, other] = PROJECTS;
 const 목록 = (page: Page) => page.getByRole("table", { name: "Project 목록", exact: true });
+/** 상세의 이름 — 숨은 목록의 「Projects」 제목은 접근성 나무 밖이라 상세 판의 h1 하나다. */
+const 상세제목 = (page: Page) => page.getByRole("main", { name: "Projects 상세", exact: true }).getByRole("heading", { level: 1 });
 /** 표의 그 Project 줄 — 머리 줄(이름 · 경로 · 기준 브랜치)을 뺀 몸의 줄이다. */
 const 줄 = (page: Page, one: (typeof PROJECTS)[number]) =>
   목록(page).getByRole("row").filter({ has: page.getByRole("link", { name: one.name, exact: true }) });
@@ -27,43 +29,60 @@ test("고정 데이터가 주어지면 목록 표가 그 데이터를 그리고,
   // 목록 화면이다 — 한때 무선택 주소가 첫 항목으로 정규화됐다(03 결정 「10」).
   await expect(page).toHaveURL("/projects");
 
-  // 머리 줄 하나 뒤에 Project마다 한 줄 — 이름(링크) · 경로 · 기준 브랜치 · ⋯.
-  await expect(목록(page).getByRole("row").first().getByRole("columnheader")).toHaveText(["이름", "경로", "기준 브랜치"]);
+  // 머리 줄 하나 뒤에 Project마다 한 줄 — 이름(폴더 · 이름 링크 · 경로) · 최근 활동 · 오른쪽 동작(restart 03-1 — 공용 목록 틀). 열 머리는
+  // 정렬 단추이고 처음은 최근 활동 내림이다. 한때 열이 이름 · 경로 · 기준 브랜치였다.
+  const 머리 = 목록(page).getByRole("row").first().getByRole("columnheader");
+  await expect(머리).toHaveText(["이름", "최근 활동"]);
+  await expect(머리.nth(1)).toHaveAttribute("aria-sort", "descending");
+  await expect(머리.first()).not.toHaveAttribute("aria-sort");
   await expect(목록(page).getByRole("row")).toHaveCount(PROJECTS.length + 1);
   for (const one of PROJECTS) {
-    await expect(줄(page, one).getByRole("cell")).toHaveText([one.name, one.path, one.baseBranch, ""]);
+    await expect(줄(page, one).getByRole("cell")).toHaveText([`${one.name}${one.path}`, /^(—|방금|\d+(분|시간|일|주)|(\d{4}년 )?\d+월 \d+일)$/, ""]);
     await expect(줄(page, one).getByRole("button", { name: `${one.name} 메뉴`, exact: true })).toBeVisible();
   }
 
-  // 줄의 빈 자리를 눌러도 이름 링크와 같은 상세로 간다.
+  // 줄의 빈 자리(시각 칸)를 눌러도 이름 링크와 같은 상세로 간다.
   await 줄(page, other).getByRole("cell").nth(1).click();
   await expect(page).toHaveURL(`/projects/${other.slug}`);
   await page.goBack();
   await 목록(page).getByRole("link", { name: project.name, exact: true }).click();
   await expect(page).toHaveURL(`/projects/${project.slug}`);
-  await expect(page.getByRole("complementary", { name: "Project 정보", exact: true })).toBeVisible();
+  await expect(상세제목(page)).toHaveText(project.name);
 
   // 화이트리스트 밖 호출이 하나라도 있으면 하네스가 낡은 것이다.
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **상세는 기준 브랜치 · 경로 · 설명이다**(03 구현 스펙 §16 · S21) — 한때 그 Project에서 시작된 Work 묶음(「이 프로젝트에서 시작된 작업」)이
-// 섰다. 그 Project를 쓰는 진행 중인 Work는 제거 창이 말한다. Work로 가는 문은 사이드바 · 팔레트다.
-test("Project 상세에는 Work 묶음이 없고, 오른쪽 칸에 기준 브랜치와 경로가 선다", async ({ page }) => {
-  const work = WORKS.find((one) => one.projects.includes(project.slug))!;
+// **상세는 위 카드 넷과 묶음이다**(restart 03-2 · 보드 MainProjectDetail · PlaceSheet 「상세 상태」) — 이름 아래 설명 한 줄, 위 카드 경로 · 기준
+// 브랜치 · 원격 · 추가한 날, 그 아래 그 Project를 고치는 작업공간 묶음(이름이 그 작업공간으로 가는 링크). 한때(03 · S21) 상세는 제목 · 설명 |
+// 오른쪽 칸(기준 브랜치 · 경로) 두 단이었고 Work 묶음이 없었다 — 03-2가 뒤집었다.
+test("Project 상세는 설명 · 위 카드 넷(경로 · 기준 브랜치 · 원격 · 추가한 날)이고, 그 Project를 고치는 작업공간 묶음이 선다", async ({ page }) => {
+  const works = WORKS.filter((one) => one.projects.includes(project.slug));
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
-  const rail = page.getByRole("complementary", { name: "Project 정보", exact: true });
-  await expect(rail.getByRole("region")).toHaveText([/^기준 브랜치/, /^경로/]);
-  await expect(rail.getByRole("region", { name: "경로", exact: true })).toContainText(project.path);
-  // 앵커(상세가 섰다) 뒤에 — 본문에 그 Project의 Work가 서지 않는다(사이드바의 같은 이름은 본문 밖이다).
-  await expect(page.locator("main").getByText(work.title)).toHaveCount(0);
-  await expect(page.locator("main").getByRole("heading", { name: "작업공간", exact: true })).toHaveCount(0);
+  const 상세 = page.getByRole("main", { name: "Projects 상세", exact: true });
+  await expect(상세제목(page)).toHaveText(project.name);
+  await expect(상세.getByText(project.description, { exact: true })).toBeVisible();
+  await expect(기준브랜치(page)).toHaveText(new RegExp(`^기준 브랜치${project.baseBranch}`));
+  for (const [label, value] of [
+    ["경로", project.path],
+    ["원격", project.git!.remoteSlug!],
+    ["추가한 날", "2026년 1월 2일"],
+  ] as const) {
+    await expect(상세.getByText(label, { exact: true })).toBeVisible();
+    await expect(상세.getByTitle(value, { exact: true })).toBeVisible();
+  }
+  // 작업공간 묶음 — 줄마다 이름 링크가 그 작업공간으로 간다. 앞에 「오른쪽 칸」은 없다.
+  const 작업공간 = 상세.getByRole("region", { name: "작업공간", exact: true });
+  await expect(작업공간.getByRole("heading", { name: "작업공간", exact: true })).toBeVisible();
+  await expect(작업공간.getByRole("link")).toHaveCount(works.length);
+  expect((await 작업공간.getByRole("link").allInnerTexts()).sort()).toEqual(works.map((one) => one.title).sort());
+  await expect(page.getByRole("complementary", { name: "Project 정보", exact: true })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // ── 기준 브랜치 (03 구현 스펙 §15 · §16 · 스토리 119–121 · S19) ──
-// 상세 오른쪽 칸의 기준 브랜치는 단추(`combobox`)이고, 누르면 그 저장소의 브랜치 목록(`listbox`)이 「로컬」 · 「원격 — origin」 묶음으로 선다.
+// 상세 위 카드의 기준 브랜치는 단추(`combobox` — restart 03-2, 한때 오른쪽 칸)이고, 누르면 그 저장소의 브랜치 목록(`listbox`)이 「로컬」 · 「원격 — origin」 묶음으로 선다.
 // 지금 값이 「선택됨」으로 읽히고, 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔 때만**이다. 원격 브랜치는 원격 이름을 단
 // 그대로 적힌다(S19). 목록 밖 값을 적는 칸은 없다 — 한때 git 정보가 없는 Project는 직접 적는 입력칸이었다.
 //
@@ -80,12 +99,14 @@ test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서
   const trigger = 기준브랜치(page);
   const list = page.getByRole("listbox");
   await expect(trigger).toContainText(project.baseBranch);
-  await expect(page.getByText("새 작업공간의 브랜치가 여기서 갈라져요", { exact: true })).toBeVisible();
+  // 그 뒤의 일을 말하는 한 줄은 열린 목록의 바닥이다(restart 03-2 — 한때 단추 아래 한 줄이었다). 닫힌 동안은 없다.
+  await expect(page.getByText("새 작업공간의 브랜치가 여기서 갈라져요", { exact: true })).toHaveCount(0);
 
   await trigger.focus();
   await page.keyboard.press("ArrowDown");
   await expect(list).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("새 작업공간의 브랜치가 여기서 갈라져요", { exact: true })).toBeVisible();
 
   // 묶음 둘 — 로컬 브랜치와 원격 이름을 단 원격 브랜치. 지금 값 **하나만** 선택됨이다 — 지금 것만 재면 「전부 선택됨」도 초록이다.
   await expect(list.getByRole("group", { name: "로컬", exact: true }).getByRole("option")).toHaveText(["main", "release"]);
@@ -104,8 +125,8 @@ test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서
   await expect
     .poll(() => ipcArgs(page, "update_project", "slug"))
     .toEqual([{ slug: project.slug, baseBranch: "release" }]);
-  // 바꾼 뒤에는 단추 아래 한 줄이 그 뒤의 일을 말한다(F1-ProjectDetail — 픽스처가 값을 기억하지 않아 이름은 옛 값이다).
-  await expect(page.getByText(/^바꿨어요 — 새 작업공간부터 .+에서 갈라져요$/)).toBeVisible();
+  // 바꾼 뒤에는 토스트가 그 뒤의 일을 말한다(restart 03-2 — 한때 단추 아래 한 줄이었다). 새 값으로 말한다.
+  await expect(page.getByText("바꿨어요 — 새 작업공간부터 release에서 갈라져요", { exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

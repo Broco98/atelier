@@ -13,6 +13,7 @@ import {
   줄차례,
   탭으로,
   탭차례,
+  토큰색,
   포커스자리,
   행버튼,
   type 포커스자리 as 자리,
@@ -21,9 +22,9 @@ import {
 
 // codex-ds 티켓 32 — **목록은 ↑↓, 영역은 Tab으로 다닌다**(codex-ds 스펙 §9 「키보드」 · S10). 창의 Tab은 영역 차례로 간다 — 창
 // 컨트롤 → 머리 줄 → 사이드바 → 본문 → 패널 → 레일이고, 영역 안은 DOM 차례다(02 결정 「03」 — 머리 줄이 판 위 크롬에 한 줄이라
-// DOM이 보이는 차례를 따른다. 한때 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄이었다). 목록 넷(사이드바 work 목록 · main nav ·
-// Archive 목록 · spec 트리)은 저마다 **Tab 정류장 하나**이고(roving tabindex — `@/lib/roving`), 목록 안은 ↑↓로 옮기고 Enter로 연다.
-// Projects 목록은 03 판에서 표가 됐다 — 줄마다 이름 링크와 ⋯가 정류장이다(03 결정 「10」 — Service 목록과 같다). 트리는 →가 펴고 ←가 접는다. 행 안 버튼(고정 · 경로 복사)은 Tab에서 빠지고, 그 동작은 행의 대상 메뉴(⇧F10 · 메뉴 키)에
+// DOM이 보이는 차례를 따른다. 한때 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄이었다). 목록 셋(사이드바 work 목록 · main nav ·
+// spec 트리 — Archive 상세의 「문서」 트리 포함)은 저마다 **Tab 정류장 하나**이고(roving tabindex — `@/lib/roving`), 목록 안은 ↑↓로 옮기고 Enter로 연다.
+// Projects · Services · Archive 목록은 03 판에서 표가 됐다 — 줄마다 이름 링크와 ⋯가 정류장이다(03 결정 「10」 · restart 03-4 — 한때 Archive 목록도 roving이었다). 트리는 →가 펴고 ←가 접는다. 행 안 버튼(고정 · 경로 복사)은 Tab에서 빠지고, 그 동작은 행의 대상 메뉴(⇧F10 · 메뉴 키)에
 // 있다 — 고정은 work 메뉴의 「고정」, 경로 복사는 spec 트리 파일 행 메뉴의 「경로 복사」다(구현 노트 Q16).
 //
 // **Tab은 진짜 키로 누른다.** `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
@@ -52,6 +53,10 @@ async function 간다(page: Page, key: string, 행: string): Promise<void> {
 const 목록행 = (page: Page, 키: string) => page.locator(`[data-worklist] [data-roving="${키}"]`);
 const 패널 = (page: Page) => page.locator("aside:not([data-sidebar])");
 const 트리행 = (page: Page, 키: string) => 패널(page).locator(`[data-roving="${키}"]`);
+/** Archive 상세의 「문서」 트리 행 — 트리는 판 안의 `nav`다(restart 03-4 — 한때 둘째 `aside`의 spec 목록 패널). */
+const 문서트리행 = (page: Page, 키: string) => page.locator(`main nav[aria-label="문서"] [data-roving="${키}"]`);
+/** 목록 판의 정렬 단추 · 줄 끝 단추(작업공간 만들기 · 새 채팅)의 이름 — 아래 「앱 어긋남」 검사가 따로 잰다. */
+const 정렬과줄단추 = (이름: string) => ["이름", "최근 활동", "보관한 날"].includes(이름) || / 범위로 (작업공간 만들기|새 채팅)$/.test(이름);
 
 /** 차례에서 그 키들 가운데 선 정류장의 키 — 목록 하나가 정류장 하나인지를 본다. */
 const 정류장 = (자리들: 자리[], 키들: readonly string[]) =>
@@ -119,57 +124,80 @@ test("작업 화면의 Tab은 창 컨트롤 → 머리 줄 → 사이드바 → 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Archive 목록 · Archive의 spec 트리는 Tab이 한 번 앉고 — 고른 행에 — Projects 표는 줄마다 이름 링크 · ⋯에 앉는다", async ({ page }) => {
+test("목록 표는 줄마다 이름 링크 · ⋯에 앉고, Archive 상세의 문서 트리는 Tab이 한 번 — 고른 행에 — 앉으며 숨은 목록에는 앉지 않는다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto("/projects");
   await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
-  // 본문의 정류장 — 찾기 · 「Project 추가」 뒤에 줄마다 이름 링크와 그 줄의 ⋯다(roving 목록이 아니다).
-  expect(
-    (await 탭차례(page)).filter(({ 영역 }) => 영역 === "본문").map(({ 이름 }) => 이름),
-  ).toEqual(["Project 찾기", "Project 추가", ...PROJECTS.flatMap((one) => [one.name, `${one.name} 메뉴`])]);
+  // 본문의 정류장 — 찾기 · 「Project 추가」 뒤에 줄마다 이름 링크와 그 줄의 ⋯다(roving 목록이 아니다). 정렬 단추 · 줄 끝 단추는 아래 검사가 잰다.
+  const 본문정류장 = async () =>
+    (await 탭차례(page)).filter(({ 영역, 이름 }) => 영역 === "본문" && !정렬과줄단추(이름)).map(({ 이름 }) => 이름);
+  expect(await 본문정류장()).toEqual(["Project 찾기", "Project 추가", ...PROJECTS.flatMap((one) => [one.name, `${one.name} 메뉴`])]);
 
+  // Archive 목록도 같은 표다(restart 03-4 — 한때 두 줄 행의 roving 목록이라 Tab이 한 번 앉았다). 주 단추는 없다.
+  await page.goto("/archive");
+  await expect(page.getByRole("table", { name: "Archive 목록", exact: true })).toBeVisible();
+  expect(await 본문정류장()).toEqual(["Archive 찾기", ...[shipped, bare].flatMap((one) => [one.title, `${one.title} 메뉴`])]);
+
+  // 상세 — 판(「← Archive」 · 「Finder에서 열기」 · ⋯ · 문서 글)과 트리. 트리의 정류장은 연 문서(기록)의 행 하나다. 상세가 선 동안 숨은 목록
+  // (`inert`)의 이름 링크 · ⋯에는 앉지 않는다. 이 화면에는 패널이 없다.
   await page.goto(`/archive/${shipped.slug}`);
-  await expect(트리행(page, "record.md")).toBeVisible();
+  await expect(문서트리행(page, "record.md")).toBeVisible();
   const 자리들 = await 탭차례(page);
-  expect(정류장(자리들, [shipped.slug, bare.slug])).toEqual([shipped.slug]);
-  // 트리의 정류장은 연 문서(기록)의 행이다.
   const 트리키 = ["record.md", "spec", "spec/tickets", "spec/tickets/할일.md", "spec/목업", "spec/목업/조각.html", "spec/증거", "spec/증거/샷.png"];
   expect(정류장(자리들, 트리키)).toEqual(["record.md"]);
-  expect(영역차례(자리들)).toEqual(["창 컨트롤", "머리 줄", "사이드바", "본문", "패널"]);
+  const 본문 = 자리들.filter(({ 영역 }) => 영역 === "본문").map(({ 이름 }) => 이름);
+  expect(본문.slice(0, 3)).toEqual(["Archive", "Finder에서 열기", `${shipped.title} 메뉴`]);
+  expect(본문[본문.length - 1]).toBe("record.md");
+  expect(본문).not.toContain(bare.title);
+  expect(본문).not.toContain(`${bare.title} 메뉴`);
+  expect(영역차례(자리들)).not.toContain("패널");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/**
- * 본문 카드 안에서 Tab이 앉은 칸의 차례 — 내용 칸(`main`)인가 그 이름의 목록 칸(`section`)인가. 카드 밖 자리는 건너뛰고, 이어진 같은
- * 칸은 하나로 접는다. 한 바퀴(포커스가 창을 벗어나거나 처음 자리로 돌아오기)까지 잰다.
- */
-async function 칸차례(page: Page, 목록: string): Promise<string[]> {
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  const 칸들: string[] = [];
-  let 첫: string | null = null;
-  for (let n = 0; n < 80; n += 1) {
-    await page.keyboard.press("Tab");
-    const 지금 = await page.evaluate((name) => {
-      const el = document.activeElement as (HTMLElement & { __칸표?: string }) | null;
-      if (!el || el === document.body) return null;
-      el.__칸표 ??= Math.random().toString(36).slice(2);
-      const 칸 = el.closest(`section[aria-label="${name}"]`) ? "목록" : el.closest("main") ? "내용" : "밖";
-      return { 표: el.__칸표, 칸 };
-    }, 목록);
-    if (지금 === null || 지금.표 === 첫) return 칸들;
-    첫 ??= 지금.표;
-    if (지금.칸 !== "밖" && 칸들[칸들.length - 1] !== 지금.칸) 칸들.push(지금.칸);
-  }
-  throw new Error("Tab 80번 안에 한 바퀴를 못 돌았다");
-}
+// **앱 어긋남(restart 03-13 — `티켓-03-13.md`)**: 공용 목록 · 상세 틀의 맨 `<button>` — 열 머리 정렬 단추(`SortHead`) · 줄 끝 「작업공간 만들기」 ·
+// 「새 채팅」(`Hint`) · 상세 제목 단추 · 묶음 머리의 +에 `tabIndex`가 없어 macOS WebKit의 Tab이 지나친다(`@/lib/roving` 머리말 · 02 코드 리뷰 C1 「맨 버튼도 앉는다」). 03-4가 적은
+// 차례는 「Archive 찾기」 → 열 머리 정렬 단추 둘 → 줄마다 이름 링크 · ⋯다(`e2e-수리.md` 「03」). 키보드로는 정렬을 바꿀 수도, 줄에서 범위로
+// 시작할 수도 없다. 앱을 고치면 초록이 된다 — 시험을 앱에 맞추지 않았다.
+test("목록 · 상세의 맨 단추(열 머리 정렬 · 줄 끝 「작업공간 만들기」 · 「새 채팅」 · 제목 · 묶음의 +)에도 Tab이 앉는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
+  const 본문정류장 = async () => (await 탭차례(page)).filter(({ 영역 }) => 영역 === "본문").map(({ 이름 }) => 이름);
+  expect(await 본문정류장()).toEqual([
+    "Project 찾기",
+    "Project 추가",
+    "이름",
+    "최근 활동",
+    ...PROJECTS.flatMap((one) => [one.name, `${one.name} 메뉴`, `${one.name} 범위로 작업공간 만들기`, `${one.name} 범위로 새 채팅`]),
+  ]);
+  await page.goto("/archive");
+  await expect(page.getByRole("table", { name: "Archive 목록", exact: true })).toBeVisible();
+  expect(await 본문정류장()).toEqual(["Archive 찾기", "이름", "보관한 날", ...[shipped, bare].flatMap((one) => [one.title, `${one.title} 메뉴`])]);
+  // 상세 — 제목 단추(이름 바꾸기)와 묶음 머리의 +(「작업공간 만들기」 — 머리의 같은 이름 단추와 둘)도 맨 `<button>`이라 지나친다.
+  await page.goto(`/projects/${billing.slug}`);
+  await expect(page.getByRole("combobox", { name: "기준 브랜치", exact: true })).toBeVisible();
+  const 상세 = await 본문정류장();
+  expect(상세, "제목 단추").toContain(`${billing.name} — 이름 바꾸기`);
+  expect(상세.filter((이름) => 이름 === "작업공간 만들기"), "머리 · 「작업공간」 묶음의 +").toHaveLength(2);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
-// 내용 | 목록 카드(codex-ds 결정 28)의 두 칸은 DOM 차례가 보이는 차례다 — 왼쪽 내용 칸을 다 지나고 오른쪽 목록 칸으로 간다. 목록
-// 칸을 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다. 그 카드는 이제 Archive 하나다(Projects는 03 판에서 표 하나).
-test("Archive의 본문 카드 안 Tab은 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다", async ({ page }) => {
+// Archive 상세 판 안의 Tab은 DOM 차례가 보이는 차례다 — 왼쪽 문서 글을 지나 오른쪽 「문서」 트리로 간다(restart 03-4 — 한때 내용 | 목록 카드의
+// 두 칸이었다, codex-ds 결정 28). 트리를 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다.
+test("Archive 상세 판 안 Tab은 왼쪽 문서 글을 지나 오른쪽 「문서」 트리로 간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}`);
-  await expect(트리행(page, "record.md")).toBeVisible();
-  expect(await 칸차례(page, "아카이브 목록")).toEqual(["내용", "목록"]);
+  await expect(문서트리행(page, "record.md")).toBeVisible();
+  const 본문 = (await 탭차례(page)).filter(({ 영역 }) => 영역 === "본문");
+  const 글 = 본문.findIndex(({ 이름 }) => 이름.startsWith("기록 — 치운 일"));
+  const 트리 = 본문.findIndex(({ 행 }) => 행 === "record.md");
+  expect(글, "문서 글이 정류장이다").toBeGreaterThan(-1);
+  expect(트리).toBe(글 + 1);
+  const 글상자 = (await page.locator("main [data-doc-text]").boundingBox())!;
+  const 트리상자 = (await 문서트리행(page, "record.md").boundingBox())!;
+  expect(트리상자.x).toBeGreaterThan(글상자.x + 글상자.width);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -336,13 +364,19 @@ test("설정 nav도 Tab이 켜진 항목에 한 번 앉고, ↑↓로 항목을 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Archive 목록은 ↑↓로 행을 지나고 Enter가 그 아카이브를 연다", async ({ page }) => {
+// Archive 목록은 표다(restart 03-4) — 한때 두 줄 행의 roving 목록이라 ↑↓로 행을 지났다. 이제 Tab이 줄마다 이름 링크에 서고, 그때 줄이 지날 때와 같은
+// 면(`fill-soft` — 보드 `.pl-row:focus-visible`)이며 Enter가 그 아카이브를 연다.
+test("Archive 목록 줄의 이름 링크에 Tab으로 서면 줄이 지날 때의 면이고, Enter가 그 아카이브를 연다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/archive/${shipped.slug}`);
-  await 탭으로(page, page.locator(`button[data-archive-row="${shipped.slug}"]`));
-  await 간다(page, "ArrowUp", shipped.slug);
-  await 간다(page, "ArrowDown", bare.slug);
-  await 간다(page, "ArrowDown", bare.slug);
+  await page.goto("/archive");
+  const 링크 = page.getByRole("table", { name: "Archive 목록", exact: true }).getByRole("link", { name: bare.title, exact: true });
+  const 줄 = 링크.locator("xpath=ancestor::*[@role='row'][1]");
+  const 면 = () => 줄.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const 쉴때 = await 면();
+  await 탭으로(page, 링크);
+  await expect(링크).toBeFocused();
+  await expect.poll(면).toBe(await 토큰색(page, "--fill-soft"));
+  expect(쉴때).not.toBe(await 토큰색(page, "--fill-soft"));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/archive/${bare.slug}`);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -394,9 +428,10 @@ test("작업 패널의 spec 트리는 →가 펴고 ←가 접으며, 펼친 폴
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Archive의 spec 트리도 ← · →로 중첩 폴더를 오르내린다", async ({ page }) => {
+test("Archive 상세의 문서 트리도 ← · →로 중첩 폴더를 오르내린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}`);
+  const 트리행 = 문서트리행;
   await 탭으로(page, 트리행(page, "record.md"));
   await 간다(page, "ArrowDown", "spec");
   await 간다(page, "ArrowRight", "spec/tickets");

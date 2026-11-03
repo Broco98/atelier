@@ -21,7 +21,8 @@ const addDialog = (page: Page) => page.getByRole("dialog", { name: "Project 추�
 
 async function openAddDialog(page: Page) {
   await page.goto("/projects");
-  await expect(page.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
+  // 빈 목록의 제목(restart 03-1 · 보드 PlaceSheet — 한때 「아직 Project가 없어요」).
+  await expect(page.getByRole("heading", { name: "등록한 Project가 없어요", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Project 추가", exact: true }).click();
   await expect(addDialog(page)).toBeVisible();
   return addDialog(page);

@@ -194,9 +194,9 @@ export const SERVICE_DRAFT: ServiceDraft = {
  * 엔진이 없다 — 트리는 엔진이 내장본으로 가른 모양을 옮겨 적은 것이고, 앱은 그것을 그대로 그린다.
  *
  * **아이콘은 레이아웃의 자리를 받은 것에만 있다.** 내장본에서 파일로 아이콘을 받는 것은 최상위
- * `overview.md`(`compass`) 하나다. 아이콘을 받은 파일 행은 확장자 라벨 대신 아이콘을 그리므로
- * (spec 레이아웃 티켓 05), 이름으로 행을 찾는 검사가 `overview.md`는 라벨 없이, `개요.md`는
- * `MD 개요.md`로 집는다. 그 둘이 지금 화면과 같게 하려고 `개요.md`에는 아이콘을 주지 않는다.
+ * `overview.md`(`compass`) 하나다. 아이콘을 받은 파일 행은 확장자 글자 대신 아이콘을 그린다(spec 레이아웃 티켓 05). 확장자 글자
+ * (`data-ext`)는 이름에서 빠져(restart 03-12a — 한때 `MD 개요.md`) 이름으로 행을 찾는 검사는 둘 다 파일 이름으로 집는다. 그 둘이 지금
+ * 화면과 같게 하려고 `개요.md`에는 아이콘을 주지 않는다.
  */
 const specFile = (path: string, icon: string | null = null): SpecTreeItem => ({
   name: path.slice(path.lastIndexOf("/") + 1),
@@ -359,7 +359,7 @@ const worktreeSymlink = (path: string): WorktreeEntry => ({ ...worktreeFile(path
  *
  * `billing`에 **files 칸이 그리는 갈래가 다 있다** — 점 폴더(`.github`), 걸린 폴더(`dist`), 두 겹 폴더(`src/api`), 하위
  * 모듈(`vendor-ui` — 제 글리프와 「하위 모듈」), 걸린 점 파일(`.env`), 확장자 없는 점 파일(`.gitignore`), 폴더를 가리키는
- * 심링크(`docs` — 펼치지 않는 파일 행). 파일 행의 이름에는 확장자 꼬리표가 붙는다(`MD README.md` — `SpecTree`의 `FileGlyph`).
+ * 심링크(`docs` — 펼치지 않는 파일 행). 파일 행의 확장자 글자(`data-ext`)는 이름에서 빠진다(restart 03-12a — 한때 `MD README.md`).
  */
 export const WORKTREE_TREES: Record<string, WorktreeTree> = {
   billing: {
@@ -1277,8 +1277,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // work 메뉴의 「Finder에서 열기」가 나간다(codex-ds 티켓 16 — `works-floating.spec.ts`의 work 메뉴 절). 값은 안 쓰인다 — 탐색기를
   // 여는 것이 일의 전부다. 검사가 보는 것은 나갔는가와 그 인자(slug · 프로젝트)이고, 못 여는 길은 `ipcFailure`로 덮어 잰다.
   open_work_folder: null,
-  // Archive의 「Finder에서 열기」(머리 줄 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
-  // `archive-docs.spec.ts`). 위 줄과 한 가족이고 같은 까닭으로 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
+  // Archive의 「Finder에서 열기」(상세 판 머리의 단추 · 상세 ⋯ · 목록 줄 ⋯ — restart 03-4. 한때 머리 줄 ⋯와 spec 목록 패널 머리의
+  // 「spec 폴더 열기」)가 나간다(`archive-docs.spec.ts`). 위 줄과 한 가족이고 같은 까닭으로 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_archived_spec_folder: null,
   // 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와 무관하다(`WORKS_MOVED`
   // 머리말) — 화면이 이 답으로 캐시를 갈아 끼우는지를 `work-row-drag.spec.ts`가 그 순서로 잰다.

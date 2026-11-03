@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD } from "./fixtures";
-import { fireEventToAll, installFixtureBackend, ipcArgs, replaceAnswer, unknownIpcCalls, 주소로간다, 화면머리 } from "./harness";
+import { fireEventToAll, installFixtureBackend, ipcArgs, replaceAnswer, unknownIpcCalls, 주소로간다, 첫글자, 토큰색, 화면머리 } from "./harness";
 import { lineOf, linesAfter, linesThrough, record, seqOf, streamLines, summaryOf, threadOf } from "./thread-records";
 import { PAYMENTS, REFUND, SCOPE_BY_SERVICE, SCOPES, SETTLEMENT, TOOLS, WORLD, WORLD_PROJECTS, WORLD_SERVICE_DETAILS } from "./thread-service-world";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
@@ -364,20 +364,23 @@ test("머리 줄 — Work 없는 대화는 「흐린 Service / 이름」(누르�
   await expect(화면머리(page).getByRole("button", { name: /^Service 열기: / })).toHaveCount(0);
   await expect(화면머리(page).getByText("/", { exact: true })).toHaveCount(0);
 
-  // Work 없음 · Service 있음 — 흐린 Service(14 · #898a8b) 8 「/」(그림 — 이름에 들지 않는다) 8 이름. 흐린 Service를 누르면 Service 상세다.
+  // Work 없음 · Service 있음 — 흐린 Service(13/18 · `fg-tertiary`) 4 「/」(그림 — 이름에 들지 않는다) 6 이름 글자(restart 03-12a · 시안 Main
+  // `.ra-crumb` — 한때 14 · #898a8b `fg-titlebar` · 사이 8 · 8). 흐린 Service를 누르면 Service 상세다.
   await openThread(page, serviced);
   const crumb = 화면머리(page).getByRole("button", { name: `Service 열기: ${PAYMENTS.name}`, exact: true });
   const slash = 화면머리(page).getByText("/", { exact: true });
   const name = 화면머리(page).getByText(serviced.title, { exact: true });
   await expect(crumb).toHaveText(PAYMENTS.name);
   await expect(slash).toHaveAttribute("aria-hidden", "true");
-  expect(await 모양(crumb, ["font-size", "color"])).toEqual({ "font-size": "14px", color: "rgb(137, 138, 139)" });
-  const [crumbBox, slashBox, nameBox] = [await 상자(crumb), await 상자(slash), await 상자(name)];
-  expect(slashBox.x - crumbBox.right).toBeCloseTo(8, 0);
-  expect(nameBox.x - slashBox.right).toBeCloseTo(8, 0);
+  const 흐림 = await 토큰색(page, "--fg-tertiary");
+  expect(await 모양(crumb, ["font-size", "line-height", "color"])).toEqual({ "font-size": "13px", "line-height": "18px", color: 흐림 });
+  const [crumbBox, slashBox, nameText] = [await 상자(crumb), await 상자(slash), await 첫글자(name)];
+  expect(slashBox.x - crumbBox.right).toBeCloseTo(4, 0);
+  expect(nameText.x - slashBox.right).toBeCloseTo(6, 0);
   await crumb.click();
   await expect.poll(() => 경로(page)).toBe(`/services/${PAYMENTS.slug}`);
-  await expect(page.getByRole("main").getByText(PAYMENTS.name, { exact: true }).first()).toBeVisible();
+  // 상세의 이름은 제목(h1)으로 집는다 — 상세가 선 동안 숨은 목록 줄(restart 03-3 — `main` 안 `inert`)에도 같은 이름이 있다.
+  await expect(page.getByRole("main").getByRole("heading", { level: 1, name: PAYMENTS.name })).toBeVisible();
 
   // Work 화면 · Service 있음 — 흐린 Service를 누르면 Service 메뉴다(「작업공간 화면 · Service 메뉴」): 맨 위 「Service 빼기 · 등록된 Project 3개를 모두
   // 읽어요」, Service 목록(지금 것 ✓), 「Service 관리」. 고르면 그 Work의 Service가 바뀐다(그 Work의 Thread마다 Service 줄 — L1).
@@ -389,7 +392,7 @@ test("머리 줄 — Work 없는 대화는 「흐린 Service / 이름」(누르�
   await expect(workService).toHaveAttribute("aria-haspopup", "menu");
   // 글자색은 손을 치운 뒤 전이가 끝난 값이다 — 앞 화면에서 누른 자리 밑에 이 단추가 설 수 있다(hover는 본문색).
   await page.mouse.move(720, 600);
-  await expect.poll(async () => 모양(workService, ["font-size", "color"])).toEqual({ "font-size": "14px", color: "rgb(137, 138, 139)" });
+  await expect.poll(async () => 모양(workService, ["font-size", "color"])).toEqual({ "font-size": "13px", color: 흐림 });
   await workService.click();
   const drop = 메뉴(page).getByRole("menuitem", { name: "Service 빼기", exact: true });
   await expect(drop).toHaveAccessibleDescription("등록된 Project 3개를 모두 읽어요");

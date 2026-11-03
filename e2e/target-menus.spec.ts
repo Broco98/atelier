@@ -7,7 +7,6 @@ import {
   recordClipboard,
   unknownIpcCalls,
   다떴다,
-  화면머리,
   적힌주소,
   주소적기,
   줄차례,
@@ -25,9 +24,10 @@ import { settle } from "./tab-row";
 //
 // - 프로젝트(목록 행 · 머리 줄 이름)는 03 판에서 대상이 아니다(03 결정 「10」) — 목록 줄은 이름 링크 하나와 ⋯이고, 이름 바꾸기는 상세
 //   제목이다. ⋯의 메뉴 갈래와 그 항목이 부르는 것은 Projects 흐름 spec(`projects-kit.spec.ts`)이 잰다.
-// - Archive 목록 행: 머리 줄 ⋯(아카이브 메뉴)와 같은 목록 — Finder에서 열기 · 경로 복사.
-// - spec 트리 파일 행(작업 · Archive 패널, 티켓 32 — 구현 노트 Q16): 경로 복사 하나다. 행의 복사 버튼이 Tab 정류장이 아니어서 키보드의
-//   복사 길이 이 메뉴다. 폴더 행은 대상이 아니다.
+// - Archive 목록 줄은 대상이 아니다(restart 03-4 — 공용 목록 틀의 줄은 이름 링크와 ⋯이다). 한때 두 줄 행이 우클릭 대상이었고 머리 줄
+//   ⋯(아카이브 메뉴)와 같은 목록이었다. 그 두 할 일(Finder에서 열기 · 경로 복사)은 줄 ⋯에 있다.
+// - spec 트리 파일 행(작업 패널 · Archive 상세의 「문서」 트리, 티켓 32 — 구현 노트 Q16): 경로 복사 하나다. 행의 복사 버튼이 Tab 정류장이
+//   아니어서 키보드의 복사 길이 이 메뉴다. 폴더 행은 대상이 아니다.
 // - 문서 글(Works · Archive 문서): 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사.
 //
 // **문서 글의 고름은 검사가 만든다** — macOS WebKit은 우클릭한 낱말을 스스로 고르고 리눅스 WebKit은 안 고른다(`edit-menu.spec.ts`와
@@ -85,20 +85,6 @@ interface 대상 {
 }
 
 const 대상들: 대상[] = [
-  {
-    name: "Archive 목록 행",
-    setUp: async (page) => {
-      await page.goto(`/archive/${shipped.slug}`);
-      // ⋯과 같은 목록이다(결정 6) — 머리 줄 ⋯를 먼저 열어 그 차례를 읽는다. 대상은 고르지 않은 행이다.
-      const more = 버튼(화면머리(page), "아카이브 메뉴");
-      await more.click();
-      const order = await 줄차례(메뉴(page));
-      await page.keyboard.press("Escape");
-      await expect(메뉴(page)).toHaveCount(0);
-      expect(order, "머리 줄 ⋯의 아카이브 메뉴").toEqual(["Finder에서 열기", "경로 복사"]);
-      return { target: page.locator(`[data-archive-row="${bare.slug}"]`), order, mark: "data-archive-row", selected: shipped.slug };
-    },
-  },
   // spec 트리 파일 행 — 대상은 고른 파일이 아닌 행이고, 테두리 · 돌아올 포커스는 그 행의 이름 버튼(목록의 roving 줄)이다. 작업공간을 주소
   // 없이 열면 새 채팅 탭이 서고 문서를 안 열어(restart 02a-8 · 02a-13) 고른 파일이 없다 — 한때 기본 문서(`overview.md`)가 골라져 있었다.
   // 주소가 `tab=chat`으로 고쳐지고 패널 상자가 다 자란 뒤에 잰다(패널은 폭 0에서 자란다 — 02a-14).
@@ -113,8 +99,9 @@ const 대상들: 대상[] = [
       return { target, order: ["경로 복사"], mark: "data-spec-file", selected: null };
     },
   },
+  // Archive 상세의 「문서」 트리(restart 03-4 — 한때 오른쪽 spec 목록 패널).
   {
-    name: "Archive 패널의 spec 트리 파일 행",
+    name: "Archive 상세의 문서 트리 파일 행",
     setUp: async (page) => {
       await page.goto(`/archive/${shipped.slug}`);
       return { target: 트리파일(page, "spec/tickets/할일.md"), order: ["경로 복사"], mark: "data-spec-file", selected: RECORD };
@@ -195,7 +182,7 @@ for (const { name, setUp } of 대상들) {
 
 // ── ⌃클릭은 우클릭이다 (결정 7) ──
 // macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 연다 — 그 손이 그 행을 골라 버리면 「메뉴는 고름을 안 바꾼다」가 깨진다. 누르면 그 대상을
-// 고르는 행(Archive 목록 행 · spec 트리 파일 행)은 그 클릭에서 ⌃를 거른다 — work 행 · 띠 줄과 같은 거름이고, 재는 길도 그
+// 고르는 행(spec 트리 파일 행)은 그 클릭에서 ⌃를 거른다 — work 행 · 띠 줄과 같은 거름이고, 재는 길도 그
 // 검사(`work-context-menu.spec.ts`)와 같다: ⌃가 실린 `click` 사건을 내고, 주소를 바꾸는 부름을 적어(`주소적기`) ⌃클릭 뒤에 꽂은 표보다
 // 먼저 적힌 것이 없음을 잰다. 키보드 Enter의 고름은 `keyboard.spec.ts`가 잰다.
 
@@ -221,32 +208,44 @@ for (const { name, setUp } of 대상들) {
   });
 }
 
-// ── Archive 목록 행이 부르는 것 ──
-// 머리 줄 ⋯과 같은 정의라 같은 명령 · 같은 참조다 — 다만 그 행의 아카이브로 나간다.
+// ── Archive 목록 줄은 우클릭 대상이 아니다(restart 03-4) ──
+// 줄의 두 할 일은 줄 끝 ⋯가 연다 — 그 줄의 아카이브로 나가고, 목록은 그대로다.
 
-test("Archive 목록 행의 메뉴는 그 행의 아카이브로 Finder 열기 · 경로 복사를 부르고, 고른 아카이브는 그대로다", async ({ page }) => {
+test("Archive 목록 줄은 우클릭해도 메뉴가 서지 않고, 줄 ⋯가 그 줄의 아카이브로 Finder 열기 · 경로 복사를 부른다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
-  await page.goto(`/archive/${shipped.slug}`);
-  const row = page.locator(`[data-archive-row="${bare.slug}"]`);
+  await page.goto("/archive");
+  const row = page
+    .getByRole("table", { name: "Archive 목록", exact: true })
+    .getByRole("row")
+    .filter({ has: page.getByRole("link", { name: bare.title, exact: true }) });
+  await expect(row).toBeVisible();
 
-  await 우클릭한다(page, row);
+  await row.getByRole("cell").nth(1).click({ button: "right" });
+  // 앵커 뒤에 「없다」를 잰다 — 메뉴가 서는 데 두 프레임을 넘긴다.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(메뉴(page)).toHaveCount(0);
+  await expect(page).toHaveURL("/archive");
+
+  const more = row.getByRole("button", { name: `${bare.title} 메뉴`, exact: true });
+  await more.click();
+  await expect.poll(() => 줄차례(메뉴(page))).toEqual(["Finder에서 열기", "경로 복사"]);
   await 항목(page, "Finder에서 열기").click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "open_archived_spec_folder", "slug")).map(({ args }) => args.slug))
     .toEqual([bare.slug]);
 
-  await 우클릭한다(page, row);
+  await more.click();
   await 항목(page, "경로 복사").click();
   await expect.poll(() => clipboardWrites(page)).toEqual([`~/.atelier/archive/${bare.slug}/spec/`]);
-  await expect(page).toHaveURL(`/archive/${shipped.slug}`);
+  await expect(page).toHaveURL("/archive");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // ── spec 트리 파일 행이 부르는 것 ──
-// 작업 패널의 복사는 `keyboard.spec.ts`(⇧F10)가 잰다. Archive 패널은 그 아카이브 안의 참조를 쓴다 — 보던 문서 · 주소는 그대로다.
+// 작업 패널의 복사는 `keyboard.spec.ts`(⇧F10)가 잰다. Archive 상세의 문서 트리는 그 아카이브 안의 참조를 쓴다 — 보던 문서 · 주소는 그대로다.
 
-test("Archive 패널의 spec 트리 파일 행 메뉴에서 「경로 복사」는 그 아카이브 안 파일의 참조를 쓰고, 보던 문서는 그대로다", async ({ page }) => {
+test("Archive 상세의 문서 트리 파일 행 메뉴에서 「경로 복사」는 그 아카이브 안 파일의 참조를 쓰고, 보던 문서는 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
   await page.goto(`/archive/${shipped.slug}`);
@@ -262,7 +261,7 @@ test("Archive 패널의 spec 트리 파일 행 메뉴에서 「경로 복사」�
 });
 
 // ── 문서 글 (스토리 75) ──
-// 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사. 원문으로 보기는 보기 머리(넓힌 카드의 렌더 | 원문 · Archive 경로 줄의 보기 묶음)와
+// 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사. 원문으로 보기는 보기 머리(넓힌 카드의 렌더 | 원문 — Archive 상세에는 보기 머리가 없다)와
 // 같은 상태를 바꾸고(이미 원문이면 「문서로 보기」다), 보기를 못 바꾸는 파일(그림)에서는 서지 않는다. 경로 복사는 머리의 경로 복사와 같은 참조다.
 
 /**
@@ -330,7 +329,8 @@ const 문서자리들 = [
     line: "한 줄.",
     heading: "기록 — 치운 일",
     path: `~/.atelier/archive/${shipped.slug}/${RECORD}`,
-    원문단추: "원문 보기",
+    // Archive 상세에는 보기 머리가 없다(restart 03-4 — 한때 경로 줄의 「문서로 보기」 · 「원문 보기」) — 원문 보기는 이 메뉴뿐이라 글로만 잰다.
+    원문단추: null,
   },
 ];
 
@@ -374,8 +374,8 @@ for (const { name, open, line, heading, path, 원문단추 } of 문서자리들)
     await open(page);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     const url = page.url();
-    const 원문보기 = 버튼(page, 원문단추);
-    await expect(원문보기).toHaveAttribute("aria-pressed", "false");
+    const 원문보기 = 원문단추 === null ? null : 버튼(page, 원문단추);
+    if (원문보기) await expect(원문보기).toHaveAttribute("aria-pressed", "false");
 
     // 글자 위의 우클릭 — macOS WebKit은 여기서 낱말을 고르지만, 메뉴는 누른 순간의 고름(없음)으로 서고 그 낱말 고름을 걷는다.
     const at = await 글자가운데(page, line);
@@ -388,12 +388,12 @@ for (const { name, open, line, heading, path, 원문단추 } of 문서자리들)
     // 원문으로 보기 — 경로 줄의 보기 묶음과 같은 상태다. 원문이면 같은 자리가 「문서로 보기」다.
     await 항목(page, "원문으로 보기").click();
     await expect(menu).toHaveCount(0);
-    await expect(원문보기).toHaveAttribute("aria-pressed", "true");
+    if (원문보기) await expect(원문보기).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("heading", { name: heading })).toHaveCount(0);
     await 우클릭한다(page, 문서글(page));
     await expect.poll(() => 줄차례(menu)).toEqual(["문서로 보기", "경로 복사"]);
     await 항목(page, "문서로 보기").click();
-    await expect(원문보기).toHaveAttribute("aria-pressed", "false");
+    if (원문보기) await expect(원문보기).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
 
     // 경로 복사 — 경로 줄의 동그란 복사와 같은 참조다.

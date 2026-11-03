@@ -582,11 +582,13 @@ test("Project 상세 제목을 누르면 지금 이름의 입력칸이 되고, E
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Project 상세 제목의 연필로 들어가 Esc면 부르지 않고 지금 이름이 선다", async ({ page }) => {
+// 제목 끝 연필은 걷혔다(restart 03-2) — 제목 누름 말고 다른 문은 ⋯의 「이름 바꾸기」다. 메뉴가 닫혀도 포커스가 칸에 남는다(`PlaceDetailMenu`).
+test("Project 상세 ⋯의 「이름 바꾸기」로 들어가 Esc면 부르지 않고 지금 이름이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
 
-  await page.getByRole("main").getByRole("button", { name: "이름 바꾸기", exact: true }).click();
+  await page.getByRole("main").getByRole("button", { name: `${project.name} 메뉴`, exact: true }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: "이름 바꾸기", exact: true }).click();
   const input = 제목칸(page);
   await expect(input).toBeFocused();
   await input.fill("고치다 만 이름");
