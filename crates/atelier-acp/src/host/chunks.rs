@@ -11,6 +11,8 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::translator::DISCARD_MESSAGE_KEY;
+
 /// 흐르는 글의 종류 — 답이나 생각이다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -49,7 +51,7 @@ pub(super) fn discarded(raw: &Value) -> Option<&str> {
     if update["sessionUpdate"] != "session_info_update" {
         return None;
     }
-    update["_meta"]["atelier"]["discardMessage"].as_str()
+    update["_meta"]["atelier"][DISCARD_MESSAGE_KEY].as_str()
 }
 
 /// Session 하나의 쌓는 자리 — 지금 흐름 하나와 마지막으로 매긴 번호. 되살린 Session은 같은 자리를 이어 쓰고, 앱을 다시 켜면 1부터다.
@@ -206,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn 버리라는_표지는_session_info_update의_discardMessage다() {
+    fn 버리라는_표지는_session_info_update의_discard_message다() {
         let mark = update(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"discardMessage": "msg_1"}}}));
         assert_eq!(discarded(&mark), Some("msg_1"));
         let other = update(json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"outOfTurn": {"state": "started"}}}}));

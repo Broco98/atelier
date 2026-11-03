@@ -41,6 +41,11 @@ const EXIT_POLL: Duration = Duration::from_millis(20);
 /// 하나를 함께 쓴다 — 한쪽만 이름을 바꾸면 앱의 Claude 대화만 열리지 않는다.
 pub const CLAUDE_TRANSLATOR_MODE: &str = "acp-claude";
 
+/// 끝나지 않은 메시지를 버리라는 표지의 키(restart 01b-10) — `session_info_update`의 `_meta.atelier.<이 키>`에 그 메시지의 id를 싣는다.
+/// 변환기가 내고(`stream`) 호스트가 읽으며(`host/chunks`) 가짜 ACP 에이전트가 흉내 낸다(`fake-acp-agent`의 `streams-then-discards`) —
+/// 셋이 이 상수 하나를 함께 쓴다. 한쪽만 이름을 바꾸면 끊긴 메시지의 글이 버려지지 않고 남는다.
+pub const DISCARD_MESSAGE_KEY: &str = "discardMessage";
+
 /// 변환기의 몸통 — 앱 진입점의 `acp-claude` 갈래([`CLAUDE_TRANSLATOR_MODE`])와 변환기 시험 bin이 이것 하나를 부른다. stdin이
 /// 닫히면(쥔 claude가 끝난 뒤) 끝나고, 세션이 열린 뒤 claude가 끝나면 그 종료 코드로 끝난다. **stdout이 곧 ACP 선이다** — 이
 /// 함수 밖에서 stdout에 아무것도 쓰지 않는다.

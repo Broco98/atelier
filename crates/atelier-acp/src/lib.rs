@@ -34,4 +34,4 @@ pub use quote::Quote;
 pub use runtime::{QuestionAnswer, RUNTIME_KEY_ENV};
 pub use records::{RecordKind, RecordLine};
 pub use thread_tools::{run_thread_tools, THREAD_TOOLS_MODE};
-pub use translator::{run_claude_translator, CLAUDE_TRANSLATOR_MODE};
+pub use translator::{run_claude_translator, CLAUDE_TRANSLATOR_MODE, DISCARD_MESSAGE_KEY};
