@@ -423,6 +423,7 @@ export const ARCHIVE: ArchiveEntry[] = [
     status: "done",
     archivedAt: "2026-08-10T03:04:05Z",
     projects: ["billing"],
+    branch: "feat/shipped-work",
   },
   {
     // 손으로 옮겨 둔 폴더 — 기록도 spec도 없다. `archivedAt`이 없는 것도 같은 사정이다
@@ -432,6 +433,7 @@ export const ARCHIVE: ArchiveEntry[] = [
     status: "active",
     archivedAt: null,
     projects: [],
+    branch: null,
   },
 ];
 
@@ -1040,7 +1042,10 @@ export const chatSummaryOf = (view: ThreadView): ThreadSummary => ({
   id: view.id,
   title: view.title,
   createdAt: view.createdAt,
+  lastAt: view.createdAt,
   work: view.work,
+  service: view.service ?? null,
+  project: null,
   lastRead: view.lastRead,
   readOnly: view.readOnly,
   broken: null,
@@ -1078,6 +1083,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Service이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
   // (`useUpdateService`) — 이 답은 쓰기를 기억하지 않는다.
   list_services: SERVICES,
+  // Service 파일들의 폴더(restart 03-3) — ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다. 목록 · 상세가 열 때 한 번 읽는다.
+  services_folder: "~/.atelier/services",
   get_service: answerByArg("slug", SERVICE_DETAILS),
   update_service: SERVICES[0],
   // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
@@ -1365,7 +1372,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     id: FIXTURE_THREAD.id,
     title: FIXTURE_THREAD.title,
     createdAt: FIXTURE_THREAD.createdAt,
+    lastAt: FIXTURE_THREAD.createdAt,
     work: null,
+    service: null,
+    project: null,
     lastRead: 0,
     readOnly: null,
     broken: null,
@@ -1375,7 +1385,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     id: FIXTURE_THREAD.id,
     title: FIXTURE_THREAD.title,
     createdAt: FIXTURE_THREAD.createdAt,
+    lastAt: FIXTURE_THREAD.createdAt,
     work: null,
+    service: null,
+    project: null,
     lastRead: FIXTURE_THREAD.lastSeq,
     readOnly: null,
     broken: null,

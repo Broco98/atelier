@@ -383,7 +383,7 @@ describe("실패한 턴", () => {
 
 // 끊긴 턴(01b-6 · 스토리 55, 56 · Cards 보드 「연결 끊김」 · 「다시 잇지 못함」 · Thread 보드의 끊긴 턴) — 끝 줄 없이 Session이 사라지면 사람이 다시 잇기를 고른다.
 describe("끊긴 턴", () => {
-  const REASON = "에이전트 프로세스가 끝났습니다 (종료 코드 137)";
+  const REASON = "프로세스가 코드 137로 끝났어요";
   const sent: RecordLine = { seq: 1, at: at(1), kind: "sent", payload: { text: "고쳐 줘" } };
   const said = update(2, 2, { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: "고치는 중" } });
   const session = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(seq), kind: "session", payload });

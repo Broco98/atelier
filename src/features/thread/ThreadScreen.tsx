@@ -139,6 +139,9 @@ const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
 /** 받은 말의 턴이 기록에 서기를 기다리는 길이 — 그 안에 서지 않으면 보낸 말풍선을 걷는다(`ThreadBody`). */
 const PENDING_GRACE = 1500;
 
+/** 새 채팅 화면의 머리 줄 이름 — 화면 이름이라 고치기가 없다. */
+const NEW_CHAT_TITLE = { name: "새 채팅" } as const;
+
 /**
  * 새 Thread(`/`). `seed`는 주소가 말하는 처음 것이다 — 시작할 곳(작업공간 만들기 `/?new=work`는 「새 작업공간」, `/?new=thread`와 씨앗 없음은
  * 작업공간 없는 채팅 — `/?work=`는 그 작업공간의 새 채팅 탭으로 간다, restart 02a-8)과 범위, 입력 글(`?say=`). 첫 말 전의 이 화면에는 요약 카드도
@@ -159,7 +162,9 @@ export function NewThreadScreen({ seed = { link: null, say: null, service: null,
       if (router.state.location.pathname === "/") setRound((now) => now + 1);
     });
   return (
-    <PlainFrame label="새 채팅">
+    // 머리 줄에는 화면 이름 「새 채팅」이 선다(시안 Home · Main `isHome`의 `.ra-crumb`, restart 03-12a) — 바꿀 이름이 아니라 화면 이름이라 포커스를
+    // 받지 않는다. 한때 이름 없는 새 채팅이라 머리 줄 가운데가 비었다(02a-7).
+    <PlainFrame label="새 채팅" title={NEW_CHAT_TITLE}>
       <ArrivalScope>
         <NewChat
           key={round}

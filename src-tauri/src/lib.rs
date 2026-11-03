@@ -468,6 +468,7 @@ pub fn run() {
             commands::remove_project,
             commands::restore_project,
             commands::list_services,
+            commands::services_folder,
             commands::get_service,
             commands::update_service,
             commands::read_service_text,

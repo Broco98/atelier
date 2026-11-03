@@ -121,9 +121,9 @@ describe("작업공간 도구의 기둥", () => {
     // 패널 상자는 카드 자리 안에서 본문 · 레일과 한 줄이다. 한때 레일이 패널 줄 밖이라 그 줄 폭에서 최소 폭만 뺐다.
     stand(true);
     const markup = column();
-    expect(markup).toMatch(/--panel-reserve:\s*260px/);
+    expect(markup).toMatch(/--panel-min:\s*260px/);
     expect(markup).toMatch(/--panel-trail:\s*calc\(var\(--size-prail\) \+ var\(--space-2\)\)/);
-    expect(classOf(asideTag(markup))).toContain("max-w-[calc(100%-var(--panel-reserve)-var(--panel-trail,0px))]");
+    expect(classOf(asideTag(markup))).toContain("max-w-[calc(100%-var(--panel-min)-var(--panel-trail,0px))]");
   });
 
   it("패널 카드는 옅어지지 않고 상자에 잘리기만 한다 — 작업공간 안에서 닫을 때도, 떠날 때도, 펼 때도", () => {

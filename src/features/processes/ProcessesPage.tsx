@@ -220,7 +220,7 @@ function ProcessesPage() {
   return (
     // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 머리 줄에는 이 화면의 이름이 선다(nav의 이름 · 아이콘) — 시안 Main의 `.ra-crumb`.
     // 할 일([조용한 셸 모두 닫기])은 몸의 머리에 선다(시안 Processes `.pr-head` — restart 03-11). 한때 머리 줄의 할 일이었다.
-    <Frame head={{ icon: PLACE.icon, name: PLACE.label }}>
+    <Frame head={{ name: PLACE.label }}>
       {/* 카드 안에 고를 것이 없어 카드 머리가 없다 — 몸이 곧바로 선다. */}
       <Card as="main" label="Processes" className="flex-1">
         {/* **행 메뉴**(codex-ds 티켓 30 · 스펙 §9 대상 메뉴 표) — 메뉴가 있는 줄(`TreeRow`의 `menu` — 셸 자손 · 고아 · 채팅의 dev 서버)의
@@ -247,7 +247,7 @@ function ProcessesPage() {
               {/* 몸 — 시안 `.pr-col`: 가운데 · 안쪽 20 28 40 · 사이 12. 폭 상한은 앱의 넓은 폭(1120 — 시안 1080)이다. */}
               <div className="mx-auto flex w-full max-w-(--measure-wide) flex-col gap-3 px-7 pt-5 pb-10">
                 {/* 머리(시안 `.pr-head`) — 화면 이름(24 · 600), 언제 잰 값인지(restart 03-9 · 스토리 129 · 130 · 131), 끝에 할 일.
-                    `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead` · `ListParts`의 맨 위 줄과 같다, 02a-15). */}
+                    `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead` · `PlaceList`의 맨 위 줄과 같다, 02a-15). */}
                 <div className="flex min-h-7.5 min-w-0 items-center gap-3">
                   <h1 className="shrink-0 text-heading-lg leading-8 tracking-[-0.015em]">{PLACE.label}</h1>
                   <BeatLine beat={beat} />

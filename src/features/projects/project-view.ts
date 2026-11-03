@@ -7,26 +7,21 @@ import type { GitInfo, ProjectView } from "./types";
 /** 목록 줄 ⋯의 항목이 하는 일 — Finder에서 열기 · 경로 복사 · 제거…(제거 창 — 확인 창과 다른 따로 선 창이다, 03 결정 11). */
 export type RowAct = "open-folder" | "copy-path" | "remove";
 
-/** ⋯ 메뉴의 한 줄 — `apart`면 앞에 구분선이 선다, `danger`면 빨강이다(시안 `.pi.red`). */
+/** ⋯ 메뉴의 한 줄. */
 export interface RowMenuItem {
   act: RowAct;
   label: string;
-  danger: boolean;
-  apart: boolean;
 }
 
 /**
- * 목록 줄의 ⋯(스토리 96 · 102) — 「Finder에서 열기 · 경로 복사 · 제거…」. 제거는 메뉴 안에만 있어 실수로 누르지 않는다. 폴더를 찾을 수 없는
- * Project는 「제거…」만 남는다 — 없는 폴더를 Finder에서 열려 하지 않는다(경로를 고치는 길은 줄 끝의 「재설정」이다).
+ * 목록 줄의 ⋯(스토리 96 · 102 · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.projects`) — 「Finder에서 열기 · 경로 복사 · 제거…」. 세 줄이 같은 줄이다 —
+ * 한때(캔버스 F1-Projects) 제거가 선 아래 빨강이었다. 제거는 메뉴 안에만 있고 창이 한 번 더 묻는다. 폴더를 찾을 수 없는 Project는 「제거…」만
+ * 남는다 — 없는 폴더를 Finder에서 열려 하지 않는다(경로를 고치는 길은 줄 끝의 「재설정」이다).
  */
 export function rowMenu(project: ProjectView): RowMenuItem[] {
-  const remove = { act: "remove", label: "제거…", danger: true } as const;
-  if (project.missing) return [{ ...remove, apart: false }];
-  return [
-    { act: "open-folder", label: "Finder에서 열기", danger: false, apart: false },
-    { act: "copy-path", label: "경로 복사", danger: false, apart: false },
-    { ...remove, apart: true },
-  ];
+  const remove = { act: "remove", label: "제거…" } as const;
+  if (project.missing) return [remove];
+  return [{ act: "open-folder", label: "Finder에서 열기" }, { act: "copy-path", label: "경로 복사" }, remove];
 }
 
 /** 찾기(시안 「Project 찾기」) — 이름 · slug · 경로 가운데 하나라도 그 글을 품으면 남는다(대소문자 무시). 빈 찾기는 모두다. */
@@ -69,12 +64,24 @@ export function renameHint(project: ProjectView): string {
   return `↵ 저장 · esc 취소 — 파일 이름(${project.slug}.md)과 경로는 그대로예요`;
 }
 
-/** 폴더를 찾을 수 없는 Project의 상세 위 안내(스토리 124). */
-export function missingNotice(project: ProjectView): { title: string; body: string } {
-  return {
-    title: "Project를 찾을 수 없어요",
-    body: `${project.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 작업공간은 고칠 수 없어요.`,
-  };
+/**
+ * 폴더를 찾을 수 없는 Project의 상세 경고(restart 03-2 · 스토리 119 · 보드 PlaceSheet 「폴더를 찾을 수 없는 Project」) — 한 줄이고 끝에 「재설정」이
+ * 선다. 경로는 바로 아래 카드가 든다. 한때(03) 「Project를 찾을 수 없어요」 머리와 경로 · 「이 Project를 쓰는 작업공간은 고칠 수 없어요」 두 줄 상자였다.
+ */
+export function missingNotice(): string {
+  return "폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요.";
+}
+
+/** 상세 ⋯의 항목이 하는 일 — 목록 줄의 셋에 상세에서만 고치는 둘(이름 · 설명)을 더한다. */
+export type DetailAct = "rename" | "describe" | RowAct;
+
+/**
+ * 상세 머리의 ⋯(restart 03-2 · 보드 Places 상세 머리의 `.ra-tbtn` — 항목은 그려지지 않았다) — 「이름 바꾸기 · 설명 고치기」 뒤에 목록 줄의 ⋯
+ * (`rowMenu`)가 그대로 선다. 보드 상세에는 이름 · 설명을 고치는 자리가 없다 — 고치기는 그대로 두고(제목을 눌러도 이름을 고친다) 들어가는 문을
+ * 여기에 모았다. 폴더를 찾을 수 없어도 이름과 설명은 고친다(파일은 등록부에 있다).
+ */
+export function detailMenu(project: ProjectView): { act: DetailAct; label: string }[] {
+  return [{ act: "rename", label: "이름 바꾸기" }, { act: "describe", label: "설명 고치기" }, ...rowMenu(project)];
 }
 
 /**

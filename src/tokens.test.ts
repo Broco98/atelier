@@ -497,6 +497,10 @@ describe("모션 토큰", () => {
     "spin-thread": byName["회전"],
     // 넓힌 카드의 보기는 카드가 넓어지는 박자로 옅음에서 선다(보드 `.ra-vw` · restart 02b-8 — 한때 220ms).
     "view-in": { 토큰: "panel-open", 곡선: "var(--ease-panel)" },
+    // 목록에서 상세로 · 상세에서 목록으로(Motion 「목록에서 상세로」 · PlaceSheet 「움직임과 조작」 · restart 03-1) — 240ms `ease-enter-snappy`, 상세는
+    // 오른쪽 10에서 · 목록은 왼쪽 10에서 옅음을 벗으며 선다.
+    "place-in": { 토큰: "place", 곡선: "var(--ease-enter-snappy)" },
+    "place-back": { 토큰: "place", 곡선: "var(--ease-enter-snappy)" },
     // 보낸 말이 선다(Motion 「보낸 말이 선다」 · 보드 `.ra-msg.rise` — restart 02b-7) — 아래 12 · .985배에서 320ms `ease-enter-snappy`.
     "msg-rise": { 토큰: "rise", 곡선: "var(--ease-enter-snappy)" },
   };
@@ -652,7 +656,7 @@ describe("restart 시안 토큰", () => {
 
   // Motion 보드의 「바뀜」 · 「새로 추가」 시간 — 오른쪽 패널 · 레일 · 카드 넓힘의 여닫기 500(Codex spring .5, 지금 패널은 220), 레일 켜짐
   // 표시가 칸 사이를 옮겨 가는 220, 보낸 말이 자리에 서는 320.
-  const DURATIONS: Record<string, string> = { "panel-open": "500ms", rail: "220ms", rise: "320ms" };
+  const DURATIONS: Record<string, string> = { "panel-open": "500ms", rail: "220ms", rise: "320ms", place: "240ms" };
 
   it("Motion의 새 시간이 @theme에 서고, 시간 유틸리티가 그 변수를 읽는다", async () => {
     for (const [name, value] of Object.entries(DURATIONS)) expect(themed(`duration-${name}`), name).toBe(value);

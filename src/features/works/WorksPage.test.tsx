@@ -353,7 +353,8 @@ describe("WorksPage 머리 줄 배치", () => {
     // 눈으로는 "살짝 튄다"로만 보여서, 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에 안 드러난다.
     // ⋯가 22px·radius 7이었던 것은 옛 이웃인 상태 배지에 맞춘 값인데, 그 배지가 오른쪽
     // actions로 가면서 맞출 상대가 아이콘 버튼으로 바뀌었다. 그 상자는 머리 카드 때 24였고, 머리 줄이 한 결이 되며(02 결정 「머리 줄은
-    // 한 결이다(03 뒤)」) Thread의 「…」 · 요약 단추와 같은 28(아이콘 버튼 기본 — 작은 단 `icon-button-xs`가 없다) · 글리프 16이다.
+    // 한 결이다(03 뒤)」) Thread의 「…」 · 요약 단추와 같은 28(아이콘 버튼 기본 — 작은 단 `icon-button-xs`가 없다) · 글리프 15다(시안
+    // `.ra-tbtn`의 `s15` — restart 03-12a, 한때 16).
     const tags = header(render()).match(/<button[^>]*>/g) ?? [];
     const box = (label: string) =>
       tags.find((tag) => tag.includes(`aria-label="${label}"`))?.match(/class="([^"]*)"/)?.[1] ?? "";
@@ -362,8 +363,8 @@ describe("WorksPage 머리 줄 배치", () => {
       expect(box(label), label).not.toMatch(/\bicon-button-xs\b/);
     }
     const glyph = (icon: string) => header(render()).match(new RegExp(`<svg[^>]*class="[^"]*lucide-${icon}\\b[^"]*"`))?.[0] ?? "";
-    expect(glyph("ellipsis")).toMatch(/\bsize-4\b/);
-    expect(glyph("summary")).toMatch(/\bsize-4\b/);
+    expect(glyph("ellipsis")).toMatch(/\bsize-3\.75\b/);
+    expect(glyph("summary")).toMatch(/\bsize-3\.75\b/);
     // 크기 단까지 같은지는 L3가 칠해진 상자로 잰다(`e2e/primitives.spec.ts`)
     // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
     expect(box("작업공간 메뉴")).not.toMatch(/\bh-\[/);
@@ -419,21 +420,22 @@ describe("WorksPage 머리 줄 배치", () => {
 
   // codex-ds 스토리 23 · 24 — 머리 줄 왼쪽이 지금 어느 work인지 말한다. ⌘B로 사이드바를 접어도 제목이 화면에 남는다.
   // 한때(결정 10) 제목은 화면에서 빠지고 사이드바 행만 말했다 — 접으면 화면 어디에도 제목이 없던 그 감수가 풀렸다.
-  it("머리 줄 왼쪽에 ⚡와 work 제목이 서고, 제목은 버튼이 아니다", () => {
+  // 이름 앞에 아이콘이 없다 — 시안 Main 머리 줄 crumb는 「흐린 Service / 이름 ⑂ 브랜치」다(restart 03-12a). 한때 ⚡(work 아이콘)가 섰다.
+  it("머리 줄 왼쪽에 work 제목이 서고(아이콘 없이), 제목은 버튼이 아니다", () => {
     const card = headRowOf(render());
     expect(card).not.toBe("");
-    // ⚡는 work 아이콘이다 — 상태 글리프가 아니라 상태가 바뀌어도 그대로다.
-    const zap = card.indexOf("lucide-zap");
+    const slash = card.indexOf("/</span>");
     const name = card.indexOf(`>${work.title}<`);
-    expect(zap, "⚡가 없다").toBeGreaterThan(-1);
-    expect(name, "제목이 없다").toBeGreaterThan(zap);
+    expect(slash, "흐린 Service의 「/」가 없다").toBeGreaterThan(-1);
+    expect(name, "제목이 없다").toBeGreaterThan(slash);
     expect(name).toBeLessThan(card.indexOf("data-head-actions"));
-    expect(headRowOf(render({ status: "done" }))).toContain("lucide-zap");
+    expect(card.slice(slash, name), "Service와 이름 사이에 아이콘이 섰다").not.toMatch(/<svg/);
+    expect(card).not.toContain("lucide-zap");
     // 제목은 버튼도 입력칸도 아니다 — 평소에는 포커스만 받는 글자다(`tabIndex`). 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이고
     // (codex-ds 결정 6), 두 번 클릭 · F2로 그 자리가 입력칸이 된다 — 입력칸은 고치는 동안에만 선다(codex-ds 스펙 §9 ·
     // `e2e/inline-rename.spec.ts`). 누르면 고친다는 도움말(「클릭해서 편집」)도 없다.
-    // 제목 앞의 흐린 Service(03 §10)만 단추다 — Service 메뉴를 연다. 그 뒤(⚡부터)가 제목의 자리다.
-    const title = card.slice(zap, card.indexOf("data-head-actions"));
+    // 제목 앞의 흐린 Service(03 §10)만 단추다 — Service 메뉴를 연다. 그 「/」 뒤가 제목의 자리다.
+    const title = card.slice(slash, card.indexOf("data-head-actions"));
     expect(title).not.toMatch(/<button|<input|contenteditable/);
     expect(title).not.toContain('title="클릭해서 편집"');
     // 브레드크럼이 아니다. 화면 이름 「작업공간 /」이 남아 있으면 제목 앞에 이유 없는 글자가 선다. 머리에는 「작업공간 메뉴」가 있어 글자로만 잰다.
@@ -441,7 +443,7 @@ describe("WorksPage 머리 줄 배치", () => {
   });
 
   it("제목 앞에 흐린 Service와 「/」가 선다 — Service가 없으면 「Service 없음」, Service 목록을 아직 못 읽었으면 slug다(03 §10)", () => {
-    const crumb = (card: string) => card.slice(0, card.lastIndexOf("<svg", card.indexOf("lucide-zap"))).replace(/<[^>]+>/g, "");
+    const crumb = (card: string) => card.slice(0, card.indexOf("/</span>") + 1).replace(/<[^>]+>/g, "");
     expect(crumb(headRowOf(render()))).toBe("Service 없음/");
     expect(crumb(headRowOf(render({ service: "결제" })))).toBe("결제/");
     expect(headRowOf(render())).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*data-slot="work-service"/);
@@ -1442,7 +1444,10 @@ function summaryOf(view: ThreadView): ThreadSummary {
     id: view.id,
     title: view.title,
     createdAt: view.createdAt,
+    lastAt: view.createdAt,
     work: view.work,
+    service: view.service ?? null,
+    project: null,
     lastRead: view.lastRead,
     readOnly: view.readOnly,
     broken: null,

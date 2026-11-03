@@ -60,6 +60,8 @@ const CARD_WIDTH = {
   // `note`의 바닥(300) · 끝(창 안)은 그대로 두고 폭만 박는다.
   "note-fold": "w-77 min-w-75 max-w-(--available-width)",
   "note-wide": "w-85",
+  // 목록 줄의 ⋯(restart 03-1 · 보드 PlaceSheet 「⋯ 메뉴」 `.pl-menu` — 208). 줄 아래에서 줄 오른쪽 끝에 맞춰 선다(`PlaceRowMenu`).
+  place: "w-52",
   // 입력창 칩의 메뉴(restart 02b-2 · 시안 Composer `.ra-menu`) — 모드 · 모델은 280, Runtime · 범위는 320이다. 두 줄 줄의 설명이 이 폭에서
   // 낱말 단위로 접혀 다 선다(Codex가 보낸 모드 설명).
   prompt: "w-70",
@@ -146,10 +148,10 @@ function DropdownMenuContent({
   )
 }
 
-// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 2px**다(`menu-list`의 사이 — DS `.at-menu` `gap: 2px`). 묶음 안의
+// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 1px**다(`menu-list`의 사이 — 시안 `.ra-menu` `gap: 1px`, restart 03-12a). 묶음 안의
 // 줄은 목록의 직접 자식이 아니라 목록의 flex 사이를 받지 못한다 — registry의 맨 div 그대로면 묶음 안의 줄만 30 간격으로 붙어 선다
 // (상태 메뉴 · Archive 정렬 · 거르기, codex-ds 티켓 34). 안쪽 여백은 목록이 이미 주어 묶음은 사이만 든다.
-const GROUP = "flex flex-col gap-0.5"
+const GROUP = "flex flex-col gap-px"
 
 function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" className={cn(GROUP, className)} {...props} />

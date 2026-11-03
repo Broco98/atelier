@@ -2024,6 +2024,7 @@ fn list_archive_returns_archived_works_without_their_spec_files() {
     assert_eq!(entry["status"], "active", "아카이브가 status를 바꿨다: {entry}");
     assert!(entry["archivedAt"].is_string(), "{entry}");
     assert_eq!(entry["projects"][0], "billing");
+    assert_eq!(entry["branch"], "feat/cart", "{entry}");
     // 작업 목록 조회가 spec 파일까지 뱉어 컨텍스트를 먹는 문제를 물려받으면 안 된다
     assert!(entry["specFiles"].is_null(), "경량이어야 한다: {entry}");
     assert!(entry["specDir"].is_null(), "경량이어야 한다: {entry}");

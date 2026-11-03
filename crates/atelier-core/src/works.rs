@@ -643,6 +643,8 @@ pub struct ArchiveEntry {
     /// 손으로 옮겨 둔 폴더에는 없을 수 있다 — 없는 것을 지어내지 않는다.
     pub archived_at: Option<String>,
     pub projects: Vec<String>,
+    /// 그 work의 브랜치 — Archive 상세의 위 카드 「브랜치」가 읽는다(restart 03-4). 미정이면 `null`이다(`Work.branch`와 같다).
+    pub branch: Option<String>,
 }
 
 pub fn list_archive(archive_root: &Path) -> Result<Vec<ArchiveEntry>> {
@@ -668,6 +670,7 @@ pub fn list_archive(archive_root: &Path) -> Result<Vec<ArchiveEntry>> {
                 title: work.title,
                 status: work.status,
                 projects: work.projects,
+                branch: work.branch,
             });
         }
     }
@@ -3486,6 +3489,8 @@ mod tests {
         assert_eq!(e.title, "치울 것");
         assert_eq!(e.status, WorkStatus::Active);
         assert_eq!(e.projects, vec!["fe"]);
+        // 상세의 위 카드 「브랜치」(restart 03-4 · PlaceSheet 「상세 위 카드」)가 이것을 읽는다 — 한 줄짜리 글이라 경량을 깨지 않는다.
+        assert_eq!(e.branch.as_deref(), Some("feat/tidy"));
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         assert!([&before[..], &today[..]].contains(&e.archived_at.as_deref().unwrap()), "{e:?}");
 
@@ -3500,7 +3505,19 @@ mod tests {
         let json = serde_json::to_value(e).unwrap();
         let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, vec!["archivedAt", "projects", "slug", "status", "title"], "{json}");
+        assert_eq!(keys, vec!["archivedAt", "branch", "projects", "slug", "status", "title"], "{json}");
+    }
+
+    /// 브랜치가 미정인 work(프로젝트 없이 시작한 것)는 `null`로 나간다 — 작업 응답(`Work.branch`)과 같은 규칙이다. 지어내지 않는다.
+    #[test]
+    fn archive_list_carries_no_branch_for_a_work_that_never_had_one() {
+        let (_tmp, works, projects) = setup();
+        let archive = archive_root(&works);
+        start_work(&works, &archive, &projects, "브랜치없음", Some("브랜치없음"), &[], None).unwrap();
+        archive_work(&works, &archive, &projects, "브랜치없음").unwrap();
+        let listed = list_archive(&archive).unwrap();
+        assert_eq!(listed[0].branch, None);
+        assert!(serde_json::to_value(&listed[0]).unwrap()["branch"].is_null());
     }
 
     /// 조회는 아무것도 만들지 않는다. `atelier_list_archive`가 `read_only_hint = true`로

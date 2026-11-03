@@ -342,6 +342,8 @@ describe("cn이 DS 단계를 안다", () => {
       ...["panel-open", "rail", "rise"],
       // restart 03-11이 더한 ProcessSheet 「보기와 움직임」의 시간 둘 — 막대 · 표본 점.
       ...["bar", "beat"],
+      // restart 03-1이 더한 Motion 「목록에서 상세로」의 시간.
+      "place",
     ]);
     expect(eases).toEqual([
       ...["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"],

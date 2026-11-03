@@ -62,6 +62,14 @@ export function seedOf(search: SeedSearch): NewThreadSeed {
   return { link: search.new === "thread" ? { kind: "no-work" } : null, say, service, project };
 }
 
+/**
+ * 목록 줄의 「작업공간 만들기」 · 「새 채팅」(restart 03-1 · 스토리 8 · 13) — 그 범위(Project 또는 Service)를 고른 새 채팅의 주소다. 「작업공간 만들기」는
+ * 「새 작업공간」 칩과 함께(`?new=work`), 「새 채팅」은 작업공간 없이(`?new=thread`) 연다.
+ */
+export function startSearch(start: "work" | "thread", scope: { project: string } | { service: string }): NewThreadSearch {
+  return { new: start, ...scope };
+}
+
 /** 「새 작업공간」 칩을 ×로 뺀 주소 — 시작할 곳만 그냥 새 채팅(`?new=thread`)으로 바꾸고 범위와 입력 글은 그대로다. */
 export function withoutNewWork(seed: NewThreadSeed): NewThreadSearch {
   return searchOf({ ...seed, link: { kind: "no-work" } });

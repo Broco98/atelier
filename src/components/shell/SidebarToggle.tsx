@@ -28,7 +28,7 @@ function SidebarToggle({ open, onToggle }: SidebarToggleProps) {
       aria-expanded={open}
       aria-controls={SIDEBAR_ID}
       tabIndex={0}
-      // 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · 둥글기 4 · 글리프 `fg-titlebar`, 시안 `.ra-tbtn`)을 쓴다 — 같은 44 머리 줄에 나란히
+      // 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · 둥글기 4 · 글리프 `fg-secondary`, 시안 `.ra-tbtn`)을 쓴다 — 같은 44 머리 줄에 나란히
       // 서 있어서, 이 버튼만 크기 · 모서리 · 색이 다르면 그 자리에서 바로 어긋나 보인다. 사이드바가 닫혔을 때 이걸 못 찾으면 되돌릴 방법이
       // 없어 옅은 크롬 위에서도 읽히는 #898a8b다
       className={headButton()}

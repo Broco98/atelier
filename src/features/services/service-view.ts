@@ -1,10 +1,11 @@
 import type { ProjectView } from "@/features/projects/types";
-import type { NewThreadSearch } from "@/routes/-new-thread-search";
+import { startSearch, type NewThreadSearch } from "@/routes/-new-thread-search";
 import type { ScopePick } from "./scope";
-import type { SharedService, Service } from "./types";
+import type { SharedService, Service, ServiceProblemKind } from "./types";
 
-// Service 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14) — 그래프 배치 · 넣기 메뉴 · 만든 이 줄 · Work 묶음 · 시작 단추가 여는
-// 첫 화면, 그리고 Work 화면 머리의 Service 메뉴(§10)와 범위 칩의 범위 메뉴. 화면 부품은 이 값을 그리기만 한다(L2가 잰다).
+// Service 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14 · restart 03-3) — 고치기 화면 카드의 그래프 배치 · 목록 줄 · ⋯ 메뉴 · 시작 단추가
+// 여는 첫 화면, 그리고 Work 화면 머리의 Service 메뉴(§10)와 범위 칩의 범위 메뉴. 상세의 묶음 · 위 카드 · 경고는 `service-detail.ts`다. 화면 부품은 이
+// 값을 그리기만 한다(L2가 잰다).
 
 /** 화면이 부르는 이름 — 읽을 수 없는 파일은 이름이 없어 slug다. */
 export function serviceName(service: Pick<Service, "slug" | "name">): string {
@@ -152,12 +153,82 @@ export function serviceGraph(service: Service, shared: readonly SharedService[],
 // ── 목록 판 ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Service 목록 판이 그리는 것(§14 · S15 · §8) — 목록을 읽지 못했으면 그 까닭(`error`), 다 읽어 Service가 없으면 안내 한 줄과 「새 Service」
- * (`empty`), 그 밖(읽는 중 포함)은 표다. 읽을 수 없는 파일 하나는 목록을 깨지 않고 그 줄만 「문제 있음」으로 선다(core).
+ * Service 목록 판이 그리는 것(§14 · S15 · §8 · restart 03-3) — 목록을 읽지 못했으면 그 까닭(`error`), 처음 읽는 중이면 뼈대 자리(`loading` — 공용 목록
+ * 틀이 300ms 넘을 때만 세운다), 다 읽어 Service가 없으면 빈 목록의 할 일(`empty`), 그 밖은 표다. 읽을 수 없는 파일 하나는 목록을 깨지 않고 그 줄로
+ * 선다(core) — 그 일은 상세의 경고가 말한다.
  */
-export function listShows(list: { isPending: boolean; isError: boolean; count: number }): "error" | "empty" | "table" {
+export function listShows(list: { isPending: boolean; isError: boolean; count: number }): "error" | "loading" | "empty" | "table" {
   if (list.isError) return "error";
-  return !list.isPending && list.count === 0 ? "empty" : "table";
+  if (list.isPending) return "loading";
+  return list.count === 0 ? "empty" : "table";
+}
+
+/**
+ * 그 Service의 Project — 파일에 적힌 차례 그대로, **등록된 것만**이다(restart 03-3). 등록되지 않은 Project는 core 검사가 문제(`unknownProject`)로
+ * 말하므로(S7 — 화면은 따로 검사하지 않는다) 그 문제의 Project를 뺀다. 그 일은 상세의 경고가 말하고 「파일로 고치기」로 고친다(보드 Places
+ * `DETAILS.admin` — 적힌 셋 가운데 등록된 둘만 「Project 2개」 · 줄로 선다). 목록 줄 · 상세 · Project 상세의 Service 줄이 같은 수를 센다.
+ */
+export function serviceMembers(service: Pick<Service, "projects" | "problems">): string[] {
+  const unknown = new Set(service.problems.flatMap((problem) => (problem.kind === "unknownProject" && problem.project ? [problem.project] : [])));
+  return service.projects.filter((slug) => !unknown.has(slug));
+}
+
+/**
+ * 목록 줄의 이름 옆(restart 03-3 · 보드 PlaceSheet 「세 화면」 「이름 옆 — Project 수와 이름」 · Places `DATA.services`) — 「Project 2개 · backend ·
+ * front」. 이름은 등록부의 이름이다(아직 못 읽었으면 slug). 넣은 것이 없으면 「Project 없음」이다.
+ */
+export function serviceSummary(service: Pick<Service, "projects" | "problems">, registered: readonly Pick<ProjectView, "slug" | "name">[]): string {
+  const members = serviceMembers(service);
+  if (members.length === 0) return "Project 없음";
+  const names = members.map((slug) => registered.find((one) => one.slug === slug)?.name ?? slug);
+  return [`Project ${members.length}개`, ...names].join(" · ");
+}
+
+// ── ⋯ 메뉴 ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** 목록 줄 ⋯의 항목이 하는 일 — 파일로 고치기(고치기 화면) · 경로 복사(그 Service 파일) · 삭제…(확인 창). */
+export type ServiceAct = "edit-file" | "copy-path" | "delete";
+
+/** 상세 ⋯의 항목이 하는 일 — 목록 줄의 셋에 상세에서만 고치는 둘(이름 · 설명)을 더한다. */
+export type ServiceDetailAct = "rename" | "describe" | ServiceAct;
+
+/**
+ * 목록 줄의 ⋯(restart 03-3 · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.services`) — 「파일로 고치기 · 경로 복사 · 삭제…」. 세 줄이 같은 줄이다 — 한때(03)
+ * 「관계 편집」과 선 아래 빨간 「삭제…」였다. 삭제는 메뉴 안에만 있고 창이 한 번 더 묻는다.
+ */
+export function serviceRowMenu(): { act: ServiceAct; label: string }[] {
+  return [
+    { act: "edit-file", label: "파일로 고치기" },
+    { act: "copy-path", label: "경로 복사" },
+    { act: "delete", label: "삭제…" },
+  ];
+}
+
+/** 칸 단위로 고칠 자리를 찾을 수 없는 문제 — 닫히지 않은 frontmatter · YAML이 아님 · 글로 읽을 수 없는 파일. 이때는 파일로만 고친다. */
+const UNEDITABLE: ReadonlySet<ServiceProblemKind> = new Set(["unclosedFrontmatter", "badYaml", "unreadable"]);
+
+/** 이름 · 설명 · Project 빼기를 칸 단위로 고칠 수 있나(core `update_service`가 그 칸만 바꾼다) — 아니면 「파일로 고치기」만이다. */
+export function editableInPlace(service: Pick<Service, "problems">): boolean {
+  return !service.problems.some((problem) => UNEDITABLE.has(problem.kind));
+}
+
+/**
+ * 상세 머리의 ⋯(restart 03-3 · 보드 Places 상세 머리의 `.ra-tbtn` — 항목은 그려지지 않았다) — 「이름 바꾸기 · 설명 고치기」 뒤에 목록 줄의 ⋯가 그대로
+ * 선다(Project 상세 `detailMenu`와 같은 짜임). 칸 단위로 고칠 수 없는 파일이면 고치기 둘이 빠진다.
+ */
+export function serviceDetailMenu(service: Pick<Service, "problems">): { act: ServiceDetailAct; label: string }[] {
+  const edits = editableInPlace(service)
+    ? [
+        { act: "rename", label: "이름 바꾸기" } as const,
+        { act: "describe", label: "설명 고치기" } as const,
+      ]
+    : [];
+  return [...edits, ...serviceRowMenu()];
+}
+
+/** ⋯ 「경로 복사」가 쓰는 그 Service 파일 — Service 파일들의 폴더(core가 홈을 `~`로 접어 준다) 아래 `<slug>.md`다. */
+export function serviceFile(folder: string, slug: string): string {
+  return `${folder.replace(/\/+$/, "")}/${slug}.md`;
 }
 
 /**
@@ -168,41 +239,6 @@ export function shownServices<S extends Pick<Service, "name" | "slug" | "descrip
   const needle = query.trim().toLowerCase();
   if (needle === "") return [...services];
   return services.filter((service) => [service.name, service.slug, service.description, ...service.projects].some((one) => one.toLowerCase().includes(needle)));
-}
-
-// ── 넣기 메뉴 ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * 「넣기」 메뉴의 줄 — 아직 묶이지 않은 등록된 Project(등록부 차례). 넣을 것이 없으면 그 까닭 한 줄(`note`) — 다 넣었으면 「등록된 Project를
- * 모두 넣었어요」(스토리 152 · 153), 등록된 Project가 하나도 없으면 「등록된 Project가 없어요」(Service 메뉴의 같은 갈래 글 — 03 결정 05).
- */
-export function addMenu(service: Pick<Service, "projects">, registered: readonly ProjectView[]) {
-  const candidates = registered.filter((project) => !service.projects.includes(project.slug));
-  const note = candidates.length > 0 ? null : registered.length === 0 ? "등록된 Project가 없어요" : "등록된 Project를 모두 넣었어요";
-  return { candidates, note };
-}
-
-// ── 만든 이 · 만든 때 ────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * 상세 제목 아래 줄(스토리 144) — 만든 길(`createdBy: host`면 대화로 만듦, 아니면 직접 만듦)과 만든 때. 파일의 `createdAt`은
- * 날짜라 때는 날 단위다 — 오늘 · 어제 · N일 전(한 달 안), 그보다 오래면 날짜다.
- */
-export function createdLine(service: Pick<Service, "createdAt" | "createdBy">, now: Date) {
-  return { by: service.createdBy === "host" ? "대화로 만듦" : "직접 만듦", when: daysAgo(service.createdAt, now) };
-}
-
-function daysAgo(createdAt: string, now: Date): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(createdAt);
-  if (!match) return "";
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const then = new Date(year, month - 1, day);
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((today.getTime() - then.getTime()) / 86_400_000);
-  if (days <= 0) return "오늘";
-  if (days === 1) return "어제";
-  if (days < 30) return `${days}일 전`;
-  return `${year}. ${month}. ${day}.`;
 }
 
 // ── Service 메뉴 ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -306,21 +342,15 @@ export const HOST_MAKE: NewThreadSearch = {
 };
 
 /**
- * Service 상세 머리의 둘(§14) — 「새 작업공간」은 「새 작업공간」 칩 · 범위 칩 「◇ 결제 서비스 ×」(스토리 159), 「대화로 고치기」(S17)는 그 Service를
- * 붙인 Work 없는 대화에 고쳐 달라는 말(끝에 빈칸 — 사람이 이어 쓴다)이다. Host는 그 Service의 Project를 읽은 채 시작한다.
+ * 그 Service에서 시작하는 셋(restart 03-3 · 스토리 8 · 13 · 117 · 스펙 「01a — 범위와 새 채팅」 「만드는 길」) — 목록 줄과 상세 머리의 「작업공간 만들기」
+ * (그 Service를 고른 「새 작업공간」 칩 — `startSearch`) · 「새 채팅」(그 Service 범위의 작업공간 없는 채팅), 상세 Projects 묶음의 「Project 넣기」(그
+ * Service를 고친다는 말을 채운 새 채팅 — 끝에 빈칸, 사람이 이어 쓴다). Runtime은 그 Service의 Project를 읽은 채 시작하고 Service 도구로 파일을 고친다.
+ * 한때(03) 상세 머리에 「대화로 고치기」(「… Service를 고치고 싶어요.」)가 있었고, 「넣기」는 등록된 Project를 곧바로 넣는 메뉴였다.
  */
-export function serviceStarts(service: Pick<Service, "slug" | "name">): { newWork: NewThreadSearch; hostEdit: NewThreadSearch } {
+export function serviceStarts(service: Pick<Service, "slug" | "name">): { work: NewThreadSearch; thread: NewThreadSearch; addProject: NewThreadSearch } {
   return {
-    newWork: { new: "work", service: service.slug },
-    hostEdit: { new: "thread", service: service.slug, say: `${serviceName(service)} Service를 고치고 싶어요. ` },
+    work: startSearch("work", { service: service.slug }),
+    thread: startSearch("thread", { service: service.slug }),
+    addProject: { new: "thread", service: service.slug, say: `${serviceName(service)}에 Project를 넣고 싶어요. ` },
   };
-}
-
-// ── Work 묶음 ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * Service 상세의 「작업공간」 묶음(§14) — 이 Service에 이은 진행 중인 Work(`work.json`의 `service`), Work 목록의 차례 그대로다. 보관한 Work는 목록에 없다.
- */
-export function serviceWorks<W extends { service?: string }>(works: readonly W[], slug: string): W[] {
-  return works.filter((work) => work.service === slug);
 }

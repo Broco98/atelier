@@ -348,7 +348,15 @@ pub struct ThreadSummary {
     pub id: String,
     pub title: String,
     pub created_at: String,
+    /// 기록의 마지막 줄 시각(restart 03-1) — 목록의 「최근 활동」이 이것에서 선다(Projects · Services가 작업공간과 채팅의 활동에서 짓는다 —
+    /// 저장하지 않는다). 기록을 못 읽으면 만든 시각이다. 엔진이 줄을 적을 때마다 색인이 받는다([`ThreadIndex::note_line`]) — 요약 이벤트는
+    /// 줄마다 다시 나가지 않는다: 기록 줄 이벤트가 곧 그 알림이다. 깨진 Thread는 빈 글이다.
+    pub last_at: String,
     pub work: Option<String>,
+    /// 그 채팅의 Service 범위([`ThreadFile::service`]) — Work 밖 채팅만 든다. Work에 이은 채팅은 Work의 Service를 따른다.
+    pub service: Option<String>,
+    /// 그 채팅의 Project 범위([`ThreadFile::project`]) — Work 밖 채팅만 들고 Service와 함께 서지 않는다.
+    pub project: Option<String>,
     /// 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」(끝난 턴이 이 뒤에 있다)를 가른다(v1 티켓 41).
     pub last_read: u64,
     /// 이은 Work가 보관됐거나 지워졌으면 그 까닭(v1 티켓 38) — 그 Thread는 읽기만이고 사이드바에서 빠지며, ⌘K는 보관됨을 단다(S43).
@@ -382,7 +390,10 @@ impl ThreadIndex {
                 continue;
             }
             threads.push(match load_thread(&entry.path()) {
-                Ok(Loaded::Fine(thread)) => summarize(data_root, &id, &thread),
+                Ok(Loaded::Fine(thread)) => {
+                    let last_at = last_line_at(&entry.path().join(RECORD_FILE));
+                    summarize(data_root, &id, &thread, last_at)
+                }
                 Ok(Loaded::Old) => continue,
                 Ok(Loaded::Missing) => broken(id, format!("{THREAD_FILE}이 없습니다")),
                 Ok(Loaded::Broken { reason, .. }) => broken(id, reason),
@@ -404,14 +415,24 @@ impl ThreadIndex {
         self.threads.iter().filter(|summary| summary.work.as_deref() == Some(slug)).collect()
     }
 
-    /// 방금 쓴 `thread.json`으로 그 Thread의 줄을 고친다(없으면 더한다).
+    /// 방금 쓴 `thread.json`으로 그 Thread의 줄을 고친다(없으면 더한다). 마지막 줄 시각은 `thread.json`의 것이 아니라 그대로 둔다 — 처음 서는
+    /// 줄(새 Thread · 깨졌던 Thread)만 기록에서 읽는다.
     pub fn put(&mut self, id: &str, thread: &ThreadFile) {
-        let summary = summarize(&self.root, id, thread);
+        let known = self.threads.iter().find(|existing| existing.id == id && existing.broken.is_none()).map(|existing| existing.last_at.clone());
+        let last_at = known.or_else(|| thread_dir(&self.root, id).ok().and_then(|dir| last_line_at(&dir.join(RECORD_FILE))));
+        let summary = summarize(&self.root, id, thread, last_at);
         match self.threads.iter_mut().find(|existing| existing.id == id) {
             Some(existing) => *existing = summary,
             None => self.threads.push(summary),
         }
         self.sort();
+    }
+
+    /// 엔진이 그 Thread의 기록에 줄 하나를 적었다 — 마지막 줄 시각을 그 줄의 것으로 둔다. 색인에 없거나 깨진 Thread는 그대로다.
+    pub fn note_line(&mut self, id: &str, at: &str) {
+        if let Some(summary) = self.threads.iter_mut().find(|summary| summary.id == id && summary.broken.is_none()) {
+            at.clone_into(&mut summary.last_at);
+        }
     }
 
     /// 이은 Work가 보관됐거나 지워졌는지 다시 본다(v1 티켓 38) — 보관은 Work 폴더를 옮기고 Thread 폴더는 그대로라(§4) 색인이 스스로
@@ -434,12 +455,16 @@ impl ThreadIndex {
     }
 }
 
-fn summarize(data_root: &Path, id: &str, thread: &ThreadFile) -> ThreadSummary {
+/// 요약 한 줄 — 마지막 줄 시각을 모르면(기록을 못 읽음) 만든 시각이다.
+fn summarize(data_root: &Path, id: &str, thread: &ThreadFile, last_at: Option<String>) -> ThreadSummary {
     ThreadSummary {
         id: id.to_owned(),
         title: thread.title.clone(),
         created_at: thread.created_at.clone(),
+        last_at: last_at.unwrap_or_else(|| thread.created_at.clone()),
         work: thread.work.clone(),
+        service: thread.service.clone(),
+        project: thread.project.clone(),
         last_read: thread.last_read,
         read_only: thread.work.as_deref().and_then(|slug| work_gone(data_root, slug)),
         broken: None,
@@ -452,10 +477,41 @@ fn broken(id: String, reason: String) -> ThreadSummary {
         id,
         title: String::new(),
         created_at: String::new(),
+        last_at: String::new(),
         work: None,
+        service: None,
+        project: None,
         last_read: 0,
         read_only: None,
         broken: Some(reason),
+    }
+}
+
+/// 기록의 마지막 줄 시각 — 끝에서 거꾸로 덩이를 넓혀 읽어 줄바꿈으로 끝난 마지막 줄의 `at`을 찾는다. 이 판이 모르는 종류의 줄도 센다
+/// (`records.rs`의 `last_record_seq`와 같다). 쓰다 끊긴 꼬리 · JSON이 아닌 줄은 건너뛴다. 색인이 모든 Thread를 한 번에 읽으므로 기록을 통째로
+/// 읽지 않는다 — 덩이 하나(64KiB)에 끝 줄이 들지 않을 때만 넓힌다. 기록이 없거나 읽지 못하면 없다.
+fn last_line_at(path: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const CHUNK: u64 = 64 * 1024;
+    let mut file = std::fs::File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    let mut span = CHUNK.min(size);
+    loop {
+        let mut tail = Vec::with_capacity(span as usize);
+        file.seek(SeekFrom::Start(size - span)).ok()?;
+        (&mut file).take(span).read_to_end(&mut tail).ok()?;
+        // 덩이의 첫 줄은 앞이 잘렸을 수 있다 — 파일 맨 앞부터 읽은 때만 온전한 줄이다.
+        let whole_from = if span == size { 0 } else { tail.iter().position(|&byte| byte == b'\n').map_or(tail.len(), |at| at + 1) };
+        let body = &tail[whole_from..];
+        let complete = body.iter().rposition(|&byte| byte == b'\n').map_or(&body[..0], |end| &body[..end]);
+        let found = complete.split(|&byte| byte == b'\n').rev().find_map(|line| {
+            let value: Value = serde_json::from_slice(line).ok()?;
+            value.get("at")?.as_str().map(str::to_owned)
+        });
+        if found.is_some() || span == size {
+            return found;
+        }
+        span = (span * 4).min(size);
     }
 }
 
@@ -691,6 +747,67 @@ mod tests {
         index.put(&alone, &now_linked);
         assert_eq!(ids(index.of_work("cart")), [cart.as_str(), alone.as_str()], "새것부터다");
         assert_eq!(ids(index.all()), ids(ThreadIndex::load(root.path()).unwrap().all()), "고친 색인이 다시 읽은 색인과 같다");
+    }
+
+    /// 기록 끝에 줄을 손으로 붙인다 — 줄의 시각을 시험이 고른다.
+    fn append_raw(root: &Path, id: &str, text: &str) {
+        use std::io::Write;
+        let path = root.join("threads").join(id).join("events.jsonl");
+        std::fs::OpenOptions::new().append(true).open(path).unwrap().write_all(text.as_bytes()).unwrap();
+    }
+
+    /// 요약은 **마지막 줄의 시각과 그 채팅의 범위(Service · Project)를 싣는다**(restart 03-1 · 스펙 「03 — 목록과 상세」) — 목록의 「최근
+    /// 활동」이 이것에서 선다. 마지막 줄은 기록의 끝 줄이고 이 판이 모르는 줄도 활동이다. 쓰다 끊긴 꼬리는 줄이 아니다. 기록을 못 읽으면
+    /// 만든 시각이다. 엔진이 줄을 적으면 색인이 그 시각을 받고(`note_line`), `thread.json`을 고쳐 써도 마지막 줄 시각은 그대로다.
+    #[test]
+    fn 요약은_마지막_줄_시각과_범위를_싣는다() {
+        let root = tempfile::tempdir().unwrap();
+        let by_project = NewThread { project: Some("web-app".to_owned()), ..new_thread("웹 앱 묻기") };
+        let by_project = create(root.path(), "2026-10-23T09:00:00.000+09:00", by_project, "이거 뭐야").id;
+        let by_service = NewThread { service: Some("payments".to_owned()), ..new_thread("결제 묻기") };
+        let by_service = create(root.path(), "2026-10-23T09:10:00.000+09:00", by_service, "결제").id;
+        append_raw(root.path(), &by_project, "{\"seq\":2,\"at\":\"2026-10-24T10:00:00.000+09:00\",\"kind\":\"turn-end\",\"payload\":{}}\n");
+        append_raw(root.path(), &by_project, "{\"seq\":3,\"at\":\"2026-10-24T11:30:00.000+09:00\",\"kind\":\"library\",\"payload\":{}}\n");
+        append_raw(root.path(), &by_project, "{\"seq\":4,\"at\":\"2026-10-25T08:00:00.000+09:00\",\"kind\":\"sent\",\"pay");
+
+        let mut index = ThreadIndex::load(root.path()).unwrap();
+        let of = |index: &ThreadIndex, id: &str| -> (String, Option<String>, Option<String>) {
+            let summary = index.all().iter().find(|summary| summary.id == id).unwrap();
+            (summary.last_at.clone(), summary.service.clone(), summary.project.clone())
+        };
+        assert_eq!(
+            of(&index, &by_project),
+            ("2026-10-24T11:30:00.000+09:00".to_owned(), None, Some("web-app".to_owned())),
+            "끝 줄은 모르는 줄이어도 활동이고, 끊긴 꼬리는 줄이 아니다"
+        );
+        let first = read_thread_records(root.path(), &by_service, 0).unwrap().remove(0).at;
+        assert_eq!(of(&index, &by_service), (first, Some("payments".to_owned()), None), "첫 줄 하나뿐이면 그 줄의 시각이다");
+
+        index.note_line(&by_project, "2026-10-26T08:00:00.000+09:00");
+        let renamed = update_thread(root.path(), &by_project, |thread| thread.title = "새 이름".to_owned()).unwrap();
+        index.put(&by_project, &renamed);
+        assert_eq!(of(&index, &by_project).0, "2026-10-26T08:00:00.000+09:00", "고쳐 쓴 thread.json은 마지막 줄 시각을 지우지 않는다");
+
+        std::fs::remove_file(root.path().join("threads").join(&by_service).join("events.jsonl")).unwrap();
+        assert_eq!(
+            of(&ThreadIndex::load(root.path()).unwrap(), &by_service).0,
+            "2026-10-23T09:10:00.000+09:00",
+            "기록을 못 읽으면 만든 시각이다"
+        );
+    }
+
+    /// 마지막 줄 시각은 **기록의 끝에서 거꾸로 읽는다** — 끝 줄이 읽는 덩이보다 길어도 그 줄의 시각이다.
+    #[test]
+    fn 끝_줄이_길어도_마지막_줄_시각을_읽는다() {
+        let root = tempfile::tempdir().unwrap();
+        let id = create(root.path(), "2026-10-23T09:00:00.000+09:00", new_thread("긴 줄"), "말").id;
+        let long = "가".repeat(200_000);
+        append_raw(
+            root.path(),
+            &id,
+            &format!("{{\"seq\":2,\"at\":\"2026-10-24T10:00:00.000+09:00\",\"kind\":\"update\",\"payload\":{{\"text\":\"{long}\"}}}}\n"),
+        );
+        assert_eq!(ThreadIndex::load(root.path()).unwrap().all()[0].last_at, "2026-10-24T10:00:00.000+09:00");
     }
 
     /// 같은 초에 열 개가 넘게 서도 **붙인 번호의 크기로** 새것을 가린다 — 글자 순서면 `-10`이 `-2` 앞에 선다.

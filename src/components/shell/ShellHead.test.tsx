@@ -35,8 +35,8 @@ describe("머리 줄", () => {
     expect(slot).toBeGreaterThan(controls);
   });
 
-  // **창의 머리는 머리 줄 하나다**(ui-refresh 결정 5) — 화면 몸 맨 위의 줄(제목 · 잰 시각 · 할 일)은 `<header>`가 아니다(`ListParts`의 맨 위 줄과
-  // 같다). 몸에 `<header>`가 서면 보조 기술의 머리 랜드마크가 둘이 되고 L3(`frame` · `frame-sidebar`의 「머리는 머리 줄 하나」)가 빨갛다 —
+  // **창의 머리는 머리 줄 하나다**(ui-refresh 결정 5) — 화면 몸 맨 위의 줄(제목 · 잰 시각 · 할 일)은 `<header>`가 아니다(공용 목록 틀
+  // `PlaceList`의 맨 위 줄과 같다). 몸에 `<header>`가 서면 보조 기술의 머리 랜드마크가 둘이 되고 L3(`frame` · `frame-sidebar`의 「머리는 머리 줄 하나」)가 빨갛다 —
   // 03-11이 Processes 몸 머리를 `<header>`로 들였다(02a-15). 앱 소스(주석 빼고)에서 `<header`를 그리는 곳은 머리 줄과, 그것을 본뜨는 검사
   // 도우미(`screen-head-inline`)뿐이다.
   it("앱에서 `<header>`를 그리는 것은 머리 줄 하나다 — 화면 몸의 머리 줄은 `<header>`가 아니다", () => {
@@ -74,6 +74,13 @@ describe("머리 줄", () => {
       expect.arrayContaining(["ml-1.5", "pl-2.5", "before:left-0", "before:inset-y-3.5", "before:w-[0.5px]", "before:bg-border-heavy"]),
     );
     expect(slot.filter((one) => one.includes("separator"))).toEqual([]);
+  });
+
+  // 시안 Main 머리 줄의 `.ra-tbtn` 넷은 사이 없이 붙는다(`.ra-title`이 `gap`을 두지 않는다). 한때 Codex 머리 줄 값 6이었다(02 · report 02b-6b).
+  // 셸 컨트롤의 시작 x(진짜 신호등 끝에서 16 — `--titlebar-controls-left` 89)는 그대로다.
+  it("셸 컨트롤 사이는 0이다", () => {
+    expect(titlebarVar("--titlebar-control-gap")).toBe("0px");
+    expect(titlebarVar("--titlebar-controls-left")).toBe("89px");
   });
 
   // 이름이 없는 화면(새 Thread)은 머리 줄 가운데가 빈다 — 선 하나만 덩그러니 남지 않는다.

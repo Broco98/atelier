@@ -625,7 +625,7 @@ for (const screen of LIST_SCREENS) {
 
 // **Projects의 ⌘Enter는 아무것도 하지 않는다**(codex-ds 결정 32) — 오른쪽 패널도 목록 칸도 없는 화면이다(03 판부터 본문 하나의 표 — 03 구현
 // 스펙 §16). 한때 이 키가 목록 칸을 접었고 그 접힘을 화면마다 로컬 저장에 적었다(`projects-panel-open` · `archive-panel-open`). 앱은 그
-// 값을 읽지 않고 지운다. 걷은 분할(restart 02a-13)의 열 비율(`work-split-ratio`)도 같은 길로 지운다. 「아무 일도 안 한다」는 둘로 잰다:
+// 값을 읽지 않고 지운다. 걷은 분할(restart 02a-13)의 열 비율(`work-split-ratio`)과 걷은 Archive 칸(restart 03-4)의 폭도 같은 길로 지운다. 「아무 일도 안 한다」는 둘로 잰다:
 // 화면(본문 칸 · `aside` 수)이 그대로이고, 그 키를 받아 막은(`preventDefault`) 리스너가 없다 — 화면만 재면 「받아서 다른 일을 했다」가
 // 초록으로 지나간다.
 test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 칸 · 걷은 분할의 저장값은 지워진다", async ({ page }) => {
@@ -633,16 +633,24 @@ test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 
     localStorage.setItem("projects-panel-open", "0");
     localStorage.setItem("archive-panel-open", "0");
     localStorage.setItem("work-split-ratio", "0.3");
+    localStorage.setItem("archive-panel-width", "300");
+    localStorage.setItem("archive-spec-panel-width", "300");
   });
   await installFixtureBackend(page);
   await page.goto("/projects");
   await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() =>
-      ["projects-panel-open", "archive-panel-open", "work-split-ratio"].map((key) => localStorage.getItem(key)),
+      [
+        "projects-panel-open",
+        "archive-panel-open",
+        "work-split-ratio",
+        "archive-panel-width",
+        "archive-spec-panel-width",
+      ].map((key) => localStorage.getItem(key)),
     ),
-    "접힘 값 · 분할 비율은 지워진다",
-  ).toEqual([null, null, null]);
+    "접힘 값 · 분할 비율 · 걷은 Archive 칸의 폭은 지워진다",
+  ).toEqual([null, null, null, null, null]);
 
   const 화면 = async () => ({
     main: await boxOf(page.locator("main")),

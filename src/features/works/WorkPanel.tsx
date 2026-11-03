@@ -1,5 +1,4 @@
 import { FolderOpen } from "lucide-react";
-import { CardHead } from "@/components/shell/Frame";
 import { Hint } from "@/components/ui/tooltip";
 import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
@@ -37,33 +36,32 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, onOpenFolder }: Wo
     //
     // 열린 문서는 주소가 정본이지만 트리를 훑는 상태(접힘 · 스크롤)는 주소에 넣지 않는다: 바꿀 때마다 히스토리가 쌓여 문서 사이 뒤로가기를
     // 묻어버린다(이슈 #25).
-    <div className="flex min-h-0 flex-1 flex-col pb-2">
-      {/* 머리는 패널 머리(46px — 카드 머리 `--card-head`)다(codex-ds 스펙 §4 「패널 머리」) — 카드 안이라 창 끌기 자리가 아니다(머리
-          줄과 회색 틈이 그 일을 한다). 머리는 카드에 고정되고 세로 스크롤은 몸 안에서만 돈다.
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* 머리는 시안 Shell 「spec 패널」 · Main `.ra-phead`다(restart 03-12a) — 40 · 안쪽 왼 14 · 오 8, 제목이 카드 + 14에 선다. 카드 안이라 창
+          끌기 자리가 아니다(머리 줄과 회색 틈이 그 일을 한다). 머리는 카드에 고정되고 세로 스크롤은 몸 안에서만 돈다. 한때 카드 머리
+          46(`--card-head` — codex-ds 스펙 §4 「패널 머리」) · 제목 카드 + 16이었다. 표식 `data-slot="card-head"`는 카드 머리와 같다 — 검사가
+          머리를 그것으로 집는다.
 
           **든 것은 이름 `spec`과 그 할 일이다**(codex-ds 스펙 §6 「작업공간 패널」). 여는 레일 칸과 닫는 패널 토글은 패널 밖이다(ui-refresh
-          결정 9 · 10) — 같은 일을 하는 컨트롤이 한 화면에 둘이 서지 않는다. 이름은 DS 패널 머리 제목(`.at-panel-head .title` — 14/20 ·
-          500)이고 글자가 카드 + 16에 선다(머리 여백 8 + 제목 안쪽 8 — 행 글자 16, codex-ds 스펙 §4 「여백」). 라벨은 소문자 영어다(결정 41) —
-          레일 칸의 `spec`과 같은 어휘다. 문장 속 한국어는 그대로다(CONTEXT.md).
+          결정 9 · 10) — 같은 일을 하는 컨트롤이 한 화면에 둘이 서지 않는다. 이름은 14/20 · 500이다(시안 `.ttl` 15/20 — 앱 글자 단계에 15가
+          없다). 라벨은 소문자 영어다(결정 41) — 레일 칸의 `spec`과 같은 어휘다.
 
-          할 일은 spec 폴더 열기 하나다 — DS 아이콘 버튼(`.at-ib` 28 · `fg-secondary`, hover `fill-hover`)이 머리 오른쪽 끝에 선다.
-          문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 문서라 문서 위 경로 줄로 갔다(ui-refresh 판 04). */}
-      <CardHead
-        end={
-          <Hint
-            text="spec 폴더 열기"
-            announce="name"
-            type="button"
-            tabIndex={0}
-            onClick={onOpenFolder}
-            className="icon-button-quiet text-fg-secondary focus-ring"
-          >
-            <FolderOpen className="size-4" />
-          </Hint>
-        }
-      >
-        <span className="px-2 text-sm font-medium">spec</span>
-      </CardHead>
+          할 일은 spec 폴더 열기 하나다 — 시안의 끝 단추 자리(`.ra-tbtn` 24 · 둥글기 4 · 글리프 14 · `fg-secondary`)에 선다. 시안의 그
+          자리는 「패널 메뉴」 ⋯이고 무엇을 담는지는 그리지 않는다 — 앱은 지금 할 일 하나를 그 모양으로 둔다. 문서/원문 전환은 여기 없다 — 그
+          컨트롤이 바꾸는 것은 문서라 문서 위 경로 줄로 갔다(ui-refresh 판 04). */}
+      <div data-slot="card-head" className="flex h-10 shrink-0 items-center gap-0.5 pr-2 pl-3.5">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">spec</span>
+        <Hint
+          text="spec 폴더 열기"
+          announce="name"
+          type="button"
+          tabIndex={0}
+          onClick={onOpenFolder}
+          className="icon-button-quiet icon-button-xs icon-button-ctl text-fg-secondary focus-ring"
+        >
+          <FolderOpen className="size-3.5" />
+        </Hint>
+      </div>
       <SpecTab
         items={work.specTree.items}
         current={currentFile}
@@ -98,12 +96,14 @@ function SpecTab({
   onCopy: (path: string) => void;
 }) {
   return (
-    // 세로 스크롤은 여기까지 — 머리는 패널 카드에 고정되어 항상 보인다
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
+    // 세로 스크롤은 여기까지 — 머리는 패널 카드에 고정되어 항상 보인다. 안쪽은 시안 `.ra-pbody`의 0 6 8이고, 행은 촘촘한 트리 행(시안
+    // `.ra-tree-row` — 24 · 둥글기 4 · 사이 2 · 들여쓰기 8 + 깊이 × 12, 레이아웃이 아이콘을 주지 않은 파일은 확장자 글자)이라 글자가 카드 + 14에
+    // 선다(restart 03-12a — 한때 안쪽 8 · 행 28 · 둥글기 10 · 사이 1, 글자 카드 + 16).
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 pb-2 scroll-quiet">
       {items.length === 0 ? (
         <span className="px-2 py-1.5 text-chat-meta text-fg-tertiary">아직 spec 파일이 없어요</span>
       ) : (
-        <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
+        <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} dense />
       )}
     </div>
   );

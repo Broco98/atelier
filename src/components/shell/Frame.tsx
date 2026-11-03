@@ -1,27 +1,15 @@
-import {
-  createContext,
-  Fragment,
-  useContext,
-  useId,
-  useRef,
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import { ChevronRight, GitFork, Pencil, Search, type LucideIcon } from "lucide-react";
+import { Fragment, useRef, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { ChevronRight, GitBranch, Pencil } from "lucide-react";
 import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { InlineRename } from "@/components/ui/inline-rename";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
-import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { clippingInnerClass, foldingInnerClass, PANEL_MOTION, STILL, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
+import { clippingInnerClass, PANEL_MOTION, STILL, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
-import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
+import { HEAD_CRUMB_GAP, HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
-import type { TargetRegion } from "./TargetMenu";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 · restart 02a-2). Terminal · Processes · Archive · Settings · 작업 화면 · spec
 // 레이아웃 편집기가 이 틀에 칸을 건넨다(Projects · Service는 03부터 `PlainFrame`이다). 틀 자체(크롬 · 머리 줄 44 · 사이드바 오른쪽 카드 자리)는
@@ -58,22 +46,14 @@ interface CardContent {
 }
 
 /**
- * 오른쪽 패널 칸 — 작업 화면의 작업 패널, Archive의 spec 목록 패널이다. 저장하는 폭은 **칸의 폭**이다.
- * 따로 여닫는 칸이라 머리 줄의 패널 토글이 함께 선다(`PanelToggle` — 이름은 이 칸의 이름 `label`에 할 일을 붙인 것이다). 토글은
- * `onToggle`을 부르고, ⌘Enter는 화면이 듣고 같은 열림을 뒤집는다 — 둘이 하는 일이 같다(codex-ds 결정 32 「⌘Enter는 그 화면의 오른쪽
- * 패널」).
+ * 오른쪽 패널 칸 — 작업공간의 spec 패널이다(앱 셸의 작업공간 도구 기둥 — `WorkTools`가 `PanelBox`로 세운다). 저장하는 폭은 **칸의 폭**이다.
+ * 따로 여닫는 칸이라 머리 줄의 패널 토글이 함께 선다(`PanelToggle` — 작업공간 화면이 `Frame`의 `panelToggle`로 건넨다). 토글은 `onToggle`을
+ * 부르고, ⌘Enter는 화면이 듣고 같은 열림을 뒤집는다 — 둘이 하는 일이 같다(codex-ds 결정 32 「⌘Enter는 그 화면의 오른쪽 패널」). 한때
+ * Archive의 spec 목록 패널도 이 칸이라 `Frame`의 `panel`로 건넸다(restart 03-4가 걷었다).
  */
 export interface PanelSlot extends CardContent {
   open: boolean;
   onToggle: () => void;
-  size: ResizableWidth;
-}
-
-/**
- * 목록 칸(codex-ds 결정 28) — 본문 칸 안 오른쪽 칸이다. 이름은 칸의 `aria-label`이고, 안(목록 머리 · 찾기 칸 · 행)은 화면이 건넨다.
- * 접지 않는다(codex-ds 결정 32) — 열림이 없다. 저장하는 폭은 **칸의 폭**이다.
- */
-export interface ListSlot extends CardContent {
   size: ResizableWidth;
 }
 
@@ -92,13 +72,11 @@ export interface BesideSlot extends CardContent {
  * 머리 줄에 뜬 흰 카드(머리 카드) 안에 섰다 — 이제 카드 없이 머리 줄에 바로 선다.
  */
 export interface HeadSlot {
-  /** 아이콘 앞 — 하위 화면에서 돌아가는 길(spec 레이아웃 편집기의 뒤로). 이름 앞에 서는 것은 이것뿐이다. */
-  lead?: ReactNode;
   /**
-   * 지금 보는 것의 아이콘 — work(작업 화면 · 아카이브한 work · 빈 Works)는 ⚡(`Zap` — work 아이콘이지 상태 글리프가 아니다. 상태는
-   * 오른쪽 배지가 말한다), 프로젝트는 폴더, 그 밖의 화면은 nav의 그 아이콘이다.
+   * 이름 앞 — 하위 화면에서 돌아가는 길(spec 레이아웃 편집기의 뒤로)이나 흐린 앞 자리(Work 화면의 Service). 이름 앞에 서는 것은 이것뿐이다.
+   * 한때 이름 앞에 지금 보는 것의 아이콘(work ⚡ · nav의 그 아이콘)이 섰다 — 시안 머리 줄 crumb에는 아이콘이 없다(restart 03-12a).
    */
-  icon: LucideIcon;
+  lead?: ReactNode;
   /**
    * 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 고른 것에 메뉴가 있으면 이름이 그 메뉴의 대상이
    * 되고(`nameMenu`), 바꿀 수 있으면 그 자리에서 바꾼다(`rename`).
@@ -162,20 +140,9 @@ interface FrameProps {
    */
   head: HeadSlot;
   /**
-   * 목록 칸 — 주면 본문 자리에 내용 | 목록 칸 하나가 서고(`ListCard`), 목록 칸은 그 안 오른쪽 `section`이다(`aside`는 사이드바와
-   * 오른쪽 패널 — 작업 패널 · spec 목록 패널 — 둘뿐이다). 내용 칸은 `children`의 본문 칸(`<Card as="main">`)이다.
-   * 두 칸을 가르는 세로 선과 그 위의 폭 손잡이는 이 틀이 들고, 화면은 칸 안(목록 머리와 몸)만 건넨다.
-   */
-  list?: ListSlot;
-  /**
-   * 오른쪽 패널 칸(작업 패널 · Archive의 spec 목록 패널) — 바깥 상자가 두 번째 `<aside>`다. 건네면 머리 줄 오른쪽 끝에 그 칸의 패널
-   * 토글이 함께 선다(`PanelToggle`). 고른 것(작업 · 아카이브)이 있는 화면만 건넨다 — 없으면 둘 다 없다.
-   */
-  panel?: PanelSlot;
-  /**
    * 이 틀 밖에 선 오른쪽 패널의 패널 토글 — 작업공간의 spec 패널이다(앱 셸의 작업공간 도구 기둥 — `WorkTools`, restart 02a-14). 패널 칸은
-   * 그 기둥이 그리고, 이 틀은 머리 줄 오른쪽 맨 끝에 그 패널을 가리키는 토글만 세운다(`panel`과 같은 자리 · 같은 모양). `panel`과 함께
-   * 건네지 않는다.
+   * 그 기둥이 그리고, 이 틀은 머리 줄 오른쪽 맨 끝에 그 패널을 가리키는 토글만 세운다. 한때 이 틀이 오른쪽 패널 칸(`panel` — Archive의 spec
+   * 목록 패널)과 내용 | 목록 칸(`list` — Projects · Archive 목록)을 그렸다 — 03-1 · 03-4가 두 화면을 공용 목록 틀로 옮겨 걷었다(restart 03-12a).
    */
   panelToggle?: { name: string; open: boolean; onToggle: () => void; controls: string };
   /** 본문 칸 오른쪽의 옆 칸 — 늘 열린 고정 폭 칸(`BesideSlot`). 편집기 트리 칸 하나가 쓴다. */
@@ -184,19 +151,13 @@ interface FrameProps {
    * 칸 줄 위를 덮는 것(토스트 · 생애 겹판). 칸 줄은 카드 자리 위끝에서 시작한다 — 탭 줄은 칸 줄 안(본문 카드의 머리)이다.
    */
   overlay?: ReactNode;
-  /** 본문 칸(`<Card as="main">`) — 목록 칸이 있으면(`list`) 내용 | 목록 칸의 내용 칸이 된다. */
+  /** 본문 칸(`<Card as="main">`). */
   children?: ReactNode;
 }
 
-function Frame({ head, list, panel, panelToggle, beside, overlay, children }: FrameProps) {
-  // 패널 토글이 가리키는 패널 칸(`aria-controls`). 둘을 이 틀이 함께 그리므로 이음도 여기서 짓는다 — 화면은 모른다. 밖에 선 패널은 그
-  // 자리가 id를 건넨다(`panelToggle`).
-  const panelId = useId();
-  const toggle = panel ? (
-    <PanelToggle name={panel.label} open={panel.open} onToggle={panel.onToggle} controls={panelId} />
-  ) : (
-    panelToggle && <PanelToggle {...panelToggle} />
-  );
+function Frame({ head, panelToggle, beside, overlay, children }: FrameProps) {
+  // 패널 토글이 가리키는 패널 칸(`aria-controls`) — 밖에 선 패널(작업공간의 spec 패널)의 자리가 id를 건넨다(`panelToggle`).
+  const toggle = panelToggle && <PanelToggle {...panelToggle} />;
   return (
     <>
       <FrameHead {...head} toggle={toggle} />
@@ -210,11 +171,8 @@ function Frame({ head, list, panel, panelToggle, beside, overlay, children }: Fr
               `overlay`의 기준이다. 탭 줄을 품었거나 옆 칸이 서면 이 줄은 본문 열의 격리(`TAB_ROW_COLUMN`)를 벗는다 — 탭 줄을 이는
               칸의 바닥 · 옆 칸의 머리가 모자라면 사이드바가 자리를 내준다. */}
           <div style={beside ? { contain: "none" } : undefined} className="relative flex min-h-0 flex-1">
-            {list ? <ListCard slot={list}>{children}</ListCard> : children}
+            {children}
             {beside && <BesideBox slot={beside} />}
-            {/* 내용 | 목록 칸 곁의 패널은 그 칸에 두 칸의 최소 폭(목록 칸의 최소 + 내용 칸에 남기는 그만큼)을 남긴다(`PanelBox`의
-                `reserve`). */}
-            {panel && <PanelBox id={panelId} slot={panel} reserve={list && list.size.min * 2} />}
             {overlay}
           </div>
         </div>
@@ -224,66 +182,7 @@ function Frame({ head, list, panel, panelToggle, beside, overlay, children }: Fr
 }
 
 /**
- * 내용 | 목록 칸 안이다(codex-ds 결정 28) — 그 안에 선 `Card`는 제 칸이 아니라 바깥 상자의 내용 칸이라 면을 그리지 않는다(바깥 상자가
- * 든다 — DS `.at-joined > .at-col`). 화면은 다른 화면처럼 본문 칸(`<Card as="main">`)을 건네고, 그것이 내용 칸이 되는 것은 이 틀이
- * 정한다 — 칸의 표식(`data-slot="card"`)도 바깥 상자의 것이다.
- */
-const InListCard = createContext(false);
-
-/**
- * 내용 | 목록 카드 안의 0.5 세로 선 — 목록 칸이 제 왼쪽 가장자리에 칠한다. 색과 굵기는 `border-heavy` 0.5다. 테두리가 아니라 칠한
- * 면인 것은 0.5px 테두리가 엔진마다 굵기가 갈려서다. 칸 내용 위에 서서 내용이 가장자리까지 칠해도 안 가려지고, 누름은 지나보낸다.
- * **카드 사이를 가르는 선이 아니다** — 카드끼리는 8 틈으로 갈린다(02a-2). 한때(02 S2) 판 안의 모든 칸이 이런 선으로 갈렸다.
- */
-const LIST_RULE =
-  "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-[0.5px] after:bg-border-heavy";
-
-/**
- * 내용 | 목록 카드(codex-ds 결정 28 · 스펙 §4 「목록 칸」 · DS `.at-joined`). 본문 자리에 카드 하나가 서고(`CARD_FACE`), 그 안 왼쪽이
- * 내용 칸(화면의 본문 칸 — `main`), 오른쪽이 목록 칸(`section` — DS `.at-listcol`)이다. 둘 사이는 카드 안 0.5 선 하나다(`LIST_RULE`).
- *
- * **마크업 차례가 보이는 차례다** — 내용 칸이 먼저, 목록 칸이 뒤다. 그래서 Tab이 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다. 목록
- * 칸을 CSS(`order` · `flex-row-reverse`)로 오른쪽에 세우면 Tab이 보이는 차례를 거슬러 간다.
- *
- * **그 선이 폭 손잡이다**(`ResizeHandle`의 `rule` 자리 — 선 위에 걸쳐 선다). 목록 칸이 상자 오른쪽 끝에 붙어 선은 칸의 왼쪽 끝이라,
- * 왼쪽으로 끌면 목록 칸이 넓어진다(폭 훅의 `side`가 `"right"` — 화면이 건넨다). 끈 폭은 저장되고, 두 번 누르면 기본
- * 폭이다. 폭은 칸의 폭 그대로라 출발 폭을 잴 때 뺄 것이 없다. 두 번 눌러 기본 폭으로 돌아가는 순간은 패널과 같은
- * 박자(`PANEL_MOTION`)로 움직이고, 끄는 동안에는 트랜지션을 꺼서 폭이 커서를 곧장 따라온다.
- *
- * **접지 않는다**(codex-ds 결정 32) — 내용 | 목록은 한 상자의 두 칸이라, 따로 여닫는 것은 오른쪽 패널뿐이다. 칸은 제 폭으로 서고
- * (`shrink-0`) 남는 폭을 내용 칸이 먹는다. 목록 칸의 안쪽은 좌우 8이고(DS `.at-listcol` — 머리 · 찾기 칸 · 행이 그 안에 선다), 위아래는
- * 칸 안이 든다.
- *
- * **창이 좁으면 목록 칸이 내준다** — 끄는 최소 폭(`--list-min`, 폭 훅이 받은 값)까지 좁게 서고, 내용 칸에는 **그 최소 폭만큼은
- * 남긴다**(`max-width` — 작업 패널 칸과 같은 손버릇, `PanelBox`). 칸 줄은 바닥을 알리지 않아(`TAB_ROW_COLUMN`) 사이드바가 자리를
- * 내주지 않으므로, 제 폭을 고집하면 상자가 넘침을 잘라 내용 칸이 0으로 눌리고 세로 선과 손잡이도 상자 밖으로 잘린다 — 접지 않는
- * 칸이라 치울 길도 없다. 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다. 좁게 선 칸을 끌 때 손잡이가
- * 안 튀는 것은 폭 훅이 그려진 폭에서 출발해서다(`useResizableWidth`).
- */
-function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) {
-  const { label, size } = slot;
-  return (
-    <div data-slot="card" className={cn("relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-surface", CARD_FACE)}>
-      <InListCard.Provider value>{children}</InListCard.Provider>
-      <section
-        aria-label={label}
-        style={{ width: size.width, "--list-min": `${size.min}px` } as CSSProperties}
-        className={cn(
-          "relative flex min-h-0 max-w-[calc(100%-var(--list-min))] min-w-(--list-min) shrink-0 flex-col px-2",
-          LIST_RULE,
-          !size.dragging && PANEL_MOTION,
-          !size.dragging && "transition-[width]",
-        )}
-      >
-        {slot.children}
-        <ResizeHandle control={size} seat="rule" />
-      </section>
-    </div>
-  );
-}
-
-/**
- * 오른쪽 패널 칸(ui-refresh 결정 4 · 15) — 작업공간의 spec 패널(앱 셸의 기둥), Archive의 spec 목록 패널. 바깥 상자가 두 번째 `<aside>`이고(e2e
+ * 오른쪽 패널 칸(ui-refresh 결정 4 · 15) — 작업공간의 spec 패널(앱 셸의 기둥). 바깥 상자가 두 번째 `<aside>`이고(e2e
  * `tab-row-floor`가 `aside` 순서를 잰다) 폭이 **틈 8 + 카드의 폭**이다 — 접히면 0이 되어 틈째 걷히고 왼쪽 카드가 카드 자리 오른쪽 끝
  * (레일이 서면 레일 카드 앞 틈)까지 넓어진다(시안 Motion 「패널을 닫으면 문서 카드가 넓어진다」). 왼쪽 카드와는 그 틈으로 갈린다 —
  * 틈은 안쪽 열의 왼쪽 여백이다. 손잡이는 그 틈을 덮는다(`gap` — 틈 안이라 넘침을 숨기는 상자에 잘리지 않는다).
@@ -292,14 +191,9 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  * 더하고, 끄는 손이 잴 때 그 틈을 뺀다(`useResizableWidth`의 `drawnWidth`).
  *
  * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--panel-min`, 폭 훅이 받은 값)까지 왼쪽 칸에 자리를
- * 내주고, 왼쪽 칸에는 **남길 폭(`reserve`)만큼은 남긴다**(`max-width`). 그 폭은 왼쪽 칸이 화면을 이루는 최소다:
- * - 작업 화면의 문서 칸에는 패널 자신의 최소 폭만큼이다(`reserve`가 없을 때). 문서 칸은 머리에 탭 줄을 이고 그 줄의 바닥 아래로는
- *   안 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 칸 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를 내준다.
- * - Archive의 문서 | 목록 칸에는 두 칸의 최소(목록 칸의 최소 + 내용 칸에 남기는 그만큼 — `ListCard`)다. 그만큼을 남기지 않으면 좁은
- *   창에서 패널이 제 폭을 지키는 사이 목록 칸이 제 최소로 버텨 내용 칸이 먼저 눌린다. 그 칸 줄은 격리되어(`TAB_ROW_COLUMN`) 사이드바가
- *   자리를 내주지 않으므로, **여기서는 패널이 제 최소 폭 아래로도 내준다**(최소 폭도 「남은 폭 − 남길 폭」을 넘지 않는다). 목록과 내용은
- *   접을 수 없는 칸이고 패널은 ⌘Enter · 토글로 걷을 수 있는 칸이라, 모자란 자리는 걷을 수 있는 쪽이 진다 — 900 창에 사이드바를 넓혀
- *   두면 패널은 가는 띠로 선다.
+ * 내주고, 왼쪽 칸(작업 화면의 문서 칸)에는 **패널 자신의 최소 폭만큼은 남긴다**(`max-width`). 문서 칸은 머리에 탭 줄을 이고 그 줄의
+ * 바닥 아래로는 안 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 칸 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를
+ * 내준다. 한때 Archive의 문서 | 목록 칸 곁에서는 두 칸의 최소를 남기고 제 최소 폭 아래로도 내줬다(`reserve` — restart 03-4가 그 패널을 걷었다).
  * 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
  *
  * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 칸 줄의
@@ -324,27 +218,21 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  * 랜드마크)도 닫힌 동안은 드러내지 않는다(`aria-hidden`) — 안이 다 `inert`라 빈 랜드마크만 남는다. 작업공간의 spec 패널 상자는 앱 셸에 늘
  * 서 있어, 이것이 없으면 작업공간이 아닌 화면마다 빈 `aside`가 랜드마크 목록에 읽힌다(restart 02a-14).
  *
- * **이 상자를 두 자리가 쓴다** — Archive의 spec 목록 패널은 이 틀의 카드 줄에, 작업공간의 spec 패널은 앱 셸의 작업공간 도구 기둥에 선다
- * (`WorkTools` — 화면이 바뀌어도 그 자리에 남아 작업공간을 떠날 때 접힘이 보인다, restart 02a-14). 기둥에서는 패널 뒤에 레일 카드가 한 줄로
- * 서서, 남길 폭에서 그 몫(`trail` — 레일 폭 + 틈)을 더 뺀다. 작업공간의 spec 패널은 안쪽이 옅어지지 않고 상자에 잘리기만 한다(`fade` 끔 —
- * 시안 `.ra-panelwrap`, restart 02a-14c `clippingInnerClass`) — 여닫을 때도, 떠나며 접히는 동안 남긴 마지막 몸이 보일 때도 같다. Archive의
- * spec 목록 패널은 앞 판의 접힘 장치대로 옅어진다.
+ * **작업공간의 spec 패널은 앱 셸의 작업공간 도구 기둥에 선다**(`WorkTools` — 화면이 바뀌어도 그 자리에 남아 작업공간을 떠날 때 접힘이
+ * 보인다, restart 02a-14). 기둥에서는 패널 뒤에 레일 카드가 한 줄로 서서, 남길 폭에서 그 몫(`trail` — 레일 폭 + 틈)을 더 뺀다. 안쪽은
+ * 옅어지지 않고 상자에 잘리기만 한다(시안 `.ra-panelwrap`, restart 02a-14c `clippingInnerClass`) — 여닫을 때도, 떠나며 접히는 동안 남긴 마지막
+ * 몸이 보일 때도 같다. 한때 Archive의 spec 목록 패널이 이 틀의 카드 줄에서 같은 상자를 쓰며 옅어졌다(`fade` — restart 03-4가 걷었다).
  */
 export function PanelBox({
   id,
   slot,
-  reserve,
   trail,
-  fade = true,
   still = false,
 }: {
   id: string;
   slot: PanelSlot;
-  reserve?: number;
   /** 같은 줄에서 패널 뒤(오른쪽)에 서는 것의 폭(CSS 길이) — 남길 폭을 잴 때 함께 뺀다. 없으면 0이다. */
   trail?: string;
-  /** 여닫을 때 안쪽이 옅어지나(`foldingInnerClass`) — 아니면 상자에 잘리기만 한다(`clippingInnerClass`). */
-  fade?: boolean;
   /** 이번 그림은 움직이지 않고 선다 — 상자와 안쪽 열의 트랜지션을 끈다(`STILL` — 작업공간 도구 기둥이 처음 그려질 때). */
   still?: boolean;
 }) {
@@ -359,7 +247,6 @@ export function PanelBox({
         {
           "--panel-width": `${size.width}px`,
           "--panel-min": `${size.min}px`,
-          "--panel-reserve": `${reserve ?? size.min}px`,
           ...(trail === undefined ? {} : { "--panel-trail": trail }),
           ...(still ? STILL : {}),
         } as CSSProperties
@@ -375,10 +262,8 @@ export function PanelBox({
         open
           ? cn(
               "overflow-x-visible",
-              "max-w-[calc(100%-var(--panel-reserve)-var(--panel-trail,0px))] basis-[calc(var(--panel-width)+var(--space-2))]",
-              reserve === undefined
-                ? "min-w-[calc(var(--panel-min)+var(--space-2))]"
-                : "min-w-[min(calc(var(--panel-min)+var(--space-2)),max(0px,calc(100%-var(--panel-reserve))))]",
+              "max-w-[calc(100%-var(--panel-min)-var(--panel-trail,0px))] basis-[calc(var(--panel-width)+var(--space-2))]",
+              "min-w-[calc(var(--panel-min)+var(--space-2))]",
             )
           : "basis-0 min-w-0 overflow-x-clip",
       )}
@@ -390,7 +275,7 @@ export function PanelBox({
         style={still ? STILL : undefined}
         className={cn(
           "flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2",
-          fade ? foldingInnerClass(open) : clippingInnerClass(open),
+          clippingInnerClass(open),
         )}
       >
         <Card label={label} className="flex-1">
@@ -432,18 +317,16 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 겉(면 · 둥글기 · 링)만 버리고 안은 그대로다 — 왼쪽 것은 머리 줄 가운데 왼쪽에, 오른쪽 것은 머리 줄 오른쪽 끝에 선다. 자리(사이드바
  * 끝의 세로선 뒤 · 접히면 셸 컨트롤 뒤 · 오른쪽 끝 여백)와 끌기는 셸의 머리 줄이 든다(`ShellHeadRow`).
  *
- * 왼쪽은 **이름 상자**(DS `.at-wtitle` — 아이콘 · 이름 · 연필을 품은 24 상자, 안쪽 0 8 · 사이 7 · `radius-md`, 아이콘 14 `fg-secondary`)와
- * 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 이름 글자는 Thread 이름과 같은 14/500 `fg`다(`HEAD_NAME` — 머리 줄은 한 결이다, 02 결정
- * 「머리 줄은 한 결이다(03 뒤)」. 한때 머리 카드의 13/500이었다). 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다. 이름 상자의 안쪽 8은
- * hover 면 · 대상 테두리의 자리라, 묶음을 6 당겨(`-ml-1.5`) 사이드바가 열렸으면 아이콘이 본문 카드 왼쪽 끝 + 16(세로선 뒤 14 − 6 + 8)
- * — 아래 탭 줄 첫 칸의 글리프와 한 세로줄 — 에 선다. 하위 화면은 그 앞에 돌아가는 길(`lead`)이 하나 선다. 브랜치 · 위치는 이름 상자 밖
- * 형제이고 상자 끝에서 6에 선다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 연필이 없는 이름이면 이름 끝에서 14다). 위치는 DS
- * `.at-winhead .sub`(12 `fg-tertiary`)이고, 브랜치는 프로젝트 화면 Works 행의 ⑂ 브랜치와 같은 말(⑂ 12 · 고정폭 12 `fg-secondary` · 사이
- * 5)이다. 오른쪽은 할 일 | 그 너머다 — 둘을 가르는 세로선 0.5 × 16 `border-heavy`(DS `.at-winctl-r`)가 양옆 8을 둔다. 오른쪽 패널을 든
- * 화면은 그 너머 맨 끝에 패널 토글이 든다(`toggle` — 레일이 서든 안 서든 같은 자리, DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive
- * 「⋯ | spec 목록 토글」). **오른쪽 끝 묶음과 단추는 Thread 머리 줄과 한 벌이다**(`ShellHead`의 `HeadEnd` — 단추 사이 2 · 이름 쪽과 12,
- * `headButton` — 아이콘 단추 28 · 글리프 16 `fg-titlebar`, 글자 단추는 `Button`의 `top` 28). 한때 머리 카드의 값(24 · 사이 6 · 글리프
- * 15)이었다.
+ * 왼쪽은 시안 Main 머리 줄의 crumb다(`.ra-crumb` — 「흐린 앞 자리 · 이름 · ⑂ 브랜치」가 6씩, restart 03-12a): 이름 앞(`lead`), **이름
+ * 상자**(DS `.at-wtitle` — 이름 · 연필을 품은 24 상자, `radius-md`), 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 이름 글자는 Thread 이름과
+ * 같은 13/18 `fg`다(`HEAD_NAME` — 머리 줄은 한 결이다). 이름 상자의 안쪽 6은 hover 면 · 대상 테두리의 자리라 바깥 6을 당겨(`-mx-1.5`) 글자가
+ * 묶음의 흐름 자리에 선다 — 앞이 없으면 세로선 뒤 10, 앞이 있으면 앞 끝에서 6이다. 바꿀 수 있는 이름은 오른쪽 안쪽이 연필 자리까지다.
+ * 한때 이름 앞에 아이콘(work ⚡ · nav의 그 아이콘, DS `.at-wtitle > .ic`)이 섰다. 브랜치 · 위치는 이름 상자 밖 형제이고 이름 끝에서 6에
+ * 선다. 위치는 DS `.at-winhead .sub`(12 `fg-tertiary`)이고, 브랜치는 시안 `.ra-crumb .br`(git-branch 14 · 13/18 `fg-secondary` · 사이 4)다 — 한때
+ * 프로젝트 화면 Works 행의 ⑂ 12 · 고정폭 12였다. 오른쪽은 할 일 | 그 너머다 — 둘을 가르는 세로선 0.5 × 16 `border-heavy`(DS
+ * `.at-winctl-r`)가 양옆 8을 둔다. 오른쪽 패널을 든 화면은 그 너머 맨 끝에 패널 토글이 든다(`toggle` — 레일이 서든 안 서든 같은 자리).
+ * **오른쪽 끝 묶음과 단추는 Thread 머리 줄과 한 벌이다**(`ShellHead`의 `HeadEnd` — 단추 사이 0 · 이름 쪽과 12, `headButton` — 아이콘 단추
+ * 28 · 글리프 15 `fg-secondary`, 글자 단추는 `Button`의 `top` 28 · 완전히 둥글게). 한때 머리 카드의 값(24 · 사이 6 · 글리프 15)이었다.
  *
  * **이름 칸은 바닥을 알리지 않는다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 할 일을 밀면 안 된다. 제 폭을 알리지 않는
  * 상자라 글자 폭으로는 서지 못해, 이름 칸(이름 상자 · 브랜치 · 위치의 줄)은 남는 폭을 먹는다(`flex-1`). 그 안에서 이름 상자는 DS
@@ -462,7 +345,6 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  */
 function FrameHead({
   lead,
-  icon: Icon,
   name,
   nameMenu,
   rename,
@@ -476,15 +358,12 @@ function FrameHead({
   toggle?: ReactNode;
 }) {
   const nameEl = useRef<HTMLSpanElement>(null);
-  // **이름 상자 한 벌**(DS `.at-wtitle`) — 24 · 상한 520 · `radius-md` · 안쪽 왼쪽 8. 줄 상자(`block` · 줄 높이 24)이고 글자가 이 상자의
-  // 바로 안이다 — 말줄임이 이 상자에서 끊기고, 글자로 이름을 찾는 쪽(`getByText`)이 이 상자(포커스 받는 그것)에 닿는다. 아이콘은 줄
-  // 안의 글리프로 서서(`inline-block` · 위 5 — 24 줄에 14) 오른쪽 7을 둔다. 오른쪽 안쪽은 연필이 없으면 8, 있으면 연필 자리까지다(이름
-  // 끝 5 · 연필 12 · 끝 8 — DS `.pen`의 왼쪽 -2가 사이 7에서 빠진다). 연필은 줄 밖에 떠(`absolute`) 말줄임이 그 앞에서 끊긴다.
-  const titleBox = cn("block h-6 max-w-[520px] min-w-0 truncate rounded-md pl-2", HEAD_NAME, "leading-6");
-  const titleEnd = rename ? "pr-6.25" : "pr-2";
-  // 아이콘 한 벌 — 쉴 때(줄 안의 글리프)와 고칠 때(flex 줄의 칸)가 같은 크기 · 색 · 사이 7이다.
-  const glyphClass = "mr-1.75 size-3.5 text-fg-secondary";
-  const glyph = <Icon aria-hidden className={cn(glyphClass, "mt-1.25 inline-block align-top")} />;
+  // **이름 상자 한 벌**(DS `.at-wtitle`) — 24 · 상한 520 · `radius-md` · 안쪽 왼쪽 6(바깥 −6으로 당겨 글자가 흐름 자리에 선다). 줄
+  // 상자(`block` · 줄 높이 24)이고 글자가 이 상자의 바로 안이다 — 말줄임이 이 상자에서 끊기고, 글자로 이름을 찾는 쪽(`getByText`)이 이
+  // 상자(포커스 받는 그것)에 닿는다. 오른쪽 안쪽은 연필이 없으면 6(바깥 −6), 있으면 연필 자리까지다(이름 끝 5 · 연필 12 · 끝 8). 연필은
+  // 줄 밖에 떠(`absolute`) 말줄임이 그 앞에서 끊긴다.
+  const titleBox = cn("-ml-1.5 block h-6 max-w-[520px] min-w-0 truncate rounded-md pl-1.5", HEAD_NAME, "leading-6");
+  const titleEnd = rename ? "pr-6.25" : "-mr-1.5 pr-1.5";
   // **메뉴가 있거나 바꿀 수 있는 이름은 대상이다**(`nameMenu` · `rename`) — 이름 상자가 포커스를 받는다. 메뉴가 있으면 ⇧F10 · 메뉴
   // 키가 그 메뉴를 열고 열린 동안 표식이 서서 `focus-ring`이 테두리를 그린다 — 링 · 테두리가 아이콘부터 연필 자리까지 상자 전부를
   // 두른다. 바꿀 수 있으면 F2 · 두 번 클릭이 고치기에 든다(codex-ds 스펙 §9 — F2는 포커스된 대상의 `onKeyDown`이 듣는다, 화면의
@@ -523,7 +402,6 @@ function FrameHead({
         rename && "group/name relative transition-colors hover:bg-fill-hover",
       )}
     >
-      {glyph}
       {name}
       {rename && (
         <Pencil
@@ -534,8 +412,7 @@ function FrameHead({
     </span>
   );
   const nameNode = rename?.editing ? (
-    <span data-tauri-drag-region="false" className="flex h-6 max-w-[520px] min-w-0 items-center pr-5.25 pl-2">
-      <Icon aria-hidden className={cn(glyphClass, "shrink-0")} />
+    <span data-tauri-drag-region="false" className="-ml-1.5 flex h-6 max-w-[520px] min-w-0 items-center pr-5.25 pl-1.5">
       <InlineRename
         value={name}
         label={rename.label}
@@ -552,23 +429,21 @@ function FrameHead({
   ) : rename ? (
     renderName(false)
   ) : (
-    <span className={cn(titleBox, titleEnd)}>
-      {glyph}
-      {name}
-    </span>
+    <span className={cn(titleBox, titleEnd)}>{name}</span>
   );
   return (
     <ScreenHead>
-      <div className="-ml-1.5 flex h-full min-w-0 flex-1 items-center gap-1">
+      <div className={cn("flex h-full min-w-0 flex-1 items-center", HEAD_CRUMB_GAP)}>
         {lead}
         <div className="flex h-6 min-w-0 flex-1 items-center contain-inline-size">
           {nameNode}
           {branch && (
             // 브랜치의 칸 — 기준 폭 0이라 이름 상자가 제 폭을 다 가진 뒤 남는 폭만 받고, 그 폭을 제가 잰다(`@container`). 80 아래면 안이
-            // 걷히고 빈 칸만 남는다. 상자 끝에서 6은 안의 왼쪽 여백이다 — 칸의 여백이면 걷힌 동안에도 이름에서 6을 앗는다.
+            // 걷히고 빈 칸만 남는다. 이름 끝에서 6은 안의 왼쪽 여백이다 — 칸의 여백이면 걷힌 동안에도 이름에서 6을 앗는다. 모양은 시안
+            // `.ra-crumb .br`(git-branch 14 · 13/18 `fg-secondary` · 사이 4)다.
             <span className="@container flex min-w-0 flex-[1_1_0]">
-              <span className="ml-1.5 hidden min-w-0 items-center gap-1.25 font-mono text-xs text-fg-secondary @min-[80px]:flex">
-                <GitFork aria-hidden className="size-3 shrink-0" />
+              <span className="ml-1.5 hidden min-w-0 items-center gap-1 text-chat-meta whitespace-nowrap text-fg-secondary @min-[80px]:flex">
+                <GitBranch aria-hidden className="size-3.5 shrink-0" />
                 <span className="min-w-0 truncate">{branch}</span>
               </span>
             </span>
@@ -589,9 +464,9 @@ function FrameHead({
         {(actions || end || toggle) && (
           <HeadEnd>
             {actions}
-            {/* 세로선은 양옆 8을 둔다 — 묶음의 단추 사이 2에 제 6을 더한다. */}
+            {/* 세로선은 양옆 8을 둔다 — 묶음의 단추 사이는 0이다. */}
             {actions && (end || toggle) && (
-              <div role="separator" aria-orientation="vertical" className="mx-1.5 h-4 w-[0.5px] shrink-0 bg-border-heavy" />
+              <div role="separator" aria-orientation="vertical" className="mx-2 h-4 w-[0.5px] shrink-0 bg-border-heavy" />
             )}
             {end}
             {toggle}
@@ -641,23 +516,19 @@ interface CardProps {
  * 작업 화면의 본문 칸은 문서와 터미널을 오가는데, 둘이 다른 컴포넌트면 오갈 때마다 칸이 새로 서고 머리의 탭 줄도 함께 새로
  * 서서 방금 누른 `spec` 칸의 포커스와 줄의 스크롤을 잃는다. 테마는 터미널 칸만 구독한다 — 흰 칸은 훅이 늘 `undefined`를
  * 돌려줘 설정이 바뀌어도 다시 그려지지 않는다(`useShellBackground`).
- *
- * **내용 | 목록 칸 안에서는 내용 칸이다**(`InListCard` — codex-ds 결정 28). 면을 바깥 상자가 들어 이 상자는 면을 그리지 않고, 칸의
- * 표식(`data-slot="card"`)도 바깥 상자의 것이다 — 칸 줄의 칸은 하나다.
  */
 function Card({ as: Tag = "section", label, head, tone, className, children }: CardProps) {
   const background = useShellBackground(tone === "terminal");
-  const column = useContext(InListCard);
   return (
     <Tag
       aria-label={label}
-      data-slot={column ? undefined : "card"}
+      data-slot="card"
       data-tone={tone}
       style={background === undefined ? undefined : { backgroundColor: background }}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
-        !column && CARD_FACE,
-        !column && tone !== "terminal" && "bg-surface",
+        CARD_FACE,
+        tone !== "terminal" && "bg-surface",
         className,
       )}
     >
@@ -699,73 +570,4 @@ function CardHead({
   );
 }
 
-/**
- * 목록 머리(codex-ds 스펙 §4 「목록 머리」 · DS `.at-listcol-head`) — 목록 칸 맨 위 줄이다. 높이는 경로 줄과 같은 48(`size-pathbar`)이라
- * 내용 칸의 경로 줄과 한 줄에 선다(codex-ds 결정 28). 왼쪽에 제목(14/500 `fg`)과 개수(13 `fg-tertiary` · 고정폭 숫자)가 사이 4로 서고,
- * 그 목록에 거는 할 일(`end`)이 오른쪽 끝에 선다. 왼쪽 안쪽 8이 목록 칸의 안쪽 8에 더해져 제목이 칸 + 16에 선다 — 아래 행 글자와 한
- * 세로줄이다(DS 「행 글자 16」). `div`다. 표식 `data-slot="list-head"`는 검사가 집는다.
- */
-function ListHead({ title, count, end }: { title: string; count?: number; end?: ReactNode }) {
-  return (
-    <div data-slot="list-head" className="flex h-(--size-pathbar) shrink-0 items-center gap-1 pl-2">
-      <span className="min-w-0 truncate text-sm font-medium">{title}</span>
-      {count !== undefined && <span className="shrink-0 text-chat-meta text-fg-tertiary tabular-nums">{count}</span>}
-      {end && <div className="ml-auto flex shrink-0 items-center gap-1">{end}</div>}
-    </div>
-  );
-}
-
-/**
- * 목록 칸의 찾기 칸(DS `.at-search`) — 목록 머리 아래 칸 폭으로 서고 행과 8 떨어진다. Projects · Archive 목록이 쓴다. 이름은
- * `aria-label`이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자라 같은 글자를 겸한다.
- */
-function ListSearch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return (
-    <InputGroup className="mb-2 shrink-0">
-      <InputGroupAddon>
-        <Search />
-      </InputGroupAddon>
-      <InputGroupInput
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={label}
-      />
-    </InputGroup>
-  );
-}
-
-/**
- * 목록 칸의 두 줄 행(DS `.at-row.two`)의 자리 — 50 이상 · 안쪽 7 8 · 모서리 10, 두 줄 사이 2. 글자가 칸 + 16에 서서 목록 머리의 제목과
- * 한 세로줄이다. Projects · Archive 목록의 행 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다. 고른 행 · hover의 면은 행이
- * 더한다(카드 안 목록의 두 단 — `selected-row` · `fill-soft`).
- */
-const TWO_LINE_ROW = "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 transition-colors";
-
-/**
- * 목록 칸의 구르는 상자 — 두 줄 행이 여기 선다. 상자가 목록의 키를 받는다: 행 메뉴의 우클릭 · ⇧F10(`menu` — `TargetMenu`의 손잡이)과
- * 목록 안 ↑↓(`roving` — 목록 하나가 Tab 정류장 하나다, `@/lib/roving`). 행은 표식(`data-roving` · 메뉴가 대상을 가르는 표)만 든다.
- *
- * **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만 칸 가장자리로 간다. 상자가 안쪽 여백 안에
- * 들어앉아 있으면 막대(상자 안쪽 3~9px)가 그만큼 더 안쪽에 서서 행 위로 들어온다. 같은 병이 사이드바 work 목록에 있었고 그쪽 주석이
- * 내력을 든다. 위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지 않게 상자만
- * 4px 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 그 자리이자 칸 바닥의 안쪽 8이다(DS
- * `.at-listcol`).
- */
-function ListScroll({ menu, roving, children }: { menu?: TargetRegion; roving: RovingBox; children: ReactNode }) {
-  return (
-    <div
-      onContextMenu={menu?.onContextMenu}
-      onKeyDown={(event) => {
-        menu?.onKeyDown(event);
-        roving.onKeyDown(event);
-      }}
-      onFocus={roving.onFocus}
-      className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet"
-    >
-      {children}
-    </div>
-  );
-}
-
-export { Card, CARD_FACE, CardHead, Frame, ListHead, ListScroll, ListSearch, TWO_LINE_ROW };
+export { Card, CARD_FACE, CardHead, Frame };

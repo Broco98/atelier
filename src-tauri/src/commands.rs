@@ -125,6 +125,13 @@ pub async fn list_services() -> CmdResult<Vec<Service>> {
     atelier_core::list_services(&data_root()).map_err(err)
 }
 
+/// Service 파일들의 폴더(홈은 `~` — restart 03-3). 목록 줄 · 상세의 ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다 — 누른 자리에서 곧바로
+/// 클립보드에 써야 해서(웹뷰는 누름 밖의 쓰기를 막는다) 화면이 미리 한 번 읽어 둔다. 파일을 읽지 않는다.
+#[tauri::command]
+pub async fn services_folder() -> CmdResult<String> {
+    Ok(atelier_core::collapse_home(&atelier_core::services_in(&data_root())))
+}
+
 /// Service 하나와 함께 쓰는 Service — 상세 화면이 한 번에 읽는다.
 #[tauri::command]
 pub async fn get_service(slug: String) -> CmdResult<ServiceDetail> {

@@ -879,9 +879,9 @@ impl Machine {
         let Some(opening) = self.take_opening() else { return };
         let why = stream::why(result);
         let reason = if opening.revive {
-            format!("claude가 세션을 되살리지 못했습니다: {why}")
+            format!("claude가 세션을 되살리지 못했어요: {why}")
         } else {
-            format!("claude가 세션을 열지 못했습니다: {why}")
+            format!("claude가 세션을 열지 못했어요: {why}")
         };
         self.send(error(&opening.id, -32603, &reason));
         self.open = Open::Failed;
@@ -899,7 +899,7 @@ impl Machine {
             return self.out.push(Output::Exit(0));
         }
         if let Some(opening) = self.take_opening() {
-            self.send(error(&opening.id, -32603, &format!("claude가 initialize에 답하지 않고 끝났습니다 ({status})")));
+            self.send(error(&opening.id, -32603, &format!("claude가 initialize에 답하지 않고 끝났어요 ({status})")));
             self.open = Open::Failed;
             return;
         }
@@ -912,7 +912,7 @@ impl Machine {
     /// claude를 띄우지 못했다 — 그 열기를 오류로 답하고 다음 열기를 받는다.
     fn launch_failed(&mut self, error_text: &str) {
         let Some(opening) = self.take_opening() else { return };
-        let reason = format!("claude를 실행할 수 없습니다: {} — {error_text}", opening.claude);
+        let reason = format!("claude를 실행하지 못했어요: {} — {error_text}", opening.claude);
         self.send(error(&opening.id, -32603, &reason));
     }
 

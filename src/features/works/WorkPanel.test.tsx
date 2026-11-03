@@ -200,7 +200,10 @@ describe("WorkPanel 소스 토글", () => {
   });
 });
 
-// 이 패널은 머리 줄 아래에 뜬 카드다(ui-refresh 결정 4) — 머리는 다른 카드와 같은 카드 머리(46px — `--card-head`)다.
+// 이 패널은 머리 줄 아래에 뜬 카드다(ui-refresh 결정 4). 안의 규격은 시안 Shell 「spec 패널」 · Main `.ra-phead` · `.ra-pbody` ·
+// `.ra-tree-row`다(restart 03-12a — report 02a-17 「spec 패널 안」): 머리 40 · 안쪽 왼 14 · 오 8, 끝 단추 24 · 글리프 14, 몸 안쪽 0 6 8, 행은
+// 촘촘한 트리 행(24 · 둥글기 4 · 사이 2 · 들여쓰기 8 + 깊이 × 12 · 확장자 글자). 한때 카드 머리 46(`--card-head`) · 제목 카드 + 16 · 행 28 ·
+// 둥글기 10이었다.
 describe("WorkPanel 머리행", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -209,13 +212,29 @@ describe("WorkPanel 머리행", () => {
     vi.unstubAllGlobals();
   });
 
-  it("머리 행이 카드 머리 높이를 그대로 읽는다", () => {
-    // 값을 손으로 적으면(h-12 같은 것) 카드 머리 높이가 바뀔 때 이 줄만 남아 옆 문서 카드의 머리와 어긋난다.
+  it("머리는 40 · 제목이 카드 + 14이고, 끝 단추는 24 · 글리프 14다", () => {
     // 머리는 카드 안이라 창을 끄는 자리가 아니다 — 그 일은 머리 줄과 회색 틈이 한다.
+    const head = headOf(render());
+    const open = head.match(/^<div[^>]*>/)?.[0] ?? "";
+    expect(open).toMatch(/\bh-10\b/);
+    expect(open).toMatch(/\bpl-3\.5\b/);
+    expect(open).toMatch(/\bpr-2\b/);
+    expect(head).not.toContain("h-(--card-head)");
+    expect(head).not.toContain("data-tauri-drag-region");
+    const title = head.match(/<span[^>]*>spec<\/span>/)?.[0] ?? "";
+    expect(title, "제목").not.toMatch(/\bpx-/);
+    const button = head.match(/<button[^>]*>/)?.[0] ?? "";
+    expect(button).toMatch(/\bicon-button-xs\b/);
+    expect(head).toMatch(/<svg[^>]*class="[^"]*size-3\.5/);
+  });
+
+  it("몸은 안쪽 0 6 8이고 트리는 촘촘한 행이다", () => {
     const markup = render();
-    expect(markup).toContain("h-(--card-head)");
-    expect(markup).not.toContain("h-(--titlebar-height)");
-    expect(markup).not.toContain("data-tauri-drag-region");
+    expect(markup).toMatch(/class="[^"]*\bpx-1\.5\b[^"]*\bpb-2\b[^"]*"/);
+    // 촘촘한 행(`TreeRows`의 `dense`) — 24 · 둥글기 4. 28 · 둥글기 10(`h-7` · `rounded-lg`)의 파일 행이 남지 않는다.
+    const row = markup.match(/<div[^>]*data-spec-file="overview\.md"[^>]*><div class="([^"]*)"/)?.[1] ?? "";
+    expect(row, "overview.md 행").toMatch(/\bh-6\b/);
+    expect(row).toMatch(/\brounded-ctl\b/);
   });
 
   it("왼쪽 경계선이 없다 — 문서와의 구분은 틈이 맡는다", () => {

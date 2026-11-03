@@ -31,13 +31,17 @@ const buttonVariants = cva(
           "h-8 gap-1.5 rounded-lg px-3 text-chat-meta has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5 [&_svg:not([class*='size-'])]:size-3.5",
         // 머리 줄의 글자 버튼 — 「폴더 열기」 · 「조용한 셸 모두 닫기」 · 설정의 「저장」. 머리 줄의 아이콘
         // 단추(`ShellHead`의 `headButton` — 28)와 같은 높이다(02 결정 「머리 줄은 한 결이다(03 뒤)」 — 머리 줄의 단추는 모두 28). 모서리는
-        // `radius-lg` 그대로다 — 시안 머리 줄에는 글자 단추가 없고(아이콘 단추 `.ra-tbtn`만 4), 이 단은 몸 안의 글자 단추도 쓴다(restart 02b-6b). 좌우 10 · `chat-meta`는 앱의 다른 28 글자 단(`Toggle`의 `sm`)과 같고, 아이콘 14와 사이 5는 DS `.at-btn.top`
+        // 완전히 둥글다 — 시안의 글자 단추가 모두 그렇다(`.ra-opt` · `.ra-no` · `.ra-yes` · `.pl-btn` — `radius-full`, restart 03-12a). 한때 `radius-lg`(10)라
+        // 머리 줄의 아이콘 단추(4) 곁에서 둥글기가 둘이었다(restart 02b-6b). 이 단은 몸 안의 글자 단추(목록 상세의 「완료」 · 확인 창 바닥)도 쓴다. 좌우 10 · `chat-meta`는 앱의 다른 28 글자 단(`Toggle`의 `sm`)과 같고, 아이콘 14와 사이 5는 DS `.at-btn.top`
         // 그대로다. 한때 DS `.at-btn.top`의 24 · `radius-md` · 좌우 8이었다(머리 카드 때). 색은 변형이 든다 — 보통은 ghost, 저장은 default.
-        top: "h-7 gap-1.25 rounded-lg px-2.5 text-chat-meta [&_svg:not([class*='size-'])]:size-3.5",
+        top: "h-7 gap-1.25 rounded-full px-2.5 text-chat-meta [&_svg:not([class*='size-'])]:size-3.5",
         // 줄 안의 버튼 — 설정 행의 「기본값으로」, 토스트의 동작, 목록 빈칸의 「프로젝트 등록」(DS `.at-btn.xs`).
         xs: "h-6.5 gap-1.5 rounded-md px-2.25 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         // Codex 기본 — 카드 밖에 홀로 서는 큰 버튼(DS `.at-btn`). 둥근 것은 이 단뿐이다(codex-ds 스펙 §2 「반경」).
         lg: "h-9 gap-1.5 rounded-full px-3.5 text-sm has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
+        // 목록 화면의 주 단추(restart 03-1 · 보드 PlaceSheet 「주 단추」 `.pl-btn` — 34 · 완전히 둥글게 · 좌 11 · 우 14 · 13 · + 15). 머리의 「Project 추가」와
+        // 빈 목록의 할 일이 같은 단추다(`PlaceAdd`).
+        place: "h-8.5 gap-1.5 rounded-full pr-3.5 pl-2.75 text-chat-meta [&_svg:not([class*='size-'])]:size-3.75",
         icon: "icon-button",
         "icon-sm": "icon-button icon-button-sm",
         "icon-xs": "icon-button icon-button-xs [&_svg:not([class*='size-'])]:size-3",

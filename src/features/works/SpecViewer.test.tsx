@@ -288,6 +288,17 @@ describe("SpecViewer 본문 갈래", () => {
     expect(viewer("overview.md", true)).toContain("[tab-size:4]");
   });
 
+  // SpecViewer는 넓힌 카드의 문서 몸이다(Archive 상세는 `PrettyView`를 바로 쓴다). 열은 시안 `.ra-vwdoc` · `.ra-vwsrc`다 — 거터 28 · 최대 640 · 위
+  // 20 · 아래 32(restart 03-12a — report 02b-8 「넓힌 카드의 문서 몸」, 한때 문서 카드의 열 `bodyColumn` 거터 20 · 글 폭 768).
+  it("문서 · 원문 모두 넓힌 카드의 열이다 — 거터 28 · 최대 640", () => {
+    read.content = "# 개요\n\n한 줄.";
+    const column = (html: string) => html.match(/<(?:article|div) class="([^"]*\bw-full\b[^"]*)"/)?.[1].split(/\s+/) ?? [];
+    for (const html of [viewer("overview.md"), viewer("overview.md", true)]) {
+      expect(column(html)).toEqual(expect.arrayContaining(["px-7", "max-w-160", "pb-8"]));
+      expect(column(html)).not.toContain("px-5");
+    }
+  });
+
   it("html은 토글이 갈린다 — 렌더와 원문을 오간다", () => {
     read.content = "<p>조각</p>";
     expect(viewer("목업/조각.html")).toContain("<iframe");

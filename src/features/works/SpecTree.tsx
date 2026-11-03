@@ -33,7 +33,8 @@ export const treeIndent = (depth: number, dense = false) => ({ paddingLeft: 8 + 
 
 // **촘촘한 행**(restart 02b-8 · 보드 `.ra-tree-row` — SummarySheet 「넓힌 카드 — Project」) — 넓힌 카드의 Project 트리(files 트리)가 쓴다. 24 ·
 // 둥글기 `radius-ctl` 4 · 줄 사이 2 · 폴더 행도 본문 글자색이고, 파일 행 앞은 확장자 꼬리표가 아니라 그 첫 글자(`ExtMark`)다. spec 패널의
-// 트리는 그대로(28 · 둥글기 10 · 사이 1)다.
+// 트리(시안 Shell 「spec 패널」 — restart 03-12a)와 Archive 상세의 「문서」 트리(03-4)도 이 행이다 — 이제 모든 트리가 촘촘한 행이라 28 · 둥글기
+// 10 · 사이 1의 행(DS `.at-tree-row`)을 부르는 자리가 없다.
 const DENSE_ROW = "h-6 rounded-ctl";
 const DENSE_ROWS = "flex flex-col gap-0.5";
 
@@ -74,6 +75,9 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼과, 그 행의 대상 메뉴(⇧F10 · 메뉴 키 · 우클릭)의 「경로 복사」 (생략 시 둘 다 미표시)
   onCopy?: (path: string) => void;
+  // 촘촘한 행으로 그린다(`TreeRows`의 `dense` — 보드 `.ra-tree-row` 24). Archive 상세의 「문서」 트리(restart 03-4 · 보드 Places `.pl-tree`)와
+  // spec 패널의 트리(restart 03-12a · 시안 Shell 「spec 패널」)가 쓴다.
+  dense?: boolean;
 }
 
 // **트리 하나가 Tab 정류장 하나다**(roving — codex-ds 스펙 §9 · S10, `@/lib/roving`). ↑↓는 보이는 행(펼친 폴더의 자식까지)을 화면
@@ -84,7 +88,7 @@ interface TreeProps {
 // 경로 복사 버튼은 **Tab 정류장이 아니다**(행 안 버튼은 빠진다) — 키보드의 길은 그 파일 행의 대상 메뉴(⇧F10 · 메뉴 키)의 「경로
 // 복사」이고 같은 동작이다(구현 노트 Q16). 메뉴는 `onCopy`가 있을 때만 선다 — 없으면 메뉴에 남는 항목이 없다.
 
-function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, dense = false }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트를 넘어 살지 않는다. **언제
   // 리마운트하는지는 트리를 세우는 패널이 정하고 두 패널이 다르다:**
   // - spec 패널은 트리를 새로 세우지 않는다 — 패널을 여닫아도 접어 둔 폴더가 그대로다(restart 02a-14 · 스토리 83). 한때
@@ -106,7 +110,7 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
 
   const tree = (menu?: TargetRegion) => (
     <div
-      className={cn(ROWS, "shrink-0")}
+      className={cn(dense ? DENSE_ROWS : ROWS, "shrink-0")}
       onContextMenu={menu?.onContextMenu}
       onFocus={roving.box.onFocus}
       onKeyDown={(event) => {
@@ -125,6 +129,7 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
         onSelect={onSelect}
         onCopy={onCopy}
         lookOf={specLook}
+        dense={dense}
       />
     </div>
   );

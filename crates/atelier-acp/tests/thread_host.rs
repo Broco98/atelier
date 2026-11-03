@@ -746,6 +746,31 @@ fn 읽은_자리를_적으면_thread_json과_목록_요약이_바뀌고_뒤로_�
     host.shut_down();
 }
 
+/// 마지막 줄 시각(restart 03-1) — 목록 요약의 `lastAt`은 엔진이 적은 마지막 기록 줄의 시각이다. 줄마다 요약 이벤트를 다시 내지 않는다(기록 줄
+/// 이벤트가 곧 그 알림이다). 그래도 그 뒤에 나가는 요약(읽은 자리 · 이름)은 지금 시각을 싣는다 — 화면의 목록이 옛 시각으로 되돌아가지 않게.
+/// 다시 켠 엔진은 기록 끝에서 읽는다.
+#[test]
+fn 목록_요약은_엔진이_적은_마지막_줄의_시각을_싣는다() {
+    let sandbox = Sandbox::new();
+    let (host, events) = sandbox.host_with_events(two_turns(&sandbox));
+    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let last = |record: &[Value]| record.last().expect("기록")["at"].as_str().expect("at").to_owned();
+    let told = events.thread_lists().len();
+
+    assert_eq!(host.list_threads().expect("목록")[0].last_at, last(&sandbox.thread_record(&thread)));
+    assert_eq!(events.thread_lists().len(), told, "줄을 적었다고 요약을 다시 내지 않는다");
+    let end = record.last().expect("기록")["seq"].as_u64().expect("seq");
+    let summary = host.mark_thread_read(&thread, end).expect("읽은 자리");
+    assert_eq!(summary.last_at, last(&sandbox.thread_record(&thread)), "뒤에 나가는 요약도 지금 시각이다");
+    assert_eq!(events.thread_lists().last().map(|summary| summary.last_at.clone()), Some(summary.last_at));
+
+    host.shut_down();
+    let host = sandbox.host(two_turns(&sandbox));
+    assert_eq!(host.list_threads().expect("목록")[0].last_at, last(&sandbox.thread_record(&thread)), "다시 켜면 기록 끝에서 읽는다");
+    host.shut_down();
+}
+
 #[test]
 fn thread_id의_꼴이_아니거나_없는_thread는_찾을_수_없다() {
     let sandbox = Sandbox::new();
