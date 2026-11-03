@@ -244,8 +244,9 @@ function ProcessesPage() {
               data-stale={beat.kind === "stalled" ? "" : undefined}
               className="group/sample min-h-0 flex-1 overflow-y-auto scroll-quiet"
             >
-              {/* 몸 — 시안 `.pr-col`: 가운데 · 안쪽 20 28 40 · 사이 12. 폭 상한은 앱의 넓은 폭(1120 — 시안 1080)이다. */}
-              <div className="mx-auto flex w-full max-w-(--measure-wide) flex-col gap-3 px-7 pt-5 pb-10">
+              {/* 몸 — 시안 `.pr-col`: 가운데 · 안쪽 20 28 40 · 사이 12 · 폭 상한 1080(`--measure-processes` — restart 03-12c, 한때 앱의 넓은
+                  폭 1120). 좁은 창(900 이하 — 시안 `@media (max-width: 900px)`)에서는 안쪽이 사방 16이다. */}
+              <div className="mx-auto flex w-full max-w-(--measure-processes) flex-col gap-3 px-7 pt-5 pb-10 narrow:p-4">
                 {/* 머리(시안 `.pr-head`) — 화면 이름(24 · 600), 언제 잰 값인지(restart 03-9 · 스토리 129 · 130 · 131), 끝에 할 일.
                     `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead` · `PlaceList`의 맨 위 줄과 같다, 02a-15). */}
                 <div className="flex min-h-7.5 min-w-0 items-center gap-3">
@@ -413,7 +414,7 @@ function ProcessesPage() {
 
 /**
  * **보기 도구**(restart 03-11 · 스토리 137 · 시안 Processes `.pr-tool`) — 묶음 · CPU 순 · 메모리 순 세 단추의 무리(눌린 바닥 `fill-soft` · 안쪽 2 ·
- * `radius-rail`, 칸 24 · 12 · `radius-ctl`, 선 칸은 흰 면 · `shadow-hairline`)와, 줄 순서를 멈춘 동안 그 말(12 `fg-tertiary` — 들어올 때 줄
+ * `radius-rail`, 칸 24 · 12 · 좌우 9 · `radius-ctl`, 선 칸은 흰 면 · `shadow-hairline`)와, 줄 순서를 멈춘 동안 그 말(12 `fg-tertiary` — 들어올 때 줄
  * 바뀜). 단추는 `aria-pressed`로 선 보기를 말한다.
  */
 function ViewTools({ view, onView, held }: { view: ProcessView; onView: (view: ProcessView) => void; held: boolean }) {
@@ -427,7 +428,7 @@ function ViewTools({ view, onView, held }: { view: ProcessView; onView: (view: P
             aria-pressed={view === one}
             onClick={() => onView(one)}
             className={cn(
-              "h-6 rounded-ctl px-2 text-xs transition-colors focus-ring",
+              "h-6 rounded-ctl px-2.25 text-xs transition-colors focus-ring",
               view === one ? "bg-surface text-fg shadow-hairline" : "text-fg-secondary hover:text-fg",
             )}
           >
@@ -469,7 +470,7 @@ function FlatList({ rows, label }: { rows: ReadonlyArray<FlatRow>; label: string
             {row.name}
           </span>
           {row.runtime && <RuntimeTag />}
-          <span className="min-w-0 flex-1 truncate text-xs text-fg-tertiary">{row.note}</span>
+          <span className="min-w-0 flex-1 truncate text-fg-tertiary">{row.note}</span>
         </TreeRow>
       ))}
     </div>
@@ -525,7 +526,7 @@ function AppSection({ snapshot, fold }: { snapshot: ProcessSnapshot; fold: Retur
             ports={false}
           >
             <span className="shrink-0">{row.name}</span>
-            <span className="min-w-0 truncate text-xs text-fg-tertiary">{row.note}</span>
+            <span className="min-w-0 truncate text-fg-tertiary">{row.note}</span>
           </TreeRow>
         ))}
       </div>
@@ -569,7 +570,7 @@ function OthersSection({
             data-other-app=""
           >
             <span className="min-w-0 shrink truncate">{row.name}</span>
-            <span className="shrink-0 text-xs text-fg-tertiary">{row.note}</span>
+            <span className="shrink-0 text-fg-tertiary">{row.note}</span>
           </TreeRow>
         ))}
       </div>
@@ -703,7 +704,7 @@ function withKey<T>(set: ReadonlySet<T>, key: T, present: boolean): ReadonlySet<
 }
 
 /**
- * work 행 — 앞에 work 상태 글리프(사이드바와 같은 것 — 그 상태의 색), 이름, 셸 수(12 `fg-tertiary` — DS `.muted`), 그 work 셸들의
+ * work 행 — 앞에 work 상태 글리프(사이드바와 같은 것 — 그 상태의 색), 이름, 셸 수(줄과 같은 13 `fg-tertiary` — 시안 `.pr-row .d`), 그 work 셸들의
  * 트리 합. 메모리 칸 앞의 막대는 그 합이 요약 합계의 얼마인지다(`memoryShare`). 최상위 터미널은 셸 글리프(이름 칸의 아이콘 —
  * `fg-tertiary`, DS `.at-pr-row .nm .ic`)이고, 목록에 없는 work(목록을 아직 못 읽었다 · 주인 잃은 셸의 work)은 글리프 없이 그 자리만
  * 비워 이름이 다른 work의 이름과 같은 x에 선다.
@@ -719,7 +720,7 @@ function GroupRow({ group, fold }: { group: GroupNode; fold: RowFold }) {
         <span aria-hidden className="size-3.5 shrink-0" />
       )}
       <span className="min-w-0 truncate font-medium">{group.name}</span>
-      <span className="shrink-0 text-xs font-normal text-fg-tertiary">
+      <span className="shrink-0 font-normal text-fg-tertiary">
         {shellCount(group.shells.length)}
       </span>
     </TreeRow>
@@ -811,7 +812,7 @@ function ShellRows({
       >
         <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
         <span className="min-w-0 truncate font-medium">{name}</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
+        <span className="flex min-w-0 items-center gap-1.5 text-fg-secondary">
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (

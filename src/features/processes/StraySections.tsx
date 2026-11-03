@@ -147,7 +147,7 @@ function StrayKind({
         data-strays={kind}
       >
         <span className="shrink-0 font-medium">{name}</span>
-        <span className="min-w-0 truncate text-xs text-fg-tertiary">{note}</span>
+        <span className="min-w-0 truncate text-fg-tertiary">{note}</span>
       </TreeRow>
       {fold.open &&
         shownNodes(nodes, folds.closed).map((shown) => (

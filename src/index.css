@@ -52,6 +52,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* **좁은 창**(restart 03-12b · 보드 `restart-chat.css`의 `@media (max-width: 900px)`) — 창 폭이 900 이하면 목록 · 상세 판(Places)이 좁은 갈래로
+   선다: 판 여백 20 · 16 · 32, 머리가 두 줄(제목 한 줄 · 도구 한 줄), 표 칸 64 · 32와 줄의 옆 글 · 마지막 아닌 아이콘 단추 숨김, 위 카드 두 칸,
+   Archive 문서가 한 열. 앱 창의 최소 폭이 900이라 가장 좁힌 창이 이 갈래다. 보드는 같은 폭에서 사이드바 · 패널도 걷는다 — 그것은 셸의 몫이다. */
+@custom-variant narrow (@media (max-width: 900px));
+
 /* 앱 셸의 길이 — 머리 줄의 높이, DS 간격 토큰, 카드 머리 · 넓은 화면의 폭.
 
    **폭(사이드바 · 목록 칸 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
@@ -104,6 +109,8 @@
        `--size-prail`을 읽는다. */
     --card-head: var(--size-toolbar);
     --measure-wide: 1120px;
+    /* `Processes` 몸의 폭 상한 — 시안 Processes `.pr-col`의 1080(안쪽 28을 뺀 표가 1024)이다(restart 03-12c). 한때 넓은 폭(1120)을 읽었다. */
+    --measure-processes: 1080px;
 }
 
 /* 머리 줄 왼쪽 자리의 유일한 출처(02 구현 스펙 §3). AppShell 루트에 붙는다. 머리 줄(`ShellHead`)의 왼쪽 칸에 신호등과 셸 컨트롤이

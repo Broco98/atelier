@@ -73,7 +73,8 @@ export function BeatLine({ beat }: { beat: SampleBeat }) {
 
 /**
  * **안내 띠**(스토리 131 · 132 · 133 · 시안 `pr-note`) — 요약 카드와 보기 도구 사이에 선다. 경고 무리의 옅은 면(`wait-soft`) · `radius-ctl` ·
- * 높이 36 이상 · 안쪽 6 8 6 12, 앞에 경고 색 아이콘 14, 글자 13. 멈춤이면 끝에 「다시 읽기」가 선다 — 누르면 곧바로 한 번 묻는다(`readSnapshotNow`).
+ * 높이 36 이상 · 안쪽 6 8 6 12, 앞에 경고 색 아이콘 14, 글자 13. 멈춤이면 끝에 「다시 읽기」가 선다(아이콘 12 · 글자 — 안쪽은 좌우 9 그대로다, 시안
+ * `.at-btn.xs` · restart 03-12c. 앱 버튼의 `data-icon` 갈래는 앞 안쪽을 6으로 줄인다) — 누르면 곧바로 한 번 묻는다(`readSnapshotNow`).
  * 실패하면 멈춤이 남는다. 들어올 때 줄 바뀜으로 선다(`row-in` — 시안 `ra-in`, restart 03-11).
  */
 export function SampleNoteBand({ note }: { note: SampleNote }) {
@@ -88,7 +89,7 @@ export function SampleNoteBand({ note }: { note: SampleNote }) {
       <span className="min-w-0 flex-1">{note.text}</span>
       {note.retry && (
         <Button variant="secondary" size="xs" onClick={() => void readSnapshotNow(client)}>
-          <RefreshCw data-icon="inline-start" aria-hidden />
+          <RefreshCw aria-hidden />
           다시 읽기
         </Button>
       )}

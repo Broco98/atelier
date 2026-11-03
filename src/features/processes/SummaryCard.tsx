@@ -36,12 +36,13 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
   const strays = strayFigures(snapshot);
 
   return (
-    <section aria-label="요약" className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-2">
+    // 좁은 창(900 이하 — 시안 `@media (max-width: 900px)`, restart 03-12c)에서는 카드가 한 열로 쌓이고 추이가 안 선다.
+    <section aria-label="요약" className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-2 narrow:grid-cols-1">
       <div className={cn(CARD, "gap-2.5")}>
         <div className="flex items-end justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-0.5">
             <CardName icon={Cpu}>CPU</CardName>
-            <p data-figure="cpu" className={cn("text-heading-xl whitespace-nowrap tabular-nums", STALE_FIGURE)}>
+            <p data-figure="cpu" className={cn("text-heading-xl tracking-[-0.02em] whitespace-nowrap tabular-nums", STALE_FIGURE)}>
               {figures.cpu}
             </p>
             <p data-figure="cpu-note" className={NOTE}>
@@ -98,8 +99,11 @@ const CARD = "flex min-w-0 flex-col rounded-card bg-surface-under px-4 py-3.5 in
 /** 카드의 아래 줄 — 12 `fg-tertiary`(시안 `.pr-sub`). */
 const NOTE = "min-w-0 text-xs text-fg-tertiary";
 
-/** 옆 카드의 큰 수 — 시안 `.pr-card.small .pr-big`(22 · 600). 앱 글자 단에 22가 없어 가까운 `heading-md`(20/26)로 선다. */
-const SMALL_FIGURE = "text-heading-md whitespace-nowrap tabular-nums";
+/**
+ * 옆 카드의 큰 수 — 시안 `.pr-card.small .pr-big`(22 / 28 · 600 · 자간 −0.02em). 앱 글자 단에 22가 없어 가까운 `heading-md`(20)로 서고, 줄
+ * 높이 28 · 자간은 시안 그대로다 — 카드의 높이가 시안과 같아 그 밑의 보기 도구 · 표가 시안의 자리에 선다(restart 03-12c).
+ */
+const SMALL_FIGURE = "text-heading-md leading-7 tracking-[-0.02em] whitespace-nowrap tabular-nums";
 
 /** 카드의 이름 줄 — 12 `fg-tertiary`와 앞 아이콘 14(시안 `.pr-lab`). */
 function CardName({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
@@ -122,12 +126,15 @@ function StackPart({ width, className }: { width: number; className: string }) {
   );
 }
 
-/** 범례의 한 조각 — 색 칩 8(모서리 2)과 이름 · 정수 %(`cpuLegend` — 시안 `.pr-legend`). */
+/**
+ * 범례의 한 조각 — 색 칩 8(모서리 2)과 이름 · 정수 %(`cpuLegend` — 시안 `.pr-legend`). 칩 · 이름 · 값 사이가 모두 6이다(시안 `.pr-legend span`
+ * — restart 03-12c, 한때 이름과 값 사이가 글자 사이 한 칸이었다).
+ */
 function LegendItem({ chip, name, value }: { chip: string; name: string; value: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span aria-hidden className={cn("size-2 shrink-0 rounded-2xs", chip)} />
-      {name} {value}
+      <span>{name}</span> <span>{value}</span>
     </span>
   );
 }
@@ -149,7 +156,7 @@ function Trend({ points }: { points: ReadonlyArray<TrendPoint> }) {
       data-figure="trend"
       viewBox={`0 0 ${BOX.width} ${BOX.height}`}
       preserveAspectRatio="none"
-      className="block h-12 w-60 shrink-0 overflow-visible"
+      className="block h-12 w-60 shrink-0 overflow-visible narrow:hidden"
     >
       {[
         { line: lines.mac, ink: "stroke-fg-tertiary", name: "mac" },

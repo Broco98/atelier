@@ -340,6 +340,11 @@ describe("눈금의 사분 단", () => {
       why: "줄 안의 버튼(`xs`) — 좌우 안쪽 9(DS `.at-btn.xs`)",
     },
     {
+      file: "src/features/processes/ProcessesPage.tsx",
+      className: "px-2.25",
+      why: "Processes 보기 도구의 칸 — 좌우 안쪽 9(시안 Processes `.pr-seg button` — restart 03-12c)",
+    },
+    {
       file: "src/components/ui/button.tsx",
       className: "pl-2.75",
       why: "목록 화면의 주 단추(`place`) — + 글리프 쪽 안쪽 11(보드 PlaceSheet `.pl-btn.main` — restart 03-1)",

@@ -25,9 +25,11 @@ import type { ProcessIdentity, ProcessMetrics, ProcessSnapshot } from "./types";
 
 /**
  * 이름 · CPU · 메모리 · 포트 · 동작, 칸 사이 12(시안 Processes `--pr-cols` — restart 03-11). CPU 칸은 막대와 수라 가장 넓다. 한때 DS `.at-pr`의
- * 메모리 · CPU 차례였다.
+ * 메모리 · CPU 차례였다. **좁은 창**(900 이하 — 시안 `@media (max-width: 900px)`, restart 03-12c)에서는 96 · 64 · 0 · 72다 — 포트 칸이 0이라
+ * 포트 글자가 안 보인다(칸이 넘침을 자른다).
  */
-const COLUMNS = "grid grid-cols-[minmax(0,1fr)_156px_72px_104px_84px] gap-x-3";
+const COLUMNS =
+  "grid grid-cols-[minmax(0,1fr)_156px_72px_104px_84px] gap-x-3 narrow:grid-cols-[minmax(0,1fr)_96px_64px_0_72px]";
 
 /**
  * 줄 아래 선 — 0.5px `border`(DS `.at-pr-row`의 아래 선). 테두리가 아니라 줄 안쪽 바닥에 칠한 면이다 — 0.5px 테두리는 엔진마다 굵기가
@@ -56,14 +58,16 @@ export function ColumnHead() {
         CPU · 맥 전체 기준
       </span>
       <span className="text-right">메모리</span>
-      <span>포트</span>
+      {/* 좁은 창에서는 포트 칸이 0이라 그 이름도 감춘다 — 보드는 0 칸에 「포/트」가 한 글자씩 꺾여 선다(그리기 결함으로 읽었다 — restart 03-12c). */}
+      <span className="narrow:invisible">포트</span>
       <span />
     </div>
   );
 }
 
 /**
- * 접는 셰브론 — 12px이고(DS `.ic-chevron-*` `s12`) 펼치면 160ms에 90° 돈다(패널과 같은 곡선). DS 미리보기는 두 글리프(오른쪽 ·
+ * 접는 셰브론 — 12px이고(DS `.ic-chevron-*` `s12`) 펼치면 300ms `ease-enter`로 90° 돈다(시안 Processes `.pr-sec .ra-chev` · `.pr-fold .ra-chev` ·
+ * ProcessSheet 「펼침 · 접기」의 `duration-relaxed` — restart 03-12c, 한때 160ms `ease-panel`). DS 미리보기는 두 글리프(오른쪽 ·
  * 아래)를 바꿔 끼우고, 앱은 한 글리프를 돌린다. 동작 줄이기면 돌지 않고 바뀐다(`index.css`의 줄임 규칙이 `data-fold-chevron`의
  * 전이를 끈다). 구획 머리 · 줄 · 정리 기록의 사건 줄이 같은 것을 쓴다.
  *
@@ -74,7 +78,7 @@ export function FoldChevron({ open }: { open: boolean }) {
     <ChevronRight
       aria-hidden
       data-fold-chevron=""
-      className={cn("size-3 shrink-0 transition-[rotate] duration-160 ease-panel", open && "rotate-90")}
+      className={cn("size-3 shrink-0 transition-[rotate] duration-relaxed ease-enter", open && "rotate-90")}
       strokeWidth={SMALL_GLYPH_STROKE}
     />
   );
@@ -97,7 +101,8 @@ export function countNote(count: number): string {
  * 앱)은 수가 없다. 동작([정리] · [모두 닫기] · 「보기 전용」)은 늘 보인다 — 접혀 있어도 누른다.
  *
  * **머리 줄은 표의 한 줄이다**(시안 Processes `.pr-sec` — restart 03-11) — 줄과 같은 격자에 서고, 그 구획의 CPU · 메모리 합(`sum`)이 줄의 숫자
- * 열에 선다(막대는 없다). 34 · 위 6 · 13 · 500, 수는 400 `fg-tertiary`, 아래 0.5px 선이다. 손볼 것이 있는 구획(`warn`)은 제목이 기다림의
+ * 열에 선다(막대는 없다). 34 · 위 6 · 13 · 500, 수는 400 `fg-tertiary`, 아래 0.5px 선이다. 셰브론은 제목과 같은 잉크다(시안 `.pr-sec .ra-chev` —
+ * restart 03-12c, 한때 `fg-tertiary` — 줄의 셰브론은 그대로 옅다). 손볼 것이 있는 구획(`warn`)은 셰브론 · 제목이 기다림의
  * 잉크다. 앞 아이콘은 없다(시안). 한때 DS `.at-sechead`(36 · 아이콘 · 합 없음)였다.
  *
  * **구획이 접힌다**(ui-refresh 결정 28). 여닫음은 앱의 여닫이 부품이 든다(`Collapsible`). 트리거는 `<h3>` 안의 버튼(셰브론 · 제목)이라
@@ -142,7 +147,7 @@ export function Section({
                 warn && "text-warning",
               )}
             >
-              <span className={cn("grid w-4.5 shrink-0 place-items-center", !warn && "text-fg-tertiary")}>
+              <span className="grid w-4.5 shrink-0 place-items-center">
                 <FoldChevron open={fold.open} />
               </span>
               <span id={id} className="truncate">
@@ -197,7 +202,7 @@ const KIND: Record<RowKind, string> = {
  * — 줄은 평평한 채다(S58, 중첩 `group`이 없다). 자식이 없는 줄은 같은 18px을 비운다.
  *
  * **프로세스 줄의 동작([끝내기] · ⋯)은 손이 닿을 때만 보인다**(ui-refresh 「같은 날 더 정한 것」) — 줄에 포인터가 있거나 키보드
- * 포커스가 줄 안에 있거나 그 줄의 메뉴(⋯ · 우클릭)가 열려 있을 때다. 불투명도만 바꾼다: 자리는 늘 차지해 숫자 칸이 흔들리지 않고,
+ * 포커스가 줄 안에 있거나 그 줄의 메뉴(⋯ · 우클릭)가 열려 있을 때다. 불투명도만 150ms로 바꾼다(시안 `.pr-act .at-btn`): 자리는 늘 차지해 숫자 칸이 흔들리지 않고,
  * 숨은 동안에도 접근성 트리에 남는다. 셸 줄의 [이동] · [닫기]는 늘 보인다.
  *
  * **행 메뉴가 있는 줄**(`menu` — 그 이름)은 동작 칸 끝에 ⋯(`RowMenu`)이 서고, 같은 이름이 줄의 표식(`data-row-menu`)이 된다 — 화면의
@@ -274,7 +279,8 @@ export function TreeRow({
           "group/row",
           COLUMNS,
           ROW_RULE,
-          "items-center px-3 hover:bg-fill-soft",
+          // 면은 150ms, 끝난 줄의 옅어짐은 300ms로 옮겨 간다(시안 `.pr-row`의 전이 — restart 03-12c).
+          "items-center px-3 hover:bg-fill-soft [transition:background-color_var(--duration-basic)_var(--ease-default),opacity_var(--duration-relaxed)_var(--ease-default)]",
           KIND[kind],
           rowMenu !== undefined && "focus-ring",
           ended && "opacity-45",
@@ -302,7 +308,7 @@ export function TreeRow({
         <span className="flex items-center justify-end gap-1.5">
           <span
             className={cn(
-              "flex items-center gap-0.5 empty:hidden",
+              "flex items-center gap-0.5 transition-opacity duration-basic ease-default empty:hidden",
               kind === "process" &&
                 !asking &&
                 "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-menu-target/row:opacity-100 has-[[aria-expanded=true]]:opacity-100",
@@ -356,7 +362,7 @@ export const EndAskContext = createContext<{
 
 /**
  * **묻는 줄**(시안 ProcessSheet 「끝내기」 · Processes `.pr-ask`) — 줄 밑에 `fill-soft` 면으로 펴진다(위아래 8 · 좌우 12, 사이 8). 무엇을
- * 끝내는지(13)와 끝내기가 하는 일(12 `fg-tertiary`), [취소](xs secondary) [끝내기](xs 주 버튼). 서면 [취소]에 포커스가 간다 — 되돌릴 수 없는
+ * 끝내는지(13 / 19 — 시안 `.pr-root`의 줄 높이)와 끝내기가 하는 일(12 `fg-tertiary`), [취소](xs secondary) [끝내기](xs 주 버튼). 서면 [취소]에 포커스가 간다 — 되돌릴 수 없는
  * 일을 묻는 자리라 Enter 한 번에 끝나지 않는다. Esc도 취소다. 들어올 때 줄 바뀜으로 선다(`row-in` — 시안 `ra-in`).
  */
 function EndAskRow({ ask, onCancel, onConfirm }: { ask: Ask; onCancel: () => void; onConfirm: () => void }) {
@@ -374,7 +380,7 @@ function EndAskRow({ ask, onCancel, onConfirm }: { ask: Ask; onCancel: () => voi
         event.stopPropagation();
         onCancel();
       }}
-      className={cn("row-in flex items-center gap-2 bg-fill-soft px-3 py-2 text-chat-meta", ROW_RULE)}
+      className={cn("row-in flex items-center gap-2 bg-fill-soft px-3 py-2 text-chat-meta leading-4.75", ROW_RULE)}
     >
       <span className="flex min-w-0 flex-1 flex-col">
         <span>{ask.title}</span>
@@ -404,6 +410,8 @@ function EndMarkText({ state }: { state: EndState }) {
       className={cn(
         "flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap spin-thread",
         state === "survived" ? "text-warning" : "text-fg-tertiary",
+        // 결과는 줄 바뀜으로 들어온다(시안 Processes `.pr-act`의 「끝남」 `ra-in` — restart 03-12c). 끝내는 중은 곧바로 선다.
+        state !== "ending" && "row-in",
       )}
     >
       {state === "ending" && <Spinner aria-hidden className="size-3" />}
@@ -453,9 +461,10 @@ export const FiguresContext = createContext<{ cores: number | null; total: numbe
 
 /**
  * **멈춘 숫자는 옅다**(restart 03-9 · 시안 `.pr-root[data-stale="true"] .pr-num, .pr-mem` — 50%). 화면의 구르는 몸이 멈춤이면 `data-stale`을 단다
- * (`ProcessesPage` · `group/sample`). 줄의 메모리 · CPU 칸과 카드의 큰 수가 이것을 입는다 — 포트 · 이름은 그대로다.
+ * (`ProcessesPage` · `group/sample`). 줄의 메모리 · CPU 칸과 카드의 큰 수가 이것을 입는다 — 포트 · 이름은 그대로다. 옅어짐은 300ms로 옮겨
+ * 간다(시안 `.pr-num` · `.pr-mem` · `.pr-big`의 전이 — restart 03-12c).
  */
-export const STALE_FIGURE = "group-data-stale/sample:opacity-50";
+export const STALE_FIGURE = "transition-opacity duration-relaxed ease-default group-data-stale/sample:opacity-50";
 
 /**
  * 줄의 숫자 칸 — CPU · 메모리 · 포트(프로세스 결정 10 · 티켓 28 · 시안 Processes — restart 03-11). 글자는 표기 함수의 결과 그대로다
@@ -530,7 +539,7 @@ function Figures({
 
 /**
  * **표의 끝 줄** — 시스템 · 못 읽음과 합계(restart 03-6 · 시안 Processes). 트리의 줄이 아니다 — 접히지도 끝내지도 않고, 깊이가 없다.
- * 열은 줄과 같은 격자라 숫자가 세로로 맞는다. 이름 뒤에 그 줄이 무엇인지 말하는 글(`note`)이 옅게 선다. 시스템 · 못 읽음은 줄과 같은 32 줄이고
+ * 열은 줄과 같은 격자라 숫자가 세로로 맞는다. 이름 뒤에 그 줄이 무엇인지 말하는 글(`note`)이 옅게 선다(줄과 같은 13 — 시안 `.pr-row .d` · `.pr-sum .d`). 시스템 · 못 읽음은 줄과 같은 32 줄이고
  * CPU 막대가 아틀리에 밖의 옅은 잉크다(시안 `.pr-row[data-out]`). 합계 줄은 위에 1px `rule` 선 · 위 6 · 36 · 500이고 숫자가 본문 글자다(시안
  * `.pr-sum`) — 위의 줄을 더한 값이다. 포트 칸은 없다. CPU 칸에 활성 상태 보기 눈금을 띄우지 않는다.
  */
@@ -568,7 +577,7 @@ export function LedgerRow({
       <span className="flex min-w-0 items-center gap-1.5 self-stretch">
         {!total && !flat && <FoldSlot />}
         <span className="shrink-0">{name}</span>
-        <span title={noteTip} className="min-w-0 truncate text-xs font-normal text-fg-tertiary">
+        <span title={noteTip} className="min-w-0 truncate font-normal text-fg-tertiary">
           {note}
         </span>
       </span>

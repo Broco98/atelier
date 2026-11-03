@@ -41,14 +41,22 @@ export function outcomeLabel(outcome: CleanupOutcome): string {
 }
 
 /**
- * 사건의 때 — 「9월 27일 14:03」. 끝내기가 **끝난** 때다(Rust `Event.at`). 이 화면의 다른 경과(「조용함 2h」)와 달리 「언제」를 묻는
- * 자리라 시계의 시각으로 적는다 — 새로 읽을 때마다 늙는 상대 시간은 기록의 말이 아니다. 시각은 이 맥의 시간대다.
+ * 사건의 때 — 오늘이면 시계의 시각 「14:02:33」(머리의 잰 시각과 같은 꼴), 어제면 「어제 23:12」, 그보다 앞이면 「9월 27일 14:03」(시안
+ * Processes의 정리 기록 — restart 03-12c). 끝내기가 **끝난** 때다(Rust `Event.at`). 이 화면의 다른 경과(「조용함 2h」)와 달리 「언제」를 묻는
+ * 자리라 시계의 시각으로 적는다 — 박자마다 늙는 경과는 기록의 말이 아니다. 「어제」는 달력의 날이라 자정에만 바뀐다. 시각은 이 맥의
+ * 시간대다. 지금(`now`)은 부르는 쪽이 줄 수 있다(시험).
  */
-export function loggedAt(at: number): string {
+export function loggedAt(at: number, now: number = Date.now()): string {
   const date = new Date(at);
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${hh}:${mm}`;
+  const two = (value: number) => String(value).padStart(2, "0");
+  const clock = `${two(date.getHours())}:${two(date.getMinutes())}`;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (at >= today.getTime()) return `${clock}:${two(date.getSeconds())}`;
+  if (at >= yesterday.getTime()) return `어제 ${clock}`;
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${clock}`;
 }
 
 /** 사건 한 줄 — 「까닭, 프로세스 N개, 때」. 눈에 보이는 줄과 접근성 이름이 같은 이것을 읽는다. */

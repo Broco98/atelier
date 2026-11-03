@@ -57,7 +57,7 @@ function ChatRows({ group, share, folds }: { group: ChatGroup; share: ReadonlySe
       >
         <MessageSquare aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
         <span className="min-w-0 truncate font-medium">{group.name}</span>
-        {group.runtime !== null && <span className="shrink-0 text-xs text-fg-tertiary">{group.runtime}</span>}
+        {group.runtime !== null && <span className="shrink-0 text-fg-tertiary">{group.runtime}</span>}
       </TreeRow>
       {fold.open &&
         shownNodes(group.nodes, folds.closed).map((node) => {

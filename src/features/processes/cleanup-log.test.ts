@@ -75,6 +75,18 @@ describe("사건 한 줄 — 까닭, 대상 수, 때", () => {
     expect(loggedAt(new Date(2026, 0, 5, 9, 0).getTime())).toBe("1월 5일 09:00");
   });
 
+  // 시안 Processes의 정리 기록(restart 03-12c) — 오늘 끝낸 것은 시계의 시각(「14:02:33」 — 머리의 잰 시각과 같은 꼴), 어제 끝낸 것은
+  // 「어제 23:12」다. 그보다 앞은 월 · 일이다. 하루는 달력의 날이다(자정을 넘으면 어제다).
+  it("오늘 끝낸 것은 시각, 어제 끝낸 것은 「어제」와 시 · 분이다", () => {
+    const now = new Date(2026, 10, 3, 9, 30).getTime();
+    expect(loggedAt(new Date(2026, 10, 3, 0, 5, 7).getTime(), now)).toBe("00:05:07");
+    expect(loggedAt(new Date(2026, 10, 2, 23, 12, 40).getTime(), now)).toBe("어제 23:12");
+    expect(loggedAt(new Date(2026, 10, 2, 0, 0).getTime(), now)).toBe("어제 00:00");
+    expect(loggedAt(new Date(2026, 10, 1, 23, 59).getTime(), now)).toBe("11월 1일 23:59");
+    // 달이 바뀌는 날도 달력의 어제다.
+    expect(loggedAt(new Date(2026, 9, 31, 22, 0).getTime(), new Date(2026, 10, 1, 1, 0).getTime())).toBe("어제 22:00");
+  });
+
   it("까닭 · 대상 수 · 때를 한 문장으로 잇는다", () => {
     expect(eventLabel(사건())).toBe("셸 닫기, 프로세스 2개, 9월 27일 14:03");
     expect(eventLabel(사건({ reason: "startupCleanup", targets: [대상(1, "node", "ended")] }))).toBe(
