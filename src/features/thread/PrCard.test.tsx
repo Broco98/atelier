@@ -123,7 +123,8 @@ describe("PR 카드의 모양", () => {
     );
     for (const name of ["고쳐 달라고 하기", "변경 사항 보기", "GitHub에서 열기"]) {
       const button = new RegExp(`<button[^>]*class="([^"]*)"[^>]*>${name}`).exec(markup);
-      expect(button?.[1].split(" "), name).toEqual(expect.arrayContaining(["h-7", "rounded-full", "px-3", "font-normal"]));
+      expect(button?.[1].split(" "), name).toEqual(expect.arrayContaining(["h-7", "rounded-full", "px-3", "inset-ring-border-heavy"]));
+      expect(button?.[1].split(" "), name).not.toContain("font-medium");
     }
   });
 
