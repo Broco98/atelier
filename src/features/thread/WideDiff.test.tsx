@@ -33,9 +33,35 @@ const folds = (markup: string) => markup.match(/<button[^>]*>[\s\S]*?<\/button>/
 describe("넓힌 카드 변경 보기의 몸", () => {
   it("줄 목록은 고정폭 12 / 21.6이고 문법색을 칠하지 않는다 — 글은 한 줄로 서고 탭은 4칸이다", () => {
     const markup = renderToStaticMarkup(<DiffLines rows={ROWS} open={new Set()} onUnfold={none} />);
-    expect(markup).toMatch(/^<div[^>]*class="[^"]*\bfont-mono text-xs leading-\[21\.6px\] tracking-normal\b/);
+    expect(markup).toMatch(/<div class="[^"]*\bfont-mono text-xs leading-\[21\.6px\] tracking-normal\b/);
     expect(markup).toContain("[tab-size:4]");
-    expect(markup).not.toMatch(/syntax|data-code-view|diffs-container|style=/);
+    expect(markup).not.toMatch(/syntax|data-code-view|diffs-container|color:/);
+  });
+
+  it("몸이 구르는 상자이고, 목록은 가장 긴 줄(막대 · 번호 44 뒤)만큼 넓어 옆으로 구른다", () => {
+    const markup = renderToStaticMarkup(<DiffLines rows={ROWS} open={new Set()} onUnfold={none} />);
+    expect(markup).toMatch(/^<div data-diff="" class="min-h-0 flex-1 overflow-auto scroll-quiet">/);
+    // 가장 긴 줄은 지운 줄 「    if let Err(e) = rx.recv() { log::warn!("{e}"); }」 52칸이다.
+    expect(markup).toMatch(/<div class="w-max [^"]*" style="min-width:max\(100%, calc\(44px \+ 52ch\)\)">/);
+  });
+
+  it("큰 diff는 100줄 덩어리로 나뉘어 첫 덩어리만 그리고, 나머지는 같은 높이(줄 21.6 · 펼침 줄 28)의 빈 자리다", () => {
+    const many: DiffRow[] = [
+      ...Array.from({ length: 199 }, (_, i): DiffRow => ({ type: "line", kind: "add", number: i + 1, text: `line ${i + 1}` })),
+      { type: "fold", at: 200, count: 3, lines: null },
+      ...Array.from({ length: 50 }, (_, i): DiffRow => ({ type: "line", kind: "same", number: i + 203, text: `line ${i + 203}` })),
+    ];
+    const markup = renderToStaticMarkup(<DiffLines rows={many} open={new Set()} onUnfold={none} />);
+    expect(rowsOf(markup)).toHaveLength(100);
+    expect(text(rowsOf(markup)[99])).toBe("100 line 100");
+    // 그린 줄은 목록의 바로 아래 줄이다 — 덩어리 상자가 없어 펼침 줄의 포커스 링이 덩어리 끝에서 잘리지 않는다.
+    expect(markup).toMatch(/style="min-width:[^"]*"><ins class="grid /);
+    expect(markup).not.toContain("content-visibility");
+    expect(markup.match(/<div data-chunk="\d+" data-chunk-pending="" style="height:[^"]+"><\/div>/g)).toEqual([
+      '<div data-chunk="1" data-chunk-pending="" style="height:2166.4px"></div>',
+      '<div data-chunk="2" data-chunk-pending="" style="height:1080px"></div>',
+    ]);
+    expect(folds(markup)).toEqual([]);
   });
 
   it("줄은 왼쪽 막대 4 · 줄번호 40(오른쪽 맞춤 · 오른쪽 10) · 글의 세 칸이고, 바뀌지 않은 줄은 막대가 비고 번호가 옅다", () => {

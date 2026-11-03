@@ -146,6 +146,9 @@ const MINI = "flex h-6 shrink-0 items-center rounded-lg px-2 text-xs transition-
  * - **경로**는 「위치」 nav 안에 「/」로 이은 조각이다 — 앞 조각 `fg-tertiary`, 끝 조각(지금 보는 것)만 `fg`이고 길면 끝 조각이 말줄임으로
  *   줄어든다. 보여 주기만 한다(이름 「위치」는 경로 줄의 것 그대로다 — 검사가 같은 이름으로 찾는다).
  * - **변경**이면 Work 브랜치(고정폭 12 `fg-tertiary`)와 +/−(0인 쪽은 적지 않는다 — 카드의 줄과 같다).
+ * - **좁으면** 경로가 먼저 준다(바탕 0 — 시안 `.ra-vwpath`의 `flex: 1 1 0`, 끝 조각은 말줄임). 경로가 다 줄고도 모자라면 브랜치가 말줄임으로 주고,
+ *   그래도 모자라면(창 900의 보기 92) +/−와 렌더 · 원문 묶음이 잘린다 — 경로 복사 · 「카드로 접기」는 늘 선다. 시안은 브랜치가 줄지 않아 +/− · 단추가
+ *   머리 밖으로 밀려 잘린다(창 1100의 보기 292 — restart 03-15b). 렌더 · 원문 묶음은 포커스 링 자리(`focus-ring-room`)를 들어 잘라도 링은 남는다.
  * - **문서**면 「문서 보기」 묶음의 렌더 · 원문 두 단추다 — 지금 보기가 눌린 단추다(`aria-pressed`). 본문이 이 묶음을 따르지 않는 파일
  *   (`locked`)이면 둘 다 못 누른다.
  * - 경로 복사(`onCopy`가 없으면 — 트리 — 서지 않는다)와 「카드로 접기」 ×.
@@ -181,14 +184,14 @@ export function ViewerHead({
         ))}
       </nav>
       {change && (
-        <>
-          {change.branch && <span className="shrink-0 font-mono text-xs text-fg-tertiary">{change.branch}</span>}
+        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+          {change.branch && <span className="min-w-0 truncate font-mono text-xs text-fg-tertiary">{change.branch}</span>}
           {change.additions > 0 && <span className="shrink-0 text-xs text-diff-added tabular-nums">+{change.additions}</span>}
           {change.deletions > 0 && <span className="shrink-0 text-xs text-diff-deleted tabular-nums">−{change.deletions}</span>}
-        </>
+        </span>
       )}
       {view && (
-        <span role="group" aria-label="문서 보기" className="flex shrink-0 gap-0.5">
+        <span role="group" aria-label="문서 보기" className="flex min-w-0 gap-0.5 overflow-hidden focus-ring-room">
           {([false, true] as const).map((source) => (
             <button
               key={String(source)}

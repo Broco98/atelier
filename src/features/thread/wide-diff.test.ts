@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffRows } from "./wide-diff";
+import { chunksOf, diffRows, widestOf, type DiffRow } from "./wide-diff";
 
 // 넓힌 카드의 변경 보기(restart 03-15b · 시안 Summary `.ra-vwdiff`)가 그릴 줄 — `read_work_diff`의 patch와 worktree의 지금 파일에서 짓는다.
 // 시안의 줄 목록은 「숨긴 줄 40개」 · 바뀐 줄 · 「숨긴 줄 86개」이고, 지운 줄은 옛 줄번호 · 더한 줄과 같은 줄은 새 줄번호다(시안 42 지움 · 42 더함 · 46 같음).
@@ -143,3 +143,41 @@ describe("넓힌 카드 변경 보기의 줄", () => {
     expect(diffRows("diff --git a/x b/x\nold mode 100644\nnew mode 100755\n", "x\n")).toEqual([]);
   });
 });
+
+// 큰 diff(restart 03-15b — 2만 줄을 한 번에 그리면 첫 그리기가 1.1초 멎었다)는 덩어리로 나눠 화면 가까이 온 덩어리만 그린다. 덩어리는 펼친 숨긴 줄을
+// 편 줄로 센 화면의 줄이고, 그리지 않은 덩어리는 같은 높이의 빈 자리라 그 높이를 줄 수(21.6) · 펼침 줄 수(28)로 든다.
+const line = (number: number, text = `line ${number}`): DiffRow => ({ type: "line", kind: "same", number, text });
+
+describe("넓힌 카드 변경 보기의 덩어리", () => {
+  it("화면의 줄을 100개씩 나누고 덩어리마다 줄 · 펼침 줄 수를 든다", () => {
+    const rows = [
+      ...Array.from({ length: 150 }, (_, i) => line(i + 1)),
+      { type: "fold", at: 151, count: 20, lines: null } satisfies DiffRow,
+      ...Array.from({ length: 99 }, (_, i) => line(i + 171)),
+    ];
+    const chunks = chunksOf(rows, new Set());
+    expect(chunks.map((one) => [one.rows.length, one.lines, one.folds])).toEqual([
+      [100, 100, 0],
+      [100, 99, 1],
+      [50, 50, 0],
+    ]);
+    expect(chunks[1].rows[50]).toEqual({ type: "fold", at: 151, count: 20, lines: null });
+  });
+
+  it("편 숨긴 줄은 그 자리에서 줄로 세고, 펼 줄이 없는 숨긴 줄은 열려 있다고 해도 펼침 줄 하나다", () => {
+    const rows: DiffRow[] = [
+      { type: "fold", at: 1, count: 2, lines: [{ kind: "same", number: 1, text: "a" }, { kind: "same", number: 2, text: "b" }] },
+      line(3),
+      { type: "fold", at: 4, count: 9, lines: null },
+    ];
+    const [only] = chunksOf(rows, new Set([1, 4]));
+    expect(only.rows).toEqual([line(1, "a"), line(2, "b"), line(3), { type: "fold", at: 4, count: 9, lines: null }]);
+    expect([only.lines, only.folds]).toEqual([3, 1]);
+  });
+
+  it("가장 긴 줄의 칸 수 — 탭은 네 칸이고 펼침 줄은 세지 않는다", () => {
+    expect(widestOf([line(1, "abc"), line(2, "\tif x {"), { type: "fold", at: 3, count: 1234567, lines: null }])).toBe(10);
+    expect(widestOf([])).toBe(0);
+  });
+});
+

@@ -110,3 +110,49 @@ export function diffRows(patch: string, current: string | null): DiffRow[] {
   if (file !== null && hunks.length > 0 && file.length > shown) rows.push(fold(shown + 1, file.length - shown, file));
   return rows;
 }
+
+/** 덩어리 하나의 화면 줄 수(펼침 줄 포함). */
+export const CHUNK_ROWS = 100;
+
+/** 화면의 줄 덩어리 — 그리지 않을 때 같은 높이의 빈 자리를 세우려고 줄 수와 펼침 줄 수를 든다. */
+export interface DiffChunk {
+  rows: DiffRow[];
+  lines: number;
+  folds: number;
+}
+
+/**
+ * **화면의 줄을 덩어리로 나눈다**(restart 03-15b — 큰 diff의 그리기 비용). 편 숨긴 줄(`open` — 숨긴 첫 줄의 새 번호)은 그 자리에서 같은 줄로 펴고,
+ * 펼 줄이 없는 숨긴 줄은 열려 있다고 해도 펼침 줄 하나로 둔다. 덩어리는 `CHUNK_ROWS`줄씩이다.
+ */
+export function chunksOf(rows: readonly DiffRow[], open: ReadonlySet<number>): DiffChunk[] {
+  const chunks: DiffChunk[] = [];
+  let chunk: DiffChunk = { rows: [], lines: 0, folds: 0 };
+  const push = (row: DiffRow) => {
+    if (chunk.rows.length === CHUNK_ROWS) {
+      chunks.push(chunk);
+      chunk = { rows: [], lines: 0, folds: 0 };
+    }
+    chunk.rows.push(row);
+    if (row.type === "line") chunk.lines += 1;
+    else chunk.folds += 1;
+  };
+  for (const row of rows) {
+    if (row.type === "fold" && row.lines !== null && open.has(row.at)) for (const line of row.lines) push({ type: "line", ...line });
+    else push(row);
+  }
+  if (chunk.rows.length > 0) chunks.push(chunk);
+  return chunks;
+}
+
+/** 가장 긴 줄의 칸 수 — 탭은 다음 네 칸 자리까지다(목록의 탭 폭 4). 그리지 않은 덩어리가 있어도 목록 폭이 흔들리지 않게 목록의 최소 폭으로 쓴다. */
+export function widestOf(rows: readonly DiffRow[]): number {
+  let widest = 0;
+  for (const row of rows) {
+    if (row.type !== "line") continue;
+    let column = 0;
+    for (const char of row.text) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+    widest = Math.max(widest, column);
+  }
+  return widest;
+}
