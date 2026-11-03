@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  blankServiceText,
   canSave,
   caretLineOf,
   editHint,
@@ -15,7 +14,7 @@ import {
 } from "./service-edit";
 import type { ServiceDraft, ServicePieces, ServiceProblem } from "./types";
 
-// 고치기 화면(파일로 고치기 · 직접 만들기 — 03 구현 스펙 §13)이 그리는 갈래를 값으로 잰다. 문제 · 조각 자리는 core 검사가 준 그대로 쓰고
+// 고치기 화면(파일로 고치기 — 03 구현 스펙 §13)이 그리는 갈래를 값으로 잰다. 문제 · 조각 자리는 core 검사가 준 그대로 쓰고
 // (S7), 여기서는 그 값을 화면 말로 옮기는 것만 본다.
 
 /** 「결제 서비스」 파일의 조각 — name 2행, projects 3–6행(머리 + 항목 셋), 본문 10행. */
@@ -66,18 +65,17 @@ describe("커서 줄 → 조각", () => {
 });
 
 describe("처음 커서(S14)", () => {
-  it("문제가 있으면 첫 문제 줄이다 — 새 Service든 파일로 고치기든", () => {
-    expect(firstCaretLine([problem(7), problem(5)], PIECES, "edit")).toBe(5);
-    expect(firstCaretLine([problem(2, "noName")], PIECES, "new")).toBe(2);
+  it("문제가 있으면 첫 문제 줄이다", () => {
+    expect(firstCaretLine([problem(7), problem(5)], PIECES)).toBe(5);
+    expect(firstCaretLine([problem(2, "noName")], PIECES)).toBe(2);
   });
 
-  it("문제가 없으면 새 Service는 name 줄, 파일로 고치기는 projects 줄이다", () => {
-    expect(firstCaretLine([], PIECES, "new")).toBe(2);
-    expect(firstCaretLine([], PIECES, "edit")).toBe(3);
+  it("문제가 없으면 projects 줄이다", () => {
+    expect(firstCaretLine([], PIECES)).toBe(3);
   });
 
-  it("projects 칸이 없는 파일의 파일로 고치기는 name 줄이다", () => {
-    expect(firstCaretLine([], { ...PIECES, projects: null }, "edit")).toBe(2);
+  it("projects 칸이 없는 파일은 name 줄이다", () => {
+    expect(firstCaretLine([], { ...PIECES, projects: null })).toBe(2);
   });
 });
 
@@ -108,11 +106,9 @@ describe("고친 줄", () => {
     expect(lineChanges(BASE, text)).toEqual({ count: 2, added: [2, 5] });
   });
 
-  it("파일 칸 머리 — 파일로 고치기는 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」, 새 Service는 늘 「새 파일 · 아직 없음」", () => {
-    expect(fileNote("edit", 0)).toBeNull();
-    expect(fileNote("edit", 2)).toBe("고친 줄 2 · 저장 안 함");
-    expect(fileNote("new", 0)).toBe("새 파일 · 아직 없음");
-    expect(fileNote("new", 3)).toBe("새 파일 · 아직 없음");
+  it("파일 칸 머리 — 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」", () => {
+    expect(fileNote(0)).toBeNull();
+    expect(fileNote(2)).toBe("고친 줄 2 · 저장 안 함");
   });
 });
 
@@ -146,31 +142,16 @@ describe("저장 단추", () => {
 });
 
 describe("안내 줄", () => {
-  const draft = { registered: ["web-app", "api-server", "backoffice"], suffix: null };
-
-  it("파일로 고치기는 넣을 수 있는 Project와 Host 길이다", () => {
-    expect(editHint("edit", draft)).toBe("Project는 web-app · api-server · backoffice 중에서 — 대화로 부탁해도 이 파일이 바뀌어요");
-  });
-
-  it("새 Service는 앞에 파일 이름이 이름을 따라온다는 말, 겹치면 -2 말이다", () => {
-    expect(editHint("new", draft)).toBe(
-      "이름(name)을 적으면 파일 이름이 따라와요 — 만든 뒤엔 바뀌지 않아요 · Project는 web-app · api-server · backoffice 중에서",
-    );
-    expect(editHint("new", { ...draft, suffix: "-2" })).toBe(
-      "같은 이름의 Service가 있어 파일 이름에 -2를 붙였어요 · Project는 web-app · api-server · backoffice 중에서",
+  it("넣을 수 있는 Project와 Host 길이다", () => {
+    expect(editHint({ registered: ["web-app", "api-server", "backoffice"] })).toBe(
+      "Project는 web-app · api-server · backoffice 중에서 — 대화로 부탁해도 이 파일이 바뀌어요",
     );
   });
 
-  it("등록된 Project가 없으면 그렇다고 말한다 — 빈 Service도 만든다", () => {
-    expect(editHint("edit", { registered: [], suffix: null })).toBe(
+  it("등록된 Project가 없으면 그렇다고 말한다", () => {
+    expect(editHint({ registered: [] })).toBe(
       "아직 등록된 Project가 없어요 — 대화로 부탁해도 이 파일이 바뀌어요",
     );
-  });
-});
-
-describe("새 Service의 빈 틀", () => {
-  it("name 빈 줄 · projects 빈 목록 · createdAt 오늘 · 빈 본문", () => {
-    expect(blankServiceText(new Date(2026, 9, 6, 23, 59))).toBe("---\nname: \nprojects: []\ncreatedAt: 2026-10-06\n---\n");
   });
 });
 

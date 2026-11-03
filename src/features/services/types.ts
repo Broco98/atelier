@@ -41,15 +41,6 @@ export interface ServiceDetail extends Service {
   shared: SharedService[];
 }
 
-/** 상세의 고치기 — 비운 칸은 그대로 둔다. `before`는 넣는 Project를 그 Project 앞에 세운다(빼기 되돌리기). */
-export interface ServicePatch {
-  name?: string;
-  description?: string;
-  add?: string[];
-  before?: string;
-  remove?: string[];
-}
-
 /** 파일의 줄 자리 — 1부터, 끝 포함. */
 export interface Lines {
   first: number;
@@ -64,8 +55,8 @@ export interface ServicePieces {
 }
 
 /**
- * 고치기 화면(파일로 고치기 · 직접 만들기)의 검사 한 번(core `draft_service` — 명령 `check_service`). 고칠 때마다 다시 부른다 — 화면은 따로
- * 검사하지 않는다(S7).
+ * 고치기 화면(파일로 고치기)의 검사 한 번(core `draft_service` — 명령 `check_service`). 고칠 때마다 다시 부른다 — 화면은 따로
+ * 검사하지 않는다(S7). core는 `slug` 없는 새 Service도 받아 `suffix`를 채우지만, 그 화면(「직접 만들기」)은 걷혔다(restart 03-15c).
  */
 export interface ServiceDraft {
   /** 그 글을 읽은 Service — 문제는 `problems`. slug는 파일로 고치기면 그 Service의 것, 새 Service면 이름에서 지을 것(이름이 비면 빈 글). */

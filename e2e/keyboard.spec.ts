@@ -156,11 +156,11 @@ test("목록 표는 줄마다 이름 링크 · ⋯에 앉고, Archive 상세의 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **목록 · 상세의 맨 `<button>`에도 Tab이 앉는다** — 열 머리 정렬 단추(`SortHead`) · 줄 끝 「작업공간 만들기」 · 「새 채팅」(`Hint`) · 상세 제목
-// 단추 · 묶음 머리의 +. macOS WebKit의 Tab은 `tabIndex`를 적지 않은 맨 단추를 지나친다(`@/lib/roving` 머리말 · 02 코드 리뷰 C1 「맨 버튼도
+// **목록 · 상세의 맨 `<button>`에도 Tab이 앉는다** — 열 머리 정렬 단추(`SortHead`) · 줄 끝 「작업공간 만들기」 · 「새 채팅」(`Hint`) · 묶음 머리의
+// +(한때 상세 제목 단추도 — restart 03-15c가 걷었다). macOS WebKit의 Tab은 `tabIndex`를 적지 않은 맨 단추를 지나친다(`@/lib/roving` 머리말 · 02 코드 리뷰 C1 「맨 버튼도
 // 앉는다」). 03-13이 이 검사로 찾은 앱 어긋남이었고(03-4가 적은 차례는 「Archive 찾기」 → 열 머리 정렬 단추 둘 → 줄마다 이름 링크 · ⋯ —
 // `e2e-수리.md` 「03」), 03-13b가 앱의 다른 단추처럼 `tabIndex`를 적어 고쳤다 — 시험을 앱에 맞추지 않았다.
-test("목록 · 상세의 맨 단추(열 머리 정렬 · 줄 끝 「작업공간 만들기」 · 「새 채팅」 · 제목 · 묶음의 +)에도 Tab이 앉는다", async ({ page }) => {
+test("목록 · 상세의 맨 단추(열 머리 정렬 · 줄 끝 「작업공간 만들기」 · 「새 채팅」 · 묶음의 +)에도 Tab이 앉는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/projects");
   await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
@@ -175,11 +175,10 @@ test("목록 · 상세의 맨 단추(열 머리 정렬 · 줄 끝 「작업공�
   await page.goto("/archive");
   await expect(page.getByRole("table", { name: "Archive 목록", exact: true })).toBeVisible();
   expect(await 본문정류장()).toEqual(["Archive 찾기", "이름", "보관한 날", ...[shipped, bare].flatMap((one) => [one.title, `${one.title} 메뉴`])]);
-  // 상세 — 제목 단추(이름 바꾸기)와 묶음 머리의 +(「작업공간 만들기」 — 머리의 같은 이름 단추와 둘)도 맨 `<button>`이라 지나친다.
+  // 상세 — 묶음 머리의 +(「작업공간 만들기」 — 머리의 같은 이름 단추와 둘)도 맨 `<button>`이라 지나친다. 제목은 이름 글이라 정류장이 아니다.
   await page.goto(`/projects/${billing.slug}`);
-  await expect(page.getByRole("combobox", { name: "기준 브랜치", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "작업공간", exact: true })).toBeVisible();
   const 상세 = await 본문정류장();
-  expect(상세, "제목 단추").toContain(`${billing.name} — 이름 바꾸기`);
   expect(상세.filter((이름) => 이름 === "작업공간 만들기"), "머리 · 「작업공간」 묶음의 +").toHaveLength(2);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -502,7 +501,7 @@ test("spec 트리 파일 행에서 ⇧F10을 누르면 「경로 복사」 메�
 
 // ── F2는 그대로 ──
 
-// Project 목록 행의 F2는 03 판에서 걷혔다 — 이름 바꾸기는 상세 제목이다(03 결정 「10」 · `inline-rename.spec.ts`).
+// Project 목록 행의 F2는 03 판에서 걷혔다(03 결정 「10」). 그 뒤의 상세 제목 이름 바꾸기도 걷혔다 — Project 이름은 대화로 고친다(restart 03-15c).
 test("↓로 옮겨 간 work 행에서도 F2가 그 행의 이름을 고치고, Esc면 포커스가 그 행으로 돌아온다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${billing.slug}`);

@@ -1,11 +1,9 @@
 import type { SharedService, Service, ServiceDraft, ServicePieces, ServiceProblem } from "./types";
 
-// Service 파일 고치기 화면(03 구현 스펙 §13 · 시안 F1-SpaceEdit · F4-SpaceNew · F4-SpaceEditErr)이 그리는 것을 값으로 짓는 순수 함수들 —
-// 커서 줄 ↔ 조각, 처음 커서, 고친 줄, 상태 알약, 안내 줄, 새 Service의 빈 틀. **문제와 조각 자리는 core 검사가 준 것을 그대로 쓴다**
-// (S7 — `check_service`). 여기서는 그 값을 화면 말로 옮기기만 하고, 파일 글을 따로 읽어 문제를 짓지 않는다(L2가 잰다).
-
-/** 파일로 고치기(그 Service의 파일) · 새 Service(직접 만들기) — 같은 화면의 두 길. */
-export type EditMode = "edit" | "new";
+// Service 파일 고치기 화면(03 구현 스펙 §13 · 시안 F1-SpaceEdit · F4-SpaceEditErr)이 그리는 것을 값으로 짓는 순수 함수들 — 커서 줄 ↔ 조각,
+// 처음 커서, 고친 줄, 상태 알약, 안내 줄. **문제와 조각 자리는 core 검사가 준 것을 그대로 쓴다**(S7 — `check_service`). 여기서는 그 값을 화면
+// 말로 옮기기만 하고, 파일 글을 따로 읽어 문제를 짓지 않는다(L2가 잰다). 한때(03 · 03-3) 같은 화면이 빈 틀로 새 Service를 지었다(「직접
+// 만들기」) — Services 「+ 만들기」가 단추 하나가 되며(restart 03-15c) 걷혔다.
 
 /** 파일의 세 조각 — 미리보기 카드의 이름 · 관계 그래프 · 설명이 이 차례로 그린다. */
 export type Piece = "name" | "projects" | "body";
@@ -37,12 +35,12 @@ export function lineEndOffset(text: string, line: number): number {
 }
 
 /**
- * 처음 커서(S14) — 첫 문제 줄, 없으면 새 Service는 `name` 줄, 파일로 고치기는 `projects` 줄(가장 많이 고치는 조각 — 「방금 고친 줄」은 화면을
- * 새로 열면 없다). 조각이 없는 파일이면 frontmatter의 첫 칸 자리(2행)다.
+ * 처음 커서(S14) — 첫 문제 줄, 없으면 `projects` 줄(가장 많이 고치는 조각 — 「방금 고친 줄」은 화면을 새로 열면 없다), 그것도 없으면 `name`
+ * 줄이다. 조각이 없는 파일이면 frontmatter의 첫 칸 자리(2행)다.
  */
-export function firstCaretLine(problems: readonly ServiceProblem[], pieces: ServicePieces, mode: EditMode): number {
+export function firstCaretLine(problems: readonly ServiceProblem[], pieces: ServicePieces): number {
   if (problems.length > 0) return Math.min(...problems.map((problem) => problem.line));
-  if (mode === "edit" && pieces.projects) return pieces.projects.first;
+  if (pieces.projects) return pieces.projects.first;
   return pieces.name ?? 2;
 }
 
@@ -136,9 +134,8 @@ function valued(rest: string): PaintedLine["tokens"] {
   ];
 }
 
-/** 파일 칸 머리 끝의 말 — 파일로 고치기는 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」, 새 Service는 저장하기 전까지 「새 파일 · 아직 없음」. */
-export function fileNote(mode: EditMode, changed: number): string | null {
-  if (mode === "new") return "새 파일 · 아직 없음";
+/** 파일 칸 머리 끝의 말 — 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」. */
+export function fileNote(changed: number): string | null {
   return changed > 0 ? `고친 줄 ${changed} · 저장 안 함` : null;
 }
 
@@ -148,7 +145,7 @@ export function problemPill(problems: readonly ServiceProblem[]): { ok: boolean;
 }
 
 /**
- * 저장(새 Service면 「만들기」) 단추가 켜지나 — 고친 것이 있고, **지금 글의** 검사 답(`checked` — 앞 글의 답이 자리를 지키는 동안이 아니다)에
+ * 저장 단추가 켜지나 — 고친 것이 있고, **지금 글의** 검사 답(`checked` — 앞 글의 답이 자리를 지키는 동안이 아니다)에
  * 문제가 없으며, 저장하는 중이 아닐 때(스토리 179 · §13). 앞 글의 답으로 켜면 문제 줄을 적은 직후 누른 저장을 core가 거절한다.
  */
 export function canSave(state: {
@@ -178,7 +175,7 @@ export function previewOf(draft: Pick<ServiceDraft, "service" | "shared">): {
   });
   const name = draft.service.name.trim() || null;
   return {
-    // 그래프의 Service 노드도 「이름 없음」이다 — 새 Service에는 부를 slug도 아직 없다.
+    // 그래프의 Service 노드도 「이름 없음」이다 — 이름 줄을 비운 동안이다.
     service: { ...draft.service, name: name ?? "이름 없음", projects },
     shared,
     name,
@@ -186,25 +183,9 @@ export function previewOf(draft: Pick<ServiceDraft, "service" | "shared">): {
   };
 }
 
-/**
- * 편집기 아래 안내 줄 — 넣을 수 있는 Project(등록부 차례). 파일로 고치기는 뒤에 대화로 고치는 길을, 새 Service는 앞에 파일 이름이 이름을 따라온다는 말
- * (겹치면 `-2`를 붙였다는 말)을 단다(시안 `.hint` · F4-KitSpace 「파일 이름 — 따라옴 · 겹침」).
- */
-export function editHint(mode: EditMode, draft: Pick<ServiceDraft, "registered" | "suffix">): string {
+/** 편집기 아래 안내 줄 — 넣을 수 있는 Project(등록부 차례)와 대화로 고치는 길(시안 `.hint`). */
+export function editHint(draft: Pick<ServiceDraft, "registered">): string {
   const projects =
     draft.registered.length > 0 ? `Project는 ${draft.registered.join(" · ")} 중에서` : "아직 등록된 Project가 없어요";
-  if (mode === "edit") return `${projects} — 대화로 부탁해도 이 파일이 바뀌어요`;
-  const slug = draft.suffix
-    ? `같은 이름의 Service가 있어 파일 이름에 ${draft.suffix}를 붙였어요`
-    : "이름(name)을 적으면 파일 이름이 따라와요 — 만든 뒤엔 바뀌지 않아요";
-  return `${slug} · ${projects}`;
-}
-
-/**
- * 새 Service의 빈 틀 — `name:` 빈 줄 · `projects:` 빈 목록 · `createdAt` 오늘 · 빈 본문. 칸 차례는 core 만들기(`create_service`)가 쓰는 것과
- * 같다. 날은 이 컴퓨터의 날이다(core도 그렇다).
- */
-export function blankServiceText(today: Date): string {
-  const day = [today.getFullYear(), today.getMonth() + 1, today.getDate()].map((n, index) => String(n).padStart(index ? 2 : 4, "0"));
-  return `---\nname: \nprojects: []\ncreatedAt: ${day.join("-")}\n---\n`;
+  return `${projects} — 대화로 부탁해도 이 파일이 바뀌어요`;
 }

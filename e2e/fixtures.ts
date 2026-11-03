@@ -1077,14 +1077,12 @@ export function workChatAnswers(
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
-  // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Service이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
-  // (`useUpdateService`) — 이 답은 쓰기를 기억하지 않는다.
+  // Service 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 파일로 고치기. 상세에서 칸 단위로 고치던 `update_service`는 걷혔다(restart 03-15c).
   list_services: SERVICES,
   // Service 파일들의 폴더(restart 03-3) — ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다. 목록 · 상세가 열 때 한 번 읽는다.
   services_folder: "~/.atelier/services",
   get_service: answerByArg("slug", SERVICE_DETAILS),
-  update_service: SERVICES[0],
-  // 고치기 화면(파일로 고치기 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
+  // 고치기 화면(파일로 고치기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Service다(화면은 그 상세로 간다).
   read_service_text: answerByArg("slug", SERVICE_TEXTS),
   check_service: SERVICE_DRAFT,
   save_service_text: SERVICES[0],
@@ -1213,11 +1211,6 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
-  // 프로젝트 화면의 기준 브랜치 · 이름을 바꾸는 쓰기(판 3 — `projects-list.spec.ts`의 기준 브랜치 절, `inline-rename.spec.ts`의 프로젝트
-  // 절). 고치기는 부분 patch라 바꾼 칸만 실린다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시
-  // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
-  // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
-  update_project: null,
   // 프로젝트 메뉴(목록 행 · 머리 줄 이름의 우클릭)의 「Finder에서 열기」와 머리 줄 「폴더 열기」가 나간다(codex-ds 티켓 30 —
   // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_project_folder: null,

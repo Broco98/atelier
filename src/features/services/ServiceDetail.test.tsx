@@ -125,16 +125,16 @@ const sectionOf = (html: string, label: string) => {
   return { head: textOf(body.slice(0, body.indexOf('role="table"'))).replace(/<div$/, "").trim(), rows };
 };
 
-// 맨 `<button>`은 macOS WebKit의 Tab이 지나친다 — 제목(이름 바꾸기) · 묶음 머리의 + · 경고의 글 단추도 키보드로 닿아야 한다(restart 03-13b).
+// 맨 `<button>`은 macOS WebKit의 Tab이 지나친다 — 묶음 머리의 + · 경고의 글 단추도 키보드로 닿아야 한다(restart 03-13b).
 const untabbable = (html: string) =>
-  [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]).filter((button) => !/\b(tabindex="0"|disabled="")/.test(button));
+  [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]).filter((button) => !/\btabindex="0"/.test(button));
 
 describe("Service 상세의 Tab", () => {
-  it("판의 단추(제목 · 머리 단추 · ⋯ · 묶음 머리의 + · 줄의 ⋯)에는 모두 Tab이 앉는다", () => {
+  it("판의 단추(머리 단추 · ⋯ · 묶음 머리의 +)에는 모두 Tab이 앉는다", () => {
     expect(untabbable(render(PAYMENTS))).toEqual([]);
   });
 
-  it("칸 단위로 고칠 수 없는 파일의 경고 단추에도 Tab이 앉는다", () => {
+  it("문제가 있는 파일의 경고 단추에도 Tab이 앉는다", () => {
     const broken = { ...PAYMENTS, problems: [{ line: 1, kind: "unclosedFrontmatter" as const, message: "frontmatter가 닫히지 않았어요" }] };
     expect(render(broken)).toMatch(/<button[^>]*>파일로 고치기<\/button>/);
     expect(untabbable(render(broken))).toEqual([]);
@@ -182,12 +182,13 @@ describe("Service 상세", () => {
     expect(plus("함께 쓰는 Service")).toEqual([]);
   });
 
-  // 보드 상세 줄에는 오른쪽 단추가 없다 — 쉴 때는 숨고 지나면 서는 ⋯(「Service에서 빼기」)다. 칸 단위로 고칠 수 없는 파일이면 서지 않는다.
-  it("Projects 줄 끝에 그 Project의 ⋯가 쉴 때 숨은 채 서고, 칸 단위로 고칠 수 없는 파일이면 서지 않는다", () => {
-    const menu = (html: string) => html.match(/<button[^>]*aria-label="backend 메뉴"[^>]*>/)?.[0] ?? null;
-    expect(menu(render(PAYMENTS))).toContain("opacity-0");
-    const broken = { ...PAYMENTS, problems: [{ line: 1, kind: "unclosedFrontmatter" as const, message: "frontmatter가 닫히지 않았어요" }] };
-    expect(menu(render(broken))).toBeNull();
+  // restart 03-15c · 보드 MainServiceDetail · Places `.pl-detail` — 보드 상세에는 고치는 자리가 없고 상세 줄에는 오른쪽 단추가 없다. 이름 · 설명 ·
+  // Project는 대화나 「파일로 고치기」로 고친다. 한때 제목을 누르면 이름 칸, Projects 줄을 지나면 ⋯(「Service에서 빼기」)가 섰다.
+  it("제목은 이름 글이고 Projects 줄 끝에 단추가 없다 — 눌러 고치는 자리가 없다", () => {
+    const html = render(PAYMENTS);
+    expect(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1]).toBe("결제 시스템");
+    const projects = html.match(/<section aria-label="Projects"[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
+    expect(projects.slice(projects.indexOf('role="table"'))).not.toContain("<button");
   });
 
   it("관계 그래프가 없다", () => {
