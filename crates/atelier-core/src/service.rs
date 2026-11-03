@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::paths::services_in;
 use crate::{Error, Result};
 
-/// Service 하나 — 파일을 읽은 값과 그 검사의 문제(03 구현 스펙 §8). 문제가 있어도 선다: 목록이 「문제 있음」으로 보이고 관계 편집에서
+/// Service 하나 — 파일을 읽은 값과 그 검사의 문제(03 구현 스펙 §8). 문제가 있어도 선다: 목록이 「문제 있음」으로 보이고 파일로 고치기에서
 /// 고친다(스토리 185). 읽을 수 없는 칸은 비어 있다 — 닫히지 않은 파일 · 읽을 수 없는 파일은 이름도 없어 화면이 slug로 부른다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -339,7 +339,7 @@ pub fn new_service_slug(data_root: &Path, name: &str) -> String {
 /// 새 Service 화면의 주소 끝(`/services/new`) — 앱이 짓는 slug가 비켜 간다.
 const NEW_SERVICE_PAGE: &str = "new";
 
-/// Service 파일의 글 그대로 — 관계 편집이 연다(03 구현 스펙 §13). 읽을 수 없는 파일은 그 IO 오류다(고칠 글이 없다).
+/// Service 파일의 글 그대로 — 파일로 고치기가 연다(03 구현 스펙 §13). 읽을 수 없는 파일은 그 IO 오류다(고칠 글이 없다).
 pub fn read_service_text(data_root: &Path, slug: &str) -> Result<String> {
     service_text(data_root, slug)
 }
@@ -367,12 +367,12 @@ fn unreadable(slug: &str) -> Service {
     }
 }
 
-/// 고치기 화면(관계 편집 · 직접 만들기)이 고칠 때마다 부르는 한 번 읽기 — 그 글의 검사(문제 · 조각 자리)와 미리보기 카드가 그릴 것,
+/// 고치기 화면(파일로 고치기 · 직접 만들기)이 고칠 때마다 부르는 한 번 읽기 — 그 글의 검사(문제 · 조각 자리)와 미리보기 카드가 그릴 것,
 /// 안내 줄의 등록된 Project, 파일 자리다(03 구현 스펙 §13 · S7). 화면은 따로 검사하지 않는다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceDraft {
-    /// 그 글을 읽은 Service — 문제는 `problems`에 든다. slug는 관계 편집이면 그 Service의 것, 새 Service면 이름에서 지을 것이다(이름이 비면 빈
+    /// 그 글을 읽은 Service — 문제는 `problems`에 든다. slug는 파일로 고치기면 그 Service의 것, 새 Service면 이름에서 지을 것이다(이름이 비면 빈
     /// 글 — 아직 파일 이름이 없다).
     pub service: Service,
     pub pieces: ServicePieces,

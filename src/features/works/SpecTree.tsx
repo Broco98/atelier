@@ -12,7 +12,8 @@ import type { SpecTreeItem } from "./types";
 
 // 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 6px · hover
 // `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
-// `selected-row`에 굵기 500이다.
+// `selected-row`의 면만이고 굵기는 그대로 400이다(restart 시안 `.ra-tree-row.on` — 모든 트리가 면으로만 고른다, restart 03-12b). 한때 DS
+// `.at-tree-row.is-on`대로 500이었다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 // 글자색은 여기 없다 — 흐린 행(`DIM`)과 갈리는 자리라 행이 고른다.
@@ -26,10 +27,13 @@ const DIM = "text-(--tree-row-dim)";
 // 줄 사이는 1px 틈이다(DS `.at-tree` — 사이드바 · 목록 칸의 행 사이 2보다 촘촘하다). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-px";
 
-// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px(촘촘한 행은 12px — 보드 `.ra-tree-row`의 `8 + 깊이 × 12`). 폴더 행 · 파일
-// 행이 함께 읽는다. 같은 식을 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
-// 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
-export const treeIndent = (depth: number, dense = false) => ({ paddingLeft: 8 + depth * (dense ? 12 : 14) });
+// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px(촘촘한 행은 12px — 보드 `.ra-tree-row`의 `8 + 깊이 × 12`, 목록 · 상세 판의
+// 트리는 18px — 아래 `PLACE_ROWS`). 폴더 행 · 파일 행이 함께 읽는다. 같은 식을 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서
+// 시작한다. 인라인 style인 것은 깊이가 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을
+// 읽는다.
+export const treeIndent = (depth: number, dense = false, place = false) => ({
+  paddingLeft: 8 + depth * (place ? 18 : dense ? 12 : 14),
+});
 
 // **촘촘한 행**(restart 02b-8 · 보드 `.ra-tree-row` — SummarySheet 「넓힌 카드 — Project」) — 넓힌 카드의 Project 트리(files 트리)가 쓴다. 24 ·
 // 둥글기 `radius-ctl` 4 · 줄 사이 2 · 폴더 행도 본문 글자색이고, 파일 행 앞은 확장자 꼬리표가 아니라 그 첫 글자(`ExtMark`)다. spec 패널의
@@ -37,6 +41,10 @@ export const treeIndent = (depth: number, dense = false) => ({ paddingLeft: 8 + 
 // 10 · 사이 1의 행(DS `.at-tree-row`)을 부르는 자리가 없다.
 const DENSE_ROW = "h-6 rounded-ctl";
 const DENSE_ROWS = "flex flex-col gap-0.5";
+
+// **목록 · 상세 판의 트리**(restart 03-12b · 보드 Places `.pl-tree`) — Archive 상세의 「문서」 트리. 촘촘한 행 그대로에 줄 사이 3(판 트리의 `gap: 1px`
+// + 행의 `margin-bottom: 2px` — 줄 간격 27)이고, 한 단이 18이라 자식 줄의 글리프가 부모 폴더 이름 아래에 선다(보드 `pad: child ? 26 : 8`).
+const PLACE_ROWS = "flex flex-col gap-0.75";
 
 /**
  * 트리 행이 읽는 항목의 모양 — spec 트리(`SpecTreeItem`)와 files 트리가 같은 행을 쓴다(git-integration 결정 37). `children`은
@@ -78,6 +86,8 @@ interface TreeProps {
   // 촘촘한 행으로 그린다(`TreeRows`의 `dense` — 보드 `.ra-tree-row` 24). Archive 상세의 「문서」 트리(restart 03-4 · 보드 Places `.pl-tree`)와
   // spec 패널의 트리(restart 03-12a · 시안 Shell 「spec 패널」)가 쓴다.
   dense?: boolean;
+  // 목록 · 상세 판의 트리로 그린다(`TreeRows`의 `place` — 촘촘한 행에 줄 사이 3 · 한 단 18). Archive 상세의 「문서」 트리다(restart 03-12b).
+  place?: boolean;
 }
 
 // **트리 하나가 Tab 정류장 하나다**(roving — codex-ds 스펙 §9 · S10, `@/lib/roving`). ↑↓는 보이는 행(펼친 폴더의 자식까지)을 화면
@@ -88,7 +98,7 @@ interface TreeProps {
 // 경로 복사 버튼은 **Tab 정류장이 아니다**(행 안 버튼은 빠진다) — 키보드의 길은 그 파일 행의 대상 메뉴(⇧F10 · 메뉴 키)의 「경로
 // 복사」이고 같은 동작이다(구현 노트 Q16). 메뉴는 `onCopy`가 있을 때만 선다 — 없으면 메뉴에 남는 항목이 없다.
 
-function SpecTree({ items, current, onSelect, onCopy, dense = false }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, dense = false, place = false }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트를 넘어 살지 않는다. **언제
   // 리마운트하는지는 트리를 세우는 패널이 정하고 두 패널이 다르다:**
   // - spec 패널은 트리를 새로 세우지 않는다 — 패널을 여닫아도 접어 둔 폴더가 그대로다(restart 02a-14 · 스토리 83). 한때
@@ -110,7 +120,7 @@ function SpecTree({ items, current, onSelect, onCopy, dense = false }: TreeProps
 
   const tree = (menu?: TargetRegion) => (
     <div
-      className={cn(dense ? DENSE_ROWS : ROWS, "shrink-0")}
+      className={cn(place ? PLACE_ROWS : dense ? DENSE_ROWS : ROWS, "shrink-0")}
       onContextMenu={menu?.onContextMenu}
       onFocus={roving.box.onFocus}
       onKeyDown={(event) => {
@@ -129,7 +139,8 @@ function SpecTree({ items, current, onSelect, onCopy, dense = false }: TreeProps
         onSelect={onSelect}
         onCopy={onCopy}
         lookOf={specLook}
-        dense={dense}
+        dense={dense || place}
+        place={place}
       />
     </div>
   );
@@ -240,6 +251,8 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
   folderBody?: (item: T, depth: number) => ReactNode;
   /** 촘촘한 행으로 그린다(위 `DENSE_ROW` — 넓힌 카드의 Project 트리). 안 받으면 spec 패널의 행이다. */
   dense?: boolean;
+  /** 목록 · 상세 판의 트리로 그린다(위 `PLACE_ROWS` — 줄 사이 3 · 한 단 18). `dense`와 함께 받는다. */
+  place?: boolean;
 }
 
 // roving에 든 트리면 정류장 행만 Tab이 앉는다(SpecTree 머리말). `stop`을 안 받은 트리는 행에 아무것도 달지 않는다.
@@ -264,8 +277,9 @@ export function TreeRows<T extends TreeRowItem<T>>({
   lookOf,
   folderBody,
   dense = false,
+  place = false,
 }: TreeRowsProps<T>) {
-  const rows = dense ? DENSE_ROWS : ROWS;
+  const rows = place ? PLACE_ROWS : dense ? DENSE_ROWS : ROWS;
   return (
     <>
       {items.map((item) => {
@@ -283,7 +297,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
             >
               <CollapsibleTrigger
                 className={cn(COLLAPSE_ROW, dense && DENSE_ROW, look.dim ? DIM : dense ? "text-fg" : "text-fg-secondary")}
-                style={treeIndent(depth, dense)}
+                style={treeIndent(depth, dense, place)}
                 aria-description={look.note}
                 {...rovingOf(item.path, stop)}
               >
@@ -319,6 +333,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                     lookOf={lookOf}
                     folderBody={folderBody}
                     dense={dense}
+                    place={place}
                   />
                 )}
               </CollapsibleContent>
@@ -333,7 +348,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
         //
         // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
         // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-fill-soft를 붙인다.
-        // 글자색은 고르든 안 고르든 본문 색이다 — 고른 행은 면과 굵기가 말한다(DS `.at-tree-row.is-on`).
+        // 글자색 · 굵기는 고르든 안 고르든 같다 — 고른 행은 면이 말한다(restart 시안 `.ra-tree-row.on`).
         // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
         // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
         // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
@@ -348,7 +363,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
               className={cn(
                 "group flex h-7 items-center rounded-lg pr-1 text-chat-meta transition-colors",
                 dense && DENSE_ROW,
-                item.path === current ? "selected-row font-medium" : "hover:bg-fill-soft",
+                item.path === current ? "selected-row" : "hover:bg-fill-soft",
               )}
             >
               {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
@@ -369,9 +384,9 @@ export function TreeRows<T extends TreeRowItem<T>>({
                   onCopy && "pr-1.5",
                   look.dim && DIM,
                 )}
-                style={treeIndent(depth, dense)}
+                style={treeIndent(depth, dense, place)}
                 aria-description={look.note}
-                // 고른 행은 면과 굵기로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
+                // 고른 행은 면으로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
                 // 선 파일 탭의 파일이다.
                 aria-current={item.path === current ? "page" : undefined}
                 data-changed={look.changed ? "" : undefined}

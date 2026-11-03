@@ -98,7 +98,9 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   // 머리의 모양(States 보드 `.ra-whblock` · restart 02b-1) — 글은 `fg-tertiary`이고, 선은 단추 밖 형제(0.5 `border-heavy`)로 글 줄 아래 9에
   // 열 폭으로 그어진다. 선에서 펼친 첫 줄까지 12다. 끝의 꺾쇠 12는 펼치면 `ease-enter`로 90° 돈다. 도구 줄 앞 글리프는 14다.
   const 선 = 둘째.locator("xpath=../div[@aria-hidden]");
-  expect(await 둘째.evaluate((el) => getComputedStyle(el).color)).toBe("rgba(26, 28, 31, 0.5)");
+  // 누른 뒤 마우스가 머리 위에 남으면 `hover:text-fg-secondary`로 0.7까지 전이한다 — 쉬는 색을 재려고 마우스를 비키고 전이가 끝나기를 기다린다.
+  await page.mouse.move(0, 0);
+  await expect.poll(() => 둘째.evaluate((el) => getComputedStyle(el).color)).toBe("rgba(26, 28, 31, 0.5)");
   expect(
     await 선.evaluate((el) => {
       const box = el.getBoundingClientRect();

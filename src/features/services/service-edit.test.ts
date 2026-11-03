@@ -15,7 +15,7 @@ import {
 } from "./service-edit";
 import type { ServiceDraft, ServicePieces, ServiceProblem } from "./types";
 
-// 고치기 화면(관계 편집 · 직접 만들기 — 03 구현 스펙 §13)이 그리는 갈래를 값으로 잰다. 문제 · 조각 자리는 core 검사가 준 그대로 쓰고
+// 고치기 화면(파일로 고치기 · 직접 만들기 — 03 구현 스펙 §13)이 그리는 갈래를 값으로 잰다. 문제 · 조각 자리는 core 검사가 준 그대로 쓰고
 // (S7), 여기서는 그 값을 화면 말로 옮기는 것만 본다.
 
 /** 「결제 서비스」 파일의 조각 — name 2행, projects 3–6행(머리 + 항목 셋), 본문 10행. */
@@ -66,17 +66,17 @@ describe("커서 줄 → 조각", () => {
 });
 
 describe("처음 커서(S14)", () => {
-  it("문제가 있으면 첫 문제 줄이다 — 새 Service든 관계 편집이든", () => {
+  it("문제가 있으면 첫 문제 줄이다 — 새 Service든 파일로 고치기든", () => {
     expect(firstCaretLine([problem(7), problem(5)], PIECES, "edit")).toBe(5);
     expect(firstCaretLine([problem(2, "noName")], PIECES, "new")).toBe(2);
   });
 
-  it("문제가 없으면 새 Service는 name 줄, 관계 편집은 projects 줄이다", () => {
+  it("문제가 없으면 새 Service는 name 줄, 파일로 고치기는 projects 줄이다", () => {
     expect(firstCaretLine([], PIECES, "new")).toBe(2);
     expect(firstCaretLine([], PIECES, "edit")).toBe(3);
   });
 
-  it("projects 칸이 없는 파일의 관계 편집은 name 줄이다", () => {
+  it("projects 칸이 없는 파일의 파일로 고치기는 name 줄이다", () => {
     expect(firstCaretLine([], { ...PIECES, projects: null }, "edit")).toBe(2);
   });
 });
@@ -108,7 +108,7 @@ describe("고친 줄", () => {
     expect(lineChanges(BASE, text)).toEqual({ count: 2, added: [2, 5] });
   });
 
-  it("파일 칸 머리 — 관계 편집은 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」, 새 Service는 늘 「새 파일 · 아직 없음」", () => {
+  it("파일 칸 머리 — 파일로 고치기는 고친 것이 있을 때만 「고친 줄 N · 저장 안 함」, 새 Service는 늘 「새 파일 · 아직 없음」", () => {
     expect(fileNote("edit", 0)).toBeNull();
     expect(fileNote("edit", 2)).toBe("고친 줄 2 · 저장 안 함");
     expect(fileNote("new", 0)).toBe("새 파일 · 아직 없음");
@@ -148,7 +148,7 @@ describe("저장 단추", () => {
 describe("안내 줄", () => {
   const draft = { registered: ["web-app", "api-server", "backoffice"], suffix: null };
 
-  it("관계 편집은 넣을 수 있는 Project와 Host 길이다", () => {
+  it("파일로 고치기는 넣을 수 있는 Project와 Host 길이다", () => {
     expect(editHint("edit", draft)).toBe("Project는 web-app · api-server · backoffice 중에서 — 대화로 부탁해도 이 파일이 바뀌어요");
   });
 

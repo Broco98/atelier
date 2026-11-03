@@ -390,12 +390,14 @@ describe("말의 사전", () => {
   // 03 구현 스펙 §2 · §13 · 티켓 04. Service 파일을 고치는 한 화면의 두 길이다. 사전이 「글 그대로」 · 「같은 검사」를 말하지 않으면 다음 사람이
   // 저장을 serde 왕복으로 되돌려 사람이 적은 주석 · 차례를 지우거나, 화면에 따로 검사를 세워 화면이 괜찮다고 한 파일을 저장이 거절한다.
   // 직접 만들기가 같은 화면 · 빈 틀 · 따라오는 파일 이름을 말하지 않으면 새 Service를 다른 창(이름 · Project 칸)으로 짓는다.
-  it("「관계 편집」이 파일 칸 | 미리보기 카드 · 같은 검사 · 글 그대로를 말하고, 「직접 만들기」가 같은 화면의 빈 틀을 말한다", () => {
-    expect(names).toEqual(expect.arrayContaining(["관계 편집", "직접 만들기"]));
-    for (const piece of ["「파일 칸 | 미리보기 카드」", "같은 하나", "한 글자도 바꾸지 않고", "파일 이름은 그대로"]) {
-      expect(bodyOf("관계 편집"), piece).toContain(piece);
+  // 화면의 이름은 그리로 가는 문과 같은 「파일로 고치기」다(restart 03-12b · 시안 Places `MENUS.services` · 상세 경고) — 한때 「관계 편집」이었다.
+  it("「파일로 고치기」가 파일 칸 | 미리보기 카드 · 같은 검사 · 글 그대로를 말하고, 「직접 만들기」가 같은 화면의 빈 틀을 말한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["파일로 고치기", "직접 만들기"]));
+    expect(names).not.toContain("관계 편집");
+    for (const piece of ["「파일 칸 | 미리보기 카드」", "같은 하나", "한 글자도 바꾸지 않고", "파일 이름은 그대로", "⋯", "경고"]) {
+      expect(bodyOf("파일로 고치기"), piece).toContain(piece);
     }
-    for (const piece of ["관계 편집과 같은 화면", "빈 틀", "`-2`", "「대화로 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
+    for (const piece of ["파일로 고치기와 같은 화면", "빈 틀", "`-2`", "「대화로 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
   });
 
   // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Runtime이 고친 자리를 그

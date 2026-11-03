@@ -177,4 +177,18 @@ describe("「문서」 트리는 기록 곁에 받은 spec 트리를 spec/ 아�
     expect(fileRow(tree(), "record.md")).toContain("selected-row");
     expect(fileRow(tree(), "overview.md")).not.toContain("selected-row");
   });
+
+  // 보드 Places `.pl-tree` — 자식 줄은 한 단 18이라(`pad: child ? 26 : 8`) 글리프가 부모 폴더 이름 아래에 서고, 고른 줄은 면만이다(`.ra-tree-row.on` —
+  // 굵기 그대로). restart 03-12b. 줄 사이 3(줄 간격 27)은 L3가 잰다.
+  it("자식 줄은 한 단 18씩 들어가고, 고른 줄은 굵어지지 않는다", () => {
+    const markup = tree();
+    const indent = (row: string) => row.match(/padding-left:(\d+)px/)?.[1];
+    expect(indent(fileRow(markup, "record.md"))).toBe("8");
+    expect(indent(folderRow(markup, "spec"))).toBe("8");
+    expect(indent(fileRow(markup, "overview.md"))).toBe("26");
+    expect(indent(folderRow(markup, "02-둘째-판"))).toBe("26");
+    expect(indent(fileRow(markup, "plan.md"))).toBe("44");
+    expect(fileRow(markup, "record.md")).toContain("selected-row");
+    expect(fileRow(markup, "record.md")).not.toContain("font-medium");
+  });
 });

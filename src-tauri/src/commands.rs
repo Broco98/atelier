@@ -153,7 +153,7 @@ pub async fn update_service(
     atelier_core::update_service(&data_root(), &slug, patch).map_err(err)
 }
 
-// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 관계 편집 · 직접 만들기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면
+// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 파일로 고치기 · 직접 만들기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면
 // 새 Service다. 검사는 core 하나이고 화면은 따로 검사하지 않는다(S7) — 저장도 같은 검사로 거절한다.
 #[tauri::command]
 pub async fn read_service_text(slug: String) -> CmdResult<String> {

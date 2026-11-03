@@ -6,18 +6,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Toaster } from "@/components/ui/toast";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { PlaceFix } from "./PlaceList";
+import { PLACE_COLUMN, PLACE_HEAD, PLACE_TITLE, PlaceFix } from "./PlaceList";
 
 // **공용 상세 틀**(restart 03-2 · 스펙 「03 — 목록과 상세」 · 보드 PlaceSheet 「규격」 · 「상세 상태」 · Places `.pl-detail`) — Projects · Services ·
 // Archive의 상세가 한 틀을 쓴다. 목록(`PlaceList`)과 같은 판 · 가운데 열이라 목록과 상세가 한 자리를 번갈아 써도 열이 움직이지 않는다. 여기는 그리기만
 // 하고 안의 것(이름 · 단추 · 카드 · 묶음의 줄)은 화면이 준다.
 //
-//   판(`PlaceDetail`) ─ 스스로 구른다. 가운데 열 최대 1120 · 위 36 · 옆 56 · 아래 56(목록과 같다)
+//   판(`PlaceDetail`) ─ 스스로 구른다. 가운데 열 최대 1120 · 위 36 · 옆 56 · 아래 56(목록과 같다 — 좁은 창은 20 · 16 · 32)
 //     「← 목록」 ─ 28 · 13 · `fg-secondary`, 언제나 목록으로 간다(보드 `.pl-back` · PlaceSheet 「뒤로 · 앞으로」)
-//     머리 ─ 이름 24/32 · 600, 오른쪽에 단추(34)와 ⋯(28) — 아래 6(보드 `.pl-detail .pl-head`)
+//     머리 ─ 이름 24/32 · 600, 오른쪽에 단추(34)와 ⋯(28) — 아래 6(보드 `.pl-detail .pl-head`). 좁은 창은 이름 한 줄 · 단추가 그 아래 줄
 //     설명(`PlaceLede`) ─ 14/22 · `fg-secondary` · 최대 680 · 아래 20
 //     경고(`PlaceWarn`) ─ 36 · `wait-soft` 면 · 둥글기 4 · ⓘ 14 `warning` · 13/19 · 끝에 할 일(보드 `.pl-warn`)
-//     위 카드(`PlaceFacts`) ─ 네 칸 · 사이 8 · 칸마다 이름 12 · 값 13/19(보드 `.pl-facts` · `.pl-fact`)
+//     위 카드(`PlaceFacts`) ─ 네 칸(좁은 창은 두 칸 두 줄) · 사이 8 · 칸마다 이름 12 · 값 13/19(보드 `.pl-facts` · `.pl-fact`)
 //     묶음(`PlaceSection`) ─ 머리 36 · 13 · 500 · 수 · 끝에 +(26), 위 28 · 아래 0.5 선. 줄은 목록과 같은 격자의 46(`PlaceRow`의 `sub`)
 //
 // 한때(03) 상세는 「← 목록」 알약 · 제목 · 설명 묶음 | 오른쪽 칸 270(기준 브랜치 · 경로 · 함께 쓰는 Service) 두 단이었다(`DetailParts`의
@@ -44,7 +44,7 @@ export function PlaceDetail({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
         {/* 글 바탕이 14/20이다(보드 `.pl-root`) — 「← 목록」은 줄 안의 상자라 그 줄 높이에 앉는다(16/24면 2.7 아래로 선다). */}
-        <article className="mx-auto w-full max-w-(--measure-wide) px-14 pt-9 pb-14 text-sm">
+        <article className={cn(PLACE_COLUMN, "text-sm")}>
           {/* `tabIndex`를 명시한다 — WebKit의 Tab은 맨 링크에 서지 않는다(`@/lib/roving` 머리말). */}
           <Link
             to={back.to}
@@ -54,8 +54,8 @@ export function PlaceDetail({
             <ArrowLeft aria-hidden className="size-3.5" />
             {back.label}
           </Link>
-          <div className="mb-1.5 flex min-h-9 items-center gap-2.5">
-            <h1 className="min-w-0 flex-1 text-heading-lg leading-8 tracking-[-0.015em] wrap-anywhere text-fg">{title}</h1>
+          <div className={cn("mb-1.5", PLACE_HEAD)}>
+            <h1 className={PLACE_TITLE}>{title}</h1>
             {actions}
           </div>
           {children}
@@ -132,9 +132,9 @@ export function PlaceWarn({ text, action }: { text: string; action: { label: str
   );
 }
 
-/** 위 카드 줄 — 네 칸이 같은 폭이다(보드 `.pl-facts`). */
+/** 위 카드 줄 — 네 칸이 같은 폭이다(보드 `.pl-facts`). 좁은 창은 두 칸씩 두 줄이다. */
 export function PlaceFacts({ children }: { children: ReactNode }) {
-  return <div className="mb-2 grid grid-cols-4 gap-2">{children}</div>;
+  return <div className="mb-2 grid grid-cols-4 gap-2 narrow:grid-cols-2">{children}</div>;
 }
 
 /** 위 카드 한 칸의 겉(보드 `.pl-fact` — 위아래 12 · 옆 14 · 둥글기 8 · `surface-under` 면 · 안쪽 0.5 `border` 고리). 값을 고르는 칸(단추)도 이 겉을 쓴다. */

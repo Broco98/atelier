@@ -32,7 +32,7 @@ import {
 import { CARD_GRAPH, serviceName } from "./service-view";
 import type { ServiceDraft } from "./types";
 
-// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 시안 F1-SpaceEdit · F4-SpaceNew · F4-SpaceEditErr) — 관계 편집(그 Service의 파일)과 직접
+// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 시안 F1-SpaceEdit · F4-SpaceNew · F4-SpaceEditErr) — 파일로 고치기(그 Service의 파일)와 직접
 // 만들기(빈 틀의 새 파일)가 함께 쓰는 「파일 칸 | 미리보기 카드」 두 칸이다. 두 칸이 판을 꽉 채우고(46 : 54) 칸 머리는 52, 가운데 경계선이
 // 머리까지 이어진다.
 //
@@ -44,7 +44,7 @@ import type { ServiceDraft } from "./types";
 // - **검사는 core 하나다**(S7) — 글을 고칠 때마다 `check_service`를 부른다. 문제 · 조각 자리 · 새 Service의 파일 이름 · 등록된 Project가 모두
 //   그 답이고, 화면은 따로 검사하지 않는다. 저장(`save_service_text`)도 같은 검사로 거절한다.
 // - **커서 줄 ↔ 조각** — 커서가 선 줄의 조각(name · projects · 본문)만 양쪽에 같은 파란 막대 + 옅은 면이 서고, 카드 조각에 「3–6행」이
-//   붙는다. 처음 커서는 첫 문제 줄 → 새 Service는 name 줄 → 관계 편집은 projects 줄이다(S14).
+//   붙는다. 처음 커서는 첫 문제 줄 → 새 Service는 name 줄 → 파일로 고치기는 projects 줄이다(S14).
 // - 저장은 문제가 있거나 고친 것이 없거나 지금 글의 검사 답이 아직 오지 않았으면 꺼진다. 저장하면 그 Service 상세로 간다.
 // - **저장하지 않은 고침을 두고 떠나면 묻는다**(스토리 178) — 뒤로 · 취소만이 아니라 사이드바 · ⌘K · ⌘N · 히스토리도. 길마다
 //   묻지 않고 Spec 레이아웃 편집기와 같은 라우터의 막기 하나(`useConfirmLeave`)가 모든 이동을 받는다 — 뒤로 · 취소도 그 막기로 묻는다.
@@ -59,7 +59,7 @@ export default function ServiceEditor({ slug }: { slug: string | null }) {
   const saved = services?.find((service) => service.slug === slug);
   const navigate = useNavigate();
   const label = navItem("services").label;
-  // 뒤로 · 취소가 가는 곳 — 관계 편집은 그 Service 상세, 새 Service는 목록이다. 이 화면을 히스토리에 남기지 않는다.
+  // 뒤로 · 취소가 가는 곳 — 파일로 고치기는 그 Service 상세, 새 Service는 목록이다. 이 화면을 히스토리에 남기지 않는다.
   const back = () =>
     void (slug === null
       ? navigate({ to: "/services", replace: true })
@@ -68,9 +68,9 @@ export default function ServiceEditor({ slug }: { slug: string | null }) {
 
   return (
     <PlainFrame
-      label={mode === "new" ? "새 Service" : `${crumb} 관계 편집`}
+      label={mode === "new" ? "새 Service" : `${crumb} 파일로 고치기`}
       lead={<HeadCrumb label={crumb} />}
-      title={{ name: mode === "new" ? "새 Service" : "관계 편집" }}
+      title={{ name: mode === "new" ? "새 Service" : "파일로 고치기" }}
     >
       {base !== undefined ? (
         <EditorBody mode={mode} slug={slug} base={base} backLabel={crumb} onLeave={back} />
@@ -207,7 +207,7 @@ const SOURCE = "font-mono text-code leading-5.5 whitespace-pre-wrap wrap-anywher
 
 /**
  * 줄 번호가 서는 고정폭 편집기 — 칠한 줄들 위에 투명한 입력칸을 겹친다(시안 `.edw`). 줄 번호는 왼쪽 36 칸, 글은 52에서 선다. 문제 줄은 붉은
- * 면 · 붉은 줄 번호 · 값 밑 물결이고 그 줄 끝에 말이 붙는다. 관계 편집에서 새로 들어온 줄은 줄 머리에 초록 막대가 선다. 판이 글만큼 길어지고
+ * 면 · 붉은 줄 번호 · 값 밑 물결이고 그 줄 끝에 말이 붙는다. 파일로 고치기에서 새로 들어온 줄은 줄 머리에 초록 막대가 선다. 판이 글만큼 길어지고
  * 칸이 구른다.
  */
 function SourceEditor({

@@ -42,9 +42,10 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 /**
- * 시각 칸의 글(보드 Places 「12분」 · 「3일」 · 「2주」 · 「4주」) — 지금과의 거리를 짧게 말한다. 한 시간 안은 분, 하루 안은 시간, 일주일 안은 일,
- * 다섯 주 안은 주이고 그 앞은 날짜(올해가 아니면 해까지)다. 활동이 없거나 읽지 못한 시각은 「—」다(보드 Archive의 빈 칸). 사이드바 채팅 줄의
- * 시각(`since` — 「어제」 · 요일)과 다른 눈금이다: 목록은 오래된 것을 견주어 고르는 자리라 거리를 같은 단위로 센다.
+ * 시각 칸의 글(보드 Places 「12분」 · 「3시간」 · 「어제」 · 「3일」 · 「2주」 · 「4주」) — 지금과의 거리를 짧게 말한다. 한 시간 안은 분, 하루 안은
+ * 시간, 이틀 안은 「어제」, 일주일 안은 일, 다섯 주 안은 주이고 그 앞은 날짜(올해가 아니면 해까지)다. 「어제」도 거리다(24 – 48시간) — 달력의 어제가
+ * 아니다. 활동이 없거나 읽지 못한 시각은 「—」다(보드 Archive의 빈 칸). 사이드바 채팅 줄의 시각(`since` — 「어제」 · 요일)과 다른 눈금이다: 목록은
+ * 오래된 것을 견주어 고르는 자리라 거리를 같은 단위로 센다. 한때(restart 03-1 – 03-4) 하루는 「1일」이었다.
  */
 export function placeWhen(at: string | null, now: number): string {
   const then = at === null ? NaN : Date.parse(at);
@@ -54,6 +55,7 @@ export function placeWhen(at: string | null, now: number): string {
   if (ms < HOUR) return `${Math.floor(ms / MINUTE)}분`;
   if (ms < DAY) return `${Math.floor(ms / HOUR)}시간`;
   const days = Math.floor(ms / DAY);
+  if (days === 1) return "어제";
   if (days < 7) return `${days}일`;
   if (days < 35) return `${Math.floor(days / 7)}주`;
   const date = new Date(then);

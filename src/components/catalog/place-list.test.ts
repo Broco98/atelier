@@ -56,8 +56,11 @@ describe("최근 활동 칸의 글", () => {
     expect(placeWhen(at(new Date(2026, 10, 2, 9, 30, 0)), now)).toBe("23시간");
   });
 
-  it("하루가 넘으면 일, 일주일이 넘으면 주, 다섯 주부터는 날짜다", () => {
-    expect(placeWhen(at(new Date(2026, 10, 2, 9, 0, 0)), now)).toBe("1일");
+  // 하루 넘고 이틀 안은 「어제」다(보드 Places 상세 줄 「3시간」 다음의 「어제」 — restart 03-12b). 한때 「1일」이었다.
+  it("하루가 넘으면 어제, 이틀부터 일, 일주일이 넘으면 주, 다섯 주부터는 날짜다", () => {
+    expect(placeWhen(at(new Date(2026, 10, 2, 9, 0, 0)), now)).toBe("어제");
+    expect(placeWhen(at(new Date(2026, 10, 1, 9, 30, 0)), now)).toBe("어제");
+    expect(placeWhen(at(new Date(2026, 10, 1, 9, 0, 0)), now)).toBe("2일");
     expect(placeWhen(at(new Date(2026, 9, 31, 8, 0, 0)), now)).toBe("3일");
     expect(placeWhen(at(new Date(2026, 9, 27, 9, 0, 0)), now)).toBe("1주");
     expect(placeWhen(at(new Date(2026, 9, 20, 9, 0, 0)), now)).toBe("2주");
