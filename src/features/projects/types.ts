@@ -48,12 +48,6 @@ export interface UsingWork {
 /** 제거의 끝 — 뺐거나(그 slug를 지운 Service들), 진행 중인 Work가 막았다(그 Work들). 정본은 core `store.rs`의 `ProjectRemoval`이다. */
 export type ProjectRemoval = { kind: "removed"; services: ListingService[] } | { kind: "blocked"; works: UsingWork[] };
 
-export interface ProjectPatch {
-  name?: string;
-  description?: string;
-  baseBranch?: string;
-}
-
 /**
  * 고른 폴더가 무엇인가 — 추가 창이 폴더를 고르는 순간 묻는다(03 구현 스펙 §15 「폴더 살피기」). **정본은 core `store.rs`의 `FolderLook`**이고
  * 여기는 그 응답의 타입이다. `path`는 모두 화면에 서는 꼴(`~`로 줄인 것)이고, 그대로 추가에 되돌려 넘긴다.

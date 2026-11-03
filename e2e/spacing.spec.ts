@@ -270,30 +270,21 @@ test("Projects: 목록은 가운데 열의 위 36 · 옆 56에서 서고 표 줄
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 기준 브랜치는 위 카드의 한 칸이다(restart 03-2 · 보드 `.pl-fact`) — 칸의 이름 · 값이 그 칸 안쪽 14에서 한 왼끝이고, 누르면 목록이 떠도 칸
-// 글자는 그 자리 그대로다. 한때(03 시안 F1-ProjectDetail `.rl` · `.brsel`) 오른쪽 칸의 묶음 이름 아래 단추였고 안쪽 10 + 테두리 1 뒤에 가지
-// 아이콘, 사이 6 뒤에 mono 이름이었다.
-test("Projects: 기준 브랜치 카드는 이름과 값이 칸 + 14의 한 왼끝이고, 누르면 목록이 떠도 칸 글자는 그 자리에 그대로 선다", async ({ page }) => {
+// 기준 브랜치는 위 카드의 한 칸이다(restart 03-2 · 보드 `.pl-fact`) — 칸의 이름 · 값이 그 칸 안쪽 14에서 한 왼끝이다. 경로 · 원격 · 추가한 날과
+// 같은 칸이다(restart 03-15c — 보드 상세에는 고치는 자리가 없다). 한때(03-2) 누르면 목록이 서는 단추였고, 그 앞(03 시안 F1-ProjectDetail `.rl` ·
+// `.brsel`)은 오른쪽 칸의 묶음 이름 아래 단추였고 안쪽 10 + 테두리 1 뒤에 가지 아이콘, 사이 6 뒤에 mono 이름이었다.
+test("Projects: 기준 브랜치 카드는 이름과 값이 칸 + 14의 한 왼끝이고, 경로 칸과 한 줄 · 같은 폭이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${billing.slug}`);
-  const 단추 = page.getByRole("combobox", { name: "기준 브랜치", exact: true });
-  await expect(단추).toContainText(billing.baseBranch);
-  const [상자전, 이름, 글자전] = [
-    await 상자(단추),
-    await 첫글자(단추.getByText("기준 브랜치", { exact: true })),
-    await 첫글자(단추.getByText(billing.baseBranch, { exact: true })),
-  ];
-  expect(이름.x - 상자전.x, "칸 이름 — 칸 + 14").toBeCloseTo(14, 0);
-  expect(글자전.x, "값 = 이름의 왼끝").toBeCloseTo(이름.x, 0);
+  const 이름글 = page.getByRole("main", { name: "Projects 상세", exact: true }).getByText("기준 브랜치", { exact: true });
+  const 칸 = 이름글.locator("..");
+  await expect(칸).toHaveText(`기준 브랜치${billing.baseBranch}`);
+  const [칸상자, 이름, 글자] = [await 상자(칸), await 첫글자(이름글), await 첫글자(칸.getByText(billing.baseBranch, { exact: true }))];
+  expect(이름.x - 칸상자.x, "칸 이름 — 칸 + 14").toBeCloseTo(14, 0);
+  expect(글자.x, "값 = 이름의 왼끝").toBeCloseTo(이름.x, 0);
   // 위 카드 넷이 같은 폭 · 같은 줄이다 — 기준 브랜치 칸은 경로 칸의 오른쪽 이웃이다.
   const 경로칸 = await 상자(page.getByTitle(billing.path, { exact: true }).locator(".."));
-  expect([상자전.y, 상자전.width], "경로 칸과 한 줄 · 같은 폭").toEqual([경로칸.y, 경로칸.width]);
-  await 단추.click();
-  await expect(page.getByRole("listbox")).toBeVisible();
-  const 글자뒤 = await 첫글자(단추.getByText(billing.baseBranch, { exact: true }));
-  expect([글자뒤.x, 글자뒤.y], "목록이 떠도 칸 글자는 그 자리").toEqual([글자전.x, 글자전.y]);
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  expect([칸상자.y, 칸상자.width, 칸상자.height], "경로 칸과 한 줄 · 같은 폭 · 같은 키").toEqual([경로칸.y, 경로칸.width, 경로칸.height]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

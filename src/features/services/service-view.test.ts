@@ -4,7 +4,6 @@ import {
   HOST_MAKE,
   listShows,
   scopeMenu,
-  serviceDetailMenu,
   serviceFile,
   serviceGraph,
   serviceMenu,
@@ -263,18 +262,12 @@ describe("Service 줄의 이름 옆", () => {
 
 // restart 03-3 · 보드 PlaceSheet 「⋯ 메뉴」 · Places `MENUS.services` — 「파일로 고치기 · 경로 복사 · 삭제…」. 파일로 고치기는 ⋯ 메뉴와 상세 경고에서 닿는다(스펙).
 describe("Service의 ⋯", () => {
-  it("목록 줄은 파일로 고치기 · 경로 복사 · 삭제…다", () => {
+  it("목록 줄과 상세 머리는 파일로 고치기 · 경로 복사 · 삭제…다", () => {
     expect(serviceRowMenu().map((item) => [item.act, item.label])).toEqual([
       ["edit-file", "파일로 고치기"],
       ["copy-path", "경로 복사"],
       ["delete", "삭제…"],
     ]);
-  });
-
-  it("상세는 이름 바꾸기 · 설명 고치기 뒤에 목록 줄의 셋이다 — 칸 단위로 고칠 수 없는 파일이면 고치기 둘이 빠진다", () => {
-    expect(serviceDetailMenu(service()).map((item) => item.label)).toEqual(["이름 바꾸기", "설명 고치기", "파일로 고치기", "경로 복사", "삭제…"]);
-    const broken = service({ problems: [{ line: 1, kind: "unclosedFrontmatter", message: "frontmatter가 닫히지 않았어요" }] });
-    expect(serviceDetailMenu(broken).map((item) => item.label)).toEqual(["파일로 고치기", "경로 복사", "삭제…"]);
   });
 
   it("경로 복사는 Service 파일들의 폴더 아래 그 slug의 파일이다", () => {

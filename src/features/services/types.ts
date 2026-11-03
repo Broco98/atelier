@@ -41,15 +41,6 @@ export interface ServiceDetail extends Service {
   shared: SharedService[];
 }
 
-/** 상세의 고치기 — 비운 칸은 그대로 둔다. `before`는 넣는 Project를 그 Project 앞에 세운다(빼기 되돌리기). */
-export interface ServicePatch {
-  name?: string;
-  description?: string;
-  add?: string[];
-  before?: string;
-  remove?: string[];
-}
-
 /** 파일의 줄 자리 — 1부터, 끝 포함. */
 export interface Lines {
   first: number;

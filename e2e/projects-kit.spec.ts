@@ -21,11 +21,12 @@ import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projec
 
 // 03 구현 스펙 Testing 「Projects(`F4-KitProject`)」 — Projects 흐름 하나. 상황 모음판의 칸이 곧 경우다: 목록 줄(hover · 찾을 수 없음 · ⋯ 두
 // 갈래) · 추가 창의 소스 폴더 갈래(비어 있음 · git 레포 · git 아님 · 하위 폴더 · 이미 추가됨 · 새로 만들기 · 새로 만들기 — 폴더가 이미 있음) ·
-// 제거 창 셋과 지운 뒤 · 상세 조각(제목 고치기 · 찾을 수 없음), 그리고 끌어 놓기(Tauri 끌어 놓기 사건을 이 층이 낸다).
+// 제거 창 셋과 지운 뒤 · 상세 조각(찾을 수 없음), 그리고 끌어 놓기(Tauri 끌어 놓기 사건을 이 층이 낸다). 상세에는 고치는 자리가 없다 — 이름 ·
+// 설명 · 기준 브랜치는 대화로 고친다(restart 03-15c). 한때(03-2) 제목을 누르면 「Project 이름」 칸과 그 아래 「↵ 저장 · esc 취소 — …」가 섰다.
 //
 // 같은 것을 두 번 재지 않는다 — 다른 spec이 재는 것:
-//   목록 표 그리기 · 줄 → 상세 · 상세의 기준 브랜치 목록(키 · 묶음 · IPC · 같은 값)   `projects-list.spec.ts`
-//   상세 제목 고치기의 저장 규칙(Enter · 다른 곳 · Esc · 비움 · 그대로) · 편집 메뉴    `inline-rename.spec.ts` · `edit-menu.spec.ts`
+//   목록 표 그리기 · 줄 → 상세 · 상세의 기준 브랜치 칸                              `projects-list.spec.ts`
+//   상세 ⋯ 항목 · 제목은 이름 글                                                     `places.spec.ts`
 //
 // 이 층에는 core가 없다 — 살피기(`inspect_project_folder`) · 자리(`new_project_place`)의 답은 시험이 경로마다 둔 것이고, 추가 · 고치기의 답은
 // 값을 기억하지 않는다. 재는 것은 「무엇이 나갔나」(IPC와 그 인자)와 「받은 답을 어떻게 그렸나」다. 진짜 git이 폴더 · 브랜치 · 첫 커밋을
@@ -579,40 +580,7 @@ test.describe("제거 창", () => {
 });
 
 test.describe("상세 조각", () => {
-  test("제목을 누르면 제목 줄 그 자리가 「Project 이름」 칸(높이 36)이 되고, 그 아래 「↵ 저장 · esc 취소 — 파일 이름(<slug>.md)과 경로는 그대로예요」가 선다", async ({
-    page,
-  }) => {
-    // 저장 규칙(Enter · 다른 곳 · Esc · 비움 · 그대로)과 편집 메뉴는 `inline-rename` · `edit-menu`가 잰다 — 여기는 고치는 동안의 모양과 아래 한 줄이다.
-    await installFixtureBackend(page);
-    await page.goto(`/projects/${billing.slug}`);
-    const 본문칸 = 본문(page, "Projects 상세");
-    const 제목줄 = 본문칸.getByRole("heading", { level: 1 });
-    const 칸 = 제목줄.getByRole("textbox", { name: "Project 이름", exact: true });
-    const 도움말 = 본문칸.getByText(`↵ 저장 · esc 취소 — 파일 이름(${billing.slug}.md)과 경로는 그대로예요`, { exact: true });
-    // 제목 단추의 글은 이름 하나다(restart 03-2 — 한때 끝에 연필이 섰다. 이름 바꾸기는 제목 누름과 ⋯ 「이름 바꾸기」다).
-    await expect(제목줄.getByRole("button")).toHaveText([billing.name]);
-    await expect(도움말).toHaveCount(0);
-
-    await 본문칸.getByRole("button", { name: `${billing.name} — 이름 바꾸기`, exact: true }).click();
-    await expect(칸).toBeFocused();
-    await expect(칸).toHaveValue(billing.name);
-    // 이름이 칸에 자리를 내준다 — 칸의 테는 제목 줄 높이 36(restart 03-2 — 한때 시안 F4-ProjRename의 40) · 너비 352 이상이고, 아래 한 줄이
-    // 그 밑에 선다.
-    await expect(제목줄.getByRole("button")).toHaveCount(0);
-    await expect(도움말).toBeVisible();
-    const 테 = (await 칸.locator("xpath=..").boundingBox())!;
-    expect(테.height).toBe(36);
-    expect(테.width).toBeGreaterThanOrEqual(352);
-    expect((await 도움말.boundingBox())!.y).toBeGreaterThanOrEqual(테.y + 테.height);
-
-    // 칸이 닫히면 그 줄도 걷히고 제목이 돌아온다.
-    await 칸.press("Escape");
-    await expect(도움말).toHaveCount(0);
-    await expect(제목줄.getByRole("button")).toHaveText([billing.name]);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test("폴더를 찾을 수 없는 Project의 상세는 위 카드 앞에 경고 한 줄과 「재설정」이 서고, 기준 브랜치가 꺼진다", async ({ page }) => {
+  test("폴더를 찾을 수 없는 Project의 상세는 위 카드 앞에 경고 한 줄과 「재설정」이 서고, 「재설정」은 고른 폴더로 경로만 바꾼다", async ({ page }) => {
     await installFixtureBackend(page, { list_projects: [...PROJECTS, playground] });
     await page.goto(`/projects/${playground.slug}`);
     const 본문칸 = 본문(page, "Projects 상세");
@@ -629,10 +597,6 @@ test.describe("상세 조각", () => {
     const 경로값 = 본문칸.getByTitle(playground.path, { exact: true });
     expect((await 안내.boundingBox())!.y).toBeLessThan((await 경로값.boundingBox())!.y);
     expect(await 칠한값(경로값, "text-decoration-line")).toEqual(["none"]);
-    // 기준 브랜치는 꺼진다 — 목록을 열 수 없어 「폴더를 찾아야 브랜치를 읽을 수 있어요」도 서지 않는다.
-    const 기준 = 본문칸.getByRole("combobox", { name: "기준 브랜치", exact: true });
-    await expect(기준).toBeDisabled();
-    await expect(본문칸.getByText("폴더를 찾아야 브랜치를 읽을 수 있어요", { exact: true })).toHaveCount(0);
 
     // 안내 상자의 「재설정」 — 고른 폴더로 경로만 바꾼다.
     await 폴더를고른다(page, "/Users/tester/MyProjects/playground-moved");

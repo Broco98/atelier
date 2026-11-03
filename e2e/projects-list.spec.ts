@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcArgs, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, unknownIpcCalls } from "./harness";
 
-// Projects 목록과 상세(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjBranch). `/projects`는 목록 표이고(정규화하지
-// 않는다 — 03 결정 「10」), 줄을 누르면 상세다. 상세의 기준 브랜치는 그 저장소의 브랜치 목록(로컬 · 원격)에서만 고른다.
+// Projects 목록과 상세(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail). `/projects`는 목록 표이고(정규화하지 않는다 — 03 결정
+// 「10」), 줄을 누르면 상세다. 상세의 기준 브랜치는 위 카드의 한 칸이다 — 대화로 고친다(restart 03-15c).
 //
 // 같은 것을 두 번 재지 않는다 — 다른 spec이 재는 것:
-//   ⋯ 두 갈래 · 추가 창 · 제거 창과 되돌리기 · 제목 고치기 · 찾을 수 없음 · 끌어 놓기   Projects 흐름 spec(`F4-KitProject` — 03 티켓 13c)
+//   ⋯ 두 갈래 · 추가 창 · 제거 창과 되돌리기 · 찾을 수 없음 · 끌어 놓기               Projects 흐름 spec(`F4-KitProject` — 03 티켓 13c)
+//   상세 ⋯ 항목 · 제목은 이름 글                                                       `places.spec.ts`
 //   머리 줄 「Projects」 · 「Projects / 이름」                                         `frame-sidebar.spec.ts`
 //   진짜 core로 추가 · git init · 새로 만들기                                          `projects-create.l4.spec.ts`
 
@@ -63,7 +64,7 @@ test("Project 상세는 설명 · 위 카드 넷(경로 · 기준 브랜치 · �
   const 상세 = page.getByRole("main", { name: "Projects 상세", exact: true });
   await expect(상세제목(page)).toHaveText(project.name);
   await expect(상세.getByText(project.description, { exact: true })).toBeVisible();
-  await expect(기준브랜치(page)).toHaveText(new RegExp(`^기준 브랜치${project.baseBranch}`));
+  await expect(상세.getByText("기준 브랜치", { exact: true }).locator("xpath=..")).toHaveText(`기준 브랜치${project.baseBranch}`);
   for (const [label, value] of [
     ["경로", project.path],
     ["원격", project.git!.remoteSlug!],
@@ -81,98 +82,20 @@ test("Project 상세는 설명 · 위 카드 넷(경로 · 기준 브랜치 · �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 기준 브랜치 (03 구현 스펙 §15 · §16 · 스토리 119–121 · S19) ──
-// 상세 위 카드의 기준 브랜치는 단추(`combobox` — restart 03-2, 한때 오른쪽 칸)이고, 누르면 그 저장소의 브랜치 목록(`listbox`)이 「로컬」 · 「원격 — origin」 묶음으로 선다.
-// 지금 값이 「선택됨」으로 읽히고, 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔 때만**이다. 원격 브랜치는 원격 이름을 단
-// 그대로 적힌다(S19). 목록 밖 값을 적는 칸은 없다 — 한때 git 정보가 없는 Project는 직접 적는 입력칸이었다.
-//
-// 픽스처의 billing은 로컬 `main`(지금 값) · `release`와 원격 `origin/main`이다. 설정을 바꾸는 IPC(`update_project`)의 답은 값을 기억하지
-// 않아, 고른 뒤에도 단추는 `main`으로 남는다 — 재는 것은 「무엇이 나갔나」다.
+// ── 기준 브랜치 (03 구현 스펙 §15 · §16 · 스토리 120) ──
+// 상세 위 카드의 기준 브랜치는 경로 · 원격 · 추가한 날과 같은 칸이다(restart 03-15c · 보드 MainProjectDetail — 보드 상세에는 고치는 자리가 없다).
+// 고치기는 대화로 한다(MCP `atelier_edit_project` · Runtime의 설정 도구 — core가 그 저장소에 없는 브랜치를 거절한다). 한때(03-2) 그 칸이 단추
+// (`combobox`)라 누르면 「로컬」 · 「원격 — origin」 묶음의 목록이 섰고, 고르면 설정 IPC(`update_project`)가 나갔다.
 
-const 기준브랜치 = (page: Page) => page.getByRole("combobox", { name: "기준 브랜치" });
-
-test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서고 지금 값이 선택됨이다 — 글자로 다른 가지를 골라 Enter면 설정 IPC가 나가고 닫힌다", async ({
-  page,
-}) => {
+test("상세 위 카드의 기준 브랜치는 다른 칸과 같은 칸이다 — 눌러도 목록이 서지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
-  const trigger = 기준브랜치(page);
-  const list = page.getByRole("listbox");
-  await expect(trigger).toContainText(project.baseBranch);
-  // 그 뒤의 일을 말하는 한 줄은 열린 목록의 바닥이다(restart 03-2 — 한때 단추 아래 한 줄이었다). 닫힌 동안은 없다.
-  await expect(page.getByText("새 작업공간의 브랜치가 여기서 갈라져요", { exact: true })).toHaveCount(0);
-
-  await trigger.focus();
-  await page.keyboard.press("ArrowDown");
-  await expect(list).toBeVisible();
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByText("새 작업공간의 브랜치가 여기서 갈라져요", { exact: true })).toBeVisible();
-
-  // 묶음 둘 — 로컬 브랜치와 원격 이름을 단 원격 브랜치. 지금 값 **하나만** 선택됨이다 — 지금 것만 재면 「전부 선택됨」도 초록이다.
-  await expect(list.getByRole("group", { name: "로컬", exact: true }).getByRole("option")).toHaveText(["main", "release"]);
-  await expect(list.getByRole("group", { name: "원격 — origin", exact: true }).getByRole("option")).toHaveText(["origin/main"]);
-  await expect(list.getByRole("option", { selected: true })).toHaveCount(1);
-  await expect(list.getByRole("option", { name: project.baseBranch, exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("목록에 있는 브랜치만 고를 수 있어요", { exact: true })).toBeVisible();
-
-  // 글자 치기 — 「r」로 시작하는 가지로 간다.
-  await page.keyboard.press("r");
-  await expect(list.getByRole("option", { name: "release", exact: true })).toBeFocused();
-  await page.keyboard.press("Enter");
-
-  await expect(list).toHaveCount(0);
-  await expect(trigger).toBeFocused();
-  await expect
-    .poll(() => ipcArgs(page, "update_project", "slug"))
-    .toEqual([{ slug: project.slug, baseBranch: "release" }]);
-  // 바꾼 뒤에는 토스트가 그 뒤의 일을 말한다(restart 03-2 — 한때 단추 아래 한 줄이었다). 새 값으로 말한다.
-  await expect(page.getByText("바꿨어요 — 새 작업공간부터 release에서 갈라져요", { exact: true })).toBeVisible();
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("원격 브랜치를 고르면 원격 이름을 단 그대로 설정 IPC에 실린다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/projects/${project.slug}`);
-  await 기준브랜치(page).click();
-  await page.getByRole("listbox").getByRole("option", { name: "origin/main", exact: true }).click();
+  await expect(상세제목(page)).toHaveText(project.name);
+  const 판 = page.getByRole("main", { name: "Projects 상세", exact: true });
+  await expect(판.getByRole("combobox")).toHaveCount(0);
+  const 칸 = 판.getByText("기준 브랜치", { exact: true }).locator("xpath=..");
+  await expect(칸).toHaveText(`기준 브랜치${project.baseBranch}`);
+  await 칸.click();
   await expect(page.getByRole("listbox")).toHaveCount(0);
-  await expect
-    .poll(() => ipcArgs(page, "update_project", "slug"))
-    .toEqual([{ slug: project.slug, baseBranch: "origin/main" }]);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("기준 브랜치 목록에서 지금 값을 다시 고르면 닫히기만 하고 설정 IPC는 안 나간다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/projects/${project.slug}`);
-  const trigger = 기준브랜치(page);
-  const list = page.getByRole("listbox");
-
-  await trigger.focus();
-  await page.keyboard.press("ArrowDown");
-  await expect(list).toBeVisible();
-  // 키로 열면 지금 값이 켜진 채로 선다 — 그대로 Enter가 지금 값을 다시 고른다.
-  await expect(list.getByRole("option", { name: project.baseBranch, exact: true })).toBeFocused();
-  await page.keyboard.press("Enter");
-
-  // 앵커: 골라서 닫혔다. 그다음에야 「안 나갔다」가 뜻을 갖는다 — 고르는 일이 아예 안 일어나도 0이다.
-  await expect(list).toHaveCount(0);
-  await expect(trigger).toBeFocused();
-  expect(await callCount(page, "update_project")).toBe(0);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("git으로 브랜치를 읽지 못한 Project의 기준 브랜치 목록은 비어 있고, 이름을 적는 칸이 없다", async ({ page }) => {
-  const bare = PROJECTS.find((one) => one.git === null)!;
-  await installFixtureBackend(page);
-  await page.goto(`/projects/${bare.slug}`);
-  const trigger = 기준브랜치(page);
-  await expect(trigger).toContainText(bare.baseBranch);
-  await trigger.click();
-  // 앵커: 목록이 열렸다 — 그 안에 고를 것이 없고, 목록 밖 값을 적는 칸도 없다(스토리 119).
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByText("목록에 있는 브랜치만 고를 수 있어요", { exact: true })).toBeVisible();
-  await expect(page.getByRole("option")).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "기준 브랜치" })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

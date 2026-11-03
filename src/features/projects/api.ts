@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView } from "./types";
+import type { FolderLook, NewProjectPlace, ProjectRemoval, ProjectUsage, ProjectView } from "./types";
 
 export const projectsApi = {
   list: () => invoke<ProjectView[]>("list_projects"),
@@ -12,8 +12,6 @@ export const projectsApi = {
   place: (parent: string, name: string) => invoke<NewProjectPlace>("new_project_place", { parent, name }),
   /** 새로 만들기 — 폴더 · `git init -b main` · 빈 첫 커밋 · 등록. 그 자리에 무엇이 있거나 git이 실패하면 거절한다. */
   make: (parent: string, name: string) => invoke<ProjectView>("new_project", { parent, name }),
-  update: (slug: string, patch: ProjectPatch) =>
-    invoke<ProjectView>("update_project", { slug, ...patch }),
   /** 재설정 — 폴더를 찾을 수 없는 Project의 새 자리. git 저장소의 뿌리만 받고 경로만 바꾼다(03 구현 스펙 §15). */
   relocate: (slug: string, folder: string) => invoke<ProjectView>("relocate_project", { slug, folder }),
   // 제거(03 구현 스펙 §15) — 제거 창이 읽는 것 · 제거 · 되돌리기. 진행 중인 Work가 고치면 제거는 그 Work들로 끝난다(막힘).

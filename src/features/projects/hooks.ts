@@ -5,7 +5,6 @@ import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
 import { projectsApi } from "./api";
 import { DEFAULT_NEW_PARENT } from "./project-add";
-import type { ProjectPatch } from "./types";
 
 const PROJECTS_KEY = ["projects"] as const;
 
@@ -85,13 +84,6 @@ export function useSaveNewProjectParent() {
     mutationFn: (parent: string) => saveSettingsSection("projects", (latest) => ({ ...latest, newParent: parent })),
     onMutate: (parent) => queryClient.setQueryData(NEW_PARENT_KEY, parent),
   });
-}
-
-export function useUpdateProject() {
-  return useInvalidatingMutation(
-    ({ slug, patch }: { slug: string; patch: ProjectPatch }) =>
-      projectsApi.update(slug, patch),
-  );
 }
 
 /** 재설정 — 고른 폴더로 경로만 바꾼다(03 구현 스펙 §15). 고르기는 부르는 쪽(`useRelocate`)이 한다. */

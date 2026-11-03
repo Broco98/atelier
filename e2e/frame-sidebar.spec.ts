@@ -109,7 +109,7 @@ const ADDRESSES: { name: string; url: string; overrides?: Record<string, unknown
   {
     name: "Project 상세",
     url: `/projects/${PROJECTS[0].slug}`,
-    ready: (page) => page.getByRole("combobox", { name: "기준 브랜치", exact: true }),
+    ready: (page) => page.getByRole("main", { name: "Projects 상세", exact: true }).getByRole("heading", { name: PROJECTS[0].name, exact: true }),
     head: true,
   },
   { name: "Service", url: "/services", ready: (page) => page.getByRole("table", { name: "Service 목록", exact: true }), head: true },

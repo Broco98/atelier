@@ -90,8 +90,8 @@ const 표 = (page: Page, place: Place) => page.getByRole("table", { name: place.
 const 찾기칸 = (page: Page, place: Place) => page.getByRole("searchbox", { name: place.search, exact: true });
 const 줄링크 = (page: Page, place: Place, name = place.target.name) => 표(page, place).getByRole("link", { name, exact: true });
 /**
- * 상세 제목 — 상세가 섰다는 앵커. 숨은 목록 줄에도 같은 이름이 있어 글로 `main` 전체를 찾지 않는다. 제목은 이름 바꾸기 단추를 품어 그 이름이
- * 제목의 이름이 되므로 글자로 견준다(`toHaveText`). Archive는 문서 글의 h1도 있어 첫째다.
+ * 상세 제목 — 상세가 섰다는 앵커. 숨은 목록 줄에도 같은 이름이 있어 글로 `main` 전체를 찾지 않는다. 글자로 견준다(`toHaveText`). Archive는
+ * 문서 글의 h1도 있어 첫째다.
  */
 const 상세제목 = (page: Page, place: Place) => 본문(page, place.detail).getByRole("heading", { level: 1 }).first();
 const 상세가섰다 = (page: Page, place: Place) => expect(상세제목(page, place)).toHaveText(place.target.name);
@@ -410,25 +410,27 @@ test("Project 상세: 폴더를 찾을 수 없다는 경고의 「재설정」�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Project 상세: ⋯의 「이름 바꾸기」 · 「설명 고치기」를 고르면 포커스가 그 칸에 남는다", async ({ page }) => {
+// 상세 ⋯는 목록 줄 ⋯와 같은 항목이다(restart 03-15c · 보드 PlaceSheet 표 · `MENUS.services`). 보드 상세에는 고치는 자리가 없다 — 제목은 이름 글이고
+// 기준 브랜치는 다른 칸과 같은 카드다(이름 · 설명 · 기준 브랜치는 대화로 고친다). 한때(03-2 · 03-3) 상세 ⋯ 앞에 「이름 바꾸기 · 설명 고치기」가
+// 섰고, 제목을 누르면 이름 칸 · 기준 브랜치 카드를 누르면 목록이 섰다.
+test("Project · Service 상세: ⋯는 목록 줄의 ⋯와 같은 항목이고, 제목 · 위 카드는 눌러 고치는 자리가 아니다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${billing.slug}`);
-  const 판 = 본문(page, "Projects 상세");
-  const 메뉴 = 판.getByRole("button", { name: `${billing.name} 메뉴`, exact: true });
-  for (const [항목, 칸이름] of [
-    ["이름 바꾸기", "Project 이름"],
-    ["설명 고치기", "설명"],
+  // 글리프도 목록 줄과 같다 — Services의 「파일로 고치기」는 보드 `MENUS.services`의 연필이다(한때(03-3) 「이름 바꾸기」 연필과 갈리려 파일 위 연필).
+  for (const [place, url, name, 항목들, 첫글리프] of [
+    ["Projects", `/projects/${billing.slug}`, billing.name, ["Finder에서 열기", "경로 복사", "제거…"], /\blucide-folder-open\b/],
+    ["Services", `/services/${encodeURIComponent(결제.slug)}`, 결제.name, ["파일로 고치기", "경로 복사", "삭제…"], /\blucide-pencil\b/],
   ] as const) {
-    await 메뉴.click();
-    await page.getByRole("menu").getByRole("menuitem", { name: 항목, exact: true }).click();
+    await page.goto(url);
+    const 판 = 본문(page, `${place} 상세`);
+    await expect(판.getByRole("heading", { level: 1 })).toHaveText(name);
+    await 판.getByRole("heading", { level: 1 }).click();
+    await expect(판.getByRole("textbox")).toHaveCount(0);
+    await expect(판.getByRole("combobox")).toHaveCount(0);
+    await 판.getByRole("button", { name: `${name} 메뉴`, exact: true }).click();
+    await expect(page.getByRole("menu").getByRole("menuitem")).toHaveText([...항목들]);
+    await expect(page.getByRole("menu").getByRole("menuitem").first().locator("svg")).toHaveClass(첫글리프);
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    const 칸 = 판.getByRole("textbox", { name: 칸이름, exact: true });
-    await expect(칸).toBeFocused();
-    // 메뉴가 닫히며 포커스를 ⋯로 되돌리지 않는다 — 한 박자 뒤에도 칸이다.
-    await page.waitForTimeout(300);
-    await expect(칸).toBeFocused();
-    await 칸.press("Escape");
-    await expect(칸).toHaveCount(0);
   }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
