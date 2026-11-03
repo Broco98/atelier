@@ -1013,12 +1013,12 @@ function WorksPage({
           <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
           <EmptyDescription>
             {needsProject
-              ? "작업공간은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+              ? "작업공간은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 터미널의 에이전트에게 맡겨도 돼요."
               : emptyScreen.body}
           </EmptyDescription>
         </EmptyHeader>
-        {/* 할 일 — 실제로 통하는 경로만 안내한다. CLI에는 등록·시작 명령이 없고, 에이전트가
-            atelier_add_project / atelier_start_work를 부른다.
+        {/* 할 일 — 실제로 통하는 경로만 안내한다. CLI에는 등록·시작 명령이 없고, 터미널의 에이전트가(설정의 「에이전트 훅」 · spec 레이아웃과
+            같은 말 — 대화의 Runtime이 아니다) atelier_add_project / atelier_start_work를 부른다.
             아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
         <EmptyContent>
           <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-xs text-fg-secondary">
