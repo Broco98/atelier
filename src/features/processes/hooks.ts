@@ -50,12 +50,12 @@ export function readSnapshotNow(client: QueryClient): Promise<void> {
 
 /**
  * 요약의 박자(프로세스 스펙 「수집 › 배경 표본(10초)」 · 티켓 29). Rust의 배경 표본도 10초마다 모으므로(`processes::summary::EVERY`)
- * 이보다 자주 물어도 같은 장이 온다. 요약이 늦는 때(`SUMMARY_LAG_MS`)가 이 박자에 기댄다 — 늦추면 그것도 늘린다(`looked.test`가 잰다).
+ * 이보다 자주 물어도 같은 장이 온다.
  */
 export const SUMMARY_EVERY_MS = 10_000;
 
 /**
- * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 모든 화면에
+ * nav 메타의 요약 — 앱 전체 CPU와 메모리 합계(티켓 29 · restart 03-11). **nav 메타가 모든 화면에
  * 서므로 늘 돈다** — 화면 스냅샷(`snapshotQuery`)과 반대다. 부르는 자리는 nav 메타 하나다(`useProcessesNavMeta` — 늘 서 있는 사이드바 위 칸의
  * `Processes` 줄이 부르고 그 줄 끝에 그린다): 보는 쪽이 둘이면
  * 박자도 둘이다(react-query는 보는 쪽마다 `refetchInterval`을 건다). 요약 카드의 추이(티켓 30)는 새 박자를 걸지 않고 이 캐시의 도착

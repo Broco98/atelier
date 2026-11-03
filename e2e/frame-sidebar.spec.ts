@@ -39,7 +39,7 @@ import { formatMemory } from "@/features/processes/metrics";
 //   「내 차례」를 켜고 다시 눌러 끄기 · 기다리는 순서                                           `thread-waiting.spec.ts`
 //   Work 줄의 셸 신호(내 차례 알약 · 새 결과 점) · 레인은 폴더 · 호버 카드                       `works-sidebar.spec.ts` · `shell-*.spec.ts`
 //   위 줄 ↑↓ · Tab 차례(창 컨트롤 → 머리 줄 → 사이드바 …)                                      `keyboard.spec.ts`
-//   ⌘N의 메뉴 바 항목 · ⌘N 글자 크기 · 맨 아래 설정 줄 기하 · `●`(손볼 것)                       `hotkeys` · `type-scale` · `sidebar-quiet` · `spacing` · `processes-nav-meta`
+//   ⌘N의 메뉴 바 항목 · ⌘N 글자 크기 · 맨 아래 설정 줄 기하 · Processes 끝 값의 박자               `hotkeys` · `type-scale` · `sidebar-quiet` · `spacing` · `processes-nav-meta`
 //   Thread 화면의 머리 줄(이름 · 「…」 · 요약 고정)                                              `thread-screen.spec.ts`
 
 const thread = FIXTURE_THREAD;
@@ -508,7 +508,7 @@ test("Work가 없으면 Work 묶음 머리 아래에 안내 한 줄이 12 · 3�
 // **지금 화면들은 위 칸의 줄이다**(restart 02a-3 · 스토리 86 · 시안 Main의 「가는 곳」) — 「새 채팅」 · 「내 차례」 뒤로 Services · Projects ·
 // Terminal · Processes · Archive가 사이드바 줄의 결로 선다: 30 · 둥글기 4(`radius-ctl`) · 13 `fg-sidebar` · 글리프 15 `fg-secondary`, 지나는 면
 // `fill-soft`, 지금 화면의 줄은 고른 면 `fill-hover` · 글자 `fg`(`aria-current="page"`). **메모리 합계는 `Processes` 줄 끝이다**(S12). 합계 글자는
-// 화면이 쓰는 표기 함수로 짓는다 — 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다. `●`(손볼 것)는 `processes-nav-meta.spec.ts`가 잰다.
+// 화면이 쓰는 표기 함수로 짓는다 — 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다. 요약 박자마다 바뀌는 것은 `processes-nav-meta.spec.ts`가 잰다.
 // Projects · Services 줄 끝에는 수가 없다(시안 위 칸). **설정은 맨 아래 「설정」 줄 하나다**(시안 `.ra-sr-foot` — 「설정 ⌘,」) — 키는 이름이
 // 아니라 `aria-keyshortcuts`가 말한다.
 //
@@ -527,6 +527,11 @@ test("위 칸에 가는 곳 다섯이 사이드바 줄의 결로 서고 — Proc
   await expect(위칸(page).getByRole("button")).toHaveText([/^새 채팅/, /^내 차례/, /^Services$/, /^Projects$/, /^Terminal/, /^Processes/, /^Archive$/]);
   await expect(page.getByRole("button", { name: /— 사람 메뉴$/ })).toHaveCount(0);
   await expect(위칸줄(page, "Processes")).toContainText(total);
+  // 끝 글자는 시안 `.ra-sr-row .end`처럼 12 · `fg-tertiary`다 — 「새 채팅」의 ⌘N과 같은 잉크(restart 03-15d — 한때 한 단 올린 `fg-secondary`).
+  expect(await 칠한값(위칸줄(page, "Processes").getByText(total), "font-size", "color"), "Processes 끝 글자").toEqual([
+    "12px",
+    await 토큰색(page, "--fg-tertiary"),
+  ]);
 
   // 줄 — 30 · `radius-ctl` · 13 `fg-sidebar`, 글리프 15 `fg-secondary`. 면은 줄 버튼을 품은 상자가 칠한다. 지금 화면(Projects)의 줄은 따로 잰다.
   const 고른줄 = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fg")];

@@ -571,7 +571,7 @@ pub async fn processes_snapshot(
         .map_err(|e| format!("프로세스 스냅샷을 찍지 못했습니다: {e}"))
 }
 
-// nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(프로세스 결정 11 · 티켓 29). 모든
+// nav 메타의 요약 — 앱 전체 CPU와 메모리 합계(프로세스 결정 10 · 티켓 29 · restart 03-11). 모든
 // 화면에 선 nav 메타가 10초마다 부른다(`src/features/processes/hooks.ts`). 답은 Rust의 배경 표본이 10초마다 앉힌 마지막 장이다 —
 // 부를 때마다 표를 찍지 않는다. 첫 장이 아직 없으면 그 자리에서 모으므로(표 한 장과 판정) blocking 풀에서 돌린다.
 #[tauri::command]

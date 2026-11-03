@@ -716,12 +716,11 @@ export const shellKeyOf = (pty: number): string => `${FIXTURE_GENERATION}-${pty}
 export const PROCESS_SNAPSHOT: ProcessSnapshot = snapshotFixture();
 
 /**
- * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — **손볼 것이 하나도 없는 앱**이다: 출처 불명도, `●`를 켜는 정리 기록도 없다. 그래서
- * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계 · CPU · 앱 본체는 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU
- * 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
+ * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — 어느 화면에서든 위 칸 `Processes` 줄 끝에 CPU · 합계가 선다. 합계 · CPU · 앱 본체는
+ * 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
  *
  * **모든 spec이 지나는 답이다** — nav 메타가 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
- * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — `●`를 켜는 검사).
+ * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — 요약 박자마다 새 값을 재는 검사).
  */
 export const PROCESS_SUMMARY: ProcessSummary = {
   total: 3_650_722_202,
@@ -730,11 +729,9 @@ export const PROCESS_SUMMARY: ProcessSummary = {
   webviewExcluded: false,
   // 맥 전체(restart 03-5) — 코어 열 개인 맥의 18.4%, 메모리 16GB다. nav 메타는 읽지 않는다(추이의 한 선이다).
   mac: { cpu: 18.4, memory: 17_179_869_184, cores: 10 },
-  unknown: [],
-  recordHead: null,
 };
 
-/** 위 요약에서 `over`의 칸만 바꾼 것 — 합계 · `●`를 켜는 것을 재는 검사가 제 칸만 덮어쓴다. */
+/** 위 요약에서 `over`의 칸만 바꾼 것 — 합계를 재는 검사가 제 칸만 덮어쓴다. */
 export const summaryWith = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
 
 /**
@@ -1192,8 +1189,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `Processes` 화면이 열려 있는 동안 2초마다 묻는다(티켓 26). 답은 위 `PROCESS_SNAPSHOT`이고, 화면을 여는 검사가 덮어쓴다.
   processes_snapshot: PROCESS_SNAPSHOT,
   // nav 메타의 요약(티켓 29). nav `Processes` 옆 메타가 모든 화면에 서므로 **앱이 뜨자마자, 그 뒤 10초마다** 부른다 — 이
-  // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`(손볼 것 없음)이고, `●`를 재는
-  // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts`).
+  // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`이고, 줄 끝의 값을 재는
+  // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts` · `frame-sidebar.spec.ts`).
   processes_summary: PROCESS_SUMMARY,
   // 요약 카드의 추이(티켓 30) — `Processes` 화면이 열려 있는 동안 요약이 올 때마다 한 번 부른다. 답은 위 `PROCESS_TREND`(빈 고리)이고,
   // 스파크라인을 재는 검사가 덮어쓴다.

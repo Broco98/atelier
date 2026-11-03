@@ -630,7 +630,7 @@ describe("말의 사전", () => {
     const scanned = [
       ...sourceFiles(terminal),
       join(src, "components", "shell", "useGoToShell.ts"),
-      ...["shell-tree.ts", "needs-look.ts", "ProcessesNavMeta.tsx", "ProcessesPage.tsx", "SummaryCard.tsx"].map((name) =>
+      ...["shell-tree.ts", "ProcessesNavMeta.tsx", "ProcessesPage.tsx", "SummaryCard.tsx"].map((name) =>
         join(processes, name),
       ),
     ];

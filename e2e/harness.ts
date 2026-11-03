@@ -375,7 +375,7 @@ async function install(
  *
  * **무엇을 재려고 있는가**: 시나리오 도중에 백엔드의 답이 바뀌는 것. 덮어쓰기(`installFixtureBackend`)는
  * 페이지가 뜰 때 초기화 스크립트 인자로 한 번 굳는다. 그래서 「MCP로 아카이브된 work이 목록에서 빠진다」(첫 조회에는
- * 있고 `works:changed` 뒤의 조회에는 없다)나 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채**
+ * 있고 `works:changed` 뒤의 조회에는 없다)나 「요약 박자마다 Processes 줄 끝의 값이 바뀐다」가 이 도구 없이는 **목록이 영영 안 바뀐 채**
  * 초록이다. 「밖에서 레이아웃이 바뀌었다」(spec 레이아웃 티켓 15)도 같다 — 처음부터 다른 답이면 편집기가 그것을 기준본으로
  * 읽는다.
  *
@@ -1519,7 +1519,7 @@ export const 위칸 = (page: Page) => page.getByRole("navigation", { name: "가�
 export type 지금화면 = "Services" | "Projects" | "Terminal" | "Processes" | "Archive" | "Settings";
 
 /**
- * 위 칸의 그 줄. 이름은 라벨로 시작한다 — `Terminal`에는 셸 수가, `Processes`에는 메타(CPU · 메모리 · `●`)가 뒤에 붙는다.
+ * 위 칸의 그 줄. 이름은 라벨로 시작한다 — `Terminal`에는 셸 수가, `Processes`에는 메타(CPU · 메모리)가 뒤에 붙는다.
  */
 export const 위칸줄 = (page: Page, label: Exclude<지금화면, "Settings">) =>
   위칸(page).getByRole("button", { name: new RegExp(`^${label}`) });
