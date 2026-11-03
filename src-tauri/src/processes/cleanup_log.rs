@@ -39,9 +39,8 @@ pub fn path(root: &Path) -> PathBuf {
 
 /// 앱이 무엇 때문에 끝냈나. 와이어는 camelCase다(`"shellClose"` …) — 화면(판 04)이 이 값을 사람 말로 옮긴다.
 ///
-/// 까닭이 `●`를 켜는지는 이 값이 정한다(프로세스 스펙 S41, 티켓 29) — 시작 정리 · MCP 아카이브 · 셸 스스로 끝남과 「못 끝냄」이
-/// 든 기록만 켠다. 그래서 까닭을 고르는 자리가 흩어지면 사람이 누른 닫기가 점을 켤 수 있다. 프런트가 고르는 셋은 닫기
-/// IPC의 `CloseReason`이고, 나머지는 Rust가 그 길에서 안다.
+/// 프런트가 고르는 셋은 닫기 IPC의 `CloseReason`이고, 나머지는 Rust가 그 길에서 안다. 한때(티켓 29 – restart 03-14) 까닭이 위 칸
+/// `Processes` 줄의 `●`를 켤지도 정했다(restart 03-15d가 `●`를 걷었다).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Reason {
@@ -91,8 +90,9 @@ pub struct Event {
     /// 기록 번호 — 이 파일에서 **오르기만 하는** 번호다. **적는 자리가 매긴다**(`add` · `next_id` — 파일의 가장 큰 번호 + 1과 사건
     /// 시각(ms) 중 큰 것). 사건을 짓는 쪽(`event`)은 0으로 둔다: 짓는 순간에는 파일을 모른다.
     ///
-    /// nav 메타의 `●`가 이 번호로 「본 뒤 새로 생긴 기록」을 가른다(프로세스 스펙 S41 · 티켓 29) — 시각(`at`)은 새로고침이 셸
-    /// 여럿을 한 번에 닫으면 같은 ms에 여러 줄이라 사건 하나를 못 가리킨다. 이 번호가 없던 판이 쓴 줄은 0으로 읽는다.
+    /// 화면이 이 번호와 시각으로 사건의 열쇠를 짓는다(`cleanup-log.ts`의 `eventKey`) — 시각(`at`)만으로는 새로고침이 셸 여럿을 한
+    /// 번에 닫으면 같은 ms에 여러 줄이라 사건 하나를 못 가리킨다. 한때(티켓 29 – restart 03-14) 위 칸의 `●`가 이 번호로 「본 뒤 새로
+    /// 생긴 기록」을 갈랐다. 이 번호가 없던 판이 쓴 줄은 0으로 읽는다.
     #[serde(default)]
     pub id: u64,
     /// 끝내기가 끝난 시각(에포크 ms). 유예 2초 뒤 SIGKILL로 끝난 것도 있으니, 사람이 누른 순간이 아니라 끝난 순간이다.
@@ -142,7 +142,7 @@ impl Aimed {
 ///
 /// 적는 것은 둘이다(프로세스 스펙 P1 · S41).
 /// - 도우미가 아닌 대상이 끝남(TERM) · 강제(KILL) · 못 끝냄이다 — 사람이 띄운 것이나 고아를 앱이 끝냈다.
-/// - **누구든** 못 끝냄이다 — 앱이 끝내려다 못 한 것이라 반드시 남긴다(`●`를 켠다). SIGKILL도 버틴 도우미도 그렇다.
+/// - **누구든** 못 끝냄이다 — 앱이 끝내려다 못 한 것이라 반드시 남긴다. SIGKILL도 버틴 도우미도 그렇다.
 ///
 /// 도우미만 끝났으면(끝남 · 강제) 적지 않는다. 이미 없음은 앱이 끝낸 것이 아니다 — 그것뿐이면 적지 않는다. 적는 사건의 대상
 /// 목록에는 결과가 돌아온 것이 모두 든다(도우미 · 이미 없음도 그 결과로). 결과를 못 찾은 대상(끝내기에 안 넘어간 것)은 빠진다.
@@ -187,34 +187,12 @@ fn counted<'x>(aimed: &'x [Aimed], outcomes: &'x [(Identity, Outcome)]) -> impl 
 ///
 /// 세는 것은 도우미가 아닌 대상 중 **끝남 · 강제**뿐이다. 도우미는 셸의 몫이라 뺀다(P1) — 안 빼면 p10k 셸에서 `exit`를 칠
 /// 때마다 `gitstatusd` 하나로 토스트가 선다. 이미 없음은 앱이 끝낸 것이 아니다. 못 끝냄도 세지 않는다 — 문구가 「끝냈어요」다.
-/// 못 끝냄은 정리 기록에 남아(`event`) 판 04의 `●`가 알린다. 그래서 이 수가 0이어도 사건은 적힐 수 있다(못 끝냄뿐일 때).
+/// 못 끝냄은 정리 기록에 남는다(`event`). 그래서 이 수가 0이어도 사건은 적힐 수 있다(못 끝냄뿐일 때).
 pub fn ended_count(aimed: &[Aimed], outcomes: &[(Identity, Outcome)]) -> Option<usize> {
     let count = counted(aimed, outcomes)
         .filter(|(one, outcome)| !one.helper && matches!(outcome, Outcome::Ended | Outcome::Forced))
         .count();
     (count > 0).then_some(count)
-}
-
-/// **이 사건이 `●`를 켜나**(프로세스 결정 11 · 프로세스 스펙 S41 · 티켓 29). 앱이 **사람 손 없이** 끝낸 사건이거나, 끝내려다 못
-/// 끝낸 것(「못 끝냄」)이 든 사건이다.
-///
-/// - 사람 손 없이: 시작 정리 · MCP 아카이브 · 셸 스스로 끝남. 사람이 안 본 사이에 무언가가 사라졌다 — 나중에 까닭을 찾을 수 있게
-///   알린다(프로세스 결정 6).
-/// - 사람이 누른 것 — ×(셸 닫기) · 종료 · 새로고침 · UI 아카이브 · [끝내기] · [정리](손으로) — 은 켜지 않는다. 사람이 방금 한 일에
-///   점이 서면 점이 늘 켜지고, 그러면 「서서히 차오르는 것이 눈에 띈다」(프로세스 결정 11의 이유)가 무너진다.
-/// - 「못 끝냄」은 까닭과 상관없이 켠다. 사람이 누른 닫기라도 남은 것은 사람이 모른다.
-pub fn worth_a_look(event: &Event) -> bool {
-    matches!(event.reason, Reason::StartupCleanup | Reason::McpArchive | Reason::ShellExit)
-        || event.targets.iter().any(|target| target.outcome == Outcome::Survived)
-}
-
-/// `●`를 켜는 기록 중 **가장 새것의 번호** — 요약이 싣는 「머리 id」다(티켓 29). 기록은 새것부터라 처음 걸린 것이 머리다. 없으면
-/// `None`.
-///
-/// **머리 하나면 된다.** 프런트는 이 번호를 본 것과 견준다 — 새 자동 기록이 서면 머리가 바뀌고, 사람 손 기록은 머리를 안 옮긴다.
-/// 가르는 것이 여기(Rust)인 것은 까닭을 다 보는 자리가 여기뿐이라서다: 화면이 닫혀 있을 때 프런트가 받는 것은 요약뿐이다.
-pub fn look_head(events: &[Event]) -> Option<u64> {
-    events.iter().find(|event| worth_a_look(event)).map(|event| event.id)
 }
 
 /// 명령줄의 앞 200자. 바이트가 아니라 글자로 자른다 — 한글 인자 한가운데서 끊으면 UTF-8이 깨진다.
@@ -233,7 +211,7 @@ pub fn read(path: &Path) -> Vec<Event> {
 /// - 파일의 가장 큰 번호 + 1 — 같은 ms에 둘이 서도(새로고침이 셸 여럿을 한 번에 닫는다) 갈린다. 잘려 나간 줄의 번호는 다시 안 쓴다
 ///   (남은 것이 늘 더 크다). 시계가 뒤로 가도 번호는 안 되돌아간다.
 /// - 사건 시각 — **파일을 잃어도 옛 번호로 안 돌아간다.** 파일이 없거나 깨지면 가장 큰 번호가 사라지는데, 거기서 1부터 다시 서면
-///   프런트가 localStorage에 쥔 본 번호(`record:7` — `looked.ts`)와 겹쳐 새 자동 기록이 `●`를 못 켠다. 시각은 앞선 어느 번호보다도
+///   잃기 전의 번호와 겹친다(한때 그 번호를 프런트가 `●`의 본 것으로 쥐었다 — restart 03-15d가 걷었다). 시각은 앞선 어느 번호보다도
 ///   크다(옛 판의 작은 번호 · 앞선 시각).
 ///
 /// 두 실행이 같은 순간 쓰면 한쪽 사건을 잃는 것(머리말)과 같은 창에서 번호도 겹칠 수 있다 — 겹친 쪽은 이미 사라진 줄이다.
@@ -273,7 +251,7 @@ mod tests {
 
     /// **셸이나 셸 도우미만 끝난 사건은 적지 않는다**(프로세스 스펙 P1). 도우미가 아닌 것이 하나라도 끝나면 적고, 그때 대상
     /// 목록에는 **도우미도 든다** — 도우미도 앱이 신호를 보내 끝낸 것이다(티켓 11 · 구현-스펙 「사건 하나」는 대상을 거르지 않는다).
-    /// 도우미 표시는 「적을지」만 가른다. **못 끝냄은 누구든 적는다** — 도우미라도 앱이 끝내려다 못 한 것이라 `●`를 켠다(S41). 셸
+    /// 도우미 표시는 「적을지」만 가른다. **못 끝냄은 누구든 적는다** — 도우미라도 앱이 끝내려다 못 한 것이다(S41). 셸
     /// 자신은 끝내기의 대상이 아니라(그룹 신호) 여기 오지 않는다 — 대상이 없는 사건이 셸만 끝난 사건이다.
     ///
     /// 앵커: 적히는 줄이 있다 — 늘 `None`을 주게 무너지면 「안 적힌다」들이 저절로 참이 된다.
@@ -327,9 +305,9 @@ mod tests {
             "못 끝낸 것을 안 적었다 — 앱이 끝내려다 못 한 것이 기록에서 사라진다"
         );
         let helper_survived = event(at, Reason::ShellClose, Some("G-1"), None, &[helper], &[(id(11), Outcome::Survived)])
-            .expect("못 끝낸 도우미를 안 적었다 — SIGKILL도 버틴 도우미가 기록에도 `●`에도 안 선다");
+            .expect("못 끝낸 도우미를 안 적었다 — SIGKILL도 버틴 도우미가 기록에 안 선다");
         assert_eq!(helper_survived.targets.iter().map(|target| target.pid).collect::<Vec<_>>(), [11]);
-        assert!(worth_a_look(&helper_survived), "못 끝낸 도우미가 든 사건이 `●`를 안 켠다");
+        assert_eq!(helper_survived.targets[0].outcome, Outcome::Survived);
     }
 
     /// **끝내기가 결과를 안 준 대상은 사건에 안 선다** — 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 뒤 끝내기가 빼(`ending::Claim::start`)
@@ -488,7 +466,7 @@ mod tests {
         assert_eq!(older.id, 0);
     }
 
-    /// 번호와 까닭과 결과로 사건 하나 — `●` 검사의 재료다. 대상은 결과마다 하나씩이다.
+    /// 번호와 까닭과 결과로 사건 하나 — 번호 검사의 재료다. 대상은 결과마다 하나씩이다.
     fn logged(id: u64, reason: Reason, outcomes: &[Outcome]) -> Event {
         let targets = outcomes
             .iter()
@@ -498,60 +476,8 @@ mod tests {
         Event { id, at: 1_790_000_000_000 + id, reason, shell_key: None, owner: None, targets }
     }
 
-    /// **`●`를 켜는 기록은 앱이 사람 손 없이 끝낸 것과 「못 끝냄」이 든 것뿐이다**(프로세스 스펙 S41 · 티켓 29). 까닭 여덟을 다
-    /// 돈다 — 시작 정리 · MCP 아카이브 · 셸 스스로 끝남은 켜고, 사람이 누른 ×(셸 닫기) · 종료 · 새로고침 · UI 아카이브 · 손으로
-    /// ([끝내기] · [정리])는 안 켠다. 사람 손 기록이라도 「못 끝냄」이 들면 켠다 — 남은 것은 사람이 모른다.
-    ///
-    /// 앵커: 켜는 줄과 안 켜는 줄이 둘 다 있다 — 한쪽으로 무너지면(늘 참 · 늘 거짓) 반대쪽 줄들이 빨갛다.
-    #[test]
-    fn only_what_the_app_ended_without_a_person_is_worth_a_look() {
-        use Outcome::{Ended, Forced, Gone, Survived};
-        let cases = [
-            ("시작 정리", logged(1, Reason::StartupCleanup, &[Ended]), true),
-            ("MCP 아카이브", logged(2, Reason::McpArchive, &[Forced]), true),
-            ("셸 스스로 끝남", logged(3, Reason::ShellExit, &[Ended, Gone]), true),
-            ("사람이 누른 ×", logged(4, Reason::ShellClose, &[Ended, Forced]), false),
-            ("앱 종료", logged(5, Reason::AppExit, &[Ended]), false),
-            ("새로고침", logged(6, Reason::Reload, &[Forced]), false),
-            ("UI 아카이브", logged(7, Reason::Archive, &[Ended]), false),
-            ("[끝내기] · [정리]", logged(8, Reason::Manual, &[Ended]), false),
-            ("사람이 누른 ×인데 못 끝낸 것이 있다", logged(9, Reason::ShellClose, &[Ended, Survived]), true),
-            ("앱 종료가 못 끝냈다", logged(10, Reason::AppExit, &[Survived]), true),
-            ("[끝내기]가 못 끝냈다", logged(11, Reason::Manual, &[Survived]), true),
-        ];
-        let wrong: Vec<String> = cases
-            .iter()
-            .filter(|(_, event, want)| worth_a_look(event) != *want)
-            .map(|(what, _, want)| format!("{what}: 기대 {want}"))
-            .collect();
-        assert!(wrong.is_empty(), "`●`를 켜는지가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
-    }
-
-    /// **요약의 머리 id는 `●`를 켜는 기록 중 가장 새것의 번호다**(티켓 29). 기록은 새것부터다 — 그 뒤에 사람 손 기록이 몇 줄 쌓여도
-    /// 머리는 그대로다(사람이 ×로 닫을 때마다 머리가 옮으면 점이 늘 켜진다). 켜는 기록이 하나도 없으면 없다.
-    #[test]
-    fn the_look_head_is_the_newest_event_worth_a_look() {
-        use Outcome::{Ended, Survived};
-        let events = [
-            logged(9, Reason::ShellClose, &[Ended]),
-            logged(8, Reason::AppExit, &[Ended]),
-            logged(7, Reason::ShellExit, &[Ended]),
-            logged(6, Reason::Reload, &[Ended]),
-            logged(5, Reason::StartupCleanup, &[Ended]),
-        ];
-        assert_eq!(look_head(&events), Some(7), "사람 손 기록 밑의 가장 새 자동 기록이 머리가 아니다");
-
-        let by_hand = [logged(3, Reason::ShellClose, &[Ended]), logged(2, Reason::Manual, &[Ended]), logged(1, Reason::Archive, &[Ended])];
-        assert_eq!(look_head(&by_hand), None, "사람 손 기록뿐인데 머리가 섰다");
-        assert_eq!(look_head(&[]), None, "빈 기록에 머리가 섰다");
-
-        let survived = [logged(4, Reason::ShellClose, &[Survived]), logged(3, Reason::ShellExit, &[Ended])];
-        assert_eq!(look_head(&survived), Some(4), "못 끝냄이 든 사람 손 기록이 머리가 아니다");
-    }
-
     /// **기록 번호는 오르기만 하고, 파일을 잃어도 옛 번호로 안 돌아간다**(티켓 29 · 프로세스 스펙 S41). 번호는 파일의 가장 큰 번호 +
-    /// 1과 사건 시각(ms) 중 큰 것이다. 빈 파일(없거나 깨졌다) 위의 번호는 사건 시각이라 옛 파일의 본 번호(localStorage의 `record:7`)와
-    /// 안 겹친다. 같은 ms의 둘째 사건은 + 1로 갈리고, 시계가 뒤로 가도 번호는 안 되돌아간다. 번호가 없던 판의 줄(0)만 있어도 시각이다.
+    /// 1과 사건 시각(ms) 중 큰 것이다. 빈 파일(없거나 깨졌다) 위의 번호는 사건 시각이라 잃기 전 파일의 번호(7)와 안 겹친다. 같은 ms의 둘째 사건은 + 1로 갈리고, 시계가 뒤로 가도 번호는 안 되돌아간다. 번호가 없던 판의 줄(0)만 있어도 시각이다.
     #[test]
     fn a_record_number_only_rises_even_when_the_file_is_lost() {
         let at = 1_790_000_000_000;

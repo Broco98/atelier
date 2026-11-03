@@ -49,10 +49,6 @@ pub struct ScreenSnapshot {
     pub pool: Vec<PoolShell>,
     /// 다른 인스턴스 묶음(`verdict.otherInstances`)의 행을 낸 실행들 — 세대 순(티켓 31).
     pub instances: Vec<Instance>,
-    /// `●`를 켜는 정리 기록 중 가장 새것의 번호(`cleanup_log::look_head` — 요약의 `record_head`와 같은 값). 화면이 보는 동안 이 번호와
-    /// 출처 불명을 본 것으로 앉힌다(티켓 29 · 프로세스 스펙 S41) — 요약은 최대 20초 늦어, 그것으로만 앉히면 화면에서 본 기록이 떠난
-    /// 뒤에 `●`를 켠다. 없으면 `None`.
-    pub record_head: Option<u64>,
     /// 이 장을 잰 시각(에포크 ms) — 머리의 「…에 잰 값」(restart 03-5 · 스토리 129).
     pub measured_at: u64,
     /// 이 장에서 지표를 못 읽은 것의 수 — 까닭마다(restart 03-9 · 스토리 133). 우리 트리와 다른 앱의 읽기를 합친 것이다. 그 몫은 시스템 ·
@@ -212,8 +208,8 @@ pub struct Row {
 }
 
 impl ScreenSnapshot {
-    /// 판정 하나와 풀의 셸 목록, 앱 본체, 이번 표본의 지표, 다른 앱의 줄(`apps`), 다른 인스턴스의 실행들(`instances`), 정리 기록의
-    /// 머리로 한 장을 짓는다. 아틀리에 합계는 풀의 셸 프로세스를 이 실행의 셸로 센다(요약의 `gather`와 같다). 나눔은 그 합계와 다른 앱의
+    /// 판정 하나와 풀의 셸 목록, 앱 본체, 이번 표본의 지표, 다른 앱의 줄(`apps`), 다른 인스턴스의 실행들(`instances`)로 한 장을
+    /// 짓는다. 아틀리에 합계는 풀의 셸 프로세스를 이 실행의 셸로 센다(요약의 `gather`와 같다). 나눔은 그 합계와 다른 앱의
     /// 줄을 같은 표본의 맥 전체에서 가른다.
     pub fn of(
         verdict: &Verdict,
@@ -222,7 +218,6 @@ impl ScreenSnapshot {
         measured: &Measured,
         apps: Vec<OtherApp>,
         instances: Vec<Instance>,
-        record_head: Option<u64>,
     ) -> Self {
         let shells: Vec<Identity> = pool.iter().filter_map(|shell| shell.process).collect();
         let rows = |procs: &[&Proc]| -> Vec<Row> { procs.iter().map(|proc| Row::of(proc, measured)).collect() };
@@ -249,7 +244,6 @@ impl ScreenSnapshot {
             },
             pool: pool.into_iter().map(|shell| PoolShell { metrics: metrics_of(measured, shell.process), ..shell }).collect(),
             instances,
-            record_head,
             measured_at: measured.measured_at,
             unread: measured.unread,
             mac: measured.machine,
@@ -346,8 +340,8 @@ mod tests {
 
     /// **화면 스냅샷이 싣는 모양**(티켓 26 · 27 · 28). 프런트가 칸 이름으로 읽는다 — 글자로 못박는다.
     ///
-    /// 다른 인스턴스는 실행마다 빌드 종류 · 버전과 그 실행의 셸 키가 선다(티켓 31) — 기록을 못 읽은 실행은 두 칸이 빈다. `●`를 켜는
-    /// 정리 기록의 머리 번호도 싣는다(티켓 29 — 화면이 보는 동안 본 것으로 앉힌다).
+    /// 다른 인스턴스는 실행마다 빌드 종류 · 버전과 그 실행의 셸 키가 선다(티켓 31) — 기록을 못 읽은 실행은 두 칸이 빈다. 정리 기록의
+    /// 머리 번호는 싣지 않는다 — 한때(티켓 29 – restart 03-14) `●`의 본 것으로 앉히려 실었다(restart 03-15d가 걷었다).
     ///
     /// 판정의 묶음 다섯이 모두 서게 한 장을 짓는다: 셸 G-1의 자손(부른 이름 · 명령줄이 읽힌 vite와 그 밑의 esbuild, 셸 도우미
     /// gitstatusd), 예외(tmux), 확정 고아와 출처 불명, 다른 인스턴스. 셸 자신의 pid나 uid · 그룹 · 표식 같은 판정 안쪽 칸은
@@ -439,7 +433,7 @@ mod tests {
             })
         };
         assert_eq!(
-            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &body, &measured, apps, instances, Some(7))).unwrap(),
+            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &body, &measured, apps, instances)).unwrap(),
             serde_json::json!({
                 "verdict": {
                     "descendants": {
@@ -495,7 +489,6 @@ mod tests {
                     { "generation": "H", "build": "release", "version": "0.15.0", "keys": ["H-2"] },
                     { "generation": "D", "build": null, "version": null, "keys": ["D-7"] },
                 ],
-                "recordHead": 7,
                 "measuredAt": 1_758_000_100_000u64,
                 // 이 장에서 못 읽은 것 — 까닭마다(restart 03-9). 그 몫은 시스템 · 못 읽음에 든다.
                 "unread": { "denied": 2, "gone": 1, "other": 0 },
@@ -528,8 +521,7 @@ mod tests {
             })
         );
         let blank =
-            serde_json::to_value(ScreenSnapshot::of(&verdict, vec![], &Body::default(), &Measured::default(), vec![], vec![], None)).unwrap();
-        assert_eq!(blank["recordHead"], serde_json::Value::Null, "머리가 없는데 번호가 섰다");
+            serde_json::to_value(ScreenSnapshot::of(&verdict, vec![], &Body::default(), &Measured::default(), vec![], vec![])).unwrap();
         assert_eq!(blank["mac"], serde_json::Value::Null, "맥 전체를 안 쟀는데(macOS 밖) 값이 섰다 — 화면이 「측정 안 됨」을 못 말한다");
         assert_eq!(
             blank["unread"],
@@ -592,7 +584,7 @@ mod tests {
         };
 
         let body = Body { rust: Some(app), web_content: Some(page), webkit: webkit.clone() };
-        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &body, &measured, vec![], vec![], None)).unwrap();
+        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &body, &measured, vec![], vec![])).unwrap();
         assert_eq!(
             sheet["body"],
             serde_json::json!({
@@ -605,7 +597,7 @@ mod tests {
         assert_eq!(sheet["atelier"]["app"], 690, "앱 본체가 웹뷰 줄과 같은 것을 안 셌다");
 
         let unasked = Body { rust: Some(app), web_content: None, webkit };
-        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &unasked, &measured, vec![], vec![], None)).unwrap();
+        let sheet = serde_json::to_value(ScreenSnapshot::of(&empty, vec![], &unasked, &measured, vec![], vec![])).unwrap();
         assert_eq!(
             sheet["body"]["webview"],
             serde_json::json!({ "memory": 90, "cpu": 0.5, "ports": [8080] }),

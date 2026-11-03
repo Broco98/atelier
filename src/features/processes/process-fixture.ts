@@ -144,7 +144,6 @@ export function snapshotFixture({ verdict = {}, ...over }: SnapshotOver = {}): P
     },
     pool: [],
     instances: [],
-    recordHead: null,
     measuredAt: MEASURED_AT,
     unread: NO_UNREAD,
     mac: null,

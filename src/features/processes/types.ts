@@ -127,11 +127,6 @@ export interface ProcessSnapshot {
   pool: PoolShell[];
   /** 다른 인스턴스 묶음의 행을 낸 실행들 — 세대 순(티켓 31). */
   instances: OtherInstance[];
-  /**
-   * `●`를 켜는 정리 기록 중 가장 새것의 번호 — 요약의 `recordHead`와 같은 값이다(Rust `cleanup_log::look_head`). 화면이 보는 동안
-   * 출처 불명과 함께 본 것으로 앉힌다(티켓 29 · S41 — `lookSourceOf`). 없으면 `null`.
-   */
-  recordHead: number | null;
   /** 이 장을 잰 시각(에포크 ms) — 머리의 「…에 잰 값」(restart 03-5 · 스토리 129). */
   measuredAt: number;
   /** 이 장에서 지표를 못 읽은 것의 수 — 까닭마다(restart 03-9 · 스토리 133). 그 몫은 시스템 · 못 읽음에 든다. */
@@ -223,10 +218,6 @@ export interface Breakdown {
 export interface ProcessSummary extends AtelierTotals {
   /** 맥 전체 — 같은 배경 표본에서 읽었다(restart 03-5). macOS 밖이면 `null`. */
   mac: MacMeasure | null;
-  /** 출처 불명의 신원 — 수가 아니라 신원이다(티켓 29): `●`는 본 것과 견줘 새로 생긴 것에만 선다. 수는 이 목록의 길이다. */
-  unknown: ProcessIdentity[];
-  /** `●`를 켜는 정리 기록(사람 손 없이 끝냄 · 못 끝냄) 중 가장 새것의 번호. 없으면 `null`. 무엇이 켜는 기록인지는 Rust가 가른다. */
-  recordHead: number | null;
 }
 
 /**

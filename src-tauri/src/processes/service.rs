@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::apps;
-use super::cleanup_log::{self, Event};
+use super::cleanup_log::Event;
 use super::instances::Record;
 use super::machine;
 use super::metrics::{self, CpuMeter};
@@ -81,10 +81,6 @@ impl ProcessService {
     /// 트리만) 판정이 묶음에 넣은 행과 풀의 셸 프로세스만 읽는다(`screen::targets`). 풀 잠금 밖이다 — 프로세스마다 fd를 훑는 동안 셸
     /// 입력 · 닫기가 기다리지 않게. CPU%는 이 자리가 쥔 앞 표본과 견준다(`CpuMeter`).
     ///
-    /// **`●`를 켜는 기록의 머리도 싣는다**(티켓 29 · S41) — 요약을 모으는 자리(`gather`)와 같은 곳(풀의 정리 기록)에서 고른다.
-    /// 화면은 보는 동안 이 머리와 출처 불명을 본 것으로 앉힌다: 요약은 최대 20초 늦어 그것으로만 앉히면 화면에서 본 것이 떠난 뒤에
-    /// 점을 켠다.
-    ///
     /// **머리 값도 이 표본에서 짓는다**(restart 03-5 「한 표본」) — 맥 전체(`machine::read`)를 프로세스의 지표 바로 뒤에 읽어 같은 미터에
     /// 넣고, 아틀리에 합계를 같은 지표로 짓는다. 그래서 앱 본체(Rust · WebContent)도 읽는다 — WebContent는 배경 표본처럼 웹뷰에게
     /// 묻는다(메인 스레드로 가는 물음이라 풀 잠금 밖이다).
@@ -120,9 +116,7 @@ impl ProcessService {
         let apps = apps::of(&theirs, &measured);
         // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
         let instances = screen::instances(&verdict, &records, |generation| self.pool.record().file(generation));
-        // `●`를 켜는 기록의 머리 — 요약을 모으는 자리와 같은 곳에서 고른다(`gather`). 화면이 보는 동안 본 것으로 앉힌다(티켓 29).
-        let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
-        ScreenSnapshot::of(&verdict, listed, &body, &measured, apps, instances, head)
+        ScreenSnapshot::of(&verdict, listed, &body, &measured, apps, instances)
     }
 
     /// **요약 한 장을 모은다**(`gather`) — 요약 IPC가 마지막 장이 없을 때 그 자리에서 부른다(`summary`). 배경 표본은 그 장을 미룰지도
@@ -131,7 +125,7 @@ impl ProcessService {
         self.gather().0
     }
 
-    /// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 11 · 티켓 29 · 30). 배경
+    /// **요약 한 장을 모은다** — nav 메타의 합계, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 티켓 29 · 30). 배경
     /// 표본이 10초마다 부른다(`sample_in_background`) — 화면이 닫혀 있어도 돈다.
     ///
     /// 순서는 화면 스냅샷(`screen`)과 같다: 스냅샷을 먼저 찍고, 판정에 넘길 셸 목록과 풀의 셸을 **한 잠금 안에서** 읽고(셸 프로세스의
@@ -140,11 +134,13 @@ impl ProcessService {
     /// 자손).
     ///
     /// **앱 본체는 Rust 본체와 웹뷰의 WebContent다**(S39 · 티켓 30). WebContent의 pid는 웹뷰에게 묻는다 — 메인 스레드로 가는
-    /// 물음이라 풀 잠금 밖이다(`summary::WebContent`, 묻는 함수는 setup이 건다). **CPU%는 배경 표본의 앞 표본과 견준다**
+    /// 물음이라 풀 잠금 밖이다(`summary::WebContent`, 묻는 함수는 setup이 건다). 묻기는 셸 목록 뒤 · 인스턴스 기록 앞이다 — 기록은
+    /// 셸 목록 뒤면 언제 읽어도 되고(S52), 물은 뒤 기록을 읽는 자리가 두 스레드의 차례를 고정하는 검사의 이음매다(`Meanwhile`).
+    /// **CPU%는 배경 표본의 앞 표본과 견준다**
     /// (`Background`의 미터) — 화면의 앞 표본(`screen_cpu`)을 나눠 쓰면 2초와 10초 박자가 섞인다. 맥 전체(`machine::read`)도 지표 바로
     /// 뒤에 읽어 같은 미터에 넣는다 — 추이의 맥 전체 CPU다(restart 03-5).
     ///
-    /// `●`를 켜는 기록의 머리는 정리 기록 파일에서 고른다(`cleanup_log::look_head`). 아무것도 안 끝낸다.
+    /// 아무것도 안 끝낸다. 한때 `●`를 켜는 정리 기록의 머리도 여기서 골랐다(restart 03-15d가 `●`와 함께 걷었다).
     ///
     /// 장과 함께 **이 장을 모은 WebContent 물음까지 웹뷰에게서 한 번도 제때 답을 못 들었나**(`WebContentAsked::unheard`)를 준다 — 배경
     /// 표본이 첫 장을 미룰지 이 값으로 가른다(`sample_once`).
@@ -152,6 +148,7 @@ impl ProcessService {
         let snapshot = snapshot::take(EnvScope::All);
         let (live, listed) = self.pool.listing();
         let shells: Vec<Identity> = listed.iter().filter_map(|shell| shell.process).collect();
+        let asked = self.background.web_content.identity(snapshot::identity_of);
         let records = self.pool.record().records();
         let exceptions = crate::settings::process_exceptions_now();
         let verdict = verdict::judge(&Inputs {
@@ -163,12 +160,10 @@ impl ProcessService {
             exceptions: &exceptions,
             occasion: Occasion::Normal,
         });
-        let asked = self.background.web_content.identity(snapshot::identity_of);
         let body = Body::of(&snapshot, &verdict, &shells, snapshot::identity_of(std::process::id()), asked.id, webkit::responsible_for);
         let readings = metrics::read(summary::targets(&verdict, &shells, &body));
         let measured = self.background.measure(Instant::now(), readings, machine::read());
-        let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
-        (Summary::of(&verdict, &shells, &body, &measured, head), asked.unheard)
+        (Summary::of(&verdict, &shells, &body, &measured), asked.unheard)
     }
 
     /// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는
@@ -208,7 +203,7 @@ impl ProcessService {
     /// 쥔다 — 앱이 사는 동안 돈다.
     ///
     /// 기록을 열기 전에 모으면 판정이 이 실행 밖의 모든 세대를 기록 없는 세대로 본다 — 함께 뜬 다른 빌드의 셸 자손이 모두 출처
-    /// 불명으로 서서 뜨자마자 `●`가 선다. 그래서 setup의 자리가 `pty::open_record` 뒤다(`lib.rs`의 핀).
+    /// 불명으로 서서 그 몫이 합계에 든다. 그래서 setup의 자리가 `pty::open_record` 뒤다(`lib.rs`의 핀).
     pub fn sample_in_background(self: Arc<Self>) {
         let spawned = std::thread::Builder::new().name("atelier-summary".into()).spawn(move || {
             let mut held = 0;
@@ -323,12 +318,8 @@ mod tests {
         assert!(listed < records, "기록({records})을 셸 목록({listed})보다 먼저 읽는다");
         assert!(body.contains("shells: &live,"), "판정에 풀이 준 셸 목록을 안 넘긴다");
         assert!(
-            body.contains("ScreenSnapshot::of(&verdict, listed, &body, &measured, apps, instances, head)"),
-            "판정 결과와 풀의 셸 목록과 앱 본체와 지표와 다른 앱과 다른 인스턴스의 실행들과 기록의 머리를 그대로 싣지 않는다"
-        );
-        assert!(
-            body.contains("let head = cleanup_log::look_head(&self.pool.record().cleanup_events());"),
-            "`●`의 머리를 요약과 같은 자리(풀의 정리 기록)에서 안 고른다 — 검사의 풀이 진짜 기록을 읽거나 화면과 nav가 다른 머리를 본다"
+            body.contains("ScreenSnapshot::of(&verdict, listed, &body, &measured, apps, instances)"),
+            "판정 결과와 풀의 셸 목록과 앱 본체와 지표와 다른 앱과 다른 인스턴스의 실행들을 그대로 싣지 않는다"
         );
         assert!(
             body.contains("screen::instances(&verdict, &records,"),
@@ -380,8 +371,7 @@ mod tests {
 
     /// **배경 표본은 화면 스냅샷과 같은 순서로 모은다**(티켓 29 · 프로세스 스펙 S52 · S38). 표를 한 장 찍고(env 전부 — 출처 불명은
     /// 지금 풀의 어느 셸보다 먼저 태어났을 수 있다), 판정의 셸 목록과 풀의 셸(셸 프로세스의 신원)을 한 번에 받는다. 지표는 판정 뒤,
-    /// 잠금 밖에서 **합계에 드는 것만** 읽는다(`summary::targets` — 앱 본체와 이 실행의 셸 · 자손). `●`의 머리는 풀의 인스턴스 기록이
-    /// 연 정리 기록에서 고른다 — 데이터 루트를 다시 계산하면 검사의 풀이 진짜 기록을 읽는다.
+    /// 잠금 밖에서 **합계에 드는 것만** 읽는다(`summary::targets` — 앱 본체와 이 실행의 셸 · 자손).
     ///
     /// **웹뷰에게 WebContent를 묻는 것도 잠금 밖이다**(티켓 30) — 메인 스레드로 가는 물음이라 답을 기다리는 동안 풀을 쥐면 셸 입력 ·
     /// 닫기가 함께 기다린다. 앱 본체의 신원은 지표를 읽기 전에 서야 합계에 든다. **CPU%는 배경의 미터와 견준다** — 읽은 뒤에, 화면의
@@ -406,22 +396,21 @@ mod tests {
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
         let asked = body.find("self.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
         assert!(listed < asked && asked < read, "WebContent를 셸 목록({listed}) 앞이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
+        // 물은 뒤에 기록을 읽는다 — 늦은 물음의 두 검사(`Meanwhile`)가 이 자리에서 다른 스레드의 차례를 끼운다. 순서가 바뀌면 그 둘이
+        // 「이 검사가 재는 차례가 없다」로 빨개진다.
+        assert!(asked < records, "WebContent를 기록({records})을 읽은 뒤에 묻는다 — {asked}");
         let helpers = body.find("asked.id, webkit::responsible_for);").expect("앱 본체에 앱이 책임지는 WebKit 도우미를 찾아 더한다");
         assert!(asked < helpers && helpers < read, "WebKit 도우미를 WebContent 앞({asked})이나 지표를 읽은 뒤({read})에 찾는다 — {helpers}");
         let sampled = body.find("self.background.measure(Instant::now(), readings, machine::read())").expect(
             "배경의 미터로 CPU%를 짓고, 맥 전체를 같은 표본으로 넣는다",
         );
         assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
-        assert!(
-            body.contains("cleanup_log::look_head(&self.pool.record().cleanup_events())"),
-            "`●`의 머리를 풀의 정리 기록에서 안 고른다"
-        );
         assert!(!body.contains("screen_cpu"), "배경 표본이 화면의 앞 표본을 나눠 쓴다 — 두 박자가 섞인다");
         assert!(!body.contains("CpuMeter::"), "부를 때마다 앞 표본을 새로 세운다 — 요약의 CPU가 늘 첫 표본이다");
     }
 
     /// **요약 IPC는 배경 표본의 마지막 장을 돌려준다**(티켓 29) — 부를 때마다 표를 찍지 않는다. 아직 한 장도 없으면 그 자리에서
-    /// 모아 앉힌다(앱이 막 떠 첫 표본이 도는 중에 프런트가 묻는다). 연 적 없는 기록의 풀은 정리 기록을 안 읽는다 — 머리가 없다.
+    /// 모아 앉힌다(앱이 막 떠 첫 표본이 도는 중에 프런트가 묻는다).
     ///
     /// 둘째 갈래는 이 맥의 표를 한 장 찍는다(읽기만 한다 — 아무것도 안 끝낸다).
     #[test]
@@ -430,16 +419,13 @@ mod tests {
         let kept = Summary {
             atelier: Totals { total: Some(1), cpu: None, app: Some(1), webview_excluded: true },
             mac: None,
-            unknown: vec![],
-            record_head: Some(9),
         };
         kept_service.background.keep(kept.clone(), 5_000);
         assert_eq!(kept_service.summary(), kept, "배경 표본이 앉힌 장을 안 돌려준다");
 
         let fresh = service();
         let first = fresh.summary();
-        assert_eq!(fresh.background.latest(), Some(first.clone()), "그 자리에서 모은 장을 안 앉혔다");
-        assert_eq!(first.record_head, None, "연 적 없는 기록에서 머리를 골랐다 — 검사의 풀이 진짜 정리 기록을 읽는다");
+        assert_eq!(fresh.background.latest(), Some(first), "그 자리에서 모은 장을 안 앉혔다");
     }
 
     /// **화면 스냅샷 한 장이 머리 값을 제 표본에서 싣는다**(restart 03-5 「한 표본」 · 스토리 122 · 129). 잰 시각은 찍은 그 순간이다.
@@ -633,7 +619,7 @@ mod tests {
         assert_eq!(asked_meanwhile.sample_once(&mut held), summary::EVERY, "요약 IPC가 웹뷰의 답을 받았는데 또 미뤘다");
     }
 
-    /// 서비스가 WebContent를 물은 **뒤**, 그 모으기가 풀을 다시 볼 때 다른 스레드의 일 하나(`then`)를 그 자리에서 돌리는 풀 — 두
+    /// 서비스가 WebContent를 물은 **뒤**, 그 모으기가 풀을 다시 볼 때(인스턴스 기록 — `gather`) 다른 스레드의 일 하나(`then`)를 그 자리에서 돌리는 풀 — 두
     /// 스레드의 차례(먼저 모으기 시작한 쪽의 물음이 끝난 뒤, 그쪽이 장을 가르거나 앉히기 전에 다른 쪽이 돈다)를 한 스레드에서 고정한다.
     /// 그 일도 다시 이 풀을 보지만 한 번만 돈다.
     struct Meanwhile {
@@ -753,8 +739,6 @@ mod tests {
         let kept = |atelier: f64, mac: f64| Summary {
             atelier: Totals { total: Some(1), cpu: Some(atelier), app: None, webview_excluded: true },
             mac: Some(Machine { cpu: Some(mac), memory: None, cores: 10 }),
-            unknown: vec![],
-            record_head: None,
         };
         service.background.keep(kept(3.0, 30.0), 7_000);
         service.background.keep(kept(5.0, 50.0), 17_000);

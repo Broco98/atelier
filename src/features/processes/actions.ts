@@ -17,7 +17,7 @@ import type { EndResult, ProcessIdentity, ProcessSnapshot } from "./types";
 /**
  * 신원 목록을 끝낸다(프로세스 결정 6 · 기본값 [끝내기]). **결과가 줄에 선다**(restart 03-10) — 누른 순간 대상 줄마다 「끝내는 중」이 서고,
  * 백엔드가 유예와 SIGKILL까지 기다려 돌려준 대상마다의 결과(끝남 · 강제로 끝냄 · 못 끝냄 · 이미 없음)가 그 줄에 선다(`endings-store.ts`).
- * 줄은 누른 순간 화면에 보인 표본(`shown`)에서 찾는다. 정리 기록에 까닭 「손으로」로 남고 `●`를 켜지 않는다(29). 못 부르면 표시를 거두고
+ * 줄은 누른 순간 화면에 보인 표본(`shown`)에서 찾는다. 정리 기록에 까닭 「손으로」로 남는다. 못 부르면 표시를 거두고
  * 문제 창을 띄운다.
  */
 export async function endProcesses(

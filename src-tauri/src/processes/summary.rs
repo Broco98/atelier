@@ -1,8 +1,8 @@
 //! 요약 — nav 메타가 10초마다 묻는 값, 그리고 `Processes` 요약 카드가 읽는 합계 · 추이 · CPU · 앱 본체(프로세스 결정 10 · 11 ·
 //! 티켓 29 · 30).
 //!
-//! nav `Processes` 옆 메타는 모든 화면에 늘 선다. 평소에는 아틀리에의 메모리 합계이고, 손볼 것이 새로 생기면 그 앞에
-//! `●`가 선다. 화면이 닫혀 있어도 그 값이 있어야 해서 **Rust가 10초마다 모은다**(배경 표본 —
+//! 위 칸 `Processes` 줄 끝 메타는 모든 화면에 늘 선다 — 아틀리에 CPU와 메모리 합계다(restart 03-11). 한때(티켓 29 – restart 03-14) 손볼
+//! 것이 새로 생기면 그 앞에 `●`가 섰다(restart 03-15d가 걷었다). 화면이 닫혀 있어도 그 값이 있어야 해서 **Rust가 10초마다 모은다**(배경 표본 —
 //! `service::ProcessService::sample_in_background`). 화면 스냅샷(2초, `screen`)은 화면이 열려 있을 때만 온다.
 //!
 //! 모으는 것은 이렇다.
@@ -17,9 +17,9 @@
 //! - **CPU** — 합계에 드는 것의 CPU%를 더한 것(맥 전체 = 100 — restart 03-5). 배경 표본의 앞 표본과 견준다(`Background`의 미터 — 화면의
 //!   것과 따로).
 //! - **맥 전체**(`machine::Machine`) — 같은 표본에서 읽은 맥 전체 CPU% · 메모리 · 코어 수(restart 03-5). 추이의 한 선이다.
-//! - **출처 불명의 신원 목록**(pid, 시작 시각). 수가 아니라 신원이다(티켓 29 「스펙과 다른 점」) — `●`는 본 것의 집합과 견줘 새로
-//!   생긴 것에만 서는데(S41), 수만으로는 하나가 사라지고 다른 하나가 생긴 것을 못 본다. 수는 목록의 길이다.
-//! - **`●`를 켜는 기록의 머리 id**(`cleanup_log::look_head`) — 무엇이 켜는 기록인지는 그쪽이 가른다.
+//!
+//! 한때 손볼 것(출처 불명의 신원 목록 · `●`를 켜는 정리 기록의 머리 id)도 모았다 — `●`를 걷으며(restart 03-15d) 뺐다. 손볼 것의 수는
+//! 화면 스냅샷이 싣는 판정에서 화면이 센다.
 //!
 //! 그리고 **CPU의 1시간치**(360점)를 메모리 고리에 든다(프로세스 결정 10 · S37 — `Trend`). 점마다 맥 전체 CPU와 아틀리에 CPU다
 //! (restart 03-5 — 한때 메모리 합계였다). 앱을 다시 켜면 빈다. 추이 IPC가 이 고리를 돌려준다.
@@ -117,10 +117,6 @@ pub struct Summary {
     pub atelier: Totals,
     /// 맥 전체 — 같은 표본에서 읽었다(restart 03-5). macOS 밖이면 `None`(「측정 안 됨」).
     pub mac: Option<Machine>,
-    /// 출처 불명의 신원 — pid 순, 겹침 없음.
-    pub unknown: Vec<Identity>,
-    /// `●`를 켜는 기록 중 가장 새것의 번호(`cleanup_log::look_head`). 없으면 `None`.
-    pub record_head: Option<u64>,
 }
 
 /// **앱 본체의 신원** — Rust 본체와 웹뷰의 WebContent 프로세스(S39), 그리고 앱이 책임지는 WebKit 도우미(GPU · Networking — restart
@@ -175,16 +171,10 @@ pub(super) fn sum_read<T: std::iter::Sum<T>>(values: impl Iterator<Item = Option
 }
 
 impl Summary {
-    /// 판정 하나와 이 실행의 셸 프로세스, 앱 본체, 이번 표본의 지표(CPU%는 배경 미터가 지은 것 — 맥 전체도 그 표본의 것), 기록의
-    /// 머리로 한 장을 짓는다.
-    pub fn of(verdict: &Verdict, shells: &[Identity], body: &Body, measured: &Measured, record_head: Option<u64>) -> Summary {
-        let unknown: BTreeSet<Identity> = verdict.orphans.unknown.values().flatten().map(|proc| proc.id).collect();
-        Summary {
-            atelier: Totals::of(verdict, shells, body, measured),
-            mac: measured.machine,
-            unknown: unknown.into_iter().collect(),
-            record_head,
-        }
+    /// 판정 하나와 이 실행의 셸 프로세스, 앱 본체, 이번 표본의 지표(CPU%는 배경 미터가 지은 것 — 맥 전체도 그 표본의 것)로 한 장을
+    /// 짓는다.
+    pub fn of(verdict: &Verdict, shells: &[Identity], body: &Body, measured: &Measured) -> Summary {
+        Summary { atelier: Totals::of(verdict, shells, body, measured), mac: measured.machine }
     }
 }
 
@@ -442,8 +432,6 @@ mod tests {
         Summary {
             atelier: Totals { total: None, cpu: atelier, app: None, webview_excluded },
             mac: mac.map(|cpu| Machine { cpu: Some(cpu), memory: None, cores: 10 }),
-            unknown: vec![],
-            record_head: None,
         }
     }
 
@@ -464,10 +452,11 @@ mod tests {
         }
     }
 
-    /// **요약이 싣는 모양**(티켓 29 · 30). 프런트가 칸 이름으로 읽는다 — 글자로 못박는다. 출처 불명은 신원(pid · 시작 시각)의 목록이고,
-    /// 합계 · 앱 본체는 바이트, CPU는 %, 머리 id는 기록 번호다. 웹뷰를 읽었으면 「웹뷰 제외」가 거짓이다. 아틀리에 합계의 칸은 펼쳐
-    /// 싣는다(nav 메타가 `total`을 그대로 읽는다). 같은 표본의 맥 전체가 `mac`에 선다(restart 03-5). 아무것도 못 읽은 장은 숫자가 모두
-    /// 비고 웹뷰는 제외이고, 맥 전체를 안 쟀으면(macOS 밖) `mac`이 `null`이다.
+    /// **요약이 싣는 모양**(티켓 29 · 30). 프런트가 칸 이름으로 읽는다 — 글자로 못박는다. 합계 · 앱 본체는 바이트, CPU는 %다. 웹뷰를
+    /// 읽었으면 「웹뷰 제외」가 거짓이다. 아틀리에 합계의 칸은 펼쳐 싣는다(nav 메타가 `total`을 그대로 읽는다). 같은 표본의 맥 전체가
+    /// `mac`에 선다(restart 03-5). 아무것도 못 읽은 장은 숫자가 모두 비고 웹뷰는 제외이고, 맥 전체를 안 쟀으면(macOS 밖) `mac`이
+    /// `null`이다. **손볼 것은 싣지 않는다**(restart 03-15d) — 한때 출처 불명의 신원 목록과 `●`를 켜는 기록의 머리 id를 실었다. 판정에
+    /// 출처 불명이 있어도 칸이 없다.
     #[test]
     fn the_summary_crosses_the_wire_in_the_shape_the_nav_reads() {
         let lost = row(500, 1, "sleep");
@@ -483,7 +472,7 @@ mod tests {
         let readings = HashMap::from([(body.rust.unwrap(), reading(410 * MB)), (body.web_content.unwrap(), reading(200 * MB))]);
         let cpu = HashMap::from([(body.rust.unwrap(), 2.5), (body.web_content.unwrap(), 1.5)]);
         let machine = Some(Machine { cpu: Some(37.5), memory: Some(12 * 1024 * MB), cores: 10 });
-        let summary = Summary::of(&verdict, &[], &body, &Measured { readings, cpu, machine, ..Measured::default() }, Some(7));
+        let summary = Summary::of(&verdict, &[], &body, &Measured { readings, cpu, machine, ..Measured::default() });
         assert_eq!(
             serde_json::to_value(summary).unwrap(),
             serde_json::json!({
@@ -492,11 +481,9 @@ mod tests {
                 "app": 610 * MB,
                 "webviewExcluded": false,
                 "mac": { "cpu": 37.5, "memory": 12 * 1024 * MB, "cores": 10 },
-                "unknown": [{ "pid": 500, "startedUs": 1_500 }],
-                "recordHead": 7,
             })
         );
-        let blank = Summary::of(&empty(), &[], &Body::default(), &Measured::default(), None);
+        let blank = Summary::of(&empty(), &[], &Body::default(), &Measured::default());
         assert_eq!(
             serde_json::to_value(blank).unwrap(),
             serde_json::json!({
@@ -505,33 +492,8 @@ mod tests {
                 "app": null,
                 "webviewExcluded": true,
                 "mac": null,
-                "unknown": [],
-                "recordHead": null,
             })
         );
-    }
-
-    /// **요약의 출처 불명 목록은 판정의 출처 불명 신원 그대로다**(티켓 29). 키가 여럿이어도, 키 밑의 트리(표식이 안 읽히는 시스템
-    /// 바이너리 자손)도 모두 든다 — 판정이 그 묶음에 넣은 것 전부다. pid 순이다. 확정 고아 · 다른 인스턴스 · 예외 · 셸의 자손은
-    /// 출처 불명이 아니다(앵커: 그 묶음들에도 행이 있다 — 비어서 안 든 것이 아니다).
-    #[test]
-    fn the_unknown_list_is_the_unknown_identities_of_the_verdict() {
-        let (vite, tmux, stale, other) = (row(200, 100, "node"), row(300, 1, "tmux"), row(400, 1, "node"), row(600, 1, "zsh"));
-        let (lost, below, older) = (row(520, 1, "python3"), row(521, 520, "sleep"), row(510, 1, "node"));
-        let verdict = Verdict {
-            descendants: BTreeMap::from([("G-1", vec![&vite])]),
-            chats: BTreeMap::new(),
-            runtimes: BTreeSet::new(),
-            exceptions: vec![&tmux],
-            helpers: BTreeSet::new(),
-            orphans: Orphans {
-                confirmed: BTreeMap::from([("F-4", vec![&stale])]),
-                unknown: BTreeMap::from([("OLD-1", vec![&lost, &below]), ("OLD-9", vec![&older])]),
-            },
-            other_instances: BTreeMap::from([("H-2", vec![&other])]),
-        };
-        let summary = Summary::of(&verdict, &[], &Body::default(), &Measured::default(), None);
-        assert_eq!(summary.unknown, [older.id, lost.id, below.id], "출처 불명의 신원이 판정의 것과 다르다");
     }
 
     /// **합계 = 앱 본체 + 이 실행의 셸과 자손 + 채팅의 Runtime과 그 자손 + 고아 · 예외 · 다른 인스턴스**(프로세스 스펙 「수집 › 합계」 ·
@@ -614,14 +576,14 @@ mod tests {
             ]),
             "합계에 드는 신원이 앱 본체 + 이 실행의 셸 · 자손 · 채팅 + 고아 · 예외 · 다른 인스턴스가 아니다"
         );
-        let summary = Summary::of(&verdict, &[zsh, bash], &body, &Measured { readings, cpu, ..Measured::default() }, None);
+        let summary = Summary::of(&verdict, &[zsh, bash], &body, &Measured { readings, cpu, ..Measured::default() });
         assert_eq!(
             summary.atelier.total,
             Some((400 + 200 + 4 + 3 + 2 + 300 + 10 + 20 + 30 + 40 + 500 + 60) * MB),
             "합계가 어긋났다 — 판정 밖의 것이 섞였거나, 셸 · 도우미 · 채팅 · 앱 본체(WebContent 포함) · 고아 · 예외 · 다른 인스턴스가 빠졌다"
         );
         assert_eq!(summary.atelier.cpu, Some(24.5), "CPU가 합계에 드는 것의 잰 값끼리의 합이 아니다");
-        let unread = Summary::of(&verdict, &[zsh, bash], &body, &Measured::default(), None);
+        let unread = Summary::of(&verdict, &[zsh, bash], &body, &Measured::default());
         assert_eq!((unread.atelier.total, unread.atelier.cpu), (None, None), "아무것도 못 읽었는데 숫자가 섰다 — 모르는 것을 0이라 한다");
     }
 
