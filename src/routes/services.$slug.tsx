@@ -1,0 +1,11 @@
+import { createFileRoute } from "@tanstack/react-router";
+import ServiceDetail from "@/features/services/ServiceDetail";
+
+// `/services/$slug`는 Service 상세다(03 구현 스펙 §14). slug는 파일 이름이라 만든 뒤 바뀌지 않는다 — 이름을 고쳐도 주소는 그대로다. 목록 · 상세의
+// 틀(`/services` — restart 03-3)의 자식이라 상세가 선 동안에도 목록이 그 틀 안에 숨어 남는다.
+export const Route = createFileRoute("/services/$slug")({ component: ServiceRoute });
+
+function ServiceRoute() {
+  const { slug } = Route.useParams();
+  return <ServiceDetail key={slug} slug={slug} />;
+}

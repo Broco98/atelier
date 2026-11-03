@@ -4,7 +4,7 @@
 //!   점 파일을 무시하고(`watcher.rs`의 「dotfile은 무시한다」), 보관할 때 Work 폴더와 함께 옮겨진다.
 //! - Work 없는 Thread의 물어보는 정도는 `thread.json`의 `mode`다(§4 표). 그 Thread에 준 허락(「이 Thread에서는 다시 묻지 않기」)은
 //!   Thread 폴더의 같은 점 파일에 둔다 — `thread.json`에 칸을 더하지 않는다.
-//! - 값은 글자 그대로다 — 물어보는 정도의 이름(`always` …)과 허락의 규칙 이름(S19의 `edit` · `Bash(…)` …)을 푸는 일은 판정(Thread
+//! - 값은 글자 그대로다 — 물어보는 정도의 이름(`always` …)과 허락의 이름(`edit` · `Bash(…)` …)을 푸는 일은 판정(Thread
 //!   엔진 `atelier-acp`의 `policy.rs`)의 몫이다.
 
 use std::path::{Path, PathBuf};
@@ -41,7 +41,7 @@ pub struct PolicyFile {
 fn folder(data_root: &Path, place: PolicyPlace) -> Result<PathBuf> {
     match place {
         PolicyPlace::Work(slug) if crate::slug::is_safe_slug(slug) => Ok(crate::works_in(data_root).join(slug)),
-        PolicyPlace::Work(slug) => Err(crate::Error::Validation(format!("Work slug가 아닙니다: {slug:?}"))),
+        PolicyPlace::Work(slug) => Err(crate::Error::Validation(format!("작업공간 slug가 아닙니다: {slug:?}"))),
         PolicyPlace::Thread(id) => crate::thread_dir(data_root, id),
     }
 }

@@ -1,0 +1,99 @@
+// Service(03 구현 스펙 §8) — core `service.rs`가 내는 모양 그대로다(serde camelCase). 문제의 말(`message`)도 core가 짓는다 — 화면은 따로
+// 검사하지 않는다(S7).
+
+/** 문제의 갈래 — `unreadable`은 글로 읽을 수 없는 파일(UTF-8이 아님 · 권한 없음)이다. 그 Service는 slug와 이 문제 하나로 선다(§8). */
+export type ServiceProblemKind = "unclosedFrontmatter" | "badYaml" | "noName" | "unknownProject" | "duplicateProject" | "unreadable";
+
+export interface ServiceProblem {
+  /** 파일의 줄 — 1부터. */
+  line: number;
+  kind: ServiceProblemKind;
+  /** 등록되지 않은 · 두 번 적은 Project의 slug. */
+  project?: string;
+  /** 그 줄 끝에 붙는 말(「등록되지 않은 Project예요」). */
+  message: string;
+}
+
+export interface Service {
+  slug: string;
+  /** 읽을 수 없는 파일이면 빈 글이다 — 화면은 slug로 부른다(`serviceName`). */
+  name: string;
+  /** 적힌 차례, 한 번씩 — 등록되지 않은 Project도 든다. */
+  projects: string[];
+  createdAt: string;
+  /** Host 도구로 만들면 `host`, 화면에서 만들면 없다(S6). */
+  createdBy: string | null;
+  description: string;
+  problems: ServiceProblem[];
+}
+
+/** 같은 Project를 적은 다른 Service — 「함께 쓰는 Service」와 그래프의 점선 노드. */
+export interface SharedService {
+  slug: string;
+  name: string;
+  /** 겹치는 Project — 이 Service에 적힌 차례. */
+  overlap: string[];
+  /** 그 Service의 Project 전부. */
+  projects: string[];
+}
+
+export interface ServiceDetail extends Service {
+  shared: SharedService[];
+}
+
+/** 파일의 줄 자리 — 1부터, 끝 포함. */
+export interface Lines {
+  first: number;
+  last: number;
+}
+
+/** 파일의 세 조각(name · projects · 본문)이 선 줄 — core 검사가 준다. 고치기 화면의 「커서 줄 ↔ 조각」이 이것으로 짝을 짓는다. */
+export interface ServicePieces {
+  name: number | null;
+  projects: Lines | null;
+  body: Lines | null;
+}
+
+/**
+ * 고치기 화면(파일로 고치기)의 검사 한 번(core `draft_service` — 명령 `check_service`). 고칠 때마다 다시 부른다 — 화면은 따로
+ * 검사하지 않는다(S7). core는 `slug` 없는 새 Service도 받아 `suffix`를 채우지만, 그 화면(「직접 만들기」)은 걷혔다(restart 03-15c).
+ */
+export interface ServiceDraft {
+  /** 그 글을 읽은 Service — 문제는 `problems`. slug는 파일로 고치기면 그 Service의 것, 새 Service면 이름에서 지을 것(이름이 비면 빈 글). */
+  service: Service;
+  pieces: ServicePieces;
+  /** 그 글의 Project를 적은 다른 Service — 고치는 Service 자신은 빠진다. */
+  shared: SharedService[];
+  /** 등록된 Project의 slug — 안내 줄 「Project는 … 중에서」. */
+  registered: string[];
+  /** Service 파일들의 폴더(홈은 `~`). 파일 칸 머리의 경로가 이 아래 `<slug>.md`다. */
+  folder: string;
+  /** 새 Service에서 같은 이름의 Service가 있어 slug 끝에 붙인 것(`-2`). */
+  suffix: string | null;
+}
+
+// ── 지우기(03 구현 스펙 §9 · §14 · 티켓 07) ────────────────────────────────────────────────────────────────────────────────
+
+/** 쓰임 — 지우기 확인 창의 「채팅 3개 · 작업공간 1개가 이 Service에서 빠져 …」. Thread는 Work 없는 Thread와 이은 Work의 Thread다. */
+export interface ServiceUsage {
+  works: number;
+  threads: number;
+}
+
+/** 이 Service에 이은 곳 — `service`가 이 slug인 진행 중인 Work와 Work 없는 Thread. */
+export interface ServiceLinks {
+  works: string[];
+  threads: string[];
+}
+
+/** 지운 것 — 그 Service와 비운 곳(엔진이 그 Thread마다 「지워짐」 줄을 남겼다). */
+export interface DeletedService {
+  service: Service;
+  unlinked: ServiceLinks;
+}
+
+/** 되돌린 것 — 제자리에 선 Service와 다시 적은 곳. */
+export interface RestoredService {
+  service: Service;
+  relinked: ServiceLinks;
+}

@@ -102,7 +102,7 @@ mod tests {
                 created_at: "2026-09-25".to_string(),
                 projects: Vec::new(),
                 pinned: false,
-                space: None,
+                service: None,
                 extra: serde_json::Map::new(),
             },
             worktrees: Vec::new(),

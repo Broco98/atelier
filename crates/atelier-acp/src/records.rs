@@ -3,9 +3,9 @@
 //! **줄 모양 · 줄 종류 · 반쪽 줄 규칙 · 덧붙이는 쓰기는 코어(`atelier_core`의 기록 줄)가 정본이다**(v1 티켓 02). 여기는 줄마다의
 //! payload 모양과, 적은 줄을 이벤트로 내보내는 일만 갖는다.
 //!
-//! Thread 하나의 기록은 `ThreadLog` 하나이고, 참여자의 Session마다 쓰는 손(`Recorder`)이 그것을 함께 쥔다 — 참여자의 줄에는
-//! `who`가 붙는다(S8). 사람이 보낸 줄에는 `who`가 없고 받는 이를 payload의 `to`에 적는다. three-axes의 work 대화 기록
-//! (`works/<slug>/agents/`)은 v1 티켓 08이 걷었다 — 디스크에 남은 것은 옮기지도 띄우지도 않는다(구현 스펙 §4).
+//! Thread 하나의 기록은 `ThreadLog` 하나이고, Session의 쓰는 손(`Recorder`)이 그것을 쥔다. 채팅 하나가 Runtime 세션 하나라 줄에는
+//! 말한 이도 받는 이도 없다. three-axes의 work 대화 기록(`works/<slug>/agents/`)은 v1 티켓 08이 걷었다 — 디스크에 남은 것은
+//! 옮기지도 띄우지도 않는다(구현 스펙 §4).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -15,9 +15,9 @@ use atelier_core::{Attachment, RecordLog};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::host::{Emit, HostEvent, QueuedMessage};
+use crate::host::{Emit, FlowChunk, HostEvent, QueuedMessage};
 use crate::past;
-use crate::policy::Card;
+use crate::policy::{AppRefusal, Card};
 use crate::quote::Quote;
 use crate::runtime::{Granted, How, QuestionAnswer, Withdrawal};
 
@@ -38,7 +38,7 @@ pub use atelier_core::{RecordKind, RecordLine};
 #[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub(crate) enum PermissionLine {
     /// 물음 — 요청 params 원문(선택지는 에이전트가 준 그대로)과 도구 요지(빈 칸을 앞선 `tool_call`로 채운 `toolCall`). 판정이
-    /// 물었으면(v1 티켓 22) 세울 카드의 종류(`card`: `command` · `edit` · `plan`)와 왜 묻는지(`policy`: Policy 이름)를 함께 싣는다.
+    /// 물었으면(v1 티켓 22) 세울 카드의 종류(`card`: `command` · `edit` · `plan`)와 왜 묻는지(`policy`)를 함께 싣는다.
     /// 「다시 묻지 않기」를 고르면 줄 허락(`grant`: 규칙 이름들, v1 티켓 24)이 있으면 그것도 싣는다 — 없으면 카드에 그 선택지가 없다.
     Asked {
         request_id: String,
@@ -139,7 +139,7 @@ pub(crate) enum SessionState {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TurnEndLine {
-    /// 에이전트가 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 말을 받지 않았으면 null이다.
+    /// 에이전트가 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 오류로 끝난 턴은 null이다.
     pub stop_reason: Option<String>,
     /// 말을 보낸 때부터 턴이 끝날 때까지.
     pub duration_ms: u64,
@@ -150,22 +150,25 @@ pub(crate) struct TurnEndLine {
     /// `session/prompt`의 답 원문 — 사용량 같은 수치는 보이지 않고 기록만 한다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<Value>,
-    /// 에이전트가 말을 받지 않은 오류 원문(`{code, message, data?}`).
+    /// 턴이 실패한 오류 원문(`{code, message, data?}`) — 말을 받지 않았거나 Runtime이 실패로 끝낸 턴이다. 글이 왔어도 실패다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Value>,
+    /// 앱이 거절해 멈춘 턴의 까닭(restart 01c-7) — 그 갈래 · 값과 판정이 Runtime에게 준 거절 글이다([`AppRefusal`] — 화면은 갈래를 읽어
+    /// 사람의 말로 옮긴다). Codex는 앱의 거절도 거부 선택지로만 받아 턴을 `cancelled`로 끝내고 그 글을 읽지 않으므로, 사람이 거부한 턴과
+    /// 이 칸으로 갈린다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_refusal: Option<AppRefusal>,
 }
 
-/// 기록 하나의 쓰는 손 — Thread 참여자 하나의 Session(v1 티켓 04). 같은 Thread의 참여자들이 기록 하나를 함께 쓰고, 줄마다 그
-/// 참여자의 handle(`who`)이 선다(v1 구현 스펙 S8). 런타임이 넘긴 것과 턴 차례의 줄은 모두 이것으로 적는다.
+/// 기록 하나의 쓰는 손 — Thread의 Session 하나(v1 티켓 04). 런타임이 넘긴 것과 턴 차례의 줄은 모두 이것으로 적는다.
 pub(crate) struct Recorder {
     log: Arc<ThreadLog>,
-    who: String,
 }
 
 impl Recorder {
-    /// Thread 참여자 하나의 쓰는 손 — 그 Thread의 기록에 그 handle로 적는다.
-    pub(crate) fn of_thread(log: Arc<ThreadLog>, who: &str) -> Self {
-        Self { log, who: who.to_owned() }
+    /// 그 Thread의 쓰는 손 — 그 Thread의 기록에 적고, 대기 줄 바뀜을 낸다.
+    pub(crate) fn of_thread(log: Arc<ThreadLog>) -> Self {
+        Self { log }
     }
 
     /// 이 기록의 Thread id — 사람이 읽을 오류에 싣는다.
@@ -175,15 +178,28 @@ impl Recorder {
 
     /// 대기 줄 바뀜(기록 밖의 소식)을 기록 줄과 같은 길로 내보낸다. 받는 closure는 호스트를 다시 부르면 안 된다.
     pub(crate) fn queue_changed(&self, queue: Vec<QueuedMessage>) {
-        self.log.announce(HostEvent::ThreadQueue { thread: self.log.thread().to_owned(), who: self.who.clone(), queue })
+        self.log.announce(HostEvent::ThreadQueue { thread: self.log.thread().to_owned(), queue })
+    }
+
+    /// 화면 조각(기록 밖의 소식)을 기록 줄과 같은 길로 내보낸다.
+    pub(crate) fn chunk(&self, chunk: FlowChunk) {
+        self.log.announce(HostEvent::ThreadChunk { thread: self.log.thread().to_owned(), chunk })
     }
 
     pub(crate) fn session(&self, state: SessionState) -> Result<(), RecordError> {
-        self.write(RecordKind::Session, serde_json::to_value(state).expect("session 줄은 JSON이다"))
+        self.write(RecordKind::Session, session_payload(state))
     }
 
-    /// 보낸 말 — 사람의 줄이라 `who` 없이 받는 참여자(`to`)를 싣는다(v1 구현 스펙 §4 · S8 · S9). `prompt`는 Runtime에게 실제로 간
-    /// 내용 블록 그대로다. 인용은 화면이 보낸 말 위에 세운다(three-axes 스토리 81). 첨부는 화면이 말풍선 위 칩으로 세운다(v1 티켓 06).
+    /// 프로세스를 띄우기 직전의 줄 — 아무 Session도 열지 않은 새 Thread는 첫 줄이 이미 이 줄이라 다시 적지 않는다.
+    pub(crate) fn spawning(&self) -> Result<(), RecordError> {
+        if never_opened(&self.log.lines()?) {
+            return Ok(());
+        }
+        self.session(SessionState::Spawning)
+    }
+
+    /// 보낸 말 — `prompt`는 Runtime에게 실제로 간 내용 블록 그대로다. 인용은 화면이 보낸 말 위에 세운다(three-axes 스토리 81). 첨부는
+    /// 화면이 말풍선 위 칩으로 세운다(v1 티켓 06).
     pub(crate) fn sent(
         &self,
         text: &str,
@@ -202,17 +218,10 @@ impl Recorder {
         }
         payload["prompt"] = json!(prompt);
         payload["sendNow"] = json!(send_now);
-        payload["to"] = json!(self.who);
-        self.log.write(RecordKind::Sent, None, payload).map(drop)
+        self.write(RecordKind::Sent, payload)
     }
 
-    /// Agent 호출 줄(v1 티켓 16) — 줄의 참여자(`who`)는 이 기록의 참여자가 아니라 부른 Agent(`from`)다(S8: 그 줄의 참여자). 불린
-    /// Agent의 Session이 맡긴 일을 받는 자리(시작 줄)에서 적는다.
-    pub(crate) fn call(&self, from: &str, payload: Value) -> Result<(), RecordError> {
-        self.log.write(RecordKind::Call, Some(from), payload).map(drop)
-    }
-
-    /// `session/update` 원문.
+    /// `session/update` 원문 — 턴 안의 글 조각은 호스트가 쌓아 합친 글을 실은 줄 하나로 넘긴다.
     pub(crate) fn update(&self, raw: Value) -> Result<(), RecordError> {
         self.write(RecordKind::Update, raw)
     }
@@ -238,11 +247,11 @@ impl Recorder {
         self.write(RecordKind::TurnEnd, serde_json::to_value(end).expect("turn-end 줄은 JSON이다"))
     }
 
-    /// 지난 말 블록(v1 구현 스펙 S10) — 이 참여자의 Session이 아직 보지 못한 Thread의 말. 보낼 말 바로 앞에 짓는다. 넘길 말이
-    /// 없거나 기록을 읽지 못하면 블록이 없다 — 지난 말이 막혀도 말은 간다.
+    /// 지난 말 블록(v1 구현 스펙 S10) — 이 Session이 아직 보지 못한 Thread의 말. 보낼 말 바로 앞에 짓는다. 넘길 말이 없거나 기록을
+    /// 읽지 못하면 블록이 없다 — 지난 말이 막혀도 말은 간다.
     pub(crate) fn past(&self) -> Option<Value> {
         match self.log.lines() {
-            Ok(lines) => past::past(&lines, &self.who, past::PAST_LIMIT).map(|text| json!({"type": "text", "text": text})),
+            Ok(lines) => past::past(&lines, past::PAST_LIMIT).map(|text| json!({"type": "text", "text": text})),
             Err(error) => {
                 eprintln!("{error}");
                 None
@@ -250,13 +259,13 @@ impl Recorder {
         }
     }
 
-    /// 한 줄을 그 참여자의 handle로 적고, 같은 줄을 기록 줄 이벤트로 내보낸다([`ThreadLog::write`]).
+    /// 한 줄을 적고, 같은 줄을 기록 줄 이벤트로 내보낸다([`ThreadLog::write`]).
     fn write(&self, kind: RecordKind, payload: Value) -> Result<(), RecordError> {
-        self.log.write(kind, Some(&self.who), payload).map(drop)
+        self.log.write(kind, payload).map(drop)
     }
 }
 
-/// Thread 하나의 기록 `events.jsonl` — 그 Thread의 참여자들([`Recorder::of_thread`])과 엔진(참여 줄)이 함께 쓴다(v1 티켓 04).
+/// Thread 하나의 기록 `events.jsonl` — 그 Thread의 Session([`Recorder::of_thread`])과 엔진이 함께 쓴다(v1 티켓 04).
 /// 열려 있는 동안 파일을 연 채로 둔다. 한 Thread에 하나만 연다 — 둘이면 seq를 따로 센다(호스트가 Thread마다 하나를 쥔다).
 pub(crate) struct ThreadLog {
     thread: String,
@@ -279,20 +288,19 @@ impl ThreadLog {
     /// 적힌 줄 전부 — 파일에서 다시 읽는다(쓰는 잠금을 쥐지 않는다). 쓰는 중인 끝 줄은 읽지 않는다.
     pub(crate) fn lines(&self) -> Result<Vec<RecordLine>, RecordError> {
         atelier_core::read_thread_records(&self.root, &self.thread, 0)
-            .map_err(|error| format!("Thread 기록을 읽지 못했습니다: {} — {error}", self.thread))
+            .map_err(|error| format!("채팅 기록을 읽지 못했습니다: {} — {error}", self.thread))
     }
 
     pub(crate) fn last_seq(&self) -> u64 {
         self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq()
     }
 
-    /// 한 줄을 적고 같은 줄을 기록 줄 이벤트로 내보낸다 — 잠금을 쥔 채 내보내므로 이벤트의 순서가 seq의 순서다. 적은 줄을
-    /// 돌려준다(참여 줄의 시각이 참여자의 들어온 시각이다).
-    pub(crate) fn write(&self, kind: RecordKind, who: Option<&str>, payload: Value) -> Result<RecordLine, RecordError> {
+    /// 한 줄을 적고 같은 줄을 기록 줄 이벤트로 내보낸다 — 잠금을 쥔 채 내보내므로 이벤트의 순서가 seq의 순서다. 적은 줄을 돌려준다.
+    pub(crate) fn write(&self, kind: RecordKind, payload: Value) -> Result<RecordLine, RecordError> {
         let mut log = self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let line = log
-            .append(kind, who, payload)
-            .map_err(|error| format!("Thread 기록을 쓰지 못했습니다: {} — {error}", self.thread))?;
+            .append(kind, payload)
+            .map_err(|error| format!("채팅 기록을 쓰지 못했습니다: {} — {error}", self.thread))?;
         (self.emit)(HostEvent::ThreadRecord { thread: self.thread.clone(), line: line.clone() });
         Ok(line)
     }
@@ -309,19 +317,31 @@ impl ThreadLog {
     }
 }
 
-/// Thread의 그 참여자가 지금 Session에서 말을 받은 적이 있나 — 그 참여자의 Session이 새로 선 마지막 열림 줄(`new` · `fresh`)
-/// 뒤에 그에게 간 말(사람의 말 · 맡긴 일, [`past::addressed_to`])이 있나. 되살린 열림(`resumed` · `loaded`)은 같은 Session을 이은
-/// 것이라 건너뛴다. 되살린 Session이 아직 첫 말을 받지 않았으면 그 첫 말에 머리말이 붙는다(v1 구현 스펙 S10 · three-axes 티켓 10).
-pub(crate) fn heard_since_session_start(lines: &[RecordLine], who: &str) -> bool {
+/// `session` 줄의 payload — 새 Thread의 첫 줄도 이것으로 짓는다.
+pub(crate) fn session_payload(state: SessionState) -> Value {
+    serde_json::to_value(state).expect("session 줄은 JSON이다")
+}
+
+/// 아직 아무 Session도 열지 않았나 — `session` 줄이 새 Thread의 첫 줄(`spawning`) 하나뿐이다. 열지 못하고 남긴 줄(로그인 필요 ·
+/// 죽음)이 뒤에 있으면 다음 열기는 제 줄을 적는다.
+fn never_opened(lines: &[RecordLine]) -> bool {
+    let mut sessions = lines.iter().filter(|line| line.kind == RecordKind::Session);
+    let spawning = sessions.next().is_some_and(|first| matches!(SessionState::deserialize(&first.payload), Ok(SessionState::Spawning)));
+    spawning && sessions.next().is_none()
+}
+
+/// 지금 Session이 말을 받은 적이 있나 — Session이 새로 선 마지막 열림 줄(`new` · `fresh`) 뒤에 보낸 말(`sent`)이 있나. 되살린
+/// 열림(`resumed` · `loaded`)은 같은 Session을 이은 것이라 건너뛴다. 되살린 Session이 아직 첫 말을 받지 않았으면 그 첫 말에 머리말이
+/// 붙는다(v1 구현 스펙 S10 · three-axes 티켓 10).
+pub(crate) fn heard_since_session_start(lines: &[RecordLine]) -> bool {
     lines
         .iter()
         .rev()
         .find_map(|line| {
-            if past::addressed_to(line, who) {
+            if line.kind == RecordKind::Sent {
                 return Some(true);
             }
-            (line.kind == RecordKind::Session && line.who.as_deref() == Some(who) && starts_session(&line.payload))
-                .then_some(false)
+            (line.kind == RecordKind::Session && starts_session(&line.payload)).then_some(false)
         })
         .unwrap_or(false)
 }
@@ -330,16 +350,17 @@ pub(crate) fn heard_since_session_start(lines: &[RecordLine], who: &str) -> bool
 mod tests {
     use super::*;
 
-    fn line(seq: u64, kind: RecordKind, who: Option<&str>, payload: Value) -> RecordLine {
-        let mut line = json!({"seq": seq, "at": "2026-10-23T10:00:00.000+09:00", "kind": kind, "payload": payload});
-        if let Some(who) = who {
-            line["who"] = json!(who);
-        }
+    fn line(seq: u64, kind: RecordKind, payload: Value) -> RecordLine {
+        let line = json!({"seq": seq, "at": "2026-10-23T10:00:00.000+09:00", "kind": kind, "payload": payload});
         serde_json::from_value(line).expect("기록 줄")
     }
 
-    fn opened(seq: u64, who: &str, how: How) -> RecordLine {
-        let state = SessionState::Opened {
+    fn state(seq: u64, state: SessionState) -> RecordLine {
+        line(seq, RecordKind::Session, session_payload(state))
+    }
+
+    fn opened(seq: u64, how: How) -> RecordLine {
+        let opened = SessionState::Opened {
             how,
             agent_version: None,
             modes: Value::Null,
@@ -347,36 +368,43 @@ mod tests {
             config_options: Value::Null,
             meta: Value::Null,
         };
-        line(seq, RecordKind::Session, Some(who), serde_json::to_value(state).unwrap())
+        state(seq, opened)
     }
 
-    fn sent(seq: u64, to: &str) -> RecordLine {
-        line(seq, RecordKind::Sent, None, json!({"text": "말", "to": to}))
+    fn sent(seq: u64) -> RecordLine {
+        line(seq, RecordKind::Sent, json!({"text": "말"}))
     }
 
     #[test]
     fn 이_session이_받은_말은_session이_새로_선_new_fresh_열림_뒤의_말이고_resumed_loaded는_같은_session이다() {
-        let mut lines = vec![opened(1, "host", How::New)];
-        assert!(!heard_since_session_start(&lines, "host"), "새로 선 Session은 아직 말을 받지 않았다");
-        lines.push(sent(2, "host"));
-        assert!(heard_since_session_start(&lines, "host"));
+        let mut lines = vec![opened(1, How::New)];
+        assert!(!heard_since_session_start(&lines), "새로 선 Session은 아직 말을 받지 않았다");
+        lines.push(sent(2));
+        assert!(heard_since_session_start(&lines));
 
-        lines.push(opened(3, "host", How::Resumed));
-        assert!(heard_since_session_start(&lines, "host"), "resume으로 이은 Session은 어제의 말을 받은 그 Session이다");
-        lines.push(opened(4, "host", How::Loaded));
-        assert!(heard_since_session_start(&lines, "host"), "load로 이은 Session도 그 Session이다");
+        lines.push(opened(3, How::Resumed));
+        assert!(heard_since_session_start(&lines), "resume으로 이은 Session은 어제의 말을 받은 그 Session이다");
+        lines.push(opened(4, How::Loaded));
+        assert!(heard_since_session_start(&lines), "load로 이은 Session도 그 Session이다");
 
-        lines.push(opened(5, "host", How::Fresh));
-        assert!(!heard_since_session_start(&lines, "host"), "잇지 못해 새로 선 Session은 아직 말을 받지 않았다");
-        lines.push(sent(6, "host"));
-        assert!(heard_since_session_start(&lines, "host"));
+        lines.push(opened(5, How::Fresh));
+        assert!(!heard_since_session_start(&lines), "잇지 못해 새로 선 Session은 아직 말을 받지 않았다");
+        lines.push(sent(6));
+        assert!(heard_since_session_start(&lines));
     }
 
     #[test]
-    fn 다른_참여자의_열림과_그에게_간_말은_세지_않는다() {
-        let lines = vec![opened(1, "host", How::New), sent(2, "host"), opened(3, "reviewer", How::New), sent(4, "reviewer")];
-        assert!(heard_since_session_start(&lines, "host"), "리뷰어의 새 Session이 Host의 Session을 끊지 않는다");
-        let lines = vec![opened(1, "host", How::New), opened(2, "reviewer", How::New), sent(3, "reviewer")];
-        assert!(!heard_since_session_start(&lines, "host"), "리뷰어에게 간 말은 Host가 받은 말이 아니다");
+    fn 띄우는_줄은_아직_아무_session도_열지_않은_새_thread에서만_첫_줄로_갈음한다() {
+        let mut lines = vec![state(1, SessionState::Spawning)];
+        assert!(never_opened(&lines), "첫 줄이 이 열기의 줄이다");
+        lines.push(line(2, RecordKind::Mode, json!({"mode": "plan", "work": "cart"})));
+        assert!(never_opened(&lines), "첫 말 전에 고른 정도의 줄이 끼어도 같다");
+
+        let failed = [state(2, SessionState::LoginRequired)];
+        assert!(!never_opened(&[lines[0].clone(), failed[0].clone()]), "로그인을 기다린 다음 열기는 제 줄을 적는다");
+        let died = state(2, SessionState::Died { reason: "못 열었다".to_owned(), stderr_tail: Vec::new() });
+        assert!(!never_opened(&[lines[0].clone(), died]), "열지 못한 다음 열기도 제 줄을 적는다");
+        assert!(!never_opened(&[lines[0].clone(), opened(2, How::New)]), "연 뒤의 되살리기도 제 줄을 적는다");
+        assert!(!never_opened(&[]), "첫 줄이 없는 기록은 새 Thread가 아니다");
     }
 }

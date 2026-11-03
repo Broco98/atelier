@@ -1,217 +1,171 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { GitBranch, Pencil, TriangleAlert } from "lucide-react";
-import { DescriptionSection, DetailPanel, HeadCrumb } from "@/components/catalog/DetailParts";
+import { shallow, useStore } from "@tanstack/react-store";
+import { Copy, FolderOpen, GitBranch, Layers, MessageSquare, Trash2, type LucideIcon } from "lucide-react";
+import { placeDay, placeWhen } from "@/components/catalog/place-list";
+import {
+  PlaceButton,
+  PlaceDetail,
+  PlaceDetailMenu,
+  PlaceFact,
+  PlaceFacts,
+  PlaceLede,
+  PlaceSection,
+  PlaceWarn,
+} from "@/components/catalog/PlaceDetail";
+import { PlaceAdd, PlaceRow } from "@/components/catalog/PlaceList";
+import { copyText } from "@/components/shell/copy-text";
 import { navItem } from "@/components/shell/nav-items";
-import { PlainFrame } from "@/components/shell/PlainFrame";
-import { Button } from "@/components/ui/button";
-import { showProblem } from "@/components/ui/confirm-store";
-import { InlineRename } from "@/components/ui/inline-rename";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { useProjects, useUpdateProject } from "./hooks";
-import { NoticeBox } from "./NoticeBox";
-import { baseNote, branchGroups, missingNotice, renameHint } from "./project-view";
+import { openInFinder } from "@/components/shell/open-in-finder";
+import { StatusMark } from "@/components/shell/status-mark";
+import { useServices } from "@/features/services/hooks";
+import { signalsOf } from "@/features/terminal/shell-attention";
+import { terminalStore } from "@/features/terminal/terminal-store";
+import { useThreads, useWorkMarks } from "@/features/thread/hooks";
+import { projectDirRef } from "@/features/works/refs";
+import { useWorks } from "@/features/works/hooks";
+import { workMark } from "@/features/works/work-mark";
+import { startSearch } from "@/routes/-new-thread-search";
+import { workDoor } from "@/routes/-work-search";
+import { projectsApi } from "./api";
+import { useProjects } from "./hooks";
+import { projectSections } from "./project-detail";
+import { missingNotice, rowMenu, type RowAct } from "./project-view";
+import { useProjectRemoval } from "./ProjectRemoveDialog";
 import { useRelocate } from "./relocate";
 import type { ProjectView } from "./types";
 
-// Project 상세(03 구현 스펙 §16 · 시안 F1-ProjectDetail · F4-ProjBranch · F4-ProjRename · F4-ProjDetailMissing · F4-KitProject 「상세 조각」). Space
-// 상세와 같은 짜임이다 — 머리 줄 「Projects / web-app」, 판 안에 「← Projects」 단추 · 제목 · 설명, 오른쪽 칸에 기준 브랜치와 경로. 설계 「상세는
-// 기준 브랜치 · 경로 · 설명이다」 — 이 Project를 쓰는 Work 묶음은 두지 않는다(S21, 쓰는 Work는 제거 창이 말한다).
+// **Project 상세**(restart 03-2 · 스펙 「03 — 목록과 상세」 · 스토리 114 · 119 · 보드 MainProjectDetail · PlaceSheet 「상세 상태」 · Places `DETAILS`) —
+// 공용 상세 틀(`PlaceDetail`)에 선 첫 화면이다. 틀은 `/projects`의 것이다(restart 03-1 — `ProjectsPlace`): 머리 줄 「Projects / 이름」과 본문 카드는
+// 목록과 한 자리를 번갈아 쓰는 틀이 그리고, 여기는 상세의 판만 그린다.
 //
-// 고치는 일(제목 · 설명 · 기준 브랜치)은 모두 core 고치기 하나다(`update_project`). 이름을 바꿔도 slug(파일 이름) · 경로는 그대로이고, 기준
-// 브랜치는 그 저장소의 로컬 · 원격 목록에서만 고른다(core가 목록에 없는 값을 거절한다). 경로는 폴더를 찾을 수 없을 때의 「재설정」으로만
-// 바뀐다.
+//   「← Projects」 ─ 언제나 목록으로(창의 뒤로 · 앞으로는 주소의 히스토리라 목록 · 상세 · 그 너머를 오간다)
+//   머리 ─ 이름 · 「작업공간 만들기」 · 「+ 새 채팅」(그 Project를 범위로 고른 새 채팅 — 목록 줄의 두 단추와 같은 주소) · ⋯(목록 줄의 ⋯와 같다)
+//   설명 · 폴더를 찾을 수 없으면 경고와 「재설정」(스토리 119 — ⋯ 안이 아니라 여기서 바로)
+//   위 카드 ─ 경로 · 기준 브랜치 · 원격 · 추가한 날
+//   묶음 ─ 작업공간 · 채팅 · Service(`projectSections` — 「상세에 Work 묶음을 두지 않는다」(S21)를 뒤집는다). 줄이 없는 묶음은 서지 않는다
+//
+// **보드에 없는 고치기 문이 없다**(restart 03-15c — 소유자 판단 「시안대로」) — 이름 · 설명 · 기준 브랜치는 대화로 고친다(MCP `atelier_edit_project` ·
+// Runtime의 설정 도구 — 둘 다 core `update_project`다). 경로는 「재설정」으로만 바뀐다. 한때(03-2) 제목을 누르거나 ⋯ 「이름 바꾸기」면 이름 칸,
+// ⋯ 「설명 고치기」면 설명 칸, 기준 브랜치 카드를 누르면 목록이 섰다. 그 앞(03)은 제목 · 설명 묶음 | 오른쪽 칸(기준 브랜치 · 경로) 두 단이었고
+// Work 묶음이 없었다.
 
 export default function ProjectDetail({ slug }: { slug: string }) {
   const { data: projects = [], isPending, isFetching } = useProjects();
   const project = projects.find((one) => one.slug === slug) ?? null;
-  const label = navItem("projects").label;
   const navigate = useNavigate();
-  const goList = (replace = false) => void navigate({ to: "/projects", replace });
 
-  // 보던 Project가 목록에서 빠졌다(다른 창 · 바깥에서 제거) — 목록으로 간다. 빈 상세가 남으면 뒤로가기 한 번이 아무 일도 하지 않으니
-  // 이 칸을 갈아 쓴다(replace).
+  // 보던 Project가 목록에서 빠졌다(이 상세의 ⋯ · 다른 창 · 바깥에서 제거) — 목록으로 간다. 빈 상세가 남으면 뒤로가기 한 번이 아무 일도 하지
+  // 않으니 이 칸을 갈아 쓴다(replace).
   const gone = !isPending && !isFetching && project === null;
   useEffect(() => {
-    if (gone) goList(true);
-    // goList는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다
+    if (gone) void navigate({ to: "/projects", replace: true });
+    // navigate는 의존성에 넣지 않는다 — 라우터가 고정해 준다
   }, [gone]);
 
-  return (
-    <PlainFrame label={`${label} 상세`} lead={<HeadCrumb label={label} onOpen={() => goList()} />} title={project ? { name: project.name } : undefined}>
-      {/* 토스트는 본문 왼쪽 아래다(`DetailPanel` — Space 상세와 같다). */}
-      <DetailPanel back={{ to: "/projects", label }}>{project && <ProjectBody key={project.slug} project={project} />}</DetailPanel>
-    </PlainFrame>
-  );
+  if (!project) return <PlaceDetail back={BACK()} title={null}>{null}</PlaceDetail>;
+  return <ProjectBody key={project.slug} project={project} />;
 }
+
+const BACK = () => ({ to: "/projects" as const, label: navItem("projects").label });
 
 function ProjectBody({ project }: { project: ProjectView }) {
-  const update = useUpdateProject();
+  const navigate = useNavigate();
   const relocate = useRelocate();
-  const patch = async (change: Parameters<typeof update.mutateAsync>[0]["patch"], failed: string): Promise<boolean> => {
-    try {
-      await update.mutateAsync({ slug: project.slug, patch: change });
-      return true;
-    } catch (e) {
-      await showProblem(`${failed} — ${e}`);
-      return false;
-    }
+  const removing = useProjectRemoval();
+  const { data: works = [] } = useWorks();
+  const { data: threads = [] } = useThreads();
+  const { data: services = [] } = useServices();
+  const marks = useWorkMarks();
+  const signals = useStore(terminalStore, (state) => signalsOf(state), shallow);
+
+  const sections = useMemo(() => projectSections(project.slug, works, threads, services), [project.slug, works, threads, services]);
+  // 시각 글은 그린 때의 지금으로 센다(목록과 같다).
+  const now = Date.now();
+
+  const start = (what: "work" | "thread") => void navigate({ to: "/", search: startSearch(what, { project: project.slug }) });
+  const act = (what: RowAct) => {
+    if (what === "open-folder") openInFinder(() => projectsApi.openFolder(project.slug));
+    else if (what === "copy-path") copyText(projectDirRef(project.path));
+    else void removing.ask(project);
   };
-  return (
-    // 두 칸 — 본문 칸 | 오른쪽 칸 270, 사이 48(시안 `.cols`).
-    <div className="grid grid-cols-[minmax(0,1fr)_270px] items-start gap-12">
-      <div className="min-w-0">
-        <Title project={project} onRename={(name) => void patch({ name }, "이름을 바꾸지 못했어요")} />
-        {project.missing && <MissingNotice project={project} onRelocate={() => void relocate(project)} />}
-        <DescriptionSection
-          text={project.description}
-          aside="Agent가 이 Project를 이해할 때 읽어요"
-          placeholder="이 Project가 무엇인지 한두 줄로 적어 두세요"
-          onSave={(description) => patch({ description }, "설명을 저장하지 못했어요")}
-        />
-      </div>
-      <aside aria-label="Project 정보" className="flex flex-col">
-        <RailSection label="기준 브랜치" first>
-          <BaseBranch project={project} onPick={(baseBranch) => patch({ baseBranch }, "기준 브랜치를 바꾸지 못했어요")} />
-        </RailSection>
-        <RailSection label="경로">
-          <p
-            className={cn(
-              "font-mono text-code break-all",
-              project.missing ? "text-fg-tertiary line-through decoration-fg-faint" : "text-fg",
-            )}
-          >
-            {project.path}
-          </p>
-          {project.missing && (
-            <div className="mt-2.5 flex items-center gap-2">
-              <span className="flex items-center gap-1 text-xs text-fg-notice-warn-line">
-                <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
-                Project를 찾을 수 없어요
-              </span>
-              <Button variant="outline" size="top" className="rounded-full text-fg" onClick={() => void relocate(project)}>
-                재설정
-              </Button>
-            </div>
-          )}
-        </RailSection>
-      </aside>
-    </div>
-  );
-}
 
-/** 오른쪽 칸의 묶음 — 흐린 이름 아래 값, 묶음 사이 선(시안 `.rs` · `.rl`). 첫 묶음은 선이 없고 위가 좁다. */
-function RailSection({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
   return (
-    <section aria-label={label} className={cn("pb-4", first ? "pt-1" : "border-t border-separator-soft pt-4")}>
-      <h2 className="mb-2 text-sm text-fg-secondary">{label}</h2>
-      {children}
-    </section>
-  );
-}
-
-/**
- * 제목(24) — 누르면 그 자리에서 입력 칸이 되고(연필도 같다), 아래 「↵ 저장 · esc 취소 — 파일 이름(web-app.md)과 경로는 그대로예요」가 선다
- * (스토리 122 · 시안 F4-ProjRename). 비우면 원래 이름이다 — core가 빈 이름을 받지 않는다.
- */
-function Title({ project, onRename }: { project: ProjectView; onRename: (name: string) => void }) {
-  const [renaming, setRenaming] = useState(false);
-  return (
-    <div>
-      <h1 className="flex min-h-8 items-center gap-2.5 text-heading-lg font-medium text-fg">
-        {renaming ? (
-          <InlineRename
-            value={project.name}
-            label="Project 이름"
-            emptyMeans="revert"
-            fit="text"
-            onCommit={onRename}
-            onDone={() => setRenaming(false)}
-            className="-ml-2.5 h-10 min-w-88 items-center rounded-lg px-2.5"
-          />
-        ) : (
-          <>
-            <button
-              type="button"
-              aria-label={`${project.name} — 이름 바꾸기`}
-              onClick={() => setRenaming(true)}
-              className="min-w-0 truncate rounded-md text-left focus-ring"
-            >
-              {project.name}
-            </button>
-            <button
-              type="button"
-              aria-label="이름 바꾸기"
-              onClick={() => setRenaming(true)}
-              className="rounded-sm p-0.5 text-fg-faint transition-colors hover:text-fg-secondary focus-ring"
-            >
-              <Pencil aria-hidden className="size-3.5" />
-            </button>
-          </>
-        )}
-      </h1>
-      {renaming && <p className="mt-2 text-xs text-fg-tertiary">{renameHint(project)}</p>}
-    </div>
-  );
-}
-
-/** 폴더를 찾을 수 없음(스토리 124 · 시안 F4-ProjDetailMissing) — 제목 아래 노란 안내 상자와 「재설정」. */
-function MissingNotice({ project, onRelocate }: { project: ProjectView; onRelocate: () => void }) {
-  const notice = missingNotice(project);
-  return <NoticeBox tone="warn" title={notice.title} body={notice.body} action={{ label: "재설정", onClick: onRelocate }} className="mt-4" />;
-}
-
-/**
- * 기준 브랜치(스토리 119–121 · 125 · 시안 F4-ProjBranch) — 단추를 누르면 목록이 「로컬」 · 「원격 — origin」 묶음으로 서고, 아래 「목록에 있는
- * 브랜치만 고를 수 있어요」. 목록 밖 값 · 빈 값을 적는 칸은 없다. 원격 브랜치를 고르면 그 이름 그대로(`origin/release/2.5`) 적힌다(S19). 폴더를
- * 찾을 수 없으면 꺼진다. 단추 아래 한 줄이 이 값이 무엇을 정하는지, 방금 바꿨으면 그 뒤의 일을 말한다.
- */
-function BaseBranch({ project, onPick }: { project: ProjectView; onPick: (branch: string) => Promise<boolean> }) {
-  const [changed, setChanged] = useState(false);
-  const groups = branchGroups(project.git);
-  return (
-    <>
-      <Select
-        value={project.baseBranch}
-        disabled={project.missing}
-        onValueChange={(branch) => {
-          // 값이 바뀔 때만 저장한다 — 지금 값을 다시 고른 것은 닫기만 한다.
-          if (typeof branch === "string" && branch !== project.baseBranch) {
-            void onPick(branch).then((ok) => ok && setChanged(true));
-          }
-        }}
-      >
-        <SelectTrigger
-          aria-label="기준 브랜치"
-          className="h-8 gap-1.5 border border-border-heavy bg-surface pr-2 pl-2.5 text-fg hover:bg-fill-soft"
-        >
-          <GitBranch aria-hidden className="size-3.5 text-fg-icon" />
-          <span className="font-mono">{project.baseBranch}</span>
-        </SelectTrigger>
-        <SelectContent
-          className="w-62.5"
-          footer={<p className="px-3.5 pt-1 pb-2.5 text-xs text-fg-tertiary">목록에 있는 브랜치만 고를 수 있어요</p>}
-        >
-          {groups.map((group, index) => (
-            <Fragment key={group.label}>
-              {index > 0 && <SelectSeparator className="mx-1.5 h-[0.5px] bg-separator" />}
-              <SelectGroup className="p-0">
-                <SelectLabel className="px-2 pt-1.5 pb-1 text-xs text-fg-tertiary">{group.label}</SelectLabel>
-                {group.branches.map((branch) => (
-                  <SelectItem key={branch} value={branch}>
-                    <span className="flex min-w-0 items-center gap-2">
-                      <GitBranch aria-hidden className="size-3.5 shrink-0 text-fg-icon" />
-                      <span className="min-w-0 truncate font-mono text-xs">{branch}</span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </Fragment>
+    <PlaceDetail
+      back={BACK()}
+      title={project.name}
+      actions={
+        <>
+          <PlaceButton label="작업공간 만들기" onClick={() => start("work")} />
+          <PlaceAdd label="새 채팅" onClick={() => start("thread")} />
+          <PlaceDetailMenu label={`${project.name} 메뉴`} items={rowMenu(project)} icons={MENU_ICONS} onAct={act} />
+        </>
+      }
+      after={removing.dialog}
+    >
+      <PlaceLede>{project.description}</PlaceLede>
+      {project.missing && <PlaceWarn text={missingNotice()} action={{ label: "재설정", onClick: () => void relocate(project) }} />}
+      <PlaceFacts>
+        <PlaceFact label="경로" value={project.path} />
+        <PlaceFact label="기준 브랜치" value={project.baseBranch} />
+        <PlaceFact label="원격" value={project.git?.remoteSlug ?? "—"} />
+        <PlaceFact label="추가한 날" value={placeDay(project.createdAt)} />
+      </PlaceFacts>
+      {sections.works.length > 0 && (
+        <PlaceSection title="작업공간" count={sections.works.length} add={{ label: "작업공간 만들기", onClick: () => start("work") }}>
+          {sections.works.map((row) => (
+            <PlaceRow
+              key={row.slug}
+              size="sub"
+              icon={<GitBranch />}
+              name={row.name}
+              // 그 작업공간의 마지막 화면으로 간다 — 다른 문(사이드바 · ⌘K)과 같은 주소다(`workDoor`).
+              link={workDoor(row.slug)}
+              desc={row.desc}
+              when={placeWhen(row.at, now)}
+              onOpen={() => void navigate(workDoor(row.slug))}
+              actions={<StatusMark kind={workMark(marks[row.slug] ?? [], signals[row.slug] ?? null)} />}
+            />
           ))}
-        </SelectContent>
-      </Select>
-      <p className="mt-2 text-xs text-fg-tertiary">{baseNote(project, changed)}</p>
-    </>
+        </PlaceSection>
+      )}
+      {sections.chats.length > 0 && (
+        <PlaceSection title="채팅" count={sections.chats.length} add={{ label: "새 채팅", onClick: () => start("thread") }}>
+          {sections.chats.map((row) => (
+            <PlaceRow
+              key={row.id}
+              size="sub"
+              icon={<MessageSquare />}
+              name={row.name}
+              link={{ to: "/threads/$id", params: { id: row.id } }}
+              desc={row.desc}
+              when={placeWhen(row.at, now)}
+              onOpen={() => void navigate({ to: "/threads/$id", params: { id: row.id } })}
+              actions={null}
+            />
+          ))}
+        </PlaceSection>
+      )}
+      {sections.services.length > 0 && (
+        <PlaceSection title="Service" count={sections.services.length}>
+          {sections.services.map((row) => (
+            <PlaceRow
+              key={row.slug}
+              size="sub"
+              icon={<Layers />}
+              name={row.name}
+              link={{ to: "/services/$slug", params: { slug: row.slug } }}
+              desc={row.desc}
+              when={placeWhen(row.at, now)}
+              onOpen={() => void navigate({ to: "/services/$slug", params: { slug: row.slug } })}
+              actions={null}
+            />
+          ))}
+        </PlaceSection>
+      )}
+    </PlaceDetail>
   );
 }
+
+/** 머리 ⋯ 항목의 글리프 — 목록 줄의 ⋯와 같다(열린 폴더 · 복사 · 지우기). */
+const MENU_ICONS: Record<RowAct, LucideIcon> = { "open-folder": FolderOpen, "copy-path": Copy, remove: Trash2 };

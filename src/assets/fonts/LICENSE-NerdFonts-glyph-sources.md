@@ -113,7 +113,7 @@ All files created such as `font-patcher` and any `ph` or `sh` script/source file
 | Roboto Mono                   | Apache-2.0                   |
 | Share Tech Mono               | OFL-1.1-RFN                  |
 | Source Code Pro               | OFL-1.1-RFN                  |
-| Space Mono                    | OFL-1.1-no-RFN               |
+| Service Mono                    | OFL-1.1-no-RFN               |
 | Symbols Only                  | MIT                          |
 | Terminus                      | OFL-1.1-RFN                  |
 | Tinos                         | Apache-2.0                   |

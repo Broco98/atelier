@@ -14,9 +14,6 @@ use atelier_acp::{ConversationHost, HostError, ThreadLink};
 use atelier_core::WorkGone;
 use common::{of_kind, Sandbox};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 fn in_cart() -> ThreadLink {
     ThreadLink::Work { slug: "cart".into() }
 }
@@ -35,7 +32,7 @@ fn archive(sandbox: &Sandbox, slug: &str) {
 
 /// 그 Session의 claude와 변환기 프로세스.
 fn session_pids(sandbox: &Sandbox, thread: &str) -> [u32; 2] {
-    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host"));
+    let receipt = sandbox.claude_receipt(&sandbox.thread_session_id(thread));
     [receipt["pid"].as_u64().unwrap() as u32, receipt["ppid"].as_u64().unwrap() as u32]
 }
 
@@ -45,7 +42,6 @@ fn read_only(thread: &str, gone: WorkGone) -> Result<(), HostError> {
 
 /// Work에 이은 Thread — 첫 턴이 끝날 때까지 기다린다.
 fn settled(sandbox: &Sandbox) -> (ConversationHost, common::Events, String) {
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("cart", &[]);
     let (host, events) = sandbox.host_with_events(sandbox.claude_login_shell("normal", &[]));
     let thread = host.start_thread("장바구니 문서를 정리하자", in_cart()).expect("Work에 이은 Thread");
@@ -74,8 +70,6 @@ fn 보관된_work의_thread는_쉬던_session이_꺼지고_말을_거절하며_�
     assert_eq!(announced.read_only, Some(WorkGone::Archived), "바뀐 요약을 알린다 — 열린 화면 · 사이드바가 따라온다(S7)");
 
     assert_eq!(host.send_to_thread(&thread, "하나 더 정리해 줘"), read_only(&thread, WorkGone::Archived));
-    assert_eq!(host.send_to_thread(&thread, "@reviewer 봐 줘"), read_only(&thread, WorkGone::Archived), "새 Agent도 들이지 않는다");
-    assert_eq!(host.call_again(&thread, "host", "reviewer", "봐 줘"), read_only(&thread, WorkGone::Archived));
     assert_eq!(host.rename_thread(&thread, "새 이름").map(drop), read_only(&thread, WorkGone::Archived));
     assert_eq!(
         sandbox.thread_record(&thread).len(),
@@ -107,7 +101,6 @@ fn 지워진_work의_thread도_읽기만이고_쉬던_session이_꺼진다() {
 #[test]
 fn 턴이_도는_동안_보관되면_그_턴은_이어_돌고_끝난_뒤에_session이_꺼지며_대기_줄의_말은_가지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     sandbox.work("cart", &[]);
     // 원문은 40초 자는 명령을 돌리다 interrupt로 멈춘 턴이다 — 멈추기 전에는 끝나지 않는다.
     let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")]);
@@ -123,7 +116,7 @@ fn 턴이_도는_동안_보관되면_그_턴은_이어_돌고_끝난_뒤에_sess
     host.check_vanished_works();
 
     assert!(pids.iter().all(|pid| common::is_running(*pid)), "도는 턴은 끊지 않는다 — 보관을 시킨 Agent가 그 턴 안에 있을 수 있다");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     assert!(
         !sandbox.claude_stdin(&session).iter().any(|line| line["request"]["subtype"] == "interrupt"),
         "멈추지도 않는다"
@@ -140,9 +133,9 @@ fn 턴이_도는_동안_보관되면_그_턴은_이어_돌고_끝난_뒤에_sess
         ["40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해"],
         "대기 줄의 말은 가지 않는다"
     );
-    let (who, queue) = events.thread_queues(&thread).last().cloned().expect("대기 줄 바뀜");
-    assert_eq!((who.as_str(), queue.len()), ("host", 0), "꺼진 Session의 대기 줄은 비었다고 알린다");
-    assert!(host.thread(&thread).unwrap().queues.is_empty());
+    let queue = events.thread_queues(&thread).last().cloned().expect("대기 줄 바뀜");
+    assert!(queue.is_empty(), "꺼진 Session의 대기 줄은 비었다고 알린다");
+    assert!(host.thread(&thread).unwrap().queue.is_empty());
 
     host.shut_down();
 }

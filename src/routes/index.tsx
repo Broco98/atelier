@@ -1,14 +1,19 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ownerOf } from "@/features/terminal/shell-registry";
+import { showNewChatTab } from "@/features/terminal/terminal-store";
+import { newChatKey } from "@/features/thread/new-chat";
 import { NewThreadScreen } from "@/features/thread/ThreadScreen";
-import { seedOf, validateNewThreadSearch } from "./-new-thread-search";
+import { fillDraft } from "@/features/thread/thread-store";
+import { newThreadKey, seedOf, validateNewThreadSearch } from "./-new-thread-search";
+import { newChatDoor } from "./-work-search";
 
 // `/`는 **새 Thread**다(v1 구현 스펙 §13 · S26) — 앱은 늘 여기로 열린다. 한때 이 자리는 작업 목록으로 넘기기만 하는 주소였고
 // (`/works`로 리다이렉트 → 이번 세션의 마지막 work), 그 마지막 자리 기억을 v1 티켓 05가 걷었다. 진입이 저장소를 읽지 않는 것은 그대로다
-// — 앞 판이 남긴 키(`last-mode`)가 있어도 그대로 둔다(ui-refresh 결정 23, `router.test.ts`). 화면이 읽는 것은 Work 칩의 스위치 기억 하나다
-// (03 S2 — `work-chip.ts`).
+// — 앞 판이 남긴 키(`last-mode`)가 있어도 그대로 둔다(ui-refresh 결정 23, `router.test.ts`).
 //
-// search는 **처음 고를 곳**(Work 칩의 씨앗 — `?work=<slug>` · `?new=work` · `?new=thread`, Space 칩의 씨앗 — `?space=<slug>`)과 **입력
-// 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 줄 「새 Thread」가 같은 규칙으로 「씨앗 없는 새
+// search는 **시작할 곳**(`?work=<slug>` · `?new=work` · `?new=thread`), **범위**(`?service=<slug>` · `?project=<slug>`)와
+// **입력 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 칸 「새 채팅」이 같은 규칙으로 「씨앗 없는 새
 // Thread인가」를 읽는다(02 코드 리뷰 S1).
 export const Route = createFileRoute("/")({
   component: NewThreadRoute,
@@ -18,8 +23,24 @@ export const Route = createFileRoute("/")({
 // 틀(머리 줄 · 흰 판)은 앱 셸이 그려 화면이 사이드바 상태를 읽지 않는다(02 구현 스펙 §3).
 function NewThreadRoute() {
   const seed = seedOf(Route.useSearch());
-  // 씨앗이 바뀌면 화면을 새로 세운다 — `/?work=a`에서 `/`나 `/?work=b` · `/?new=work`로 가도 고른 곳이 남지 않고, 다른 입력 글 · Space는 다시
-  // 넣는다.
-  const link = seed.link === null ? "" : seed.link.kind === "work" ? `work:${seed.link.slug}` : seed.link.kind;
-  return <NewThreadScreen key={`${link}\u0000${seed.say ?? ""}\u0000${seed.space ?? ""}`} seed={seed} />;
+  if (seed.link?.kind === "work") return <WorkSeed slug={seed.link.slug} say={seed.say} />;
+  return <NewThreadScreen key={newThreadKey(seed)} seed={seed} />;
+}
+
+/**
+ * **`?work=<slug>`는 그 작업공간의 새 채팅 탭으로 간다**(restart 02a-8 — 한때 홈에 그 작업공간의 잠긴 칩을 세웠다). 어느 새 채팅 탭인지는 묶음이
+ * 쥔다 — 켜진 새 채팅 탭이면 그 탭, 아니면 첫 새 채팅 탭, 없으면 하나 세운다(`showNewChatTab` — 주소 `tab=chat`이 가리키는 그 탭이다).
+ * 입력 글(`?say=`)이 있으면 그 탭의 입력창에 채운다 — 보내지 않는다. 범위 씨앗(`?service=` · `?project=`)은 따라가지 않는다 — 작업공간의 범위는
+ * 그 작업공간의 것이다. 주소만 바꾸므로 replace다.
+ */
+function WorkSeed({ slug, say }: { slug: string; say: string | null }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (say !== null) {
+      const tab = showNewChatTab(ownerOf(slug));
+      if (tab !== null) fillDraft(newChatKey(tab), say);
+    }
+    void navigate({ ...newChatDoor(slug), replace: true });
+  }, [navigate, slug, say]);
+  return null;
 }

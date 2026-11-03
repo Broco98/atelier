@@ -30,7 +30,22 @@ void loadNotifySettings();
 void loadStartupReport();
 // 목록 칸은 접지 않는다(codex-ds 결정 32). 접던 때 Projects · Archive가 화면마다 적어 둔 접힘 값은 읽는 곳이 없어 **앱이 뜰 때
 // 지운다** — 남겨 두면 걷은 기능의 값이 사람의 저장소에 영영 남는다. 지울 것이 없으면 아무 일도 안 한다.
-for (const key of ["projects-panel-open", "archive-panel-open"]) localStorage.removeItem(key);
+// 작업공간 화면의 분할이 적던 열 비율(`work-split-ratio`)도 같은 까닭으로 지운다 — 분할은 restart 02a-13에서 걷혔다. Archive의 목록 칸 · spec 목록
+// 패널이 적던 폭(`archive-panel-width` · `archive-spec-panel-width`)도 같다 — 둘은 restart 03-4가 Archive를 목록과 상세로 나누며 걷혔다.
+for (const key of [
+  "projects-panel-open",
+  "archive-panel-open",
+  "work-split-ratio",
+  "archive-panel-width",
+  "archive-spec-panel-width",
+])
+  localStorage.removeItem(key);
+// 스트리밍 부하 점검(restart 01b-9) — `scripts/stream-load.mjs`가 띄운 개발 빌드에서만 돈다. 배포 빌드에서는 Vite가 `DEV`를 거짓 상수로 바꿔 이
+// 동적 임포트째 빠지고 그 모듈은 번들에 들지 않는다. 입구는 여기 하나다(`stream-load.test.ts`).
+if (import.meta.env.DEV && import.meta.env.VITE_STREAM_LOAD) {
+  const sink: string = import.meta.env.VITE_STREAM_LOAD;
+  void import("./features/thread/stream-load").then(({ runStreamLoad }) => runStreamLoad(sink));
+}
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

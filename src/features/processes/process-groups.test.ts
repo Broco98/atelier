@@ -17,12 +17,16 @@ const 스냅샷 = (otherInstances: Record<string, ProcessRow[]>, instances: Othe
 
 const 펼침 = (nodes: ReadonlyArray<ProcessNode>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);
 
-describe("확인 창의 말", () => {
-  it("[끝내기] — 하나면 그것만, 밑에 뜬 것이 있으면 그 수를 든다", () => {
-    expect(endAsk("node", 1)).toEqual({ title: "'node' 끝내기", body: "이 프로세스를 끝내요.", confirm: "끝내기" });
+describe("끝내기를 묻는 말", () => {
+  // **[끝내기]는 줄 밑의 묻는 줄로 묻는다**(restart 03-11 · 시안 ProcessSheet 「끝내기」 · Processes `.pr-ask`). 무엇을 끝내는지와, 끝내기가
+  // 무엇을 하는지(TERM · 2초 · KILL · 신호 직전 신원 확인)를 말한다. 밑에 뜬 것이 있으면 그 수도 함께 끝낸다고 말한다. 이름 뒤에 「프로세스」를
+  // 붙여 조사를 고른다 — 이름은 대개 영문이라 받침으로 고르면 읽는 소리와 어긋난다.
+  it("[끝내기] — 무엇을 끝내는지와 끝내기가 하는 일을 묻는 줄에 적는다", () => {
+    const how = "TERM을 보내고 2초 뒤에도 남아 있으면 KILL을 보내요. 그사이 다른 프로세스로 바뀌었으면 보내지 않아요.";
+    expect(endAsk("vitest", 1)).toEqual({ title: "vitest 프로세스를 끝낼까요?", body: how, confirm: "끝내기" });
     expect(endAsk("node", 3)).toEqual({
-      title: "'node' 끝내기",
-      body: "이 프로세스와 그 밑에서 뜬 프로세스 2개를 끝내요.",
+      title: "node 프로세스를 끝낼까요?",
+      body: `그 밑에서 뜬 프로세스 2개도 함께 끝내요. ${how}`,
       confirm: "끝내기",
     });
   });
@@ -56,8 +60,8 @@ describe("다른 인스턴스", () => {
         "Z-9": [행(690, 1, 6_900)],
       },
       [
-        { generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-1", "H-2"] },
-        { generation: "R", build: "release", version: "0.14.1", shellKeys: ["R-1"] },
+        { generation: "H", build: "dev", version: "0.15.0", keys: ["H-1", "H-2"] },
+        { generation: "R", build: "release", version: "0.14.1", keys: ["R-1"] },
       ],
     );
     expect(instanceGroups(snapshot).map((group) => [group.label, 펼침(group.nodes)])).toEqual([
@@ -83,7 +87,7 @@ describe("다른 인스턴스", () => {
           행(601, 600, 6_010, { metrics: 지표(200 * MiB, 2) }),
         ],
       },
-      [{ generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-1"] }],
+      [{ generation: "H", build: "dev", version: "0.15.0", keys: ["H-1"] }],
     );
     const [group] = instanceGroups(snapshot);
     expect(group.totals).toEqual({ memory: 204 * MiB, cpu: 3, ports: [5173] });

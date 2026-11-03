@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { ARCHIVE, SPACES, WORKS } from "./fixtures";
+import { ARCHIVE, SERVICES, WORKS } from "./fixtures";
 import {
   callCount,
   callsSinceRelease,
@@ -13,13 +13,13 @@ import {
   steadyCount,
   unknownIpcCalls,
   workRow,
-  사람메뉴로간다,
+  가는곳으로간다,
 } from "./harness";
 
 // 티켓 14 — **spec이 바뀌면 work 목록 조회가 한 번만 돈다**(프로세스 결정 18 ① · 프로세스 스펙 판 02 ① · S20).
 //
 // 에이전트가 spec을 쓸 때마다 감시자가 `works:changed`를 쏜다. 전에는 목록을 쓰는 자리(사이드바 · 사이드바 work 목록 ·
-// works 라우트 · 작업 화면 · 프로젝트 상세(이제 Space 상세) · 아카이브 둘)마다 구독이 붙어, 이벤트 한 번에 목록 조회가 작업 화면에서 네 번
+// works 라우트 · 작업 화면 · 프로젝트 상세(이제 Service 상세) · 아카이브 둘)마다 구독이 붙어, 이벤트 한 번에 목록 조회가 작업 화면에서 네 번
 // 돌았다 — 워크트리 21개면 `git status`가 84번이다. 이제 앱 루트가 한 번 듣고, 조회 중에 온 이벤트는 끝난 뒤 한 번으로 합친다.
 //
 // **쏘는 것은 `fireEventToAll`이다.** 실물의 `emit`은 살아 있는 모든 구독에 간다. 마지막 구독 하나에만 쏘는 `fireEvent`로는
@@ -29,12 +29,12 @@ import {
 
 const EVENT = "works:changed";
 const [, plainWork] = WORKS;
-const [space] = SPACES;
+const [service] = SERVICES;
 /**
- * 그 Space에 이은 work — Space 상세의 「Work」 묶음에 선다(03 §14). 픽스처 work은 Space가 없어 이 검사만 하나를 잇는다. 한때 프로젝트
- * 상세의 「Works」 목록이 이 자리였다 — 03이 Project 상세에서 Work 묶음을 걷었다(S21).
+ * 그 Service에 이은 work — Service 상세의 「작업공간」 묶음에 선다(03 §14). 픽스처 work은 Service가 없어 이 검사만 하나를 잇는다. 한때 프로젝트
+ * 상세의 「작업공간」 목록이 이 자리였다 — 03이 Project 상세에서 Work 묶음을 걷었다(S21).
  */
-const spaceWork = { ...plainWork, space: space.slug };
+const serviceWork = { ...plainWork, service: service.slug };
 const [shipped] = ARCHIVE;
 
 /**
@@ -50,7 +50,8 @@ async function settle(page: Page): Promise<void> {
 /** 작업 화면에 선다 — 사이드바(목록 둘)와 works 라우트 · 작업 화면이 모두 목록을 쓴다. */
 async function openWork(page: Page): Promise<void> {
   await page.goto(`/works/${plainWork.slug}`);
-  await expect(page.locator('[data-tab="spec"]')).toBeVisible();
+  // 앵커: 작업 화면이 섰다 — 주소 없이 열면 새 채팅 탭이 선다(restart 02a-8 — 한때 spec 칸이 켜진 채 섰다).
+  await expect(page.locator('[data-tab="new-chat"]')).toBeVisible();
   await expect(workRow(page, plainWork.slug)).toBeVisible();
 }
 
@@ -64,23 +65,27 @@ async function firedCalls(page: Page, command: string): Promise<number> {
   return (await steadyCount(page, command)) - before;
 }
 
-test("작업 화면 · Space 상세 · 아카이브에 차례로 서도 works:changed의 살아 있는 구독은 매번 하나다", async ({ page }) => {
-  await installFixtureBackend(page, { list_works: WORKS.map((work) => (work.slug === spaceWork.slug ? spaceWork : work)) });
+test("작업 화면 · Service 상세 · 아카이브에 차례로 서도 works:changed의 살아 있는 구독은 매번 하나다", async ({ page }) => {
+  await installFixtureBackend(page, { list_works: WORKS.map((work) => (work.slug === serviceWork.slug ? serviceWork : work)) });
   await openWork(page);
   // StrictMode가 붙였다 뗀 구독의 해제는 늦게 온다 — 수가 멎을 때까지 기다려 잰다(`liveSubscriptions`).
   expect(await liveSubscriptions(page, EVENT), "작업 화면").toBe(1);
 
-  await 사람메뉴로간다(page, "Space");
-  await page.getByRole("table", { name: "Space 목록", exact: true }).getByRole("link", { name: space.name, exact: true }).click();
-  await expect(page).toHaveURL(`/spaces/${encodeURIComponent(space.slug)}`);
-  // 앵커: Space 상세가 목록을 읽어 그렸다. 사이드바 행도 같은 제목이라 「Work」 묶음으로 좁힌다.
-  await expect(page.getByRole("region", { name: "Work", exact: true }).getByRole("link", { name: spaceWork.title })).toBeVisible();
-  expect(await liveSubscriptions(page, EVENT), "Space 상세").toBe(1);
+  await 가는곳으로간다(page, "Services");
+  await page.getByRole("table", { name: "Service 목록", exact: true }).getByRole("link", { name: service.name, exact: true }).click();
+  await expect(page).toHaveURL(`/services/${encodeURIComponent(service.slug)}`);
+  // 앵커: Service 상세가 목록을 읽어 그렸다. 사이드바 행도 같은 제목이라 「작업공간」 묶음으로 좁힌다.
+  await expect(page.getByRole("region", { name: "작업공간", exact: true }).getByRole("link", { name: serviceWork.title })).toBeVisible();
+  expect(await liveSubscriptions(page, EVENT), "Service 상세").toBe(1);
 
-  await 사람메뉴로간다(page, "Archive");
+  // 사이드바 「Archive」는 목록이다(restart 03-4 — 한때 마지막으로 보던 아카이브 `/archive/<slug>`로 곧장 갔다). 줄을 눌러 상세로 간다.
+  await 가는곳으로간다(page, "Archive");
+  await expect(page).toHaveURL("/archive");
+  expect(await liveSubscriptions(page, EVENT), "아카이브 목록").toBe(1);
+  await page.getByRole("table", { name: "Archive 목록", exact: true }).getByRole("link", { name: shipped.title, exact: true }).click();
   await expect(page).toHaveURL(`/archive/${shipped.slug}`);
   await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
-  expect(await liveSubscriptions(page, EVENT), "아카이브").toBe(1);
+  expect(await liveSubscriptions(page, EVENT), "아카이브 상세").toBe(1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

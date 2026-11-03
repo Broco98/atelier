@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "./evidence";
-import { WORKS } from "./fixtures";
+import { PROJECTS, WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls, 툴팁 } from "./harness";
 
 // codex-ds 티켓 03 — **글자는 DS 단계에서만 나온다**(codex-ds 결정 27 · 스펙 「토큰」의 글자 단계). 단계가 크기와 함께
@@ -26,7 +26,8 @@ const 글자 = (target: Locator) =>
 test("문서 h1 · h2 · 본문이 DS heading-lg · heading-sm · chat-body다", async ({ page }) => {
   // 제목 둘과 문단 하나를 가진 문서 — 어느 경로를 읽어도 이 글이 온다.
   await installFixtureBackend(page, { read_spec_file: "# 큰 제목\n\n## 둘째 제목\n\n본문 한 줄.\n" });
-  await page.goto(`/works/${pinnedWork.slug}`);
+  // 문서는 넓힌 카드로 연다(restart 02a-13 — 한때 작업 화면이 서면 본문 탭에 기본 문서가 섰다).
+  await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent("overview.md")}`);
   const h1 = page.getByRole("heading", { level: 1, name: "큰 제목" });
   await expect(h1).toBeVisible();
 
@@ -48,11 +49,11 @@ test("문서 h1 · h2 · 본문이 DS heading-lg · heading-sm · chat-body다",
 });
 
 test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
-  // 사이드바 위 줄 「새 Thread」 끝의 단축키 「⌘N」 — DS 「글자」 표의 `text-xs`(행 끝 글자)다(02 티켓 04). 늘 서는 12px 글자라 이 단계를
+  // 사이드바 위 줄 「새 채팅」 끝의 단축키 「⌘N」 — DS 「글자」 표의 `text-xs`(행 끝 글자)다(02 티켓 04). 늘 서는 12px 글자라 이 단계를
   // 잰다. 한때 Work 줄의 이은 Thread 수를 쟀는데 02 티켓 05가 그 수를 호버 카드로 옮겼다(S9).
   await installFixtureBackend(page);
   await page.goto("/projects");
-  const 단축키 = page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).getByText("⌘N", { exact: true });
+  const 단축키 = page.locator("aside nav").getByRole("button", { name: "새 채팅", exact: true }).getByText("⌘N", { exact: true });
   await expect(단축키).toBeVisible();
 
   expect(await 글자(단축키)).toEqual({ size: "12px", line: "18px", weight: "400", tracking: "0.3px" });
@@ -64,12 +65,12 @@ test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
 // 12/18 `text-xs` 500)이라 위아래 안쪽 4가 그 높이를 채운다. 높이는 `offsetHeight`로 잰다.
 test("한 줄 툴팁은 13/18 글자에 높이 26px이다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto("/archive");
-  // Archive 목록 머리의 「정렬 · 거르기」 도움말 — 포커스로 띄운다. 한때 Projects 상세의 기준 브랜치 칩 「브랜치 목록에서 변경」이었다
-  // — 03이 그 칩을 레일의 셀렉트로 바꿔(03 구현 스펙 · 시안 `.rs`) 도움말이 없다.
-  await page.getByRole("button", { name: "정렬 · 거르기", exact: true }).focus();
+  await page.goto("/projects");
+  // Projects 목록 줄 끝 「작업공간 만들기」의 도움말 — 포커스로 띄운다. 한때 Archive 목록 머리의 「정렬 · 거르기」였다 — restart 03-4가 그
+  // 메뉴를 걷었다(정렬은 열 머리 단추). 그 전에는 Projects 상세의 기준 브랜치 칩 「브랜치 목록에서 변경」이었다.
+  await page.getByRole("button", { name: `${PROJECTS[0].name} 범위로 작업공간 만들기`, exact: true }).focus();
   const tooltip = 툴팁(page);
-  await expect(tooltip).toHaveText("정렬 · 거르기");
+  await expect(tooltip).toHaveText("작업공간 만들기");
 
   // 굵기는 보통 400이다 — Codex 툴팁의 430은 글자 단계에 없어 가까운 400이다(`tooltip.tsx` 머리말). 자간은 13px 단계의 것(없음)이다.
   expect(await 글자(tooltip)).toEqual({ size: "13px", line: "18px", weight: "400", tracking: "normal" });

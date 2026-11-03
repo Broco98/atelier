@@ -7,7 +7,7 @@
 //!   스스로 Work를 보고 끄러 보낸다([`VanishWatch`]) — 소식이 턴 도중에 와도 그 턴 끝에 꺼진다. 대기 줄의 말은 가지 않는다.
 //! - **Thread의 기록 폴더가 사라져도 같은 차례로 끈다**(§5 「끄는 때」, 코드 리뷰 1차 B9) — 앱은 `threads/`가 바뀔 때마다
 //!   [`ConversationHost::check_vanished_threads`]를 부르고, 턴 끝에는 [`VanishWatch`]가 폴더도 본다.
-//! - **말은 받지 않는다** — 사람의 말 · 지금 전하기 · 다시 맡기기 · Agent 부르기 · 이름 바꾸기를 거절하고 아무것도 적지 않는다
+//! - **말은 받지 않는다** — 사람의 말 · 지금 전하기 · 이름 바꾸기를 거절하고 아무것도 적지 않는다
 //!   ([`ConversationHost::writable`]). 멈추기 · 물음의 답은 받는다 — 보관된 때 돌던 턴을 사람이 끝낼 수 있게.
 //! - **목록 요약도 읽기만인 까닭을 싣는다**(`readOnly`) — 색인이 Work 목록이 바뀔 때 다시 보고, 바뀐 요약을 알린다(S7). 열린 화면은 그
 //!   요약으로 입력창 자리를 바꾸고, 사이드바는 그 Thread를 뺀다(S43).
@@ -18,37 +18,37 @@ use std::sync::Weak;
 
 use atelier_core::{ThreadFile, WorkGone};
 
-use super::{Session, SessionKey};
+use super::Session;
 use crate::host::{end_together, Conv, ConversationHost, HostCore, HostError, HostEvent};
 
 /// 턴 끝에 그 Session의 Thread가 읽기만 됐는지 보는 것. 턴 끝은 런타임의 sink 안이라 호스트를 부를 수 없으므로, 호스트를 약하게 쥐고
 /// 끄기는 따로 띄운 스레드가 한다(three-axes 티켓 11의 길).
 pub(in crate::host) struct VanishWatch {
     data_root: PathBuf,
-    key: SessionKey,
+    thread: String,
     host: Weak<HostCore>,
 }
 
 impl VanishWatch {
-    pub(super) fn new(data_root: PathBuf, key: SessionKey, host: Weak<HostCore>) -> Self {
-        Self { data_root, key, host }
+    pub(super) fn new(data_root: PathBuf, thread: String, host: Weak<HostCore>) -> Self {
+        Self { data_root, thread, host }
     }
 
     /// 그 Thread가 읽기만 됐거나 기록 폴더가 사라졌으면(코드 리뷰 1차 B9) 그 Session을 끄러 보내고 true다 — 턴 차례는 대기 줄을
     /// 보내지 않는다. 이 자리에서 끄지 않는다: 끄기는 연결을 놓고 1초를 기다리는데, 이 자리가 바로 그 연결의 수신 루프다. 폴더는 있는데
     /// `thread.json`을 못 읽으면(쓰는 중 · 깨짐) 지켜볼 것이 없다.
     pub(in crate::host) fn retire_if_vanished(&self) -> bool {
-        let vanished = !folder_stands(&self.data_root, &self.key.thread)
-            || atelier_core::read_thread(&self.data_root, &self.key.thread)
+        let vanished = !folder_stands(&self.data_root, &self.thread)
+            || atelier_core::read_thread(&self.data_root, &self.thread)
                 .is_ok_and(|file| gone_of(&self.data_root, &file).is_some());
         if !vanished {
             return false;
         }
         let host = self.host.clone();
-        let key = self.key.clone();
+        let thread = self.thread.clone();
         std::thread::spawn(move || {
             if let Some(host) = ConversationHost::upgrade(&host) {
-                host.retire(|at, _| *at == key);
+                host.retire(|at, _| at == thread);
             }
         });
         true
@@ -80,7 +80,7 @@ impl ConversationHost {
             })
             .unwrap_or_default();
         if !read_only.is_empty() {
-            self.retire(|key, conv| read_only.contains(&key.thread) && !conv.lock_state().order.turning());
+            self.retire(|thread, conv| read_only.contains(thread) && !conv.lock_state().order.turning());
         }
     }
 
@@ -89,7 +89,7 @@ impl ConversationHost {
     /// Work의 Thread와 같은 차례다. 막히는 호출이다 — 끌 Session이 있으면 끄기가 1초 남짓 걸린다.
     pub fn check_vanished_threads(&self) {
         let data_root = self.data_root.clone();
-        self.retire(|key, conv| !folder_stands(&data_root, &key.thread) && !conv.lock_state().order.turning());
+        self.retire(|thread, conv| !folder_stands(&data_root, thread) && !conv.lock_state().order.turning());
     }
 
     /// 말을 받는 Thread인가 — 이은 Work가 보관됐거나 지워졌으면 [`HostError::ReadOnly`]다. 받으면 그 Thread 파일이다. 무엇을 적기 전에
@@ -103,17 +103,22 @@ impl ConversationHost {
     }
 
     /// 고른 Session들을 떠 있는 표에서 꺼내 남김없이 끈다(stdin 닫기 → 1초 → 그룹째 SIGKILL). 대기 줄에 말이 남았으면 빈 대기 줄을
-    /// 알린다 — 그 말은 가지 않는다. 고르기는 표의 잠금 안에서 Session의 잠금을 쥔다(표 → Session의 차례). 고른 것이 그새 표에서
-    /// 빠졌으면 먼저 꺼낸 쪽이 끈다.
-    fn retire(&self, pick: impl Fn(&SessionKey, &Conv) -> bool) {
-        let picked: Vec<SessionKey> = self
+    /// 알린다 — 그 말은 가지 않는다. 다시 열지 못해 둔 대화도 같이 고르고 놓는다. 고르기는 표의 잠금 안에서 Session의 잠금을 쥔다(표 →
+    /// Session의 차례). 고른 것이 그새 표에서 빠졌으면 먼저 꺼낸 쪽이 끈다.
+    fn retire(&self, pick: impl Fn(&str, &Conv) -> bool) {
+        for conv in self.threads.unstrand_picked(&pick) {
+            if conv.lock_state().order.queued() > 0 {
+                conv.recorder.queue_changed(Vec::new());
+            }
+        }
+        let picked: Vec<String> = self
             .threads
             .lock_sessions()
             .iter()
-            .filter(|(key, session)| pick(key, &session.conv))
-            .map(|(key, _)| key.clone())
+            .filter(|(thread, session)| pick(thread, &session.conv))
+            .map(|(thread, _)| thread.clone())
             .collect();
-        let mut retiring: Vec<Session> = picked.iter().filter_map(|key| self.threads.take(key)).collect();
+        let mut retiring: Vec<Session> = picked.iter().filter_map(|thread| self.threads.take(thread)).collect();
         end_together(retiring.iter_mut().map(|session| (&mut session.agent, &*session.conv)).collect());
         for session in &retiring {
             if session.conv.lock_state().order.queued() > 0 {

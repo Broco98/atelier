@@ -15,7 +15,7 @@ const record = (name: string): RecordLine[] =>
     .map((line) => JSON.parse(line) as RecordLine);
 const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
 
-/** 두 턴을 마친 Thread — 마지막 턴 끝이 seq 20이다. 16에서 자르면 둘째 턴이 돈다. */
+/** 두 턴을 마친 Thread — 마지막 턴 끝이 seq 19다. 15에서 자르면 둘째 턴이 돈다. */
 const twoTurns = record("thread-two-turns");
 
 /** Host가 명령 실행을 묻는 줄 — 그 시각이 기다리기 시작한 때다. */
@@ -23,7 +23,6 @@ const asks = (seq: number, at: string, command: string): RecordLine => ({
   seq,
   at,
   kind: "permission",
-  who: "host",
   payload: {
     state: "asked",
     requestId: String(seq),
@@ -42,14 +41,16 @@ const asks = (seq: number, at: string, command: string): RecordLine => ({
 });
 
 /** 둘째 턴이 돌다 `at`에 `command`를 묻는 기록. */
-const asking = (at: string, command: string) => [...through(twoTurns, 16), asks(17, at, command)];
+const asking = (at: string, command: string) => [...through(twoTurns, 15), asks(17, at, command)];
 
 const summary = (id: string, over: Partial<ThreadSummary> = {}): ThreadSummary => ({
   id,
   title: id,
   createdAt: "2026-10-10T09:00:00.000+09:00",
+  lastAt: "2026-10-10T09:00:00.000+09:00",
   work: null,
-  handles: ["host"],
+  service: null,
+  project: null,
   lastRead: 0,
   readOnly: null,
   broken: null,
@@ -67,7 +68,7 @@ describe("내 차례만 — 기다린 순서", () => {
       threads,
       live({
         새것: asking("2026-10-10T10:20:00.000+09:00", "rm -rf dist"),
-        일하는: through(twoTurns, 16),
+        일하는: through(twoTurns, 15),
         중간: asking("2026-10-10T10:10:00.000+09:00", "pnpm playwright test"),
         오래된: asking("2026-10-10T10:00:30.000+09:00", "pnpm prisma migrate dev"),
       }),
@@ -116,7 +117,7 @@ describe("Thread 하나의 상태 표시", () => {
   const at = "2026-10-10T10:00:30.000+09:00";
 
   it("나를 기다리면 내 차례, 돌면 도는 중, 끝났는데 안 봤으면 새 결과다", () => {
-    const readings = live({ 묻는: asking(at, "pnpm test"), 도는: through(twoTurns, 16), 끝난: twoTurns });
+    const readings = live({ 묻는: asking(at, "pnpm test"), 도는: through(twoTurns, 15), 끝난: twoTurns });
     expect(["묻는", "도는", "끝난"].map((id) => threadMark(summary(id), readings(id)))).toEqual(["mine", "working", "new"]);
   });
 

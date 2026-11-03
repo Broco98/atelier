@@ -75,7 +75,32 @@ fn codex에서_codex_acp만_없으면_그것_하나만_빠진_것으로_실린�
     assert_eq!(
         host.check_engine(Agent::Codex, false).expect("엔진 확인"),
         EngineCheck::Missing {
-            missing: vec![MissingProgram { name: "codex-acp", install: "npm i -g @agentclientprotocol/codex-acp" }],
+            missing: vec![MissingProgram { name: "codex-acp", install: "npm i -g @agentclientprotocol/codex-acp@2.2.2" }],
+        },
+    );
+}
+
+/// 설치 안내는 시험한 판을 깐다(restart 01c-11 · 스펙 「01c — Codex」 판) — `codex-acp` 2.2.2와 `codex` 0.162.1. 화면의 「설치 안내」가 이 명령을
+/// 그대로 복사한다.
+#[test]
+fn codex를_하나도_찾지_못하면_설치_명령이_시험한_두_판을_깐다() {
+    let sandbox = Sandbox::new();
+    let bin = sandbox.bin("bin");
+    sandbox.plant(&bin, "claude");
+    let shell = sandbox.login_shell(LoginShell::Normal, &[&bin]);
+    let host = sandbox.host(ShellSource::Path(shell));
+
+    assert_eq!(
+        host.check_engine(Agent::Codex, false).expect("엔진 확인"),
+        EngineCheck::Missing {
+            missing: vec![
+                MissingProgram { name: "codex-acp", install: "npm i -g @agentclientprotocol/codex-acp@2.2.2" },
+                MissingProgram {
+                    name: "codex",
+                    install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh -s -- --release 0.162.1",
+                },
+                MissingProgram { name: "node", install: "brew install node" },
+            ],
         },
     );
 }

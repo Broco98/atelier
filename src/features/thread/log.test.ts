@@ -7,9 +7,10 @@ import { changedFiles, elapsed, logRows } from "./log";
 import { describeTool, phraseText, shownPath } from "./tool-view";
 import type { RecordLine } from "./types";
 
-// 작업 로그(v1 티켓 05 · 캔버스 WorkLog 보드) — 접은 도구 줄을 사람이 읽는 한 줄(대상 + 동사)로, 이어진 읽기 · 찾기를 묶음 줄로,
-// 마지막 턴의 편집을 바뀐 파일 알약의 셈으로 옮긴다. seam은 순수 함수 셋(`describeTool` · `logRows` · `changedFiles`)이고, 그리는 쪽
-// (`WorkLog.tsx`)은 여기 나온 값만 그린다. 문구의 정본은 보드의 글자다.
+// 작업 로그(v1 티켓 05 · restart 02b-4) — 접은 도구 줄을 사람이 읽는 한 줄로, 이어진 읽기 · 찾기를 묶음 줄로, 마지막 턴의 편집을 바뀐
+// 파일 알약의 셈으로 옮긴다. seam은 순수 함수 셋(`describeTool` · `logRows` · `changedFiles`)이고, 그리는 쪽(`WorkLog.tsx`)은 여기 나온 값만
+// 그린다. 문구의 정본은 Tools 보드의 글자다 — 끝난 줄은 「동사 대상」(「읽음 notes.txt」), 도는 줄은 「대상 동사」(「notes.txt 읽는 중」)이다.
+// 종류 × 상태의 칸 전부는 `tool-view.test.ts`가 쥐고, 여기는 접기를 거친 기록과 묶음 줄을 쥔다.
 const blessed: RecordLine[] = readFileSync(
   fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-two-turns.jsonl", import.meta.url)),
   "utf8",
@@ -25,6 +26,7 @@ const tool = (call: Record<string, unknown>, extra: Partial<ToolEntry> = {}): To
   toolCallId: String(call.toolCallId ?? call.title),
   call,
   output: "",
+  inner: [],
   stop: null,
   cut: false,
   denied: false,
@@ -36,13 +38,13 @@ const tool = (call: Record<string, unknown>, extra: Partial<ToolEntry> = {}): To
 });
 const claude = (toolName: string) => ({ claudeCode: { toolName } });
 
-describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", () => {
+describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 동사가 앞이다", () => {
   it("축복한 기록의 세 도구: 쓰기 · 읽기 · 명령", () => {
     const tools = foldThread(blessed).turns[1].entries.filter((entry): entry is ToolEntry => entry.kind === "tool");
     expect(tools.map((one) => phraseText(describeTool(one).phrase))).toEqual([
-      "notes.txt 작성함",
-      "notes.txt 읽음",
-      "wc -c notes.txt 실행함",
+      "생성됨 notes.txt",
+      "읽음 notes.txt",
+      "실행 완료 wc -c notes.txt",
     ]);
     expect(describeTool(tools[0]).diffs.map((piece) => [piece.added, piece.deleted])).toEqual([[1, 0]]);
     expect(describeTool(tools[2]).shell?.output).toBe("       5 notes.txt");
@@ -63,10 +65,10 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
     ];
     expect(running.map((one) => phraseText(describeTool(one).phrase))).toEqual([
       "refund.service.ts 읽는 중",
-      "RefundService 찾는 중",
-      "refund.service.ts 고치는 중",
+      "RefundService 검색 중",
+      "refund.service.ts 편집 중",
       "pnpm test refunds 실행 중",
-      "atelier.get_work 부르는 중",
+      "Atelier get work",
     ]);
   });
 
@@ -83,30 +85,12 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
       tool({ title: "atelier_get_work", kind: "other", status: "completed", _meta: claude("mcp__atelier__get_work") }),
     ];
     expect(done.map((one) => phraseText(describeTool(one).phrase))).toEqual([
-      "refund.service.ts 수정함",
-      "RefundService 찾음",
-      "웹에서 prisma decimal 찾아봄",
-      "atelier.get_work 불러옴",
+      "편집함 refund.service.ts",
+      "검색함 RefundService",
+      "웹 검색함 prisma decimal",
+      "사용함 get_work",
     ]);
     expect(describeTool(done[0]).diffs.map((piece) => [piece.added, piece.deleted])).toEqual([[2, 1]]);
-  });
-
-  it("Agent 부르기 Thread 도구는 맡긴 일이 전해지기 전에도 「@reviewer에게 맡기는 중」이다 — 거절되면 그 까닭이 받은 값이다(v1 티켓 17)", () => {
-    const call = (status: string, extra: Record<string, unknown> = {}) =>
-      tool({
-        title: "mcp__atelier-thread__call_agent",
-        kind: "other",
-        status,
-        rawInput: { handle: "@reviewer", task: "봐 줘" },
-        _meta: claude("mcp__atelier-thread__call_agent"),
-        ...extra,
-      });
-    expect(phraseText(describeTool(call("in_progress")).phrase)).toBe("@reviewer에게 맡기는 중");
-    const refused = describeTool(
-      call("failed", { content: [{ type: "content", content: { type: "text", text: "@reviewer — 지금 호출 고리 안에 있어 다시 부를 수 없어요" } }] }),
-    );
-    expect(phraseText(refused.phrase)).toBe("@reviewer에게 맡기지 못함");
-    expect(refused.mcp).toMatchObject({ received: "@reviewer — 지금 호출 고리 안에 있어 다시 부를 수 없어요", receivedCode: false });
   });
 
   it("MCP 상자의 받은 값은 글이면 본문 글꼴, JSON이면 고정폭이다(보드 「MCP 호출」)", () => {
@@ -120,7 +104,7 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
           _meta: claude("mcp__atelier__get_work"),
         }),
       ).mcp;
-    expect(got("Work 1개 · Project api-server · worktree 아직 없음")).toMatchObject({ receivedCode: false });
+    expect(got("작업공간 1개 · Project api-server · worktree 아직 없음")).toMatchObject({ receivedCode: false });
     expect(got('{"slug":"refund-api"}')).toMatchObject({ received: '{\n  "slug": "refund-api"\n}', receivedCode: true });
   });
 
@@ -137,38 +121,41 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
       tool({ title: "Find src/**/*.spec.ts", kind: "search", status: "in_progress", rawInput: { pattern: "src/**/*.spec.ts" } }),
     ];
     expect(searches.map((one) => phraseText(describeTool(one).phrase))).toEqual([
-      "RefundService 찾음",
-      "src/**/*.spec.ts 찾는 중",
+      "검색함 RefundService",
+      "src/**/*.spec.ts 검색 중",
     ]);
   });
 
-  it("실패 · 중단 · 거절은 색이 아니라 문장이다", () => {
+  it("실패 · 중지 · 거절은 색이 아니라 문장이다", () => {
     const failed = tool({
       title: "pnpm lint",
       kind: "execute",
       status: "failed",
       rawOutput: { exit_code: 1 },
     });
-    expect(describeTool(failed).phrase).toMatchObject({ subject: "pnpm lint", verb: "실행하지 못함", tail: " · 코드 종료 1", failed: true });
+    expect(describeTool(failed).phrase).toMatchObject({ subject: "pnpm lint", verb: "코드 종료 1", target: "pnpm lint", failed: true });
 
     const stopped = tool({ title: "pnpm test", kind: "execute", status: "failed" }, {
       stop: "stopped",
       startedAt: "2026-10-10T10:00:00.000+09:00",
       endedAt: "2026-10-10T10:00:12.000+09:00",
     });
-    expect(phraseText(describeTool(stopped).phrase)).toBe("pnpm test 중단함 · 12초");
+    expect(phraseText(describeTool(stopped).phrase)).toBe("중지됨 pnpm test");
+    expect(describeTool(stopped).stopped).toBe(true);
 
     const denied = tool({ title: "pnpm prisma migrate dev", kind: "execute", status: "failed" }, { denied: true });
-    expect(phraseText(describeTool(denied).phrase)).toBe("pnpm prisma migrate dev 실행하지 않음 · 내가 거절함");
+    expect(phraseText(describeTool(denied).phrase)).toBe("실행하지 않음 pnpm prisma migrate dev");
+    expect(describeTool(denied).stopped).toBe(true);
   });
 
-  it("명령 출력의 끝 줄은 종료 코드와 걸린 시간이다 — 코드를 모르면 끝남 · 실패로 말한다", () => {
+  it("명령 출력의 끝 줄은 「성공」 · 「코드 종료 N」이다 — 걸린 시간은 줄 끝(머문 때)에만 선다", () => {
     const ok = tool({ title: "pnpm test", kind: "execute", status: "completed", rawOutput: { exit_code: 0 } }, {
       endedAt: "2026-10-10T10:00:04.200+09:00",
     });
-    expect(describeTool(ok).shell?.status).toBe("코드 종료 0 · 4.2초");
+    expect(describeTool(ok).shell?.status).toBe("성공");
+    expect(elapsed(ok)).toBe("4.2초");
     const unknown = tool({ title: "ls", kind: "execute", status: "completed" }, { endedAt: "2026-10-10T10:00:01.000+09:00" });
-    expect(describeTool(unknown).shell?.status).toBe("끝남 · 1.0초");
+    expect(describeTool(unknown).shell?.status).toBe("성공");
   });
 
   it("걸린 시간 — 10초 아래는 소수 한 자리, 그 위는 말로", () => {
@@ -178,9 +165,9 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
   });
 });
 
-// 도구 줄 앞의 종류 글리프(02 구현 스펙 §8 · 스토리 50) — 읽기 · 편집 · 명령 · 검색 · 웹 · MCP · 그 밖 일곱 갈래다. 문장을 다 읽지 않고도
-// 무슨 일인지 알게 하는 것이라 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말(「Work 읽음」)로 서니 MCP 플러그가 아니라
-// 그 말의 갈래다.
+// 도구 줄 앞의 종류 글리프(02 구현 스펙 §8 · 스토리 50 · restart 02b-4) — 읽기 · 편집 · 명령 · 검색 · 웹 · MCP · 스킬 · 서브에이전트 · 그 밖
+// 아홉 갈래다(Tools 보드의 「스킬」 칸은 렌치 · 「그 밖」은 번개, 서브에이전트 묶음은 로봇). 문장을 다 읽지 않고도 무슨 일인지 알게 하는 것이라 사람이 본 일로
+// 가른다 — Atelier의 Thread 도구는 사람의 말(「작업공간 읽음」)로 서니 MCP 플러그가 아니라 그 말의 갈래다.
 describe("도구 줄의 종류 글리프", () => {
   const glyphOf = (call: Record<string, unknown>) => describeTool(tool({ status: "completed", ...call })).glyph;
 
@@ -205,12 +192,32 @@ describe("도구 줄의 종류 글리프", () => {
     expect(glyphOf({ title: "ls", kind: "other", content: [{ type: "terminal", terminalId: "t1" }] })).toBe("execute");
   });
 
-  it("웹 검색은 웹 · 스킬은 읽기 · 서브에이전트는 그 밖이다", () => {
+  it("웹 검색은 웹 · 스킬은 스킬 · 서브에이전트는 서브에이전트다", () => {
     expect(glyphOf({ title: "prisma", kind: "fetch", rawInput: { query: "prisma" }, _meta: claude("WebSearch") })).toBe("web");
-    expect(glyphOf({ title: "Skill", kind: "other", rawInput: { skill: "tdd" }, _meta: claude("Skill") })).toBe("read");
+    expect(glyphOf({ title: "Skill", kind: "other", rawInput: { skill: "tdd" }, _meta: claude("Skill") })).toBe("skill");
     expect(glyphOf({ title: "Task", kind: "other", _meta: { claudeCode: { toolName: "Task", subagent: { subagentType: "explorer" } } } })).toBe(
-      "other",
+      "agent",
     );
+  });
+
+  it("서브에이전트의 종류를 모르면 「서브에이전트」라 부른다 — Agent라 말하지 않는다", () => {
+    const tool = (subagent: Record<string, unknown>): ToolEntry => ({
+      kind: "tool",
+      key: "t",
+      toolCallId: "t",
+      call: { title: "Task", kind: "other", status: "in_progress", _meta: { claudeCode: { toolName: "Task", subagent } } },
+      output: "",
+      inner: [],
+      stop: null,
+      cut: false,
+      denied: false,
+      allowed: null,
+      asking: false,
+      startedAt: "",
+      endedAt: null,
+    });
+    expect(phraseText(describeTool(tool({ subagentType: "explorer" })).phrase)).toBe("explorer에게 맡기는 중");
+    expect(phraseText(describeTool(tool({})).phrase)).toBe("서브에이전트에게 맡기는 중");
   });
 
   it("MCP는 플러그다 — Atelier의 Thread 도구는 그 말의 갈래다(읽음 · 확인함은 읽기, 고치기 시작은 편집, 맡김 · 물음은 그 밖)", () => {
@@ -223,10 +230,9 @@ describe("도구 줄의 종류 글리프", () => {
         mcp("atelier-thread__list_projects"),
         mcp("atelier-thread__start_editing", { project: "api-server" }),
         mcp("atelier-thread__propose_work"),
-        mcp("atelier-thread__call_agent", { handle: "@reviewer" }),
         mcp("atelier-thread__rename_thread"),
       ],
-    ).toEqual(["mcp", "read", "read", "edit", "other", "other", "mcp"]);
+    ).toEqual(["mcp", "read", "read", "edit", "other", "mcp"]);
   });
 
   it("묶음 줄은 파일을 읽었으면 읽기, 찾기만이면 검색이다", () => {
@@ -255,7 +261,7 @@ describe("묶음 줄 — 이어진 읽기와 찾기만 묶는다", () => {
     const rows = logRows([read("a.ts"), read("b.ts"), search("partialRefund"), read("c.ts"), search("x"), read("a.ts"), read("d.ts"), edit]);
     expect(rows.map((row) => (row.kind === "group" ? row.label : phraseText(describeTool(row.tool).phrase)))).toEqual([
       "파일 4개 살펴봄 · 검색 2번",
-      "a.ts 수정함",
+      "편집함 a.ts",
     ]);
   });
 
@@ -271,9 +277,9 @@ describe("묶음 줄 — 이어진 읽기와 찾기만 묶는다", () => {
   });
 
   it("판정이 묻지 않고 허용한 줄은 묶지 않는다 — 제 방패 줄과 함께 서야 한다(v1 티켓 23)", () => {
-    const allowed = { ...read("b.ts"), allowed: "알아서" };
+    const allowed = { ...read("b.ts"), allowed: "묻지 않음" };
     const rows = logRows([read("a.ts"), allowed, read("c.ts")]);
-    expect(rows.map((row) => (row.kind === "tool" ? row.tool.allowed : row.kind))).toEqual([null, "알아서", null]);
+    expect(rows.map((row) => (row.kind === "tool" ? row.tool.allowed : row.kind))).toEqual([null, "묻지 않음", null]);
   });
 });
 
@@ -303,5 +309,25 @@ describe("바뀐 파일 알약 — 마지막 턴의 편집을 센다", () => {
       added: 3,
       deleted: 3,
     });
+  });
+
+  it("spec 폴더에 새로 쓴 문서는 세지 않는다 — 그 문서는 문서 카드가 연다(Thread 보드 「2개 파일 변경됨 +41 −4」)", () => {
+    const spec = "/w/spec";
+    const turn = {
+      entries: [
+        tool({ toolCallId: "1", kind: "edit", status: "completed", content: [{ type: "diff", path: "/w/spec/재시도-규칙.md", newText: "a\nb\nc" }] }),
+        tool({ toolCallId: "2", kind: "edit", status: "completed", content: [{ type: "diff", path: "/w/src/watcher.rs", oldText: "a", newText: "b\nc" }] }),
+        tool({ toolCallId: "3", kind: "edit", status: "completed", content: [{ type: "diff", path: "/w/spec/decisions.md", oldText: "a", newText: "b" }] }),
+      ],
+    };
+    expect(changedFiles(turn, spec)).toEqual({
+      files: [
+        { path: "/w/src/watcher.rs", added: 2, deleted: 1 },
+        { path: "/w/spec/decisions.md", added: 1, deleted: 1 },
+      ],
+      added: 3,
+      deleted: 2,
+    });
+    expect(changedFiles({ entries: turn.entries.slice(0, 1) }, spec)).toBeNull();
   });
 });

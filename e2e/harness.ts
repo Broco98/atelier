@@ -375,7 +375,7 @@ async function install(
  *
  * **무엇을 재려고 있는가**: 시나리오 도중에 백엔드의 답이 바뀌는 것. 덮어쓰기(`installFixtureBackend`)는
  * 페이지가 뜰 때 초기화 스크립트 인자로 한 번 굳는다. 그래서 「MCP로 아카이브된 work이 목록에서 빠진다」(첫 조회에는
- * 있고 `works:changed` 뒤의 조회에는 없다)나 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채**
+ * 있고 `works:changed` 뒤의 조회에는 없다)나 「요약 박자마다 Processes 줄 끝의 값이 바뀐다」가 이 도구 없이는 **목록이 영영 안 바뀐 채**
  * 초록이다. 「밖에서 레이아웃이 바뀌었다」(spec 레이아웃 티켓 15)도 같다 — 처음부터 다른 답이면 편집기가 그것을 기준본으로
  * 읽는다.
  *
@@ -631,6 +631,25 @@ export async function fireEvent(
   payload: unknown,
   times = 1,
 ): Promise<void> {
+  const handler = await eventHandler(page, event);
+  await page.evaluate(
+    ({ handler, event, payload, times }: { handler: number; event: string; payload: unknown; times: number }) => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+      }).__TAURI_INTERNALS__;
+      for (let n = 0; n < times; n += 1) {
+        internals.runCallback(handler, { event, id: 0, payload });
+      }
+    },
+    { handler, event, payload, times },
+  );
+}
+
+/**
+ * 그 이벤트의 마지막 구독이 받는 콜백 번호 — `fireEvent`가 쏘는 자리다. 구독이 붙을 때까지 기다리고 끝내 없으면 던진다. 쏠 때마다 IPC 기록을 다시 읽지
+ * 않고 페이지 안에서 박자대로 쏘는 시험이 읽는다(`thread-frames`).
+ */
+export async function eventHandler(page: Page, event: string): Promise<number> {
   const handler = await awaitIpcMatch(
     page,
     (calls) => {
@@ -641,17 +660,7 @@ export async function fireEvent(
     },
     `${event} 구독`,
   );
-  await page.evaluate(
-    ({ handler, event, payload, times }: { handler: number; event: string; payload: unknown; times: number }) => {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-      }).__TAURI_INTERNALS__;
-      for (let n = 0; n < times; n += 1) {
-        internals.runCallback(handler, { event, id: 0, payload });
-      }
-    },
-    { handler: Number(handler), event, payload, times },
-  );
+  return Number(handler);
 }
 
 /**
@@ -953,36 +962,6 @@ type Box = { x: number; y: number; width: number; height: number };
 /** 상자의 한가운데. */
 export const middle = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 
-/**
- * 탭을 눌러 **분할 끌기를 시작시킨다**(`works-split`·`drag-gesture`가 함께 딛는다). 겹판이 설
- * 때까지가 여기까지이고, 어디에 놓을지는 부르는 쪽이 정한다. 돌려주는 것은 누른 자리다.
- *
- * 임계값을 넘기는 이동과 목적지로 가는 이동을 **나눈다.** 겹판이 서는 것은 임계값을 넘은
- * 그 이동에서인데, 그때 포인터 아래에는 아직 겹판이 없어 절반이 「내 위다」를 말하는 것은
- * 다음 이동부터다. 실물에서는 구멍이 아니다 — 임계값은 출발점에서 5px이라 사이드바 위에서
- * 넘고, 본문까지 오는 동안 이동이 수십 번 더 온다.
- *
- * 12px는 문턱(5px)을 넉넉히 넘기면서 누른 탭 밖으로는 안 나가는 거리다. `tab-order`의 누름과
- * `pickUpRow`도 12를 쓰지만 각자 자리의 기하가 정한 수라 여기로 묶지 않는다.
- */
-export async function startSplitDrag(page: Page, box: Box) {
-  const from = middle(box);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(from.x + 12, from.y);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-  return from;
-}
-
-/** 끄는 중인 포인터를 그 절반 한가운데로 민다. **좌표를 손으로 적지 않는다** — 겹판이 자기 상자를 말한다. */
-export async function moveOntoHalf(page: Page, half: "left" | "right") {
-  const box = await page.locator(`[data-drop-half="${half}"]`).boundingBox();
-  if (!box) throw new Error(`${half} 절반의 상자를 못 읽었다`);
-  const at = middle(box);
-  await page.mouse.move(at.x, at.y);
-  await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
-}
-
 /** 알림 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
@@ -1002,45 +981,53 @@ export const SCREEN_HEAD = 'header [data-slot="screen-head"]';
 export const 화면머리 = (scope: Page | Locator) => scope.locator(SCREEN_HEAD);
 
 /**
- * **흰 판** — 머리 줄 아래 크롬 위에 뜬 흰 면 하나(02 구현 스펙 §3 · CONTEXT 「흰 판」)다. 판의 겉(둥글기 · 테두리 · 그림자)과 판이 서는
- * 자리(사이드바 오른쪽 끝에서)를 잴 때 집는다. 칸의 끝은 판의 겉이 아니라 그 안쪽(`흰판안`)과 견준다.
+ * **카드 자리** — 머리 줄 아래, 사이드바 오른쪽의 겉 없는 상자(restart 02a-2 · CONTEXT 「카드」). 화면의 카드들(본문 카드 · 목록 칸 · 옆 칸)과
+ * 작업공간 도구(spec 패널 상자 · 레일 카드 — 화면 뒤의 기둥)가 이 안에 8 틈으로 선다. 창 끝 틈은 앱 셸의 줄(`pr-2 pb-2`)이 들어 자리의 오른쪽
+ * · 아래 끝이 창 끝에서 8이고, 왼쪽은 사이드바 상자의 오른쪽 끝이다(사이드바를 접으면 그 상자가 폭 8로 남는다).
+ *
+ * 한때(02 구현 스펙 §3 – 02a-1) 이 자리에 흰 판 한 장(`[data-slot="panel"]` — 둥글기 12 · 0.5 테두리 · 위 그림자, 창 끝에서 5 띄움)이 서서
+ * 칸들이 그 안에 선으로 갈렸다 — 02a-2가 판을 걷었다.
  */
-export const 흰판 = (page: Page) => page.locator('[data-slot="panel"]');
+export const 카드자리 = (page: Page) => page.locator('[data-slot="cards"]');
 
 /**
- * **흰 판**의 안쪽 상자 — 흰 판(`흰판`)의 테두리(0.5) 안이다. 화면의 칸들이 그 안에 들어 판 끝까지 선다 — 칸의 끝을 재는 자리가 창 끝
- * 대신 이것과 견준다. 판은 창 오 · 아래 끝에서 5 띄워 서서 안쪽 끝이 창 끝에서 5.5이고, 왼쪽은 사이드바 오른쪽 끝에서 선다(사이드바는 판
- * 밖 크롬 위다 — 03 구현 스펙 §3). 사이드바를 접으면 창 왼쪽 끝에서 5다. 한때 사이드바가 판 안이라 판 안 왼쪽 끝이 곧 사이드바 왼쪽
- * 끝이었다.
+ * 카드 자리(`카드자리`)의 끝 — 화면의 카드가 창 끝 대신 이것과 견준다. 자리에 겉이 없어 상자 그대로다.
  *
- * **여기 사는 이유는 판을 집는 길과 그 테두리를 덜어 내는 셈을 한 벌로 두려는 것이다** — 판 끝을 재는 spec이 여럿이다(`frame-sidebar` ·
- * `archive-docs` · `frame`). 사이드바 끝에서 판 안까지를 「끝 + 0.5」로 spec에 다시 적지 않는다 — 판이 사이드바 끝에서 서는지는 `흰판`의
- * 겉 상자로 재고, 칸은 이 안쪽과 견준다.
+ * **여기 사는 이유는 카드 끝을 재는 spec이 여럿이기 때문이다**(`frame-sidebar` · `archive-docs` · `frame`) — 창 끝에서 8을 spec마다 다시 적지
+ * 않는다.
  */
-export const 흰판안 = (page: Page) =>
-  흰판(page).evaluate((el) => {
+export const 카드자리끝 = (page: Page) =>
+  카드자리(page).evaluate((el) => {
     const box = el.getBoundingClientRect();
-    const style = getComputedStyle(el);
-    return {
-      x: box.left + parseFloat(style.borderLeftWidth),
-      y: box.top + parseFloat(style.borderTopWidth),
-      right: box.right - parseFloat(style.borderRightWidth),
-      bottom: box.bottom - parseFloat(style.borderBottomWidth),
-    };
+    return { x: box.left, y: box.top, right: box.right, bottom: box.bottom };
   });
 
 /**
- * 흰 판 안의 **본문**(`main` 하나)을 그 이름으로 — 화면마다 제 이름이다(「Projects」 · 「Projects 상세」 · 「Space」 · 「Space 상세」 …). 이름으로
+ * 요약 카드(또는 넓힌 카드 목록)의 그 Project 줄(`[data-project]`)을 누른다 — 누르면 넓힌 카드에 그 Project의 트리가 선다(restart 02a-12).
+ * 소스가 셋을 넘으면 Project 줄은 「모두 보기」 뒤에 접혀 있어(02 S21) 먼저 편다. 카드가 열린 뒤에 부른다.
+ *
+ * **여기 사는 이유는 트리를 여는 spec이 여럿이기 때문이다**(`files-panel` · `files-live` · `files-open`).
+ */
+export async function Project줄을누른다(page: Page, project: string): Promise<void> {
+  const 줄 = page.locator(`[data-project="${project}"]:visible`);
+  const 모두보기 = page.getByRole("button", { name: "모두 보기", exact: true });
+  await expect(줄.or(모두보기).first()).toBeVisible();
+  if ((await 줄.count()) === 0) await 모두보기.click();
+  await 줄.first().click();
+}
+
+/**
+ * 카드 자리의 **본문**(`main` 하나)을 그 이름으로 — 화면마다 제 이름이다(「Projects」 · 「Projects 상세」 · 「Service」 · 「Service 상세」 …). 이름으로
  * 집으면 그 화면이 섰다는 닻이 된다.
  *
- * **여기 사는 이유는 03의 두 흐름 spec(`projects-kit` · `spaces-kit`)이 같은 위치자를 저마다 적었기 때문이다** — 아래 `몸줄` · `표줄`도 같다.
+ * **여기 사는 이유는 03의 두 흐름 spec(`projects-kit` · `services-kit`)이 같은 위치자를 저마다 적었기 때문이다** — 아래 `몸줄` · `표줄`도 같다.
  */
 export const 본문 = (page: Page, name: string) => page.getByRole("main", { name, exact: true });
 
 /** 표의 **몸 줄** — 머리 줄(칸 이름 `columnheader`)을 뺀 줄들이다. 「없다」(`toHaveCount(0)`)를 몸 줄로 재야 머리 줄이 셈에 안 든다. */
 export const 몸줄 = (table: Locator) => table.getByRole("row").filter({ hasNot: table.page().getByRole("columnheader") });
 
-/** 표의 그 이름 줄 — 몸 줄 가운데 이름 칸의 링크가 그 이름인 줄이다(Projects · Space 목록은 줄마다 이름 칸이 링크다). */
+/** 표의 그 이름 줄 — 몸 줄 가운데 이름 칸의 링크가 그 이름인 줄이다(Projects · Service 목록은 줄마다 이름 칸이 링크다). */
 export const 표줄 = (table: Locator, name: string) => 몸줄(table).filter({ has: table.page().getByRole("link", { name, exact: true }) });
 
 /**
@@ -1232,7 +1219,7 @@ export const 포커스자리 = (page: Page): Promise<포커스자리 | null> =>
               : el.closest('[data-slot="card"], main')
                 ? "본문"
                 : "그 밖";
-    // 글자는 보조 기술이 읽는 것만 — `aria-hidden` 글자(「새 Thread」 끝의 ⌘N 같은)는 뺀다.
+    // 글자는 보조 기술이 읽는 것만 — `aria-hidden` 글자(「새 채팅」 끝의 ⌘N 같은)는 뺀다.
     const 글 = el.cloneNode(true) as HTMLElement;
     for (const hidden of 글.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
     const 이름 = (el.getAttribute("aria-label") ?? 글.textContent ?? "").trim();
@@ -1519,37 +1506,46 @@ export async function 글자대비(element: Locator): Promise<number> {
 }
 
 /**
- * 사이드바 맨 아래의 사람 줄(v1 티켓 07 · 구현 스펙 S27) — 이름은 fixture의 `person_name`(「홍길동」)이다. 누르면 지금 화면들로 가는
- * 메뉴가 위로 뜬다. 옛 사이드바 nav의 네 항목(Projects · Terminal · Processes · Archive)과 바닥 Settings 줄이 이 메뉴로 왔다.
+ * 사이드바 **위 칸**(restart 02a-3 · 시안 Main의 「가는 곳」) — 「새 채팅」 · 「내 차례」 뒤로 지금 화면 다섯(`Services` · `Projects` · `Terminal` ·
+ * `Processes` · `Archive`)이 줄로 선다. 지금 선 화면의 줄에 `aria-current="page"`가 선다. 한때(v1 S27 – 02a-2) 다섯은 바닥 사람 줄이 여는
+ * 메뉴(「홍길동 — 사람 메뉴」)의 항목이었다.
  *
  * **여기 사는 이유는 지금 화면들로 가는 길을 하나로 두려는 것이다.** `Processes`를 여는 spec마다 같은 선택자를 적었다 — 사이드바의
- * 마크업이 바뀌는 날 한 파일만 고쳐지면, 고쳐지지 않은 쪽이 헛돈다. 옛 nav를 집던 `navButton`이 이 길로 바뀌었다.
+ * 마크업이 바뀌는 날 한 파일만 고쳐지면, 고쳐지지 않은 쪽이 헛돈다.
  */
-export const 사람줄 = (page: Page) => page.getByRole("button", { name: /— 사람 메뉴$/ });
+export const 위칸 = (page: Page) => page.getByRole("navigation", { name: "가는 곳", exact: true });
+
+/** 지금 화면의 이름 — 위 칸의 줄이자 ⌘K의 「가는 곳」이다. `Settings`는 위 칸이 아니라 맨 아래 「설정」 줄이다(⌘K · 설정 화면 머리는 `Settings`). */
+export type 지금화면 = "Services" | "Projects" | "Terminal" | "Processes" | "Archive" | "Settings";
 
 /**
- * 열린 사람 메뉴의 항목들, 위에서부터. 이름은 라벨로 시작한다 — `Projects` · `Space`에는 그 수가, `Terminal`에는 셸 수가, `Settings`에는
- * 단축키가 뒤에 붙는다.
+ * 위 칸의 그 줄. 이름은 라벨로 시작한다 — `Terminal`에는 셸 수가, `Processes`에는 메타(CPU · 메모리)가 뒤에 붙는다.
  */
-export const 사람메뉴항목 = (page: Page) => page.getByRole("menu").getByRole("menuitem");
-
-/** 지금 화면의 이름 — 사람 메뉴의 항목이자 ⌘K의 「가는 곳」이다(`Space`는 03 판 — 03 구현 스펙 §4). */
-export type 지금화면 = "Projects" | "Space" | "Terminal" | "Processes" | "Archive" | "Settings";
+export const 위칸줄 = (page: Page, label: Exclude<지금화면, "Settings">) =>
+  위칸(page).getByRole("button", { name: new RegExp(`^${label}`) });
 
 /**
- * 사람 메뉴를 열고 그 항목을 고른다 — 옛 nav 항목을 누르던 길이다(`navButton(page, "Processes").click()`). 메뉴가 닫힐 때까지 기다리고,
- * 고른 화면이 섰는지는 부르는 쪽이 제 앵커로 잰다. 항목이 없으면 그 자리에서 기다리다 빨개진다 — 조용히 지나가지 않는다.
- *
- * **시계를 세운 검사(`시계를세운다`)에서는 메뉴가 안 뜬다** — 메뉴는 열 때 타이머 · 프레임을 기다리는데 세운 시계가 그것을 붙든다.
- * 그런 검사는 메뉴가 하는 push를 `주소로간다`로 한다(박자를 세는 검사라 시계를 흘려 열면 셈이 어긋난다).
+ * 사이드바 맨 아래 「설정」 줄(restart 02a-3 · 시안 `.ra-sr-foot` — 「설정 ⌘,」). 키는 이름이 아니라 `aria-keyshortcuts`가 말한다. 설정 화면에서는
+ * 사이드바가 설정 nav로 갈아 서서 이 줄이 없다.
  */
-export async function 사람메뉴로간다(page: Page, label: 지금화면): Promise<void> {
-  await 사람줄(page).click();
-  await page.getByRole("menu").getByRole("menuitem", { name: new RegExp(`^${label}`) }).click();
-  await expect(page.getByRole("menu")).toHaveCount(0);
+export const 설정줄 = (page: Page) => page.locator("aside").first().getByRole("button", { name: "설정", exact: true });
+
+/**
+ * 지금 화면으로 간다 — 위 칸의 그 줄(설정은 맨 아래 「설정」 줄)을 누른다. 고른 화면이 섰는지는 부르는 쪽이 제 앵커로 잰다. 줄이 없으면
+ * 그 자리에서 기다리다 빨개진다 — 조용히 지나가지 않는다. 한때 사람 메뉴를 열고 항목을 골랐다(시계를 세운 검사에서는 메뉴가 안 떠
+ * `주소로간다`로 돌았다 — 줄은 바로 눌린다).
+ */
+export async function 가는곳으로간다(page: Page, label: 지금화면): Promise<void> {
+  await (label === "Settings" ? 설정줄(page) : 위칸줄(page, label)).click();
 }
 
-/** `Processes` 화면의 제목 — 머리 줄의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** 위 칸의 지금 화면 다섯 — 시안 Main의 차례다(`nav-items.ts`). `지금화면`에서 맨 아래 「설정」을 뺀 것이다(restart 03-13a가 쓰던 이름). */
+export type 가는곳 = Exclude<지금화면, "Settings">;
+
+/** 위 칸의 그 화면 줄 — `위칸줄`과 같다(restart 03-13a가 쓰던 이름). */
+export const 가는곳줄 = (page: Page, label: 가는곳) => 위칸줄(page, label);
+
+/** `Processes` 화면의 제목 — 몸의 머리(h1, restart 03-11)다. 틀의 머리 줄의 이름은 제목 역할이 없다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
@@ -1574,7 +1570,7 @@ export const toastsNow = (page: Page) => toastRegion(page).getByRole("dialog").c
  * **화면의 토스트** 한 장 — 화면마다 하나 서는 DS 토스트 자리(`components/ui/toast.tsx`의 `Toaster` — 「메시지」)의 그것이고, 제목이 그 문구다
  * (되돌리기 토스트는 제목이 한 일 · 이름이다). 앱 셸의 동작 토스트(`toastRegion` — 「앱 메시지」)와는 자리도 관리자도 다르다.
  *
- * **여기 사는 이유는 `toastRegion`과 같다** — 03의 두 흐름 spec(`projects-kit` · `spaces-kit`)이 이 자리를 저마다 집었다. 자리가 바뀌는 날 한
+ * **여기 사는 이유는 `toastRegion`과 같다** — 03의 두 흐름 spec(`projects-kit` · `services-kit`)이 이 자리를 저마다 집었다. 자리가 바뀌는 날 한
  * 파일만 고쳐지면 고쳐지지 않은 쪽의 「안 섰다」(`toHaveCount(0)`)가 헛돈다.
  */
 export const 화면토스트 = (page: Page, title: string) =>
@@ -1593,7 +1589,7 @@ export const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
 export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
 
 /** 주인 잃은 셸 토스트의 문구(프로세스 스펙 S45). */
-export const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
+export const ownerlessText = (count: number) => `아카이브된 작업공간의 셸 ${count}개에 아직 도는 것이 있어요`;
 
 /** spec 레이아웃 편집기의 주소 — 레이아웃은 하나라 고정 경로다(ui-refresh 결정 23). */
 export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/edit";
@@ -1616,11 +1612,11 @@ export const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "spec 
 
 /**
  * **앱 안의 길로** spec 레이아웃 편집기에 들어가 저장하지 않은 초안을 하나 만든다 — `decisions.md`의 설명 한 칸이다
- * (`spec-layout-leave.spec.ts`의 `draftOne`과 같은 초안). 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 비므로, 사이드바 바닥의
- * `Settings`(사람 메뉴 — v1 티켓 07)로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
+ * (`spec-layout-leave.spec.ts`의 `draftOne`과 같은 초안). 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 비므로, 사이드바 맨
+ * 아래 「설정」 줄(restart 02a-3 — 한때 사람 메뉴의 `Settings`)로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
  */
 export async function 편집기에초안(page: Page): Promise<void> {
-  await 사람메뉴로간다(page, "Settings");
+  await 가는곳으로간다(page, "Settings");
   await 설정항목(page, "spec 레이아웃").click();
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
   await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
@@ -1754,13 +1750,44 @@ export async function awaitSpawned(page: Page, count: number): Promise<void> {
  *
  * _한때 누르기 전에도 기다렸다_ — 첫 칸이 글꼴을 기다린 뒤 붙어 있을 때만 떠서, 그 전에 새 칸이
  * 켜지면 첫 칸의 spawn이 둘째 칸보다 늦게(또는 영영 안) 나갔다. 그 기다림은 앱의 결함을 덮고 있었다.
+ *
+ * **작업공간 화면의 `+`는 「새 탭」 메뉴다**(restart 02a-8) — 맨 윗줄이 「새 채팅」이고 그 아래가 셸 줄이다(프로젝트가 하나 이하면
+ * 「새 셸」, 둘 이상이면 「모든 프로젝트」 · 프로젝트 줄). 그래서 `+`가 메뉴를 열면(`aria-haspopup`) 셸 줄의 첫 줄(기본 자리)을 고른다.
+ * `/terminal`의 `+`(「셸 열기」)는 그대로 셸을 연다.
  */
 export async function openShell(page: Page): Promise<void> {
   const tabs = page.locator('[data-tab="shell"]');
   const before = await tabs.count();
-  await page.locator('[data-tab="new"]').click();
+  await 새셸을누른다(page);
   await expect(tabs).toHaveCount(before + 1);
   await awaitSpawned(page, before + 1);
+}
+
+/**
+ * 탭 줄 `+`로 셸 칸 하나를 **연다** — 그 칸이 서거나 뜨기를 기다리지 않는다(글꼴을 붙잡아 둔 검사 · 상한 검사가 부른다). 작업공간 화면의 `+`는
+ * 「새 탭」 메뉴라(restart 02a-8) 셸 줄의 첫 줄(기본 자리 — 「새 셸」 · 「모든 프로젝트」)을 고른다. `/terminal`의 `+`는 곧바로 연다.
+ */
+export async function 새셸을누른다(page: Page): Promise<void> {
+  const plus = page.locator('[data-tab="new"]');
+  await plus.click();
+  if ((await plus.getAttribute("aria-haspopup")) === "menu") {
+    await page.getByRole("menu").getByRole("menuitem", { name: /^(새 셸|모든 프로젝트)/ }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+  }
+}
+
+/**
+ * 작업공간 화면에서 셸을 살려 둔 채 **안 보는 자리**로 간다 — 탭 줄 `+`의 「새 탭」 메뉴 맨 윗줄 「새 채팅」으로 새 채팅 탭을 켠다(restart
+ * 02a-8). 켜져 있던 셸 칸은 배경 칸이 된다. 한때 spec 탭을 눌렀다 — 02a-13이 spec 탭을 걷었다.
+ *
+ * **여기 사는 이유는 「안 본 완료」를 세우는 spec이 여럿이기 때문이다**(`works-sidebar` · `shell-osc` …) — 보고 있는 셸에 온 완료는 그 순간
+ * 「봤다」가 되어 화면에 안 선다.
+ */
+export async function 새채팅탭으로비킨다(page: Page): Promise<void> {
+  await page.locator('[data-tab="new"]').click();
+  await page.getByRole("menu").getByRole("menuitem", { name: "새 채팅", exact: true }).click();
+  await expect(page).toHaveURL(/tab=chat/);
+  await expect(page).not.toHaveURL(/tab=terminal/);
 }
 
 /**
@@ -1832,11 +1859,11 @@ export async function 주소로간다(page: Page, url: string): Promise<void> {
 }
 
 /**
- * 사이드바 Work 줄이 가는 주소(v1 티켓 37) — 그 Work의 가장 최근 Thread, 이은 Thread가 없으면 그 Work를 고른 새 Thread(`/?work=<slug>`)다.
- * 고정 답의 Thread 목록은 비어 있어(`thread_list: []`) 늘 뒤쪽이다. 작업 화면(spec 트리 · 터미널 탭)으로는 가지 않는다 — 그 길은
- * 아래 `작업화면으로`다.
+ * 사이드바 Work 줄이 가는 주소(v1 티켓 37 · restart 02a-4 · 02a-8) — 그 작업공간의 채팅 탭이다. 이은 채팅이 있으면 가장 최근 채팅의 탭
+ * (`?tab=chat&thread=<id>`), 없으면 새 채팅 탭(`?tab=chat`)이다. 고정 답의 Thread 목록은 비어 있어(`thread_list: []`) 늘 뒤쪽이다. 한때 그
+ * Work를 고른 새 Thread(`/?work=<slug>`)였다 — 02a-8이 그 주소를 작업공간의 새 채팅 탭으로 옮겼다.
  */
-export const Work줄이가는곳 = (slug: string) => `/?work=${slug}`;
+export const Work줄이가는곳 = (slug: string) => `/works/${slug}?tab=chat`;
 
 /**
  * 그 work의 작업 화면을 **앱 안에서** 연다 — ⌘K에 제목을 넣고 Work 줄을 고른다(v1 티켓 21).
@@ -1884,7 +1911,7 @@ export async function 셸셋을띄운다(page: Page): Promise<void> {
   await typeIntoShell(page);
   await openShell(page);
 
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);

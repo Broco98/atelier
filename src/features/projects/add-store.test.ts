@@ -4,7 +4,7 @@ import type { ProjectView } from "./types";
 
 const notes = { slug: "notes", name: "notes" } as ProjectView;
 
-// 추가 창은 여는 길이 몇이든 하나다(03 구현 스펙 §16) — 부르는 쪽은 추가한 Project를 답으로 받는다(Space 상세가 그 Space에 넣는다).
+// 추가 창은 여는 길이 몇이든 하나다(03 구현 스펙 §16) — 부르는 쪽은 추가한 Project를 답으로 받는다(Service 상세가 그 Service에 넣는다).
 describe("addProject", () => {
   it("창을 그 폴더로 열고, 추가하면 그 Project로 끝난다", async () => {
     const asked = addProject("~/Documents/notes");

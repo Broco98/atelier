@@ -13,9 +13,6 @@ use atelier_acp::ThreadLink;
 use common::{has_pair, of_kind, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 가짜 claude가 첫 턴에 부를 Thread 도구 — `FAKE_CLAUDE_MCP_CALL`.
 fn rename_call(title: &str) -> String {
     json!({"tool": "rename_thread", "arguments": {"title": title}}).to_string()
@@ -49,7 +46,6 @@ fn socket_of(server: &Value) -> PathBuf {
 #[test]
 fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목록이_바뀌고_도구의_답이_claude에게_돌아간다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     // 다른 Thread 하나 — 도구는 Thread id를 받지 않는다. 부른 Session의 Thread만 바뀐다.
     let quiet = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let other = quiet.start_thread("다른 일", ThreadLink::NoWork).expect("다른 Thread");
@@ -64,7 +60,6 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     assert_eq!(sandbox.thread_json(&other)["title"], "다른 일", "다른 Thread는 그대로다 — 소켓이 부른 Thread를 안다");
     let titles = of_kind(&record, "title");
     assert_eq!(titles.len(), 1, "{}", common::lines_text(&record));
-    assert_eq!(titles[0]["who"], "host", "부른 Agent가 줄의 who다(S8) — 소켓이 부른 Agent를 안다");
     assert_eq!(titles[0]["payload"], json!({"title": "환불 API 버그", "before": "환불이 두 번 빠져요"}));
     let at = |line: &Value| record.iter().position(|seen| seen == line).unwrap();
     let ended = record.iter().position(|line| line["kind"] == "turn-end").unwrap();
@@ -78,7 +73,7 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     let renamed = lists.iter().rev().find(|summary| summary.id == thread).expect("목록 요약이 나간다");
     assert_eq!(renamed.title, "환불 API 버그", "사이드바가 이름을 바꾼다(thread:list)");
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let args = common::receipt_args(&sandbox.claude_receipt(&session));
     let server = thread_server(&args);
     assert_eq!(server["type"], "stdio");
@@ -94,8 +89,8 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     assert_eq!(mcp[0]["server"], "atelier-thread");
     let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
     assert!(listed.contains(&"rename_thread"), "도구 목록에 이름 바꾸기가 있다: {listed:?}");
-    assert!(listed.contains(&"list_spaces") && listed.contains(&"set_space"), "도구 목록에 Space 목록 · 붙이기가 있다(03 §11): {listed:?}");
-    for setting in ["add_project", "edit_project", "create_space", "edit_space"] {
+    assert!(listed.contains(&"list_services") && listed.contains(&"set_service"), "도구 목록에 Service 목록 · 붙이기가 있다(03 §11): {listed:?}");
+    for setting in ["add_project", "edit_project", "create_service", "edit_service"] {
         assert!(listed.contains(&setting), "도구 목록에 대화로 하는 설정 넷이 있다(03 §12): {listed:?}");
     }
     assert!(!listed.iter().any(|name| name.starts_with("remove_") || name.starts_with("delete_")), "지우는 도구는 없다(03 §17): {listed:?}");
@@ -103,30 +98,74 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     assert_ne!(answer["isError"], true, "{answer}");
     assert_eq!(answer["content"][0]["text"], "Thread 이름을 바꿨다 — 환불 API 버그", "도구의 답이 claude에게 돌아간다");
 
-    let sent = of_kind(&record, "sent");
-    let preamble = sent[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말");
-    assert!(
-        preamble.contains("atelier-thread") && preamble.contains("rename_thread"),
-        "머리말이 Thread 도구를 쓰는 법을 싣는다(S42):\n{preamble}"
-    );
-
     host.shut_down();
     assert!(!place.exists(), "Session이 끝나면 소켓을 치운다: {}", place.display());
+}
+
+/// 시스템 프롬프트가 없으니 앱 기능 도구는 일반 MCP 도구다 — 첫 말은 자리만 말하고, 언제 무엇을 부르는지는 Runtime이 `tools/list`로
+/// 받는 설명이 말한다.
+#[test]
+fn 머리말은_자리만_말하고_앱_기능_도구의_쓰임은_도구_설명이_말한다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(calling(&sandbox, &rename_call("환불 API 버그")));
+
+    let thread = host.start_thread("환불이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
+    assert!(
+        preamble.contains("\n- Work: 없음 — 이 Thread 폴더의 `work/`에서 일한다: `"),
+        "Work 줄은 「- Work:」로 서고 작업 폴더 `work/`를 말한다(L3 `workTitleOf`):\n{preamble}"
+    );
+    assert!(preamble.lines().any(|line| line.starts_with("- Service:")), "{preamble}");
+    assert!(!preamble.contains("Spec layout"), "Work 없는 채팅에는 spec 배치가 없다:\n{preamble}");
+    for name in [
+        "atelier-thread",
+        "rename_thread",
+        "list_projects",
+        "get_work",
+        "propose_work",
+        "start_editing",
+        "list_services",
+        "set_service",
+        "add_project",
+        "edit_project",
+        "create_service",
+        "edit_service",
+    ] {
+        assert!(!preamble.contains(name), "머리말이 도구 쓰는 법을 나열하지 않는다 — {name}:\n{preamble}");
+    }
+
+    let session = sandbox.thread_session_id(&thread);
+    for (name, says) in [
+        ("rename_thread", "이름을 바꾼다"),
+        ("list_projects", "Work 만들기를 제안하기 전에 부른다"),
+        ("get_work", "이 Thread가 이어진 Work"),
+        ("propose_work", "일이 커지면 부른다"),
+        ("propose_work", "atelier_start_work가 아니라 이 도구로 만든다"),
+        ("start_editing", "처음 고치기 전에 부른다"),
+        ("list_services", "set_service 전에 부른다"),
+        ("add_project", "Project로 등록한다"),
+        ("edit_project", "기준 브랜치는 그 저장소에 이미 있는 브랜치만 받는다"),
+    ] {
+        let guide = sandbox.claude_tool_guide(&session, name);
+        assert!(guide.contains(says), "{name}의 설명이 쓰임을 말한다 — {says}:\n{guide}");
+    }
 }
 
 #[test]
 fn 빈_이름으로_부르면_도구가_거절_까닭을_돌려주고_아무것도_바꾸지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(calling(&sandbox, &rename_call("  \n ")));
 
     let thread = host.start_thread("환불이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread, "host"))[0]["call"];
+    let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread))[0]["call"];
     assert_eq!(answer["isError"], true, "{answer}");
-    assert_eq!(answer["content"][0]["text"], "Thread 이름이 비었어요", "거절 까닭을 글로 돌려준다");
+    assert_eq!(answer["content"][0]["text"], "채팅 이름이 비었어요", "거절 까닭을 글로 돌려준다");
     assert_eq!(sandbox.thread_json(&thread)["title"], "환불이 두 번 빠져요");
     assert!(of_kind(&record, "title").is_empty(), "{}", common::lines_text(&record));
 }
@@ -134,7 +173,6 @@ fn 빈_이름으로_부르면_도구가_거절_까닭을_돌려주고_아무것�
 #[test]
 fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let thread = host.start_thread("어제의 말", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
@@ -146,7 +184,7 @@ fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린
     host.send_to_thread(&thread, "오늘의 말").expect("되살려 보낸다");
     sandbox.wait_thread_kind(&thread, "turn-end", 2);
     let revived = &sandbox.claude_launch_args()[1];
-    assert!(has_pair(revived, "--resume", &sandbox.thread_session_id(&thread, "host")), "{revived:?}");
+    assert!(has_pair(revived, "--resume", &sandbox.thread_session_id(&thread)), "{revived:?}");
     let today = socket_of(&thread_server(revived));
     assert_ne!(today, yesterday, "이어 열 때도 Session의 소켓을 새로 연다");
     assert!(today.exists(), "떠 있는 Session의 소켓이 있다");
@@ -155,88 +193,22 @@ fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린
     assert!(!today.exists());
 }
 
-/// 가짜 claude가 첫 턴에 부를 「Agent 저장」(v1 티켓 19).
-fn save_call(handle: &str, content: &str) -> String {
-    json!({"tool": "save_agent", "arguments": {"handle": handle, "content": content}}).to_string()
-}
-
-/// Host가 대화로 짓는 Agent 파일 — 「보안 위주로 보는 리뷰어 만들어줘」(스토리 66).
-const SECURITY_MD: &str = "---\nname: 보안 리뷰어\ndescription: 보안 취약점만 본다.\navatar:\n  shape: triangle\n  color: purple\n\
-                           tools:\n  builtin: [read, search]\n---\n\n너는 보안 취약점만 보는 리뷰어다.\n";
-
 #[test]
-fn host가_agent를_저장하면_library에_파일이_서고_library_줄이_남고_도구가_그_자리를_돌려준다() {
+fn agent_저장과_agent_부르기_도구는_도구_목록에도_머리말에도_서지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
-    let host = sandbox.host(calling(&sandbox, &save_call("security-reviewer", SECURITY_MD)));
+    let host = sandbox.host(calling(&sandbox, &rename_call("리뷰어 만들기")));
 
     let thread = host.start_thread("보안 위주로 보는 리뷰어 만들어줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let path = sandbox.data_root().join("library").join("agents").join("security-reviewer.md");
-    assert_eq!(std::fs::read_to_string(&path).expect("Library에 파일이 선다"), SECURITY_MD, "받은 내용 그대로다");
-    let saved = of_kind(&record, "library");
-    assert_eq!(saved.len(), 1, "{}", common::lines_text(&record));
-    assert_eq!(saved[0]["who"], "host", "저장한 Agent가 줄의 who다(S8)");
-    assert_eq!(
-        saved[0]["payload"],
-        json!({
-            "handle": "security-reviewer",
-            "name": "보안 리뷰어",
-            "avatar": {"shape": "triangle", "color": "purple"},
-            "path": path,
-        }),
-        "시스템 줄 「Library에 보안 리뷰어를 저장함」이 이름 · 얼굴을 읽는다"
-    );
-
-    let session = sandbox.thread_session_id(&thread, "host");
-    let mcp = sandbox.claude_mcp(&session);
+    let mcp = sandbox.claude_mcp(&sandbox.thread_session_id(&thread));
     let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
-    assert!(listed.contains(&"save_agent"), "도구 목록에 Agent 저장이 있다: {listed:?}");
-    let answer = &mcp[0]["call"];
-    assert_ne!(answer["isError"], true, "{answer}");
-    assert_eq!(
-        answer["content"][0]["text"],
-        format!("Library에 저장했다 — {}. 이제 `@security-reviewer`로 부를 수 있다.", path.display()),
-        "저장한 자리를 돌려준다(S13)"
-    );
+    assert!(listed.contains(&"rename_thread"), "앱 기능 도구 목록: {listed:?}");
     let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
-    assert!(
-        preamble.contains("save_agent") && preamble.contains(".atelier/agents/"),
-        "머리말이 저장 도구와 「이 Project에 둬」의 자리를 싣는다(S42):\n{preamble}"
-    );
-}
-
-#[test]
-fn 있는_handle이나_깨진_내용이면_도구가_거절_까닭을_돌려주고_library와_기록은_그대로다() {
-    let mine = "---\nname: 내 리뷰어\n---\n내가 고친 리뷰어.\n";
-    let cases = [
-        ("reviewer", SECURITY_MD, "Library에 `@reviewer`가 이미 있다 — 덮지 않는다"),
-        ("writer", "---\ntools:\n  builtin: [read, Bash]\n---\n글을 쓴다.\n", "Agent 파일이 깨졌다 — 모르는 도구입니다: Bash"),
-        ("Writer", SECURITY_MD, "handle `Writer`은 쓸 수 없다"),
-    ];
-    for (handle, content, why) in cases {
-        let sandbox = Sandbox::new();
-        sandbox.library_agent("host", HOST_MD);
-        let reviewer = sandbox.library_agent("reviewer", mine);
-        let host = sandbox.host(calling(&sandbox, &save_call(handle, content)));
-
-        let thread = host.start_thread("리뷰어 만들어줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
-        let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
-        host.shut_down();
-
-        let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread, "host"))[0]["call"];
-        assert_eq!(answer["isError"], true, "{handle}: {answer}");
-        let text = answer["content"][0]["text"].as_str().unwrap_or_default();
-        assert!(text.starts_with(why), "{handle}: 거절 까닭을 글로 돌려준다 — {text}");
-        assert_eq!(std::fs::read_to_string(&reviewer).unwrap(), mine, "{handle}: 있는 파일은 덮지 않는다");
-        let files: Vec<String> = std::fs::read_dir(reviewer.parent().unwrap())
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(files.len(), 2, "{handle}: Library에 아무것도 서지 않는다 — {files:?}");
-        assert!(of_kind(&record, "library").is_empty(), "{handle}: {}", common::lines_text(&record));
+    for gone in ["save_agent", "call_agent"] {
+        assert!(!listed.contains(&gone), "앱 기능 도구 목록: {listed:?}");
+        assert!(!preamble.contains(gone), "머리말:\n{preamble}");
     }
 }
 
@@ -246,7 +218,6 @@ fn 있는_handle이나_깨진_내용이면_도구가_거절_까닭을_돌려주�
 #[test]
 fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(recorded_rename(&sandbox));
 
     let thread = host
@@ -255,7 +226,28 @@ fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() 
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
+    common::assert_record("thread-rename", &common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]));
+}
+
+/// 코드 리뷰 1차 A3 — CI(Linux)에서 Host claude의 stdout 줄(변환기 → 엔진)이 Thread 도구 부르기(중계 서버 → 소켓)보다 늦게 닿아, 그
+/// 결과의 줄이 도구 줄 앞에 섰다. 가짜 claude가 stdout만 늦게 쓰면 그 엇갈림이 늘 난다 — 엔진은 그 도구 줄이 적힌 뒤에 부르기를
+/// 받으므로 기록은 같다.
+#[test]
+fn host의_stdout이_thread_도구_부르기보다_늦게_닿아도_기록의_차례가_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-rename-host"), ("FAKE_CLAUDE_STDOUT_LAG", "500")],
+    ));
+
+    let thread = host
+        .start_thread("이 Thread 이름을 「환불 API 버그」로 바꿔 줘. 이름만 바꾸고 한 줄로 답해.", ThreadLink::NoWork)
+        .expect("새 Thread의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let session = sandbox.thread_session_id(&thread);
     common::assert_record("thread-rename", &common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]));
 }
 

@@ -21,7 +21,7 @@ import { fireEvent } from "./harness";
 
 const RECORDS = join(REPO_ROOT, "crates/atelier-acp/tests/records");
 
-/** L1이 축복한 기록 하나 — 줄마다 `{seq, at, kind, who?, payload}`다. 끝의 빈 줄은 버린다. */
+/** L1이 축복한 기록 하나 — 줄마다 `{seq, at, kind, payload}`다. 끝의 빈 줄은 버린다. */
 export function record(name: string): RecordLine[] {
   return readFileSync(join(RECORDS, `${name}.jsonl`), "utf8")
     .split("\n")
@@ -48,7 +48,7 @@ export function sentPayloads(lines: readonly RecordLine[]) {
 }
 
 /**
- * 기록 하나의 Thread — 제목은 첫 말이고 Host 하나다. 따로 주지 않으면 아직 아무것도 읽지 않았고(`lastRead` 0) 떠 있는 Session이 없다.
+ * 기록 하나의 Thread — 제목은 첫 말이다. 따로 주지 않으면 아직 아무것도 읽지 않았고(`lastRead` 0) 떠 있는 Session이 없다.
  * 떠 있는지 · 끝 줄 · 읽은 자리 · 이은 Work는 부르는 쪽이 준다.
  */
 export const threadOf = (id: string, lines: readonly RecordLine[], seen: Partial<ThreadView>): ThreadView => ({
@@ -74,14 +74,16 @@ export const summaryOf = (view: ThreadView): ThreadSummary => ({
   id: view.id,
   title: view.title,
   createdAt: view.createdAt,
+  lastAt: view.createdAt,
   work: view.work,
-  handles: view.participants.map((one) => one.handle),
+  service: view.service ?? null,
+  project: null,
   lastRead: view.lastRead,
   readOnly: view.readOnly,
   broken: null,
 });
 
-/** 목록 요약 이벤트를 쏜다 — 엔진이 새 Thread를 세우거나 참여자가 늘 때 내보내는 것 그대로다. 사이드바가 이것으로 줄을 세운다. */
+/** 목록 요약 이벤트를 쏜다 — 엔진이 새 Thread를 세우거나 요약이 바뀔 때 내보내는 것 그대로다. 사이드바가 이것으로 줄을 세운다. */
 export async function fireSummary(page: Page, view: ThreadView): Promise<void> {
   await fireEvent(page, THREAD_LIST_EVENT, summaryOf(view));
 }
@@ -128,7 +130,7 @@ export function specWrites(lines: readonly RecordLine[], slug: string): Record<s
   );
 }
 
-/** 머리말이 Host에게 알린 이은 Work의 이름(「- Work: `slug` — 이름」) — L1이 그 Work를 그 이름으로 세웠다. */
+/** 머리말이 Runtime에게 알린 이은 Work의 이름(「- Work: `slug` — 이름」) — L1이 그 Work를 그 이름으로 세웠다. */
 export function workTitleOf(lines: readonly RecordLine[], slug: string): string {
   const sent = lines.find((line) => line.kind === "sent")?.payload as { prompt?: { text?: string }[] } | undefined;
   const title = new RegExp(`- Work: \`${slug}\` — (.+)`).exec(sent?.prompt?.[0]?.text ?? "")?.[1];

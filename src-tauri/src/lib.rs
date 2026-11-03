@@ -420,12 +420,6 @@ pub fn run() {
             // 앱이 둘 뜬 동안에는 남의 인스턴스가 놓고 간 파일이 그대로 실려 나간다.
             shells::watch(app.handle().clone(), shells::shells_dir(&root), processes::shell_key::generation());
 
-            // Library의 기본 Agent 파일(`host.md` · `reviewer.md`)을 없을 때만 세운다(v1 구현 스펙 S14). 있으면 사람이 고친 것이라
-            // 건드리지 않는다. 못 세우면 적고 지나간다 — 다음 실행이 다시 세운다.
-            if let Err(e) = atelier_core::ensure_default_agents(&root) {
-                eprintln!("atelier: {e}");
-            }
-
             // 인스턴스 기록을 연다(프로세스 결정 6 · 프로세스 스펙 S52). 이 실행의 셸 키가 디스크에 서야 함께 뜬 다른
             // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리는 이 줄 **뒤에** 선다 — 기록이 먼저다.
             // 셸은 프런트가 뜬 뒤에야 불리지만, 그보다 먼저 올린 키가 있어도 여는 쓰기가 함께 적는다(`Record::open`).
@@ -434,9 +428,9 @@ pub fn run() {
             // 끝낸 것을 위에서 센 몫으로 시작 보고에 싣는다. **기록을 연 뒤다** — 연 뒤라야 남의 기록이 읽힌다. 이 실행의 셸은
             // 안 본다: 웹뷰가 곧 첫 셸을 띄운다.
             startup::clean_up(cleanup, Arc::clone(&pool));
-            // nav 메타의 배경 표본(프로세스 결정 10 · 11 · 티켓 29). 앱 전체 메모리 합계와 손볼 것(출처 불명 · `●`를 켜는 기록)을 10초마다
-            // 모은다 — 화면이 닫혀 있어도 돈다. **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸
-            // 자손이 모두 출처 불명으로 서고, 뜨자마자 `●`가 선다. 첫 장은 시작 정리의 기록을 못 볼 수 있다 — 다음 장(10초)이 본다.
+            // nav 메타의 배경 표본(프로세스 결정 10 · 티켓 29). 앱 전체 CPU와 메모리 합계를 10초마다 모은다 — 화면이 닫혀 있어도 돈다.
+            // **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸 자손이 모두 출처 불명으로 서고, 그
+            // 몫이 첫 장의 합계에 든다.
             //
             // 표본을 걸기 **전에** 웹뷰에게 WebContent의 pid를 물을 길을 건다(프로세스 스펙 S39 · 티켓 30) — 앱 본체 = Rust 본체 +
             // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다 —
@@ -469,18 +463,18 @@ pub fn run() {
             commands::list_projects,
             commands::get_project,
             commands::create_project,
-            commands::update_project,
             commands::project_usage,
             commands::remove_project,
             commands::restore_project,
-            commands::list_spaces,
-            commands::get_space,
-            commands::update_space,
-            commands::read_space_text,
-            commands::check_space,
-            commands::save_space_text,
+            commands::list_services,
+            commands::services_folder,
+            commands::get_service,
+            commands::read_service_text,
+            commands::check_service,
+            commands::save_service_text,
             commands::reading_scope,
-            commands::space_usage,
+            commands::mention_files,
+            commands::service_usage,
             commands::open_project_folder,
             commands::list_works,
             commands::get_work,
@@ -503,9 +497,6 @@ pub fn run() {
             commands::read_work_diff,
             commands::search,
             commands::touch_recent_work,
-            commands::list_agents,
-            commands::read_agent_file,
-            commands::reveal_agent_file,
             commands::describe_attachments,
             commands::pty_spawn,
             commands::pty_write,
@@ -520,7 +511,6 @@ pub fn run() {
             commands::processes_cleanup_log,
             commands::processes_end,
             commands::read_settings,
-            commands::person_name,
             commands::write_settings,
             commands::default_process_exceptions,
             commands::agent_hooks,
@@ -534,8 +524,7 @@ pub fn run() {
             commands::quit_app,
             commands::startup_report,
             commands::thread_check_engine,
-            commands::thread_start_login,
-            commands::thread_cancel_login,
+            commands::thread_login_command,
             commands::thread_quit_counts,
             commands::thread_list,
             commands::thread_get,
@@ -546,24 +535,24 @@ pub fn run() {
             commands::thread_edit_queued,
             commands::thread_delete_queued,
             commands::thread_send_now,
+            commands::thread_reconnect,
             commands::thread_answer_permission,
             commands::thread_answer_work,
             commands::thread_answer_question,
             commands::thread_answer_project,
-            commands::thread_answer_space,
+            commands::thread_answer_service,
             commands::thread_answer_project_add,
             commands::thread_set_model,
             commands::thread_set_effort,
             commands::thread_set_mode,
-            commands::thread_set_space,
-            commands::thread_set_work_space,
-            commands::thread_delete_space,
-            commands::thread_restore_space,
+            commands::thread_set_codex_mode,
+            commands::thread_set_work_service,
+            commands::thread_delete_service,
+            commands::thread_restore_service,
             commands::thread_work_mode,
             commands::thread_work_prs,
             commands::thread_rename,
             commands::thread_mark_read,
-            commands::thread_call_again,
             commands::inspect_project_folder,
             commands::new_project_place,
             commands::new_project,
@@ -577,7 +566,7 @@ pub fn run() {
             // 정리는 위 셋업의 `startup::clean_up`, 셸 스스로 끝남은 그 셸의 리더 스레드가 한다).
             // 상태가 떨어지기를 기대하지 않는다 — 프로세스가 그냥 끝나면 소멸자는 돌지 않는다. **여기서는 반드시 동기로**
             // 끝낸다: 스레드에 넘기면 프로세스가 끝나며 그 스레드도 함께 사라져 아무도 신호를 못 보낸다.
-            // 다른 길(셸 닫기 · 새로고침 · 셸 스스로 끝남 · 시작 정리 · 손으로 끝내기)이 뒤로 보낸 끝내기(진행 중인 끝내기)도
+            // 다른 길(셸 닫기 · 새로고침 · 셸 스스로 끝남 · 시작 정리 · 손으로 끝내기)이 제 스레드에서 돌리는 끝내기(진행 중인 끝내기)도
             // 여기서 남은 유예만 기다려 마감한다.
             //
             // 인스턴스 기록도 여기서 닫는다(`end_for_exit` 안) — 「못 끝냄」이 없으면 지우고, 있으면 다음 실행의 시작
@@ -1277,19 +1266,6 @@ mod tests {
         assert_eq!(setup.matches("startup::sync_hooks(").count(), 1, "훅 맞춤을 두 번 부른다");
     }
 
-    /// **앱이 뜰 때마다 Library의 기본 Agent 파일을 세운다**(v1 구현 스펙 S14 · v1 티켓 03). 이 줄이 빠지면 처음 실행한 사람의
-    /// Library에 `host.md`가 없어 Host가 서지 않는데, 그것은 첫 말을 보낼 때에야 드러난다. 세우는 규칙(없을 때만 · 있는 파일은
-    /// 덮지 않음)은 core `agents.rs`의 시험이 임시 폴더에서 잰다. 셋업은 헤드리스로 못 돌리니 자리로 잰다.
-    #[test]
-    fn the_default_agents_stand_in_the_library_on_every_launch() {
-        let setup = setup_source();
-        assert_eq!(
-            setup.matches("atelier_core::ensure_default_agents(&root)").count(),
-            1,
-            "셋업이 이 실행의 데이터 루트로 기본 Agent 파일을 한 번 세우지 않는다"
-        );
-    }
-
     /// **시작 정리는 인스턴스 기록을 연 뒤에 돈다**(프로세스 스펙 「시작 시 확정 고아 자동 정리」 · 티켓 10). 먼저 돌면 남의
     /// 기록을 못 읽어(`Record::records`가 빈 목록) 모든 떠돌이가 출처 불명이 되고, 크래시한 실행의 고아가 영영 안 치워진다
     /// — 조용하다. 셋업은 헤드리스로 못 돌리니(`run()`) 자리로 잰다. 정리가 무엇을 고르고 끝내는지는 `pty.rs`의 실물 장면
@@ -1305,7 +1281,7 @@ mod tests {
     }
 
     /// **nav 메타의 배경 표본은 인스턴스 기록을 연 뒤에 건다**(티켓 29). 먼저 걸면 첫 판정이 남의 기록을 못 읽어(`Record::records`가
-    /// 빈 목록) 함께 뜬 다른 빌드(dev · 설치본)의 셸 자손이 모두 출처 불명으로 서고 — 뜨자마자 `●`가 선다. 표본이 한 번뿐이어야 박자가
+    /// 빈 목록) 함께 뜬 다른 빌드(dev · 설치본)의 셸 자손이 모두 출처 불명으로 서고 — 그 몫이 첫 장의 합계에 든다. 표본이 한 번뿐이어야 박자가
     /// 하나다(10초). 셋업은 헤드리스로 못 돌리니 자리로 잰다. 모으는 순서는 `processes::service`의 핀이 잰다.
     #[test]
     fn the_background_sample_starts_after_the_record_opens() {

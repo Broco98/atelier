@@ -11,7 +11,7 @@ import { menuHotkeyOf } from "@/lib/hotkeys";
 // 가리키기 때문이다:
 //
 //   ⌘1~9  works에서 문서와 셸 칸 — 다른 화면에는 아예 없다
-//   ⌘↩    works에서 작업 패널 · archive에서 spec 목록 패널 — projects의 목록 칸은 접지 않아(codex-ds 결정 32) 그 화면에는 듣는 자리가 없다
+//   ⌘↩    works에서 spec 패널 — 다른 화면에는 듣는 자리가 없다(Archive의 spec 목록 패널은 restart 03-4가 걷었다)
 //   ⌘B    어디서나 사이드바 — 화면을 안 탄다
 //   ⌘T    works에서 셸 열기
 //   ⌘K    어디서나 검색 팔레트 — 화면을 안 타고, **이 길이 그 키의 값의 절반이다**(결정 3):

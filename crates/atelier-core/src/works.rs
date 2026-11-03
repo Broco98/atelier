@@ -140,7 +140,7 @@ fn start(
                 created_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 projects: project_slugs.to_vec(),
                 pinned: false,
-                space: None,
+                service: None,
                 extra: Default::default(),
             }
         }
@@ -469,6 +469,20 @@ pub struct WorkPlaces {
     pub worktrees: Vec<PathBuf>,
 }
 
+impl WorkPlaces {
+    /// Work에 이은 Thread의 작업 폴더(v1 구현 스펙 S11 — Session의 cwd). worktree가 선 Project가 없으면 spec 폴더, 하나면 그 worktree,
+    /// 여럿이면 `trees/`다. 엔진의 Session 자리와 「@」 언급의 상대 경로(`mention.rs`)가 같은 이것을 읽는다 — 갈리면 상대 경로가 Runtime이
+    /// 여는 자리에서 어긋난다. 그때 디스크를 본다.
+    pub fn cwd(&self) -> PathBuf {
+        let trees: Vec<&PathBuf> = self.worktrees.iter().filter(|tree| tree.is_dir()).collect();
+        match trees.as_slice() {
+            [] => self.spec.clone(),
+            [tree] => (*tree).clone(),
+            _ => self.trees.clone(),
+        }
+    }
+}
+
 /// 읽은 work의 자리들. 파일을 읽거나 폴더를 만들지 않는다.
 pub fn work_places(works_root: &Path, work: &Work) -> WorkPlaces {
     let dir = works_root.join(&work.slug);
@@ -629,6 +643,8 @@ pub struct ArchiveEntry {
     /// 손으로 옮겨 둔 폴더에는 없을 수 있다 — 없는 것을 지어내지 않는다.
     pub archived_at: Option<String>,
     pub projects: Vec<String>,
+    /// 그 work의 브랜치 — Archive 상세의 위 카드 「브랜치」가 읽는다(restart 03-4). 미정이면 `null`이다(`Work.branch`와 같다).
+    pub branch: Option<String>,
 }
 
 pub fn list_archive(archive_root: &Path) -> Result<Vec<ArchiveEntry>> {
@@ -654,6 +670,7 @@ pub fn list_archive(archive_root: &Path) -> Result<Vec<ArchiveEntry>> {
                 title: work.title,
                 status: work.status,
                 projects: work.projects,
+                branch: work.branch,
             });
         }
     }
@@ -676,13 +693,13 @@ pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<W
     Ok(to_view(works_root, work))
 }
 
-/// 이은 Space를 바꾼다(03 구현 스펙 §9) — `work.json`의 `space` 한 칸만 고친다(`None`이면 뺀다). 같은 값이면 아무것도 쓰지 않는다 —
-/// 감시자를 깨우지 않게(`update_work_pinned`와 같은 규칙). Space 파일이 있는지는 보지 않는다 — 부르는 쪽(엔진)이 본다. 그 Work의
-/// Thread마다 남는 Space 줄도 엔진의 일이다(기록은 엔진의 쓰는 손 하나로 쓴다). 화면 응답이 아니라 `git status`를 돌지 않는다.
-pub fn update_work_space(works_root: &Path, slug: &str, space: Option<&str>) -> Result<Work> {
+/// 이은 Service를 바꾼다(03 구현 스펙 §9) — `work.json`의 `service` 한 칸만 고친다(`None`이면 뺀다). 같은 값이면 아무것도 쓰지 않는다 —
+/// 감시자를 깨우지 않게(`update_work_pinned`와 같은 규칙). Service 파일이 있는지는 보지 않는다 — 부르는 쪽(엔진)이 본다. 그 Work의
+/// Thread마다 남는 Service 줄도 엔진의 일이다(기록은 엔진의 쓰는 손 하나로 쓴다). 화면 응답이 아니라 `git status`를 돌지 않는다.
+pub fn update_work_service(works_root: &Path, slug: &str, service: Option<&str>) -> Result<Work> {
     let mut work = read_work(works_root, slug)?;
-    if work.space.as_deref() != space {
-        work.space = space.map(str::to_owned);
+    if work.service.as_deref() != service {
+        work.service = service.map(str::to_owned);
         write_work(works_root, &work)?;
     }
     Ok(work)
@@ -2191,10 +2208,10 @@ mod tests {
         assert!(!same_value.unwrap().work.pinned);
     }
 
-    /// Space 바꾸기(03 구현 스펙 §9) — `work.json`의 `space` 한 칸만 고친다. 다른 칸과 모르는 칸은 그대로고, 같은 값이면 쓰지 않으며, 빼면
+    /// Service 바꾸기(03 구현 스펙 §9) — `work.json`의 `service` 한 칸만 고친다. 다른 칸과 모르는 칸은 그대로고, 같은 값이면 쓰지 않으며, 빼면
     /// 키째 사라진다.
     #[test]
-    fn space를_바꾸면_그_칸만_고치고_같은_값이면_쓰지_않고_빼면_키가_사라진다() {
+    fn service를_바꾸면_그_칸만_고치고_같은_값이면_쓰지_않고_빼면_키가_사라진다() {
         let tmp = tempfile::tempdir().unwrap();
         let works = tmp.path().join("works");
         plant(&works, "가", "2026-08-01", true);
@@ -2204,20 +2221,20 @@ mod tests {
         std::fs::write(&path, raw.to_string()).unwrap();
         let file = || -> serde_json::Value { serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap() };
 
-        let work = update_work_space(&works, "가", Some("결제-서비스")).unwrap();
-        assert_eq!(work.space.as_deref(), Some("결제-서비스"));
+        let work = update_work_service(&works, "가", Some("결제-서비스")).unwrap();
+        assert_eq!(work.service.as_deref(), Some("결제-서비스"));
         let mut expected = raw.clone();
-        expected["space"] = serde_json::json!("결제-서비스");
-        assert_eq!(file(), expected, "space 한 칸만 더해진다");
+        expected["service"] = serde_json::json!("결제-서비스");
+        assert_eq!(file(), expected, "service 한 칸만 더해진다");
 
         let written = std::fs::metadata(&path).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        update_work_space(&works, "가", Some("결제-서비스")).unwrap();
+        update_work_service(&works, "가", Some("결제-서비스")).unwrap();
         assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), written, "같은 값이면 쓰지 않는다");
 
-        assert_eq!(update_work_space(&works, "가", None).unwrap().space, None);
+        assert_eq!(update_work_service(&works, "가", None).unwrap().service, None);
         assert_eq!(file(), raw, "빼면 키째 사라진다");
-        assert!(matches!(update_work_space(&works, "없음", None), Err(Error::WorkNotFound(_))));
+        assert!(matches!(update_work_service(&works, "없음", None), Err(Error::WorkNotFound(_))));
     }
 
     /// 검증 실패는 **아무것도 안 쓴다** — 순서 파일도 `work.json`도 생기거나 바뀌지 않는다.
@@ -3472,6 +3489,8 @@ mod tests {
         assert_eq!(e.title, "치울 것");
         assert_eq!(e.status, WorkStatus::Active);
         assert_eq!(e.projects, vec!["fe"]);
+        // 상세의 위 카드 「브랜치」(restart 03-4 · PlaceSheet 「상세 위 카드」)가 이것을 읽는다 — 한 줄짜리 글이라 경량을 깨지 않는다.
+        assert_eq!(e.branch.as_deref(), Some("feat/tidy"));
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         assert!([&before[..], &today[..]].contains(&e.archived_at.as_deref().unwrap()), "{e:?}");
 
@@ -3486,7 +3505,19 @@ mod tests {
         let json = serde_json::to_value(e).unwrap();
         let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, vec!["archivedAt", "projects", "slug", "status", "title"], "{json}");
+        assert_eq!(keys, vec!["archivedAt", "branch", "projects", "slug", "status", "title"], "{json}");
+    }
+
+    /// 브랜치가 미정인 work(프로젝트 없이 시작한 것)는 `null`로 나간다 — 작업 응답(`Work.branch`)과 같은 규칙이다. 지어내지 않는다.
+    #[test]
+    fn archive_list_carries_no_branch_for_a_work_that_never_had_one() {
+        let (_tmp, works, projects) = setup();
+        let archive = archive_root(&works);
+        start_work(&works, &archive, &projects, "브랜치없음", Some("브랜치없음"), &[], None).unwrap();
+        archive_work(&works, &archive, &projects, "브랜치없음").unwrap();
+        let listed = list_archive(&archive).unwrap();
+        assert_eq!(listed[0].branch, None);
+        assert!(serde_json::to_value(&listed[0]).unwrap()["branch"].is_null());
     }
 
     /// 조회는 아무것도 만들지 않는다. `atelier_list_archive`가 `read_only_hint = true`로

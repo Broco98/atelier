@@ -59,7 +59,9 @@ mod tests {
             name: name.to_string(),
             argv0: argv0.map(str::to_string),
             command: None,
+            path: None,
             shell_key: None,
+            runtime_key: None,
         }
     }
 

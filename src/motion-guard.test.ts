@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 import { blankCssComments, blankedSources, placesOf, where } from "./blank-comments";
 
 // **Thread 화면의 움직임은 모션 보드의 토큰으로만 움직인다**(v1 티켓 43 · 구현 스펙 §14 「모션」). 시간 · 곡선은 `index.css`의 모션 보드
-// 토큰이고, 움직임은 그 파일 끝 「Thread의 움직임」의 유틸리티다(`word-in` · `stream-tail` · `chip-in` · `card-rise` · `unfold` · `row-in` ·
-// `morph-in` · `morph-out` · `jump-in` · `row-flash` · `chat-shimmer` · `think-shimmer` · `typing-dots` · `writing-pulse` · `view-in`). 그 값이 토큰을 읽는지는
+// 토큰이고, 움직임은 그 파일 끝 「채팅의 움직임」의 유틸리티다(`word-in` · `stream-tail` · `chip-in` · `card-rise` · `unfold` · `row-in` ·
+// `morph-in` · `morph-out` · `jump-in` · `msg-rise` · `row-flash` · `chat-shimmer` · `think-shimmer` · `typing-dots` · `writing-pulse` · `view-in`). 그 값이 토큰을 읽는지는
 // `tokens.test.ts`가 Tailwind를 돌려 잰다. 여기서는 Thread 화면(`src/features/thread`)이 그 길을 비켜 가는 자리를 막는다.
 //   - **손으로 고른 시간 · 곡선 · 늦음**(`duration-200` · `duration-[180ms]` · `ease-in-out` · `ease-[cubic-bezier(…)]` · `delay-75`).
 //     토큰을 고친 날 그 자리만 옛 박자로 남는다. 토큰 이름(`duration-arrive` · `ease-settle` · DS의 `duration-panel` …)은 된다.
@@ -55,11 +55,18 @@ describe("Thread 화면의 움직임", () => {
   });
 
   // 「생각 중」은 박자를 둔 띠다(Codex cadenced shimmer — 02 구현 스펙 §12 · 스토리 98). 쉬지 않고 도는 반짝임(`chat-shimmer`)은 작업 중 ·
-  // 도는 도구 줄의 것이다. 「생각 중」이 서는 자리(흐름의 도는 턴 · 첫 말을 보낸 새 Thread)가 모두 그 띠다.
+  // 도는 도구 줄 · 「채팅을 시작하는 중」의 것이다. 「생각 중」은 흐름의 도는 턴에 서고, 그 줄(`ThreadFlow`의 `ThinkingLine`)이 띠를 든다
+  // (restart 02b-1 — 한때 첫 말을 보낸 새 Thread에도 섰다). 줄을 거치지 않고 적은 「생각 중」도 그 띠여야 한다.
   it("「생각 중」은 think-shimmer로 선다", () => {
-    const thinking = placesOf(/className="([^"]*)"[^>]*>생각 중</g, thread);
-    expect(thinking.length, "「생각 중」이 서는 자리").toBeGreaterThanOrEqual(2);
-    expect(thinking.filter(({ match }) => !match[1].split(" ").includes("think-shimmer")).map(where)).toEqual([]);
+    const thinking = placesOf(/<(\w+)(?: className="([^"]*)")?>생각 중</g, thread);
+    expect(thinking.length, "「생각 중」이 서는 자리").toBeGreaterThanOrEqual(1);
+    const line = placesOf(/function ThinkingLine\b[\s\S]*?return <p className="([^"]*)"/g, thread);
+    expect(
+      line.map(({ match }) => match[1].split(" ").includes("think-shimmer")),
+      "`ThinkingLine`의 띠",
+    ).toEqual([true]);
+    const loose = thinking.filter(({ match }) => match[1] !== "ThinkingLine" && !(match[2] ?? "").split(" ").includes("think-shimmer"));
+    expect(loose.map(where)).toEqual([]);
   });
 
   it("인라인 style에 움직임을 적지 않는다", () => {

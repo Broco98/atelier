@@ -9,8 +9,7 @@ import { appReturnTarget, shellStore } from "./components/shell/shell-store";
 import { navigateGuardingSettings } from "./features/settings/navigate-guarding-settings";
 import { trackCanGoForward } from "./can-go-forward";
 import { rememberView, tabSearch } from "./routes/-work-search";
-import { readLibrarySearch } from "./routes/-library-search";
-import { isBlankNewThread } from "./routes/-new-thread-search";
+import { isBlankNewThread, newThreadKey, seedOf, withoutNewWork } from "./routes/-new-thread-search";
 import type { ViewTab } from "./routes/-work-search";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
@@ -48,7 +47,6 @@ interface SetupOptions {
   projects?: Array<ProjectView>;
   archives?: Array<ArchiveEntry>;
   lastWork?: string | null;
-  lastArchive?: string | null;
 }
 
 /**
@@ -101,7 +99,6 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   shellStore.setState((state) => ({
     ...state,
     workSlug: options.lastWork ?? null,
-    archiveSlug: options.lastArchive ?? null,
     lastPlace: null,
   }));
 
@@ -113,7 +110,7 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
     origin: "http://localhost",
     context: { queryClient },
   });
-  return { router, history };
+  return { router, history, queryClient };
 }
 
 // 라우터 상태를 히스토리 이동에 따라오게 한다. 앱에서는 RouterProvider 안의
@@ -150,16 +147,18 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it("`/?work=<slug>`도 새 Thread다 — 요약 카드 「…」의 「이 Work에서 새 Thread」가 그 Work를 고른 채 연다(v1 티켓 34)", async () => {
+  // restart 02a-8 — 그 씨앗은 이제 문이다: `/` 화면이 그 작업공간의 새 채팅 탭(`/works/<slug>?tab=chat`)으로 옮긴다(`newChatDoor` — 입력 글은 그
+  // 탭의 입력창에 채운다). 옮기는 것은 화면의 효과라 이 seam 밖이고, 여기서는 검증기가 씨앗을 지우지 않는 것만 본다.
+  it("`/?work=<slug>`의 씨앗을 검증기가 그대로 둔다 — 그 작업공간의 새 채팅 탭으로 옮기는 것은 `/` 화면이다", async () => {
     const { router } = setup(["/?work=refund-api"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/");
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ work: "refund-api" });
   });
 
-  // 02 구현 스펙 S5 · 티켓 05 — 사이드바 Work 묶음 머리의 +가 「새 Work」 칩을 고른 새 Thread를 연다(결정.md 조정자 「05 · 「새 Work」+」).
+  // 02 구현 스펙 S5 · 티켓 05 — 사이드바 Work 묶음 머리의 +가 「새 작업공간」 칩을 고른 새 Thread를 연다(결정.md 조정자 「05 · 「새 작업공간」+」).
   // 주소의 모양은 검증기의 타입이 든다 — +가 부르는 것과 같은 `navigate`라, 그 갈래가 없으면 타입 검사(L0)가 이 줄에서 빨개진다.
-  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 Work 칩을 「새 Work」로 둔 채 연다", async () => {
+  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 「새 작업공간」 칩을 세워 연다", async () => {
     const { router } = setup(["/threads/20261010-100000"]);
     await router.load();
     await router.navigate({ to: "/", search: { new: "work" } });
@@ -167,27 +166,44 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work" });
   });
 
-  // 03 구현 스펙 §5 · 티켓 02 — 「Work 없이 대화」 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「Host와 만들기」(S16)는 둘을 함께
+  // 03 구현 스펙 §5 · 티켓 02 — 작업공간 없는 채팅의 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「대화로 만들기」(S16)는 둘을 함께
   // 싣는다 — Work 없는 새 대화의 입력창에 맡기는 말을 넣는다(보내지 않는다).
-  it("`/?new=thread&say=…`도 새 Thread다 — 「Work 없이 대화」와 입력 글이 함께 선다", async () => {
+  it("`/?new=thread&say=…`도 새 Thread다 — 작업공간 없는 채팅에 입력 글이 선다", async () => {
     const { router } = setup(["/threads/20261010-100000"]);
     await router.load();
-    await router.navigate({ to: "/", search: { new: "thread", say: "결제 서비스 Space를 만들고 싶어" } });
+    await router.navigate({ to: "/", search: { new: "thread", say: "결제 서비스 Service를 만들고 싶어" } });
     expect(router.state.location.pathname).toBe("/");
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({
       new: "thread",
-      say: "결제 서비스 Space를 만들고 싶어",
+      say: "결제 서비스 Service를 만들고 싶어",
     });
   });
 
-  // 03 구현 스펙 §5 · §14 · 티켓 06 — Space 씨앗(`?space=<slug>`)을 더했다. Space 상세의 「새 Work」(`?new=work&space=`)와 「Host와 고치기」
-  // (`?new=thread&space=&say=`)가 그 Space를 Space 칩에 고른 채 연다.
-  it("`/?new=work&space=…`도 새 Thread다 — Space 칩이 그 Space를 고른 채 선다", async () => {
-    const { router } = setup(["/spaces/결제-서비스"]);
+  // 03 구현 스펙 §5 · §14 · 티켓 06 — Service 씨앗(`?service=<slug>`)을 더했다. Service 상세의 「작업공간 만들기」(`?new=work&service=`)와 「대화로 고치기」
+  // (`?new=thread&service=&say=`)가 그 Service를 범위 칩에 고른 채 연다.
+  it("`/?new=work&service=…`도 새 Thread다 — 범위 칩이 그 Service를 고른 채 선다", async () => {
+    const { router } = setup(["/services/결제-서비스"]);
     await router.load();
-    await router.navigate({ to: "/", search: { new: "work", space: "결제-서비스" } });
+    await router.navigate({ to: "/", search: { new: "work", service: "결제-서비스" } });
     expect(router.state.location.pathname).toBe("/");
-    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", space: "결제-서비스" });
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", service: "결제-서비스" });
+  });
+
+  it("`/?new=work&project=…`도 새 Thread다 — 범위 칩이 그 Project를 고른 채 선다", async () => {
+    const { router } = setup(["/projects"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "work", project: "api-server" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", project: "api-server" });
+  });
+
+  it("`/?new=thread&service=…&say=…`도 새 Thread다 — 「Project 넣기」가 그 Service를 고르고 말을 채워 연다", async () => {
+    const { router } = setup(["/services/결제-서비스"]);
+    await router.load();
+    const seed = { new: "thread", service: "결제-서비스", say: "결제 서비스에 Project를 넣고 싶어요. " } as const;
+    await router.navigate({ to: "/", search: seed });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual(seed);
   });
 
   it("시작 직후 뒤로갈 곳이 없다", async () => {
@@ -198,8 +214,44 @@ describe("진입은 새 Thread다", () => {
   });
 });
 
-// 02 구현 스펙 §4 · 스토리 10 · 02 코드 리뷰 S1. **⌘N과 위 줄 「새 Thread」는 씨앗 없는 새 Thread로 간다** — 씨앗을 단 새 Thread(`/?work=<slug>` ·
-// `/?new=work`)도 `/`라, 한때 「`/`에 있으면 아무것도 하지 않는다」는 가드가 거기서 키를 삼켜 「새 Work」 칩이 그대로 남았다. 가드와 그 행의
+// 구현 스펙 「01a — 범위와 새 채팅」. 「새 작업공간」 칩을 ×로 빼면 그냥 새 채팅이다 — 주소가 `?new=thread`로 갈아 서서 작업공간 만들기를 다시 누르면 칩이
+// 돌아온다. 화면은 새로 서지 않아 고른 범위 · 모드 · 쓴 글이 남는다(`newThreadKey`가 같다).
+describe("「새 작업공간」 칩의 ×", () => {
+  const searchAt = (router: ReturnType<typeof setup>["router"]) => router.state.matches.find((match) => match.routeId === "/")?.search ?? {};
+
+  it("범위 · 입력 글은 그대로 `?new=thread`로 갈아 서고 히스토리가 늘지 않는다", async () => {
+    const { router, history } = setup(["/?new=work&service=pay&say=%EC%95%88%EB%85%95"]);
+    await router.load();
+    const before = seedOf(searchAt(router));
+    await router.navigate({ to: "/", search: withoutNewWork(before), replace: true });
+    expect(searchAt(router)).toEqual({ new: "thread", service: "pay", say: "안녕" });
+    expect(history.length).toBe(1);
+    expect(newThreadKey(seedOf(searchAt(router)))).toBe(newThreadKey(before));
+  });
+
+  it("다시 작업공간 만들기로 가면 칩의 씨앗이 돌아온다", async () => {
+    const { router } = setup(["/?new=work"]);
+    await router.load();
+    await router.navigate({ to: "/", search: withoutNewWork(seedOf(searchAt(router))), replace: true });
+    await router.navigate({ to: "/", search: { new: "work" } });
+    expect(seedOf(searchAt(router)).link).toEqual({ kind: "new-work" });
+  });
+
+  it("씨앗을 걷거나 다른 씨앗으로 가면 화면을 새로 세운다", () => {
+    const key = (search: Parameters<typeof seedOf>[0]) => newThreadKey(seedOf(search));
+    expect(key({ new: "work" })).toBe(key({ new: "thread" }));
+    expect(key({ new: "work" })).not.toBe(key({}));
+    expect(key({ new: "thread" })).not.toBe(key({}));
+    expect(key({ new: "work" })).not.toBe(key({ work: "refund-api" }));
+    expect(key({ work: "a" })).not.toBe(key({ work: "b" }));
+    expect(key({ new: "work", service: "pay" })).not.toBe(key({ new: "thread" }));
+    expect(key({ new: "work", say: "안녕" })).not.toBe(key({ new: "thread" }));
+    expect(key({ project: "api" })).not.toBe(key({}));
+  });
+});
+
+// 02 구현 스펙 §4 · 스토리 10 · 02 코드 리뷰 S1. **⌘N과 위 칸 「새 채팅」은 씨앗 없는 새 Thread로 간다** — 씨앗을 단 새 Thread(`/?work=<slug>` ·
+// `/?new=work`)도 `/`라, 한때 「`/`에 있으면 아무것도 하지 않는다」는 가드가 거기서 키를 삼켜 「새 작업공간」 칩이 그대로 남았다. 가드와 그 행의
 // 고른 모양이 같은 물음(`isBlankNewThread`)을 읽는다 — 고른 모양이면 눌러도 그 자리이고, 아니면 누르면 간다.
 describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
   const blankAt = async (entry: string) => {
@@ -214,20 +266,21 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/?new=work")).toBe(false);
     expect(await blankAt("/?new=thread")).toBe(false);
     expect(await blankAt("/?say=%EC%95%88%EB%85%95")).toBe(false);
-    expect(await blankAt("/?space=pay")).toBe(false);
+    expect(await blankAt("/?service=pay")).toBe(false);
+    expect(await blankAt("/?project=api-server")).toBe(false);
     expect(await blankAt("/threads/20261010-100000")).toBe(false);
-    expect(await blankAt("/library")).toBe(false);
   });
 
   it("모르는 모양의 씨앗은 없는 것과 같다 — 화면이 씨앗 없는 새 Thread라 그 자리다", async () => {
     expect(await blankAt("/?work=")).toBe(true);
     expect(await blankAt("/?new=project")).toBe(true);
     expect(await blankAt("/?say=")).toBe(true);
-    expect(await blankAt("/?space=")).toBe(true);
+    expect(await blankAt("/?service=")).toBe(true);
+    expect(await blankAt("/?project=")).toBe(true);
   });
 
   it("씨앗을 단 새 Thread에서 `/`로 가면 씨앗이 걷히고 그 자리가 된다 — 히스토리는 한 칸 는다", async () => {
-    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95", "/?space=pay"]) {
+    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95", "/?service=pay", "/?project=api-server"]) {
       const { router, history } = setup([entry]);
       await router.load();
       await router.navigate({ to: "/" });
@@ -300,6 +353,30 @@ describe("Thread의 주소", () => {
     await goBack(router, history);
     expect(router.state.location.pathname).toBe("/works/work-a");
   });
+
+  // **작업공간 화면은 목록을 받아 둔 뒤에 선다**(restart 02a-15c). 앱을 작업공간 주소에서 켜면 목록이 아직 없다 — 그 사이 화면이 서면 고른
+  // 작업공간이 없는 빈 화면(「아직 작업공간이 없어요」)이 먼저 그려지고, 레일 · spec 패널이 접힌 채 그려졌다가 목록이 오면 0에서 자라 본문
+  // 폭이 움직였다(02a-14 「처음 켜면 자라는 움직임 없이 선다」). 목록은 주입하는 값이라 도는 조회 하나를 심어 두고 그 답을 붙잡는다.
+  it("작업공간 주소에 처음 닿으면 목록이 올 때까지 그 화면에 닿지 않는다", async () => {
+    const { router, queryClient } = setup(["/works/work-a"]);
+    queryClient.removeQueries({ queryKey: worksQuery().queryKey });
+    let answer: (list: Array<WorkView>) => void = () => {};
+    void queryClient.prefetchQuery({
+      queryKey: worksQuery().queryKey,
+      queryFn: () => new Promise<Array<WorkView>>((resolve) => (answer = resolve)),
+    });
+    let arrived = false;
+    const loading = router.load().then(() => {
+      arrived = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(arrived, "목록이 오기 전에 작업공간 화면에 닿았다").toBe(false);
+
+    answer(works("work-a", "work-b"));
+    await loading;
+    expect(router.state.location.pathname).toBe("/works/work-a");
+    expect(router.state.matches.map((match) => match.status)).not.toContain("pending");
+  });
 });
 
 describe("무선택 주소의 정규화", () => {
@@ -344,20 +421,13 @@ describe("무선택 주소의 정규화", () => {
     expect(history.length).toBe(1);
   });
 
-  // 아카이브도 같은 규칙이다. **목록 칸이 곁에 상주하기 때문에** 그래도 된다 —
-  // 곁에 선 목록 없이 목록과 상세가 같은 영역을 번갈아 쓰던 판에서는 이 정규화가 목록을 볼
-  // 방법을 통째로 없앴고, 그래서 그때는 아카이브만 규칙에서 빼야 했다. 곁에 선 목록(그때의
-  // 목록 패널, 지금의 목록 칸)이 그 예외를 지웠다.
-  it("아카이브에도 같은 규칙이 적용된다", async () => {
-    const { router } = setup(["/archive"], { lastArchive: "치운-b" });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/archive/치운-b");
-  });
-
-  it("아카이브가 하나도 없으면 정규화하지 않고 빈 상태에 머문다", async () => {
-    const { router } = setup(["/archive"], { archives: [] });
+  // **Archive도 이 규칙 밖이다**(restart 03-4 · 스펙 「03 — 목록과 상세」) — 문서 | 목록 2단을 걷어 `/archive`가 목록이고 상세(`/archive/$slug`)가
+  // 그 자리를 번갈아 쓴다. 한때는 목록 칸이 곁에 상주해 마지막으로 보던 아카이브로 정규화했다 — 지금 그러면 목록을 볼 길이 없다.
+  it("아카이브는 목록 화면이라 정규화하지 않는다", async () => {
+    const { router, history } = setup(["/archive"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/archive");
+    expect(history.length).toBe(1);
   });
 });
 
@@ -441,80 +511,63 @@ describe("Processes의 주소", () => {
   });
 });
 
-// Library(v1 구현 스펙 §13 · §16 · 티켓 19). 목록 화면이지만 정규화가 없다 — 고른 Agent가 없으면 화면이 첫 줄을 읽는다(`pickedAgent`).
-// 지금 Work(`work`)와 고른 Agent(`agent`)는 주소의 search다 — 사이드바의 Library 줄이 지금 Work를 싣는다.
+// Agent만 담던 Library 화면은 사라졌다(#583) — 주소도 라우트에 없다.
 describe("Library의 주소", () => {
-  it("`/library`는 그대로 서고 마지막 자리로 적히며, 지금 Work와 고른 Agent를 search로 읽는다", async () => {
-    const { router, history } = setup(["/library?work=refund-api&agent=api%2Freviewer"]);
+  it("`/library`는 어떤 화면도 열지 않는다", async () => {
+    const { router } = setup(["/library?work=refund-api&agent=reviewer"]);
     await router.load();
-    expect(router.state.location.pathname).toBe("/library");
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/library");
-    expect(router.state.location.search).toEqual({ work: "refund-api", agent: "api/reviewer" });
-    expect(history.length).toBe(1);
-    expect(shellStore.state.lastPlace).toBe("/library");
-  });
-
-  it("글이 아닌 값 · 빈 글은 없는 것으로 읽는다 — 지금 Work 없이 Library만, 고른 Agent 없이 첫 줄이다", async () => {
-    const { router } = setup(["/library?work=3&agent="]);
-    await router.load();
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/library");
-    expect(readLibrarySearch(router.state.location.search)).toEqual({ work: null, agent: undefined });
-  });
-
-  it("Library 안에서 다른 Agent를 고르면 칸이 하나 늘고, 뒤로가기가 앞 Agent로 간다", async () => {
-    const { router, history } = setup(["/library"]);
-    await router.load();
-    await router.navigate({ to: "/library", search: { agent: "reviewer" } });
-    expect(history.length).toBe(2);
-    await goBack(router, history);
-    expect(router.state.location.search).toEqual({});
+    expect(router.state.matches.map((match) => match.routeId)).toEqual(["__root__"]);
   });
 });
 
-// Space(03 구현 스펙 §14). 목록은 고른 것으로 넘기지 않는다 — Works와 달리(Projects처럼) 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
-describe("Space의 주소", () => {
-  it("`/spaces`는 목록 그대로 서고 마지막 자리로 적힌다", async () => {
-    const { router, history } = setup(["/spaces"]);
+// Service(03 구현 스펙 §14 · restart 03-3). 목록은 고른 것으로 넘기지 않는다 — Works와 달리(Projects처럼) 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
+// `/services`는 틀 라우트다 — 목록과 상세가 한 자리를 번갈아 쓴다(상세가 선 동안 목록은 그 틀 안에 숨는다). 고치기 화면 둘은 그 틀 밖의 따로 선 화면이다.
+describe("Service의 주소", () => {
+  it("`/services`는 목록 그대로 서고 마지막 자리로 적힌다", async () => {
+    const { router, history } = setup(["/services"]);
     await router.load();
-    expect(router.state.location.pathname).toBe("/spaces");
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/spaces/");
+    expect(router.state.location.pathname).toBe("/services");
+    expect(router.state.matches.map((match) => match.routeId)).toEqual(expect.arrayContaining(["/services", "/services/"]));
     expect(history.length).toBe(1);
-    expect(shellStore.state.lastPlace).toBe("/spaces");
+    expect(shellStore.state.lastPlace).toBe("/services");
   });
 
-  it("`/spaces/<slug>`는 그 Space의 상세다 — 한글 slug도 그대로다", async () => {
-    const { router } = setup(["/spaces/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4"]);
+  it("`/services/<slug>`는 그 Service의 상세다 — 목록의 틀 안에 서고, 한글 slug도 그대로다", async () => {
+    const { router } = setup(["/services/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4"]);
     await router.load();
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/spaces/$slug");
+    expect(router.state.matches.map((match) => match.routeId)).toEqual(expect.arrayContaining(["/services", "/services/$slug"]));
     const matches = router.state.matches;
     expect(matches[matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
-  // 고치기 화면 둘(03 구현 스펙 §13) — 관계 편집은 그 Space 아래, 새 Space는 목록 아래 고정 주소다. 둘 다 상세의 자식이 아닌 따로 선 화면이다.
-  it("`/spaces/<slug>/edit`는 그 Space의 관계 편집이다 — 상세 위에 겹쳐 서지 않는다", async () => {
-    const { router } = setup(["/spaces/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4/edit"]);
+  // 파일로 고치기(03 구현 스펙 §13)는 그 Service 아래 주소이고 목록 · 상세의 틀 밖에 따로 선 화면이다.
+  it("`/services/<slug>/edit`는 그 Service의 파일로 고치기다 — 목록 · 상세의 틀 밖이다", async () => {
+    const { router } = setup(["/services/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4/edit"]);
     await router.load();
     const ids = router.state.matches.map((match) => match.routeId);
-    expect(ids).toContain("/spaces/$slug_/edit");
-    expect(ids).not.toContain("/spaces/$slug");
+    expect(ids).toContain("/services_/$slug/edit");
+    expect(ids).not.toContain("/services");
+    expect(ids).not.toContain("/services/$slug");
     expect(router.state.matches[router.state.matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
-  it("`/spaces/new`는 새 Space다 — slug가 new인 Space의 상세가 아니다", async () => {
-    const { router } = setup(["/spaces/new"]);
+  // 한때(03 · 03-3) `/services/new`는 빈 틀의 새 Service 화면(「직접 만들기」)이었다 — Services 「+ 만들기」가 보드대로 「대화로 만들기」 단추 하나가
+  // 되며 걷혔다(restart 03-15c). 이제 따로 선 주소가 아니다.
+  it("`/services/new`는 따로 선 화면이 아니다 — 다른 slug처럼 목록의 틀 안 상세 주소다", async () => {
+    const { router } = setup(["/services/new"]);
     await router.load();
-    const ids = router.state.matches.map((match) => match.routeId);
-    expect(ids).toContain("/spaces/new");
-    expect(ids).not.toContain("/spaces/$slug");
+    const matches = router.state.matches;
+    expect(matches.map((match) => match.routeId)).toEqual(expect.arrayContaining(["/services", "/services/$slug"]));
+    expect(matches[matches.length - 1].params).toEqual({ slug: "new" });
   });
 
-  it("상세에서 점선 Space로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Space로 간다", async () => {
-    const { router, history } = setup(["/spaces/a"]);
+  it("상세에서 함께 쓰는 Service로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Service로 간다", async () => {
+    const { router, history } = setup(["/services/a"]);
     await router.load();
-    await router.navigate({ to: "/spaces/$slug", params: { slug: "b" } });
+    await router.navigate({ to: "/services/$slug", params: { slug: "b" } });
     expect(history.length).toBe(2);
     await goBack(router, history);
-    expect(router.state.location.pathname).toBe("/spaces/a");
+    expect(router.state.location.pathname).toBe("/services/a");
   });
 });
 
@@ -529,7 +582,7 @@ describe("앱으로 돌아가기", () => {
   it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
     const { router, history } = setup(["/works/work-b"]);
     await router.load();
-    rememberView("work-b", { tab: "terminal", split: null, file: null, code: null });
+    rememberView("work-b", { tab: "terminal", file: null, code: null, thread: null });
 
     await router.navigate({ to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });
@@ -625,15 +678,15 @@ describe("선택한 항목의 히스토리 의미론", () => {
   // 탭 전환은 무선택 주소로 가고 거기서 정규화가 한 번 더 일어난다.
   // 정규화가 push였다면 여기서 뒤로가기를 두 번 눌러야 한다 — 그 회귀를 이 테스트가 잡는다.
   it("탭을 전환한 뒤 뒤로가기 한 번이면 이전 탭에서 보던 항목으로 간다", async () => {
-    const { router, history } = setup(["/works/work-a"], { lastArchive: "치운-b" });
+    const { router, history } = setup(["/archive/치운-a"], { lastWork: "work-b" });
     await router.load();
 
-    await router.navigate({ to: "/archive" });
-    expect(router.state.location.pathname).toBe("/archive/치운-b");
+    await router.navigate({ to: "/works" });
+    expect(router.state.location.pathname).toBe("/works/work-b");
     expect(history.length).toBe(2);
 
     await goBack(router, history);
-    expect(router.state.location.pathname).toBe("/works/work-a");
+    expect(router.state.location.pathname).toBe("/archive/치운-a");
   });
 });
 
@@ -681,12 +734,12 @@ describe("문서 전환의 히스토리 의미론", () => {
     expect(router.state.location.search).toEqual({});
   });
 
-  // 아카이브도 같은 규칙이다 — 같은 문서를 어느 화면에서 열든 뒤로가기가 다르게 굴면 안 된다. 문서는 spec 목록 패널의
-  // 트리에서 고르고(Works의 트리와 같은 훑기), 고르는 이동은 주소에 아카이브와 문서를 함께 싣는다(`-archive-view.tsx`의 `selectDoc`).
+  // 아카이브도 같은 규칙이다 — 같은 문서를 어느 화면에서 열든 뒤로가기가 다르게 굴면 안 된다. 문서는
+  // 상세의 「문서」 트리에서 고르고(Works의 트리와 같은 훑기), 고르는 이동은 주소에 아카이브와 문서를 함께 싣는다(`ArchiveDetail`의 `selectDoc`).
   const archive = (slug: string, file?: string) =>
     ({ to: "/archive/$slug", params: { slug }, search: file ? { file } : {} }) as const;
 
-  it("spec 목록 패널의 트리로 문서를 훑어도 히스토리가 늘지 않는다", async () => {
+  it("상세의 문서 트리로 문서를 훑어도 히스토리가 늘지 않는다", async () => {
     const { router, history } = setup(["/archive/치운-a"]);
     await router.load();
 
@@ -722,8 +775,9 @@ describe("문서 전환의 히스토리 의미론", () => {
 
 });
 
-// 화면 탭(`spec｜terminal`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
-// 새로고침이 늘 spec으로 떨어지고, 그 어긋남은 화면에서 "왜 spec이 열리지"로만 보인다.
+// 화면 탭(`chat｜terminal｜code`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
+// 새로고침이 늘 처음 여는 규칙으로 떨어지고, 그 어긋남은 화면에서 "왜 이 탭이 열리지"로만 보인다. 한때 `spec`도 화면 탭이었다
+// (restart 02a-13이 걷었다).
 //
 // **여기서 보는 것은 갱신 방식이다.** 이 라우터는 `search`에 객체를 주면 기존 search를
 // 통째로 버려서, 가장 자연스럽게 쓰는 형태가 보던 문서를 조용히 떨어뜨린다(결정 15).
@@ -748,22 +802,21 @@ describe("화면 탭의 주소", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("보던 문서가 탭을 왕복해도 그대로 남는다", async () => {
+  // restart 02a-12 — 한때 「보던 문서가 탭을 왕복해도 그대로 남는다」였다. `file`은 이제 넓힌 카드의 문서라 셸로 가는 주소에 남지 않는다 — 남으면
+  // 셸로 가는 주소가 채팅 탭과 넓힌 카드로 떨어진다. 카드가 서는 채팅 탭으로 가는 주소는 그 문서를 넓힌 카드에 보인다(한때 임시 문서 탭
+  // `tab=spec`이 이 자리였다 — restart 02a-13이 걷었다).
+  it("셸로 가는 주소에 보던 문서가 남지 않고, 채팅 탭으로 가는 주소에는 남는다", async () => {
     const { router } = setup(["/works/work-a"]);
     await router.load();
-    await router.navigate({
-      to: "/works/$slug",
-      params: { slug: "work-a" },
-      search: { file: "overview.md" },
-      replace: true,
-    });
+    const withDoc = { to: "/works/$slug", params: { slug: "work-a" }, search: { file: "overview.md" }, replace: true } as const;
+    await router.navigate(withDoc);
 
     await router.navigate(pick("work-a", "terminal"));
-    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "terminal" });
+    expect(router.state.location.search).toEqual({ tab: "terminal" });
 
-    await router.navigate(pick("work-a", "spec"));
-    // spec은 주소에 안 적는다 — 값이 없으면 spec이라는 규칙이 이미 있다(결정 14).
-    expect(router.state.location.search).toEqual({ file: "overview.md" });
+    await router.navigate(withDoc);
+    await router.navigate(pick("work-a", "chat"));
+    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "chat" });
   });
 
   it("`?tab=terminal`로 들어오면 그대로 열린다", async () => {
@@ -781,7 +834,7 @@ describe("화면 탭의 주소", () => {
   // **검증기는 주소를 청소하지 않는다.** 이 라우터는 검증기의 결과를 부모의 raw search
   // 위에 얹는데 루트에는 검증기가 없어서, 모르는 키가 주소에도 컴포넌트에도 그대로 온다
   // (`?file=`도 예전부터 같은 성질이다 — 이 판이 만든 것이 아니다). 그래서 「모르는 값은
-  // spec」은 여기가 아니라 `-work-search.ts`의 `viewTab`이 정하고, 그쪽에서 검사한다.
+  // 채팅」은 여기가 아니라 `-work-search.ts`의 `viewTab`이 정하고, 그쪽에서 검사한다.
   // 이 줄은 그 사실을 못박는다 — 검증기를 넓히면 주소가 깨끗해질 것이라 믿지 않도록.
   it("모르는 값은 주소에 그대로 남는다 — 읽는 규칙이 따로 있다", async () => {
     const { router } = setup(["/works/work-a?tab=zzz"]);

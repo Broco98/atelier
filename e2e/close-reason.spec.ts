@@ -6,7 +6,7 @@ import { awaitSpawned, installFixtureBackend, kills, unknownIpcCalls, 칸들 } f
 // 티켓 11 — **닫기 IPC가 까닭과 셸의 주인을 싣는다**(프로세스 스펙 S12). 백엔드는 그 닫기가 끝낸 것을 정리 기록에 이
 // 까닭으로 적는다. 어느 닫기가 어느 까닭인지는 표 한 자리(`CLOSE_REASONS`)가 고르고, 이 층이 재는 것은 그 표가 진짜
 // 사건에 붙어 있는가다 — 사람이 누른 `×`가 「셸 닫기」로, 아카이빙이 성공한 뒤의 회수가 「아카이브」로 나가는가. 둘이
-// 뒤바뀌면 판 04의 `●`(까닭으로 켜진다)가 사람이 누른 닫기에 켜지거나, 기록이 아카이브를 셸 닫기로 적는다.
+// 뒤바뀌면 정리 기록이 사람이 누른 닫기를 아카이브로, 아카이브를 셸 닫기로 적는다.
 //
 // 기록이 무엇을 적는지(도우미를 빼고, 셸만 끝난 사건은 안 적는다)는 Rust의 검사가 잰다 — 여기서는 인자만 본다.
 
@@ -36,7 +36,7 @@ test("×로 닫으면 닫기에 까닭 「셸 닫기」와 그 셸의 주인이 
 
 test("UI 아카이브로 닫으면 까닭이 「아카이브」이고 주인이 그 work이다", async ({ page }) => {
   await installFixtureBackend(page);
-  await archive(page, `/works/${plainWork.slug}`, "작업 메뉴");
+  await archive(page, `/works/${plainWork.slug}`, "작업공간 메뉴");
 
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "archive", owner: plainWork.slug }]);
   expect(await unknownIpcCalls(page)).toEqual([]);

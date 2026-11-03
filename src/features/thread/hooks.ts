@@ -1,31 +1,33 @@
 import { useEffect, useMemo } from "react";
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { searchApi } from "@/features/search/api";
-import { settingsApi } from "@/features/settings/api";
-import { SCOPE_KEY, useSpaces } from "@/features/spaces/hooks";
-import { saveSettingsSection } from "@/features/settings/save-section";
-import { useWorks } from "@/features/works/hooks";
+import { SCOPE_KEY } from "@/features/services/hooks";
 import type { ProjectPr } from "@/features/works/types";
-import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
+import { onThreadChunk, onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
-import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
+import { applyEngineEvent } from "./engine-store";
 import { isObject } from "./json";
 import { prLineOf } from "./pr";
-import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
-import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
+import {
+  addChunk,
+  discardFlow,
+  finishFlow,
+  linesOf,
+  mergeLines,
+  settleFlowing,
+  threadQueueStore,
+  threadRecordStore,
+  setQueue,
+  setWriting,
+} from "./thread-store";
+import type { AskLevel, ChipValues, QueuedMessage, RecordLine, ThreadChunkEvent, ThreadSummary, ThreadView } from "./types";
 import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { workPrsKey } from "./summary-card";
 import { workMarks, type WorkMarks } from "./work-threads";
-import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
 const THREADS_KEY = ["threads"] as const;
-/** Agent 목록(`list_agents`)의 열쇠 머리 — 뒤에 범위(`work`)가 붙는다. @ 메뉴와 Library 화면이 같은 캐시를 읽는다. */
-export const AGENTS_KEY = ["agents"] as const;
-/** Agent 파일 원문(`read_agent_file`)의 열쇠 머리 — 뒤에 범위와 부르는 이름이 붙는다(Library 화면). */
-export const AGENT_FILE_KEY = ["agent-file"] as const;
 const threadKey = (thread: string) => ["thread", thread] as const;
 
 /** 모든 Thread의 요약 — 사이드바의 Thread 묶음. 엔진이 요약 이벤트로 고쳐 주므로 다시 읽지 않는다(`useThreadFeeds`). */
@@ -34,7 +36,8 @@ export const threadsQuery = () =>
 
 /**
  * Thread 하나 — `get` 다음에 `readRecord(0)`이다(구현 스펙 §18 「여는 차례」). 읽은 기록은 기록 줄 스토어에 seq로 합치고, 그 뒤는 앱 층이
- * 받은 기록 줄 이벤트가 잇는다. 한 번 읽으면 다시 읽지 않는다 — 이름 · 참여자는 바꾸기의 답과 요약 이벤트가 캐시를 고친다.
+ * 받은 기록 줄 이벤트가 잇는다. 흐르던 글도 여기서 잇는다 — 새로 그린 화면에 받은 글이 이어서 선다. 한 번 읽으면 다시 읽지 않는다 — 이름 ·
+ * 모델은 바꾸기의 답과 요약 이벤트가 캐시를 고친다.
  */
 export const threadQuery = (thread: string) =>
   queryOptions({
@@ -42,6 +45,7 @@ export const threadQuery = (thread: string) =>
     queryFn: async () => {
       const view = await threadApi.get(thread);
       mergeLines(thread, await threadApi.readRecord(thread, 0));
+      settleFlowing(view);
       return view;
     },
     staleTime: Infinity,
@@ -56,7 +60,7 @@ export const useThread = (thread: string) => useQuery(threadQuery(thread));
 const viewsOnly = (results: readonly { data?: ThreadView }[]) => results.map((result) => result.data);
 
 /**
- * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 사이드바 위 줄 「내 차례」 행의 수와
+ * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 사이드바 위 칸 「내 차례」 행의 수와
  * 「내 차례만」 목록이 읽는다.
  *
  * **모든 Thread를 Thread를 열 때와 같은 읽기로 읽는다**(`useEveryThread`) — Work에 이은 Thread도 기다리는 Thread이고(보드 「내
@@ -128,8 +132,6 @@ function readingOf(
 /**
  * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름 · 이은 Work도 따라
  * 바꾼다(Work 만들기 카드로 Thread가 Work에 이어졌다 — v1 티켓 30). 읽기만인 까닭도 따라 바꾼다(이은 Work가 보관됐다 — v1 티켓 38).
- * **참여자가 바뀌었으면 연 Thread를 다시 읽는다**(v1 티켓 14) — 멘션으로 들어온 Agent의 참여자 줄(`thread.json` — 온 곳 · 모델 · 생각
- * 깊이)은 요약에 없다. 그것이 있어야 머리 카드의 얼굴 · @ 메뉴의 「이 Thread에 있음」 · 그 Agent의 모델 칩이 선다.
  */
 export function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
   queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
@@ -137,7 +139,8 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
     const at = list.findIndex((one) => one.id === summary.id);
     if (at < 0) return [summary, ...list];
     const next = [...list];
-    next[at] = summary;
+    // 마지막 줄 시각은 뒤로 가지 않는다 — 기록 줄 이벤트가 먼저 앉힌 시각을, 그 줄보다 앞서 지은 요약(읽은 자리의 답)이 덮지 않게.
+    next[at] = { ...summary, lastAt: laterAt(list[at].lastAt, summary.lastAt) };
     return next;
   });
   queryClient.setQueryData<ThreadView>(threadKey(summary.id), (view) =>
@@ -145,14 +148,10 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
       ? { ...view, title: summary.title, work: summary.work, readOnly: summary.readOnly }
       : view,
   );
-  const view = queryClient.getQueryData<ThreadView>(threadKey(summary.id));
-  if (view && view.participants.map((one) => one.handle).join("\n") !== summary.handles.join("\n")) {
-    void queryClient.invalidateQueries({ queryKey: threadKey(summary.id) });
-  }
 }
 
 /**
- * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
+ * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 흐르는 글 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
  * 가 있어도 돌아오면 그사이 흐른 줄이 보인다), 요약은 사이드바의 목록을 고치고, 엔진 상태는 안내 카드의 바탕이 된다. 문서 쓰는 중은
  * Work마다 쌓는다 — 요약 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
  */
@@ -160,12 +159,9 @@ export function useThreadFeeds(): void {
   const queryClient = useQueryClient();
   useEffect(() => {
     const unlisten = [
-      onThreadRecord(({ thread, line }) => {
-        mergeLines(thread, [line]);
-        if (isLoginRequired(line)) markLoginRequired();
-        followRecordLine(queryClient, thread, line);
-      }),
-      onThreadQueue(({ thread, who, queue }) => setQueue(thread, who, queue)),
+      onThreadRecord(({ thread, line }) => receiveRecordLine(queryClient, thread, line)),
+      onThreadChunk((event) => receiveChunk(queryClient, event)),
+      onThreadQueue(({ thread, queue }) => setQueue(thread, queue)),
       onThreadList((summary) => putSummary(queryClient, summary)),
       onThreadEngine(applyEngineEvent),
       onWorkWriting(({ work, writing }) => setWriting(work, writing)),
@@ -176,31 +172,42 @@ export function useThreadFeeds(): void {
   }, [queryClient]);
 }
 
+/** 기록 줄 이벤트 하나. 줄을 쌓는 일과 그 줄이 마친 흐름을 지우는 일은 한 번에 한다 — 글이 겹치거나 비는 장면이 그려지지 않게. */
+export function receiveRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
+  mergeLines(thread, [line]);
+  finishFlow(thread, line);
+  followRecordLine(queryClient, thread, line);
+}
+
 /**
- * 기록 줄 하나가 쿼리 캐시에 미치는 것 — 줄을 스토어에 쌓는 것은 부르는 쪽(`useThreadFeeds`)이다.
+ * 흐르는 글 이벤트 하나. 앞 글이 빠져 잇지 못하면 Thread를 다시 읽는다 — 진행 글은 받은 글 전부라 뒤의 조각이 다시 이어진다. 조각마다 빠진 것을
+ * 보므로 도는 읽기는 끊지 않는다. 버린 흐름의 조각은 그 흐름의 글을 지운다.
+ */
+export function receiveChunk(queryClient: QueryClient, { thread, chunk }: ThreadChunkEvent): void {
+  if (chunk.discarded) return discardFlow(thread, chunk.stream);
+  if (!addChunk(thread, chunk)) void queryClient.invalidateQueries({ queryKey: threadKey(thread) }, { cancelRefetch: false });
+}
+
+/**
+ * 기록 줄 하나가 쿼리 캐시에 미치는 것 — 줄을 스토어에 쌓는 것은 부르는 쪽(`receiveRecordLine`)이다.
  *
- * - Agent가 Library에 Agent를 저장했다(v1 티켓 19) — @ 메뉴 · Library 화면의 목록과 파일을 다시 읽는다. 엔진은 Library가 바뀌었다는
- *   이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
  * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
- *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획만에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
+ *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
  * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — 요약 카드가 읽어 둔 PR의 그 Project 줄을 줄의 PR로 갈아 끼운다.
  *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
-  // 읽는 범위가 바뀐 줄(03 §7) — Space 줄 · Work 연결과 worktree 생성(`work`) · Work 밖 Project 카드의 「읽기만 하기」(`question`). 범위는 Thread
+  noteLastAt(queryClient, thread, line.at);
+  // 읽는 범위가 바뀐 줄(03 §7) — Service 줄 · Work 연결과 worktree 생성(`work`) · Work 밖 Project 카드의 「읽기만 하기」(`question`). 범위는 Thread
   // 파일과 Work의 worktree로 세므로 다음에 그릴 때 다시 읽는다.
-  if (line.kind === "space" || line.kind === "work" || line.kind === "question") {
+  if (line.kind === "service" || line.kind === "work" || line.kind === "question") {
     void queryClient.invalidateQueries({ queryKey: SCOPE_KEY });
   }
-  // Space 줄은 그 Thread 파일의 `space`가 바뀐 뒤에 선다 — 지우기 · 되돌리기 · 손으로 지운 파일 닫기(03 티켓 07)는 엔진이 칸을 고쳐 화면의
-  // 고치기 응답이 없다. 연 Thread의 칸(머리 줄의 흐린 Space)을 다시 읽는다.
-  // Space 질문 카드의 답(03 티켓 08)도 그 칸을 고치지만 묻던 Thread에는 Space 줄이 서지 않는다 — 답 줄이 그 결정이다.
-  const spaceAnswer = line.kind === "question" && isObject(line.payload) && line.payload.card === "space";
-  if (line.kind === "space" || spaceAnswer) void queryClient.invalidateQueries({ queryKey: threadKey(thread) });
-  if (line.kind === "library") {
-    void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
-    void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });
-  }
+  // Service 줄은 그 Thread 파일의 `service`가 바뀐 뒤에 선다 — 지우기 · 되돌리기 · 손으로 지운 파일 닫기(03 티켓 07)는 엔진이 칸을 고쳐 화면의
+  // 고치기 응답이 없다. 연 Thread의 칸(머리 줄의 흐린 Service)을 다시 읽는다.
+  // Service 질문 카드의 답(03 티켓 08)도 그 칸을 고치지만 묻던 Thread에는 Service 줄이 서지 않는다 — 답 줄이 그 결정이다.
+  const serviceAnswer = line.kind === "question" && isObject(line.payload) && line.payload.card === "service";
+  if (line.kind === "service" || serviceAnswer) void queryClient.invalidateQueries({ queryKey: threadKey(thread) });
   if (line.kind === "mode" && isObject(line.payload)) {
     const level = askLevelOf(line.payload.mode);
     if (level) putAskLevel(queryClient, thread, level.value);
@@ -214,11 +221,36 @@ export function followRecordLine(queryClient: QueryClient, thread: string, line:
   }
 }
 
-/** 그 Thread의 대기 줄 — 참여자마다의 것을 차례로 잇는다. 이벤트가 온 Session은 그 값, 아니면 열 때 읽은 값이다. */
-export function useQueue(view: ThreadView): readonly (QueuedMessage & { who: string })[] {
-  const fed = useStore(threadQueueStore, (state) => state[view.id]);
-  const queues = { ...view.queues, ...fed };
-  return Object.entries(queues).flatMap(([who, queue]) => queue.map((message) => ({ ...message, who })));
+/** 둘 가운데 늦은 시각 — 읽지 못하는 쪽(깨진 Thread의 빈 글)은 지지 않는다. */
+function laterAt(held: string, came: string): string {
+  const [a, b] = [Date.parse(held), Date.parse(came)];
+  if (Number.isNaN(b)) return Number.isNaN(a) ? came : held;
+  return !Number.isNaN(a) && a > b ? held : came;
+}
+
+/** 목록 요약의 마지막 줄 시각이 따라가는 눈금 — 「최근 활동」이 분까지 말한다(`place-when.ts`). */
+const LAST_AT_STEP = 60_000;
+
+/**
+ * 기록 줄 하나의 시각을 그 채팅의 목록 요약에 앉힌다(restart 03-1 — 「최근 활동」). 엔진은 줄마다 요약을 다시 알리지 않는다. **눈금(1분)을 넘어 늦을
+ * 때만 갈아 끼운다** — 목록을 읽는 자리(사이드바 · 작업공간 화면 · 채팅 화면)가 턴의 줄마다 다시 그려지지 않게. 엔진의 색인은 줄마다 따라가므로 다음
+ * 요약(읽은 자리의 답 · 이름)이 정확한 시각을 싣는다(`putSummary`).
+ */
+function noteLastAt(queryClient: QueryClient, thread: string, at: string): void {
+  queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
+    const index = list?.findIndex((one) => one.id === thread) ?? -1;
+    if (!list || index < 0) return list;
+    const held = Date.parse(list[index].lastAt);
+    if (!Number.isNaN(held) && !(Date.parse(at) - held >= LAST_AT_STEP)) return list;
+    const next = [...list];
+    next[index] = { ...list[index], lastAt: at };
+    return next;
+  });
+}
+
+/** 그 Thread의 대기 줄 — 이벤트가 왔으면 그 값, 아니면 열 때 읽은 값이다. */
+export function useQueue(view: ThreadView): readonly QueuedMessage[] {
+  return useStore(threadQueueStore, (state) => state[view.id]) ?? view.queue;
 }
 
 /** 이름 바꾸기 — 답(바뀐 요약)으로 목록과 연 Thread의 이름을 고친다. */
@@ -242,28 +274,30 @@ export function useMarkRead() {
   });
 }
 
+/**
+ * 다시 잇기(01b-6) — 세션이 열릴 때까지 돈다. 열리면 기록 줄이 안내를 걷고, 대기 줄 바뀜은 이벤트로 온다. 변수는 끊긴 턴의 열쇠다 — 거절의 까닭은 그 턴의
+ * 안내에만 선다. 뒤에 또 끊긴 턴에 앞의 까닭이 남지 않는다.
+ */
+export function useReconnect(thread: string) {
+  return useMutation({ mutationFn: (_cutTurn: string) => threadApi.reconnect(thread) });
+}
+
 /** 칩의 바꾸기 하나 — 모델 또는 생각 깊이. */
 export type ChipChange = { field: "model"; value: string } | { field: "effort"; value: string };
 
-/** 모델 · 생각 깊이 바꾸기(스토리 33) — 답(바뀐 참여자 줄)으로 연 Thread의 참여자를 갈아 끼운다. */
+/** 모델 · 생각 깊이 바꾸기(스토리 33) — 답(바뀐 채팅의 값)으로 연 Thread를 고친다. */
 export function useChangeChip() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ thread, who, change }: { thread: string; who: string; change: ChipChange }) =>
-      change.field === "model"
-        ? threadApi.setModel(thread, who, change.value)
-        : threadApi.setEffort(thread, who, change.value),
-    onSuccess: (participant: Participant, { thread }) => {
-      queryClient.setQueryData<ThreadView>(threadKey(thread), (view) =>
-        view
-          ? {
-              ...view,
-              participants: view.participants.map((one) => (one.handle === participant.handle ? participant : one)),
-            }
-          : view,
-      );
-    },
+    mutationFn: ({ thread, change }: { thread: string; change: ChipChange }) =>
+      change.field === "model" ? threadApi.setModel(thread, change.value) : threadApi.setEffort(thread, change.value),
+    onSuccess: (values, { thread }) => putChips(queryClient, thread, values),
   });
+}
+
+/** 바꾸기의 답을 연 Thread의 캐시에 앉힌다. */
+export function putChips(queryClient: QueryClient, thread: string, { model, effort }: ChipValues): void {
+  queryClient.setQueryData<ThreadView>(threadKey(thread), (view) => (view ? { ...view, model, effort } : view));
 }
 
 /**
@@ -278,6 +312,16 @@ export function useSetMode() {
   });
 }
 
+/** Codex 모드 바꾸기(restart 01c-5) — 답(바뀐 채팅의 값)으로 연 Thread를 고친다. 채팅마다의 값이라 다른 Thread는 그대로다. */
+export function useSetCodexMode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ thread, mode }: { thread: string; mode: string }) => threadApi.setCodexMode(thread, mode),
+    onSuccess: ({ codexMode }, { thread }) =>
+      queryClient.setQueryData<ThreadView>(threadKey(thread), (view) => (view ? { ...view, codexMode } : view)),
+  });
+}
+
 /** 연 Thread의 지금 정도를 고친다 — Work에 이은 Thread면 정도가 그 Work의 것이라 같은 Work에 이은 다른 Thread의 연 캐시도 함께다. */
 function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): void {
   const work = queryClient.getQueryData<ThreadView>(threadKey(thread))?.work ?? null;
@@ -289,40 +333,8 @@ function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): 
 }
 
 /**
- * 부를 수 있는 Agent(v1 티켓 11 · 14) — 그 Thread의 범위(`work`가 없으면 Library만)다. 파일은 사람이 언제든 고치므로 30초가 지난 값은 다음에
- * 쓸 때 다시 읽는다. 못 읽으면(사라진 Work) `null`이다 — @ 메뉴는 앉은 참여자만, 얼굴은 handle에서 정한 것으로 선다.
- */
-export function useAgentRoster(work: string | null): AgentRoster | null {
-  const { data } = useQuery({
-    queryKey: [...AGENTS_KEY, work],
-    queryFn: () => threadApi.agents(work),
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-  return data ?? null;
-}
-
-/**
- * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
- * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Space 이름은 Work
- * 목록 · Space 목록에서 읽는다(아직 못 읽었으면 비어 선다).
- */
-export function useRecentWorks(): RecentWork[] | null {
-  const { data } = useQuery({
-    queryKey: ["recent-works"],
-    queryFn: () => searchApi.run("", []),
-    staleTime: 0,
-    retry: false,
-  });
-  const { data: works } = useWorks();
-  const { data: spaces } = useSpaces();
-  return data ? recentWorks(data.hits, works, spaces) : null;
-}
-
-/**
- * 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. Work를 고르지
- * 않았으면 읽지 않는다(`null`). 읽기 전 · 못 읽으면 `null`이다.
+ * 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 채팅의 물어보는 정도 칩이 이것을 보인다. Work가 없으면 읽지
+ * 않는다(`null`). 읽기 전 · 못 읽으면 `null`이다.
  */
 export function useWorkMode(work: string | null): AskLevel | null {
   const { data } = useQuery({
@@ -333,35 +345,4 @@ export function useWorkMode(work: string | null): AskLevel | null {
     retry: false,
   });
   return work === null ? null : (data ?? null);
-}
-
-const DECISIONS_SEEN_KEY = ["settings", "seen", "decisions"] as const;
-
-/**
- * 「결정은 내가 합니다」 카드를 봤나(v1 티켓 30 · S31) — 앱 설정의 본 표(`seen.decisions`)다. 아직 읽지 못했으면 null이다. 못 읽으면(깨진
- * 설정 파일) 본 것으로 친다 — 고칠 자리는 설정 화면이 말하고, 이 카드가 그 파일을 덮어쓰지 않게.
- */
-export function useDecisionsSeen(): boolean | null {
-  const { data } = useQuery({
-    queryKey: DECISIONS_SEEN_KEY,
-    queryFn: async () => {
-      try {
-        return (await settingsApi.read()).seen?.decisions === true;
-      } catch {
-        return true;
-      }
-    },
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
-  return data ?? null;
-}
-
-/** 「결정은 내가 합니다」 카드를 봤다고 적는다 — 설정의 다른 구획 · 모르는 칸은 그대로다(`saveSettingsSection`). */
-export function useMarkDecisionsSeen() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => saveSettingsSection("seen", (latest) => ({ ...latest, decisions: true })),
-    onMutate: () => queryClient.setQueryData(DECISIONS_SEEN_KEY, true),
-  });
 }

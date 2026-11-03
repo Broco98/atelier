@@ -267,7 +267,7 @@ export function SignalElapsed({ ms }: { ms: number }) {
 }
 
 /**
- * 줄의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4 · ui-refresh 결정 13). 알림 띠 줄과 사람 메뉴의
+ * 줄의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4 · ui-refresh 결정 13). 알림 띠 줄과 위 칸의
  * `Terminal` 줄(`Sidebar.tsx`의 `RowMetaFor`)이 부른다 — 사이드바 work 행의 오른쪽 메타는 02 티켓 05가 걷었다(그 끝은 상태 표시 하나다).
  * 행이 한 줄(32px)이 되면서 두 줄 행의 둘째 줄(마크 · 말 · 경과)이 하던 일 가운데 「얼마나」만
  * 이 칸이 든다 — 띠 줄과 같은 어휘다. 「누가」(에이전트 마크)는 사이드바에서 빠졌고(ui-refresh

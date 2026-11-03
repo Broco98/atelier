@@ -111,7 +111,7 @@ describe("빈 작업 구획이 하는 말", () => {
   });
 
   it("아무것도 없을 때만 어디서 시작하는지 말한다", () => {
-    expect(notice()).toBe("아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.");
+    expect(notice()).toBe("아직 작업공간이 없어요. 말로 시작하면 Runtime이 작업공간으로 묶어 줘요.");
   });
 
   // `작업`이 비는 모양(아무것도 없음·고정만·고정된 초안만)을 다 돌려 **나온 말을
@@ -124,7 +124,7 @@ describe("빈 작업 구획이 하는 말", () => {
       expect(sections.main, shape.join(",")).toEqual([]);
       return emptyMainNotice(sections);
     });
-    expect([...new Set(said)]).toEqual(["아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.", "전부 고정돼 있어요."]);
+    expect([...new Set(said)]).toEqual(["아직 작업공간이 없어요. 말로 시작하면 Runtime이 작업공간으로 묶어 줘요.", "전부 고정돼 있어요."]);
   });
 });
 
@@ -133,14 +133,14 @@ describe("상주 목록이 자기 어휘로 말한다", () => {
   const notice = (...args: Array<string>) => emptyMainNotice(splitWorkSections(works(...args), ALL));
 
   // v1 구현 스펙 S2 — Work는 화면에서도 영어로 쓰는 도메인 낱말이고, 사이드바 Work 묶음의 머리가 그 말이다(캔버스
-  // 「Thread 목록과 아바타」 보드). 07이 사이드바를 보드 모양으로 바꾸며 낱말 정리를 08에 넘겼다.
+  // 「채팅 목록과 아바타」 보드). 07이 사이드바를 보드 모양으로 바꾸며 낱말 정리를 08에 넘겼다.
   it("머리는 `Work`다", () => {
-    expect(WORKS_COPY.label).toBe("Work");
+    expect(WORKS_COPY.label).toBe("작업공간");
   });
 
   it("문구 둘은 한 글자도 안 바뀐다", () => {
     expect([notice(), notice("pin:고정")]).toEqual([
-      "아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.",
+      "아직 작업공간이 없어요. 말로 시작하면 Runtime이 작업공간으로 묶어 줘요.",
       "전부 고정돼 있어요.",
     ]);
   });
@@ -150,23 +150,23 @@ describe("상주 목록이 자기 어휘로 말한다", () => {
 describe("고른 것이 없는 본문이 자기 어휘로 말한다", () => {
   it("세 조각은 한 글자도 안 바뀐다", () => {
     expect(WORKS_COPY.screen).toEqual({
-      title: "아직 작업이 없어요",
-      body: "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
-      code: 'atelier로 "새 작업" 시작해줘',
+      title: "아직 작업공간이 없어요",
+      body: "작업공간은 Claude Code에서 시작돼요. 작업공간이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
+      code: 'atelier로 "새 작업공간" 시작해줘',
     });
   });
 });
 
 // **머리에 이는 화면 이름**은 고른 항목이 없을 때만 선다.
 describe("화면이 머리에 이는 자기 이름", () => {
-  it("화면 이름은 `Works`다", () => {
-    expect(WORKS_COPY.page).toBe("Works");
+  it("화면 이름은 「작업공간」이다", () => {
+    expect(WORKS_COPY.page).toBe("작업공간");
   });
 
-  // **`label`과 갈린 값이라는 것을 함께 잰다.** 한 칸으로 접으면 Atelier 머리가 한국어
-  // `작업`으로 눕어 `Archive`·`Projects`와 다른 층이 되고, 그때 이 검사만 빨개진다.
-  it("사이드바 구획 라벨과 같은 값이 아니다", () => {
-    expect(WORKS_COPY.page).not.toBe(WORKS_COPY.label);
+  // 옛 머리 `Works`는 `Archive`·`Projects`와 나란한 영어 층이라 구획 라벨과 갈랐다. 구현 스펙 「기준과 진행 · 말」로 화면에 Work가 서지 않아
+  // 머리와 구획이 같은 말이다 — 어느 한쪽만 옛 말로 돌아가면 이 검사가 빨개진다.
+  it("사이드바 구획 라벨과 같은 말이다", () => {
+    expect(WORKS_COPY.page).toBe(WORKS_COPY.label);
   });
 });
 

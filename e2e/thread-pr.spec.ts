@@ -9,7 +9,7 @@ import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **엔진이 Work의 PR을 읽어 남긴 `pr` 줄이 흐름에 PR 카드로 서고, 요약 카드의 PR 줄(「변경 사항」
 // 아래 — 02 §7 · S18)이 CI를 문장으로 보인다**(v1 티켓 36 · 구현 스펙 §12 S24 · §15 · 스토리 124–127). 처음 보인 PR은 「CI 확인 중」, CI가 실패하면 카드가 하나 더 서고 실패
-// 문장과 「Host에게 고쳐 달라고 하기」가, 병합되면 「병합됨」이 선다. 카드가 열린 동안 PR은 60초마다 다시 읽는다.
+// 문장과 「고쳐 달라고 하기」가, 병합되면 「병합됨」이 선다. 카드가 열린 동안 PR은 60초마다 다시 읽는다.
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다 — Work에 이은 Thread의 턴이 끝난 뒤 처음 보인 PR · 카드의 읽기가 본 CI 실패 · 병합됨(`thread-pr`,
 // `thread_pr.rs`). 카드 · 줄의 글과 요약 카드가 받는 PR(`thread_work_prs`)은 그 줄에서 읽는다(스토리 137).
@@ -27,7 +27,7 @@ const CHANGED = "refund/service.py";
 const CHANGES: ProjectChanges[] = [
   { project: OPENED.project, kind: "listed", base: OPENED.baseBranch, files: [{ path: CHANGED, additions: 6, deletions: 3 }] },
 ];
-/** 턴이 막 끝난 Thread — Host의 Session이 떠 있다. */
+/** 턴이 막 끝난 Thread — Runtime의 Session이 떠 있다. */
 const view: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(lines)[0].text, work: WORK.slug, live: true, lastSeq: TURN_END };
 
 const 흐름 = (page: Page) => page.getByRole("main");
@@ -52,8 +52,13 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
     list_work_changes: CHANGES,
   });
   await page.goto(`/threads/${view.id}`);
-  // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
-  await expect(흐름(page).getByText(view.title, { exact: true })).toBeVisible({ timeout: 20_000 });
+  // 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭에 선다(restart 02a-4). 탭 칸 이름도 그 채팅 이름(첫 말)이라 같은 글이 둘이다 — 흐름의
+  // 것(뒤)을 집는다. **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
+  await expect(page).toHaveURL(`/works/${WORK.slug}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+  await expect(흐름(page).getByText(view.title, { exact: true }).last()).toBeVisible({ timeout: 20_000 });
+
+  // 요약 카드는 처음엔 닫혀 있다(restart 02a-9 — 오른쪽 자리의 처음 값은 spec 패널) — 창 머리의 「요약 카드」로 연다.
+  await page.getByRole("button", { name: "요약 카드", exact: true }).click();
 
   // 카드가 열리며 PR을 한 번 읽는다 — PR 줄은 「CI 확인 중」이고 그 글이 천천히 빛난다.
   await expect(PR줄(page)).toHaveText(/CI 확인 중/);
@@ -65,6 +70,10 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   await streamLines(page, view.id, [prs[0]]);
   await expect(PR카드(page)).toHaveCount(1);
   const opened = PR카드(page).first();
+  // 화면이 선 뒤 새로 선 PR 카드는 아래 12에서 320으로 올라온다(restart 02b-6 · Motion 「문서 · PR 카드가 선다」).
+  expect(await opened.evaluate((el) => el.getAnimations().map((one) => [(one as CSSAnimation).animationName, one.effect?.getTiming().duration]))).toEqual([
+    ["card-rise", 320],
+  ]);
   await expect(opened).toHaveAttribute("data-pr-state", "open");
   const meta = [
     `${OPENED.headBranch} → ${OPENED.baseBranch}`,
@@ -75,7 +84,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
     "CI 확인 중",
   ];
   for (const said of meta) await expect(opened).toContainText(said);
-  await expect(opened.getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true })).toHaveCount(0);
+  await expect(opened.getByRole("button", { name: "고쳐 달라고 하기", exact: true })).toHaveCount(0);
 
   // CI가 실패했다 — 카드가 하나 더 서고, 마지막 카드에 실패한 검사와 고쳐 달라는 버튼이 선다. 요약 카드의 PR 줄은 엔진의 줄로 바뀌고
   // (`gh`를 다시 부르지 않는다) 그 아래 실패 문장이 선다.
@@ -91,8 +100,8 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   await expect(카드(page)).toContainText(`${failedNames.join(", ")} 검사가 실패했어요.`);
   expect(await callCount(page, "thread_work_prs")).toBe(1);
 
-  // 「Host에게 고쳐 달라고 하기」는 입력창을 채울 뿐이다 — 보내는 것은 사람이다.
-  await failed.getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true }).click();
+  // 「고쳐 달라고 하기」는 입력창을 채울 뿐이다 — 보내는 것은 사람이다.
+  await failed.getByRole("button", { name: "고쳐 달라고 하기", exact: true }).click();
   await expect(입력칸(page)).toHaveValue(`PR #${FAILED.number}의 CI에서 ${failedNames.join(", ")} 검사가 실패했어요. 원인을 찾아 고쳐 줘.`);
   expect(await ipcCallArgs(page, "thread_send", "text")).toEqual([]);
 
@@ -120,7 +129,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   const merged = PR카드(page).last();
   await expect(merged).toHaveAttribute("data-pr-state", MERGED.state);
   await expect(merged.getByRole("button")).toHaveCount(0);
-  await expect(흐름(page).getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true })).toHaveCount(0);
+  await expect(흐름(page).getByRole("button", { name: "고쳐 달라고 하기", exact: true })).toHaveCount(0);
   await expect(PR줄(page)).toHaveText(/병합됨 · /);
   await expect(PR줄(page).locator('[data-pr-icon="merged"]')).toHaveCount(1);
   expect(await unknownIpcCalls(page)).toEqual([]);

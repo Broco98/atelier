@@ -1,13 +1,24 @@
 import { useMemo } from "react";
+import { MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 import { threadIdOf } from "@/lib/path-prefix";
-import { SIDEBAR_AFTER_SECTION, SIDEBAR_HEADING, SIDEBAR_ROW_SHAPE, SIDEBAR_ROWS, sidebarRowTone } from "@/components/shell/sidebar-look";
+import {
+  SIDEBAR_GLYPH,
+  SIDEBAR_GLYPH_GAP,
+  SIDEBAR_HEADING,
+  SIDEBAR_ROW_SHAPE,
+  SIDEBAR_ROW_TEXT,
+  SIDEBAR_ROWS,
+  sidebarRowTone,
+} from "@/components/shell/sidebar-look";
 import { StatusMark } from "@/components/shell/status-mark";
 import { cn } from "@/lib/utils";
 import { threadRowKey } from "@/features/works/work-sections";
 import { useChanged } from "./arrival";
+import { useOpenChat } from "./chat-door";
+import { chatName } from "./chat-name";
 import { threadQuery, useThreads, useWaiting } from "./hooks";
 import { markOf, seenOf, statusOf } from "./status";
 import { linesOf, threadRecordStore } from "./thread-store";
@@ -24,9 +35,9 @@ import type { Waiting } from "./waiting";
 //   모두 이 하나로 모였다. **줄은 자리를 지키고 상태 칸만 바뀐다**(Motion 보드 「목록 상태 바뀜」) — 바뀐 표시만 떠오른다.
 // - 상태의 바탕은 Thread를 열 때와 같은 읽기다(`threadQuery` — `get`의 살아 있음 · 기록 끝, 그리고 기록) — 열린 캐시를 Thread 화면과
 //   함께 쓴다. 읽은 자리(`lastRead`)는 요약의 것이다: Thread 화면이 맨 아래를 보면 적고(S38), 요약 이벤트가 이 줄을 고친다.
-// - 깨진 Thread도 줄이 선다(「열 수 없는 Thread」 — 무엇이 깨졌는지는 열면 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에
+// - 깨진 Thread도 줄이 선다(「열 수 없는 채팅」 — 무엇이 깨졌는지는 열면 말한다) — 목록에서 조용히 빠지면 「내 채팅이 어디 갔지」에
 //   답할 자리가 없다.
-// - **「내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」 · 02 구현 스펙 §4) — 사이드바 위 줄의 「내 차례」 행을
+// - **「내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」 · 02 구현 스펙 §4) — 사이드바 위 칸의 「내 차례」 행을
 //   켜면 Work 묶음과 이 묶음 대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가
 //   세고, 행은 `components/shell/sidebar-item.tsx`의 `MineRow`, 켠 상태는 사이드바가 쥔다. 한때 사이드바 맨 위의 「전체 | 내 차례」 마디였다
 //   (02 티켓 04가 걷었다 — Codex 사이드바 위에는 머리가 없다).
@@ -36,9 +47,9 @@ import type { Waiting } from "./waiting";
 /** Thread 묶음이 무엇을 세우나 — 전체(Work 묶음 · Thread 묶음) 또는 나를 기다리는 Thread만. */
 export type ThreadListFilter = "all" | "mine";
 
-// 소제목과 줄 목록의 꼴 — 「Thread」와 「기다리는 순서」가 한 벌이고, 리듬은 사이드바 줄 한 벌(`sidebar-look` — Work 묶음과 같다)이다.
-// 위 사이는 놓인 자리가 고른다.
-const HEADING = cn(SIDEBAR_HEADING, "text-sm text-fg-tertiary");
+// 소제목과 줄 목록의 꼴 — 「채팅」과 「기다리는 순서」가 한 벌이고, 소제목 · 리듬은 사이드바 줄 한 벌(`sidebar-look` — Work 묶음과 같다,
+// 시안 `.ra-sr-label`)이다. 위 사이는 놓인 자리가 고른다.
+const HEADING = SIDEBAR_HEADING;
 const ROWS = cn(SIDEBAR_ROWS, "min-h-0 overflow-y-auto scroll-quiet");
 
 function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
@@ -48,9 +59,11 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const loose = threads.filter((thread) => thread.work === null);
   if (loose.length === 0) return null;
   return (
-    <section aria-label="Thread" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
-      {/* 소제목은 Work 묶음의 소제목과 같은 꼴 · 같은 사이다(`WorkSectionList`의 `SectionHeader` — Codex 「최근」). */}
-      <h2 className={cn(SIDEBAR_AFTER_SECTION, HEADING)}>Thread</h2>
+    <section aria-label="채팅" className="flex min-h-0 shrink flex-col gap-0.5 pr-2 pb-1.5 pl-2">
+      {/* 소제목은 Work 묶음의 소제목과 같은 꼴이다(`WorkSectionList`의 `SectionHeader` — 시안 `.ra-sr-label`). 위 8은 Work 목록 상자의 아래
+          4(`SidebarWorkList`의 `pb-1`)와 더해 앞 묶음 끝 줄 → 소제목 12다 — 묶음 안의 소제목 사이(`SIDEBAR_AFTER_SECTION` 10 + 줄 사이 2)와
+          같다(시안 「작업공간」 → 「채팅」). */}
+      <h2 className={cn("mt-2", HEADING)}>채팅</h2>
       <ul className={ROWS}>
         {loose.map((thread) => (
           <li key={thread.id}>
@@ -63,12 +76,13 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
 }
 
 /**
- * Thread 줄들이 함께 읽는 것 — 지금 보는 Thread(주소)와 누르면 그 Thread로 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
+ * Thread 줄들이 함께 읽는 것 — 켜진 채팅(주소)과 누르면 그 채팅으로 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
+ * 켜진 채팅은 `/threads/:id`와 작업공간 화면의 채팅 탭(`thread=`) 둘이다(restart 02a-4 — `threadIdOf`). 누르면 살아 있는 작업공간의 채팅은
+ * 그 작업공간의 채팅 탭을 세우고 켠다(`useOpenChat`).
  */
 function useRowKit(): { current: string | null; open: (thread: ThreadSummary) => void } {
-  const navigate = useNavigate();
-  const current = useRouterState({ select: (state) => threadIdOf(state.location.pathname) });
-  const open = (thread: ThreadSummary) => void navigate({ to: "/threads/$id", params: { id: thread.id } });
+  const current = useRouterState({ select: (state) => threadIdOf(state.location) });
+  const open = useOpenChat();
   return { current, open };
 }
 
@@ -129,9 +143,9 @@ export function WaitingList({
   onOpen: (thread: ThreadSummary) => void;
 }) {
   return (
-    <section aria-label="내 차례" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
+    <section aria-label="내 차례" className="flex min-h-0 shrink flex-col gap-0.5 pr-2 pb-1.5 pl-2">
       {waiting.length === 0 ? (
-        <p className="px-2.5 pt-5 pb-6 text-center text-chat-meta text-fg-tertiary">지금은 나를 기다리는 Thread가 없어요</p>
+        <p className="px-2.5 pt-5 pb-6 text-center text-chat-meta text-fg-tertiary">지금은 나를 기다리는 채팅이 없어요</p>
       ) : (
         <>
           {/* 위 12는 Work 묶음의 첫 소제목과 같은 자리다(`WorkSectionList`의 `SectionHeader`): 「내 차례」에서는 Work 묶음이 없어 이
@@ -151,8 +165,10 @@ export function WaitingList({
 }
 
 /**
- * Thread 줄 하나 — 제목 한 줄과 오른쪽 끝의 상태 표시(02 구현 스펙 §4 · Components 「사이드바 줄」). 줄은 사이드바의 다른 줄과 같은 모양이다 —
- * 30 · 14/400 · 둥글기 `row`, 고른 줄은 투명 면(`selected-row` — 사이드바 갈래). 아이콘이 없어 제목이 줄 안쪽 8에서 시작한다(Codex 「최근」).
+ * Thread 줄 하나 — 제목 한 줄과 오른쪽 끝의 상태 표시(02 구현 스펙 §4 · 시안 Main의 채팅 묶음 · restart 02a-3). 줄은 사이드바의 다른 줄과 같은
+ * 모양이다 — 30 · 13/18 · 둥글기 4, 고른 줄은 `selected-row`(사이드바 갈래). 채팅 묶음 · 「기다리는 순서」의 줄은 말풍선 글리프 15가 앞에 서서
+ * 제목이 위 칸 줄과 같은 줄 안쪽 32에서 시작한다(시안 `.ra-sr-row`의 `ic-message-square`). 한때(v1 티켓 46 – 02a-2) 글리프가 없어 제목이 줄 안쪽
+ * 8에서 시작했다(Codex 「최근」).
  */
 export function ThreadRow({
   thread,
@@ -165,8 +181,9 @@ export function ThreadRow({
   on: boolean;
   onOpen: () => void;
   /**
-   * 펼친 Work 아래 줄이다(02 S10) — 면은 줄 폭 그대로 두고 제목만 줄 안쪽 46에서 시작한다(시안 `.row.sub` · 구현 스펙 「글자 x 46」).
-   * Work 줄의 제목(안쪽 32)보다 한 단 들어가 그 Work의 Thread로 읽힌다.
+   * 펼친 Work 아래 줄이다(02 S10) — 면은 줄 폭 그대로 두고 글리프 없이 제목이 Work 줄의 제목과 같은 줄 안쪽 32에서 시작한다(시안
+   * `.ra-sr-row.child`의 `padding-left: 32px`). 그 Work의 Thread로 읽히는 것은 자리가 아니라 글자다 — 고르지 않은 줄의 제목은 한 단 옅은
+   * `fg-secondary`다(`.child .t`). 한때(02 S10 – 02a-2) 제목만 줄 안쪽 46에서 시작해 Work 제목보다 한 단 들어갔다.
    */
   nested?: boolean;
   /**
@@ -181,7 +198,7 @@ export function ThreadRow({
   // 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 표시가 상태를 열쇠로 새로 서므로. `ready`는
   // 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
   const moved = useChanged(mark, ready);
-  const title = thread.broken ? "열 수 없는 Thread" : thread.title || "새 Thread";
+  const title = chatName(thread);
   return (
     <button
       type="button"
@@ -193,13 +210,23 @@ export function ThreadRow({
         if (!on) onOpen();
       }}
       className={cn(
-        "flex h-(--size-row-nav) w-full min-w-0 shrink-0 items-center gap-2 pr-2 text-left text-sm transition-colors focus-ring",
+        "flex h-(--size-row-nav) w-full min-w-0 shrink-0 items-center pr-2 text-left transition-colors focus-ring",
+        SIDEBAR_GLYPH_GAP,
+        SIDEBAR_ROW_TEXT,
         SIDEBAR_ROW_SHAPE,
-        nested ? "pl-11.5" : "pl-2",
+        nested ? "pl-8" : "pl-2",
         sidebarRowTone(on),
       )}
     >
-      <span className={cn("min-w-0 flex-1 truncate", thread.broken && "text-fg-tertiary")}>{title}</span>
+      {!nested && <MessageSquare aria-hidden className={SIDEBAR_GLYPH} />}
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          thread.broken ? "text-fg-tertiary" : nested && !on && "text-fg-secondary",
+        )}
+      >
+        {title}
+      </span>
       {/* 바뀐 표시만 떠오른다 — 열쇠가 표시라 바뀔 때마다 그 칸이 새로 선다. 표시가 없으면 칸도 없다. */}
       {mark !== null && (
         <span key={mark} className={cn("flex shrink-0 items-center", moved && "row-in")}>

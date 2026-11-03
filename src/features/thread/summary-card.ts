@@ -1,14 +1,12 @@
-import { readStored, writeStored } from "@/lib/stored";
-import type { ReadingScope } from "@/features/spaces/scope";
+import type { ReadingScope } from "@/features/services/scope";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
-import { particle } from "@/lib/particle";
 import type { Opened } from "./expanded";
 import { failNote, mergedWhen } from "./pr";
 import type { DocWriting } from "./types";
 
 // **요약 카드의 칸을 짓는 순수 함수**(02 구현 스펙 §7 · 캔버스 v35 Screen-Live · Components 「요약 카드」 — v1 Work 카드를 바꿨다). 카드
-// (`SummaryCard.tsx`)는 이것이 지은 칸을 그리기만 한다. 칸은 머리 · 변경 사항(PR 줄) · 결과물 · 소스 차례이고(`summarySections`), Work
-// 없는 Thread는 결과물 · 소스만이다. 변경 · 문서 · PR의 자료는 v1 그대로 읽고, 소스의 Project는 읽는 범위(03 §7 — `reading_scope`)다.
+// (`SummaryCard.tsx`)는 이것이 지은 칸을 그리기만 한다. 칸은 머리 · 변경 사항(PR 줄) · 소스 차례이고(`summarySections`), Work
+// 없는 Thread는 소스만이다. 변경 · 문서 · PR의 자료는 v1 그대로 읽고, 소스의 Project는 읽는 범위(03 §7 — `reading_scope`)다.
 
 /** 변경 칸의 Project 하나 — 그 Project의 +/− 합계와 바뀐 파일들(코어 차례 — 늦게 고친 것이 앞). */
 export interface ChangeGroup {
@@ -81,7 +79,7 @@ export function freshFiles(before: readonly ProjectChanges[] | undefined, after:
 export function changesTarget(changes: ChangeSummary | null, projects: readonly string[]): Opened | null {
   const first = changes?.groups[0];
   if (first && first.files.length > 0) return { kind: "change", project: first.project, path: first.files[0].path };
-  return projects.length > 0 ? { kind: "project", project: projects[0], file: null } : null;
+  return projects.length > 0 ? { kind: "project", project: projects[0] } : null;
 }
 
 /**
@@ -93,15 +91,15 @@ export function finishedDocs(before: readonly DocWriting[] | undefined, after: r
   return new Set((before ?? []).map((one) => one.path).filter((path) => !still.has(path)));
 }
 
-/** 문서 칸의 줄 하나 — spec 기준 경로와, 지금 그 문서를 쓰는 Agent(없으면 `null`). */
+/** 문서 칸의 줄 하나 — spec 기준 경로와, 지금 그 문서를 쓰는 중이면 그 값(없으면 `null`). */
 export interface DocRow {
   path: string;
   writer: DocWriting | null;
 }
 
 /**
- * 문서 칸(스토리 108 · 보드 「Host가 문서를 쓰는 중」) — Work의 spec 트리의 파일을 **트리 차례로** 편다(앱에는 차례의 규칙이 없다 —
- * 레이아웃이 정한 차례다). 쓰는 중인 문서에는 그 Agent가 붙는다. 아직 트리에 없는 문서(방금 쓰기 시작한 새 파일 — spec 트리는
+ * 문서 칸(스토리 108 · 보드 「문서를 쓰는 중」) — Work의 spec 트리의 파일을 **트리 차례로** 편다(앱에는 차례의 규칙이 없다 —
+ * 레이아웃이 정한 차례다). 쓰는 중인 문서에는 쓰는 중 값이 붙는다. 아직 트리에 없는 문서(방금 쓰기 시작한 새 파일 — spec 트리는
  * `works:changed`로 따라온다)도 쓰는 중이면 끝에 선다.
  */
 export function docRows(tree: SpecTree, writing: readonly DocWriting[]): DocRow[] {
@@ -117,13 +115,13 @@ function filesOf(items: readonly SpecTreeItem[]): string[] {
   return items.flatMap((item) => (item.kind === "file" ? [item.path] : filesOf(item.children)));
 }
 
-/** 쓰는 중 문구(보드 「Host가 쓰는 중」) — 이름의 받침에 맞는 조사를 단다. */
-export const writerLine = (name: string) => `${name}${particle(name, "이", "가")} 쓰는 중`;
-
-/** Project 칸의 줄 하나 — 고치는 중(worktree가 섰다)인가, 읽기만인가. */
+/**
+ * Project 칸의 줄 하나 — 고치는 중(worktree가 섰다 · `true`)인가, 읽기만(`false`)인가. 보관된 작업공간의 Project는 `null`이다 — 보관이
+ * worktree를 거둬 고치지도 읽지도 않아 줄 끝 말이 없다(SummarySheet 「보관된 작업공간」).
+ */
 export interface ProjectRow {
   project: string;
-  editing: boolean;
+  editing: boolean | null;
 }
 
 /**
@@ -139,7 +137,7 @@ export function projectRows(work: Pick<WorkView, "projects" | "worktrees">): Pro
 
 /**
  * 소스의 Project(03 §7 · §2 「요약 카드」 — 소스는 읽는 범위다) — Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저(Work의
- * 차례) 서고, 그 뒤에 읽는 범위의 Project가 「읽기만」으로 선다(범위의 차례 — 바탕 Space · 전부, 그 뒤 Work · 읽기만). 범위는 worktree에서
+ * 차례) 서고, 그 뒤에 읽는 범위의 Project가 「읽기만」으로 선다(범위의 차례 — 바탕 Service · 전부, 그 뒤 Work · 읽기만). 범위는 worktree에서
  * 일하는 Project를 이미 뺐다(§7 규칙 4). Work 없는 Thread(`work`가 `null`)는 범위의 Project뿐이다. 범위를 아직 못 읽었으면(`undefined`)
  * 고치는 중인 것만 선다.
  */
@@ -201,22 +199,6 @@ export function prRows(prs: readonly ProjectPr[], now: number): PrRow[] {
 /** Work의 PR 쿼리 열쇠 — 요약 카드가 열릴 때 · 열린 동안 60초마다 읽고, 엔진의 `pr` 줄이 그 Project의 줄을 고친다(v1 티켓 36). */
 export const workPrsKey = (slug: string) => ["work-card", slug, "prs"] as const;
 
-/** 요약 카드 열림을 적는 열쇠 — Thread마다 하나다(S22). v1은 Work마다였다(`work-card-open:<slug>`). */
-const openKey = (thread: string) => `summary-card-open:${thread}`;
-
-/**
- * 요약 카드가 열려 있나(S22 — 열고 닫은 상태는 Thread마다 이 컴퓨터의 로컬 저장에 둔다, Codex가 채팅마다 기억하듯). **적은 적이 없거나
- * 읽지 못하면 열린 것이다** — 처음 여는 Thread에서는 카드가 떠 있다.
- */
-export function readSummaryOpen(thread: string): boolean {
-  return readStored(openKey(thread)) !== "closed";
-}
-
-/** 요약 카드 열림을 적는다. 적지 못하면 이번 실행 동안만 기억한다(부르는 쪽의 상태). */
-export function writeSummaryOpen(thread: string, open: boolean): void {
-  writeStored(openKey(thread), open ? "open" : "closed");
-}
-
 /** 소스의 줄 하나 — 이 Thread의 Session이 읽는 spec 문서, 또는 Project(고치는 중 · 읽기만). */
 export type SourceRow = ({ kind: "doc" } & DocRow) | ({ kind: "project" } & ProjectRow);
 
@@ -229,28 +211,36 @@ export interface SummaryInput {
   prs: readonly PrRow[];
   docs: readonly DocRow[];
   projects: readonly ProjectRow[];
+  /**
+   * 막 쓴 문서 가운데 아직 빛나는 것(spec 기준 경로) — 쓰는 중인 문서처럼 소스 맨 위에 남는다(SummarySheet 보드의 `litDoc`). 쓰기를 마친
+   * 순간 제자리(「모두 보기」 뒤일 수 있다)로 돌아가면 빛이 보이지 않는다. 빛이 끝나면 부르는 쪽이 비운다.
+   */
+  raised?: ReadonlySet<string>;
 }
 
 /**
  * 요약 카드의 칸 하나(02 §7).
  * - `head`: Work 이름(보관됐으면 「보관됨」이 붙는다)과 「…」.
  * - `changes`: 「변경 사항」 한 줄 — 끝에 Work 합계 +/−(0이면 적지 않는다, S17), 그 아래 PR 줄(S18).
- * - `outputs`: 「결과물」 자리표시(S19 — 결과물 개념은 짓지 않는다).
  * - `sources`: 「소스」 — 셋까지 보이고(`shown`) 나머지(`hidden`)는 「모두 보기」가 그 자리에 편다(S21).
+ *
+ * 한때 `outputs`(「결과물」 · 누를 수 없는 「파일 또는 문서 만들기」 자리표시 — S19)가 변경 사항과 소스 사이에 섰다. SummarySheet 「규격」이
+ * 그 칸을 뺐다(restart 02b-8).
  */
 export type SummarySection =
   | { kind: "head"; title: string; archived: boolean }
   | { kind: "changes"; additions: number; deletions: number; prs: PrRow[] }
-  | { kind: "outputs" }
   | { kind: "sources"; shown: SourceRow[]; hidden: SourceRow[] };
 
 /** 소스가 이 수를 넘으면 나머지는 「모두 보기」 뒤에 접힌다(S21 — 카드 높이를 내용만큼으로 지킨다). */
 export const SOURCES_SHOWN = 3;
 
 /**
- * 요약 카드의 칸 차례(02 §7) — 머리 → 변경 사항 → 결과물 → 소스. **Work 없는 Thread는 결과물 · 소스만이다**(Codex의 프로젝트 없는 채팅).
- * 소스는 spec 문서(트리 차례)가 먼저, 그 뒤에 Project(Work의 차례)다. 소스가 하나도 없으면 그 칸은 서지 않는다 — 「＋」가 없어(S19) 빈
- * 칸에 할 일이 없다. 결과물은 늘 자리표시로 선다.
+ * 요약 카드의 칸 차례(02 §7 · SummarySheet) — 머리 → 변경 사항 → 소스. **Work 없는 Thread는 소스(읽는 범위)만이다**(Codex의 프로젝트 없는
+ * 채팅 — SummarySheet 「작업공간 밖 채팅」). 소스는 spec 문서(트리 차례)가 먼저, 그 뒤에 Project(Work의 차례)다. **쓰는 중인 문서와 막 써서
+ * 빛나는 문서(`raised`)는 소스 맨 위로 올라온다**(SummarySheet 「문서를 쓰는 중」 · 규격 「소스」 — 한때 「모두 보기」 뒤에 숨을 수 있었다).
+ * 올라온 것끼리, 나머지끼리는 트리 차례 그대로다. Work에 이은 Thread는 소스가 하나도 없으면 그 칸이 서지 않는다 — 「＋」가 없어(S19) 빈 칸에
+ * 할 일이 없다. Work 없는 Thread는 소스가 카드의 전부라 빈 칸이 서고 몸이 「읽는 Project가 없어요」를 적는다.
  */
 export function summarySections(input: SummaryInput): SummarySection[] {
   const sections: SummarySection[] = [];
@@ -263,12 +253,15 @@ export function summarySections(input: SummaryInput): SummarySection[] {
       prs: [...input.prs],
     });
   }
-  sections.push({ kind: "outputs" });
+  const up = (doc: DocRow) => doc.writer !== null || (input.raised?.has(doc.path) ?? false);
   const sources: SourceRow[] = [
-    ...input.docs.map((doc) => ({ kind: "doc" as const, ...doc })),
+    ...input.docs.filter(up).map((doc) => ({ kind: "doc" as const, ...doc })),
+    ...input.docs.filter((doc) => !up(doc)).map((doc) => ({ kind: "doc" as const, ...doc })),
     ...input.projects.map((project) => ({ kind: "project" as const, ...project })),
   ];
-  if (sources.length > 0) {
+  // Work 없는 Thread는 소스가 카드의 전부라 읽는 Project가 없어도 빈 칸이 선다 — 카드가 빈 상자로 서지 않는다(한때 결과물 자리표시가 그 자리를
+  // 채웠다). Work에 이은 Thread는 머리 · 변경 사항이 있어 칸을 걷는다.
+  if (sources.length > 0 || !input.work) {
     const fold = sources.length > SOURCES_SHOWN;
     sections.push({
       kind: "sources",

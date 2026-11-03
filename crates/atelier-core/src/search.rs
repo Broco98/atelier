@@ -691,7 +691,7 @@ mod tests {
     fn thread_in(root: &Path, title: &str, at: &str, work: Option<&str>) -> String {
         let at = chrono::DateTime::parse_from_rfc3339(at).unwrap();
         let new = crate::NewThread { title: title.to_string(), work: work.map(str::to_owned), ..crate::NewThread::default() };
-        crate::threads::create_thread_at(root, at, new, crate::RecordKind::Sent, None, serde_json::json!({"text": title}))
+        crate::threads::create_thread_at(root, at, new, crate::RecordKind::Sent, serde_json::json!({"text": title}))
             .unwrap()
             .id
     }

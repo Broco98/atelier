@@ -18,10 +18,15 @@ import type { Page } from "./evidence";
 
 /** 추가 창 — 빈 목록 가운데의 「Project 추가」가 연다. 창 밖에도 같은 이름의 단추가 있어 창 안으로 좁혀 쓴다. */
 const addDialog = (page: Page) => page.getByRole("dialog", { name: "Project 추가", exact: true });
+/** 상세 판 — 숨은 목록도 `main` 안에 있어 상세의 이름(판의 h1)과 위 카드의 기준 브랜치 칸(이름 · 값)으로 좁힌다. */
+const 상세 = (page: Page) => page.getByRole("main", { name: "Projects 상세", exact: true });
+const 상세제목 = (page: Page) => 상세(page).getByRole("heading", { level: 1 });
+const 기준브랜치 = (page: Page) => 상세(page).getByText("기준 브랜치", { exact: true }).locator("xpath=..");
 
 async function openAddDialog(page: Page) {
   await page.goto("/projects");
-  await expect(page.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
+  // 빈 목록의 제목(restart 03-1 · 보드 PlaceSheet — 한때 「아직 Project가 없어요」).
+  await expect(page.getByRole("heading", { name: "등록한 Project가 없어요", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Project 추가", exact: true }).click();
   await expect(addDialog(page)).toBeVisible();
   return addDialog(page);
@@ -58,7 +63,7 @@ test("폴더를 고르면 진짜 파일이 생기고 그 Project의 상세가 �
   // 추가한 Project의 상세로 간다 — 이름은 고른 폴더 이름이다(이름 칸을 비워 두면 따라간다).
   await expect(page).toHaveURL(`/projects/${slug}`);
   const name = basename(pickedFolder);
-  await expect(page.getByRole("button", { name: `${name} — 이름 바꾸기`, exact: true })).toBeVisible();
+  await expect(상세제목(page)).toHaveText(name);
 
   // 화이트리스트 밖 호출이 하나라도 있으면 하네스가 낡은 것이다.
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -99,7 +104,7 @@ test("git 저장소가 아닌 폴더는 「git init 하고 추가」로 진짜 g
   expect(readFileSync(join(home, "projects", `${slug}.md`), "utf8")).toMatch(/^baseBranch: main$/m);
 
   await expect(page).toHaveURL(`/projects/${slug}`);
-  await expect(page.getByRole("combobox", { name: "기준 브랜치", exact: true })).toContainText("main");
+  await expect(기준브랜치(page)).toHaveText("기준 브랜치main");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -138,8 +143,8 @@ test("「새로 만들기」는 고른 부모 아래에 이름의 폴더를 만�
   expect(written).toMatch(/^baseBranch: main$/m);
 
   await expect(page).toHaveURL("/projects/landing-page");
-  await expect(page.getByRole("button", { name: "Landing Page — 이름 바꾸기", exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "기준 브랜치", exact: true })).toContainText("main");
+  await expect(상세제목(page)).toHaveText("Landing Page");
+  await expect(기준브랜치(page)).toHaveText("기준 브랜치main");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

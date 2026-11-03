@@ -60,8 +60,8 @@ import type { SearchHit } from "./types";
 const GROUP_NAMES: Record<SearchHit["kind"], string> = {
   destination: "가는 곳",
   // 둘은 사이드바의 Work · Thread 묶음 머리와 같은 말이다 — 화면에서도 영어로 쓰는 도메인 낱말이다(v1 구현 스펙 S2).
-  work: "Work",
-  thread: "Thread",
+  work: "작업공간",
+  thread: "채팅",
   project: "프로젝트",
   doc: "문서",
   text: "본문",
@@ -427,8 +427,8 @@ function PalettePopup({ onClose }: { onClose: () => void }) {
       showCloseButton={false}
       initialFocus={inputRef}
       // **골라서 떠났으면 포커스를 열기 전 자리로 돌려주지 않는다.** 창은 닫히는 애니메이션 뒤에
-      // 돌려주는데, 그때는 고른 곳으로 이미 옮긴 뒤다 — 분할에서 문서를 고르면 셸 열로 돌아간 포커스가
-      // 「이 열을 봤다」로 읽혀 본문을 셸로 되돌린다(결정 97). Esc·바깥 누르기로 닫으면 돌려준다.
+      // 돌려주는데, 그때는 고른 곳으로 이미 옮긴 뒤다 — 한때 분할에서 문서를 고르면 셸 열로 돌아간 포커스가
+      // 「이 열을 봤다」로 읽혀 본문을 셸로 되돌렸다(결정 97). Esc·바깥 누르기로 닫으면 돌려준다.
       finalFocus={() => !went.current}
       onKeyDown={onKeyDown}
     >

@@ -7,17 +7,14 @@ import {
   armDrag,
   cancelGoneShellDrag,
   cancelPress,
-  clearHalf,
   DRAG_THRESHOLD,
   dragStore,
   dragTraceLine,
   farEnough,
-  hoverHalf,
   hoverSlot,
   shellMoveOf,
-  tabDragOf,
 } from "./pointer-drag";
-import type { AnyDragSource, DragSource, DragState, EntryDragSource, RowDragSource } from "./pointer-drag";
+import type { AnyDragSource, DragSource, EntryDragSource, RowDragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
 // 폴더는 `/terminal`이 못 부르고(TerminalPage.test.tsx), 터미널 기능 폴더는 사이드바 목록이
@@ -33,9 +30,10 @@ describe("공용 끌기 모듈은 기능 폴더를 모른다", () => {
   const gesture = read("./pointer-drag.ts");
 
   // **세는 파일이 정말 그 모듈인가를 먼저 묶는다.** 모듈이 옮겨 가고 이 이름의 파일만 남으면
-  // 아래 0이 빈 초록이다 — 분할 모듈이 실제로 이 경로를 import하는 것을 알려진 양성으로 센다.
-  it("분할 모듈이 이 파일을 import한다", () => {
-    expect(countOf(read("../features/works/split-view.ts"), 'from "@/lib/pointer-drag"')).toBeGreaterThan(0);
+  // 아래 0이 빈 초록이다 — 탭 줄을 그리는 화면이 실제로 이 경로를 import하는 것을 알려진 양성으로 센다(한때 분할 모듈이었다 —
+  // restart 02a-13이 분할을 걷었다).
+  it("작업공간 화면이 이 파일을 import한다", () => {
+    expect(countOf(read("../features/works/WorksPage.tsx"), 'from "@/lib/pointer-drag"')).toBeGreaterThan(0);
   });
 
   it("기능 폴더 import가 0개다", () => {
@@ -64,19 +62,22 @@ describe("공용 끌기 모듈은 기능 폴더를 모른다", () => {
   });
 });
 
-// 한 눌림을 두 소비자가 나눠 본다(UI개선 스펙 S10) — 탭 줄은 「몇 번째 틈」을, 본문
-// 받침은 「어느 절반」을 적는다. **둘이 동시에 켜지면 놓은 곳이 이긴다가 깨진다**: 떼는 순간
-// 두 소비자가 각자 제 값을 보고 순서도 바꾸고 분할도 켠다. 그 불변식을 **값을 적는 유일한
-// 자리**(이 모듈의 `hover`)에 건다 — 적는 함수 셋이 모두 거기를 지난다.
-describe("한 눌림의 두 소비자", () => {
+// 탭 줄은 「몇 번째 틈」을 적는다(UI개선 스펙 S10). 한때 본문 받침이 「어느 절반」을 함께 적어 두 값이 동시에 안 켜지는
+// 불변식을 여기 걸었다 — restart 02a-13이 분할(본문 절반)을 걷어 틈 하나가 남았다.
+describe("탭 줄의 틈", () => {
   const shell: DragSource = { kind: "shell", owner: "", shellId: 1 };
 
   beforeEach(() => {
-    dragStore.setState(() => ({ source: null, half: null, slot: null }));
+    dragStore.setState(() => ({ source: null, slot: null }));
+  });
+
+  // 분할이 사라지며 본문 절반의 칸도 사라졌다 — 상태에 남으면 아무도 안 읽는 값을 누군가 다시 적는다.
+  it("드래그 상태에는 원천과 틈뿐이다", () => {
+    expect(Object.keys(dragStore.state).sort()).toEqual(["slot", "source"]);
   });
 
   it("끄는 중이면 틈을 적는다", () => {
-    dragStore.setState(() => ({ source: shell, half: null, slot: null }));
+    dragStore.setState(() => ({ source: shell, slot: null }));
     hoverSlot(2);
     expect(dragStore.state.slot).toBe(2);
     hoverSlot(null);
@@ -91,33 +92,19 @@ describe("한 눌림의 두 소비자", () => {
     expect(dragStore.state).toBe(before);
   });
 
-  // 두 방향을 한 표에 둔다 — 한쪽 적는 함수만 상대를 끄면 다른 쪽 줄이 빨개진다.
+  // 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다.
   it.each([
-    { name: "틈이 켜지면 절반이 꺼진다", from: { half: "left", slot: null }, act: () => hoverSlot(1), to: { half: null, slot: 1 } },
-    { name: "절반이 켜지면 틈이 꺼진다", from: { half: null, slot: 2 }, act: () => hoverHalf("right"), to: { half: "right", slot: null } },
-    { name: "틈을 끄면 절반은 그대로다", from: { half: "left", slot: null }, act: () => hoverSlot(null), to: { half: "left", slot: null } },
-    { name: "절반을 끄면 틈은 그대로다", from: { half: null, slot: 2 }, act: () => clearHalf(), to: { half: null, slot: 2 } },
-  ] as const)("$name", ({ from, act, to }) => {
-    dragStore.setState(() => ({ source: shell, ...from }));
-    act();
-    expect(dragStore.state).toMatchObject(to);
-  });
-
-  // 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다 — 본문엔 마크다운
-  // 트리가 통째로 들어 있다.
-  it.each([
-    { name: "같은 틈", from: { half: null, slot: 1 }, act: () => hoverSlot(1) },
-    { name: "같은 절반", from: { half: "right", slot: null }, act: () => hoverHalf("right") },
-    { name: "이미 꺼진 절반", from: { half: null, slot: 1 }, act: () => clearHalf() },
-  ] as const)("$name이면 같은 상태다", ({ from, act }) => {
-    dragStore.setState(() => ({ source: shell, ...from }));
+    { name: "같은 틈", slot: 1 },
+    { name: "이미 꺼진 틈", slot: null },
+  ] as const)("$name이면 같은 상태다", ({ slot }) => {
+    dragStore.setState(() => ({ source: shell, slot }));
     const before = dragStore.state;
-    act();
+    hoverSlot(slot);
     expect(dragStore.state).toBe(before);
   });
 
-  // **적는 자리가 이 모듈 하나인가.** 다른 모듈이 스토어를 직접 고치면 위 표를 안 지나서
-  // 두 값이 함께 켜질 수 있다. fail-closed: 파일을 못 읽으면 빨갛고, 이 모듈의 양성이 먼저 선다.
+  // **적는 자리가 이 모듈 하나인가.** 다른 모듈이 스토어를 직접 고치면 끄는 중인지를 안 보고 틈을 적을 수 있다.
+  // fail-closed: 파일을 못 읽으면 빨갛고, 이 모듈의 양성이 먼저 선다.
   it("드래그 상태를 고치는 곳이 이 모듈뿐이다", () => {
     const root = fileURLToPath(new URL("..", import.meta.url));
     const sources = (function walk(dir: string): string[] {
@@ -135,37 +122,17 @@ describe("한 눌림의 두 소비자", () => {
   });
 });
 
-// 본문 절반(분할 겹판)처럼 **탭만 받는 쪽**이 읽는 판정(spec 레이아웃 티켓 13). 「작업 행이 아니면 탭」으로
-// 거르면 원천 종류가 늘어나는 날 새 종류가 탭으로 읽힌다 — 편집기 항목을 끄는 순간 분할 겹판이 선다. 그래서
-// 탭 종류로 좁힌다.
-describe("탭 끌기 판정", () => {
-  const state = (source: DragState["source"]): DragState => ({ source, half: null, slot: null });
-
-  it.each([
-    { name: "문서 칸", source: { kind: "spec", owner: "", shellId: null } as DragSource },
-    { name: "셸 칸", source: { kind: "shell", owner: "", shellId: 2 } as DragSource },
-  ])("$name은 탭이다", ({ source }) => {
-    expect(tabDragOf(state(source))).toBe(source);
-  });
-
-  it.each([
-    { name: "작업 행", source: { kind: "work", slug: "a" } as RowDragSource },
-    { name: "편집기 항목", source: { kind: "entry", path: [2, 0] } as EntryDragSource },
-    { name: "끄는 것이 없음", source: null },
-  ])("$name은 탭이 아니다", ({ source }) => {
-    expect(tabDragOf(state(source))).toBeNull();
-  });
-});
-
 // 놓을 때 탭 줄이 읽는 몫 — 터미널 스토어가 드래그 상태의 모양을 몰라도 되게 여기서 꺼낸다.
 describe("탭 줄에 놓인 셸", () => {
   const shell: DragSource = { kind: "shell", owner: "", shellId: 7 };
 
   it.each([
-    { name: "셸을 틈 위에서 놓으면 그 둘이다", state: { source: shell, half: null, slot: 3 }, want: { shellId: 7, slot: 3 } },
-    { name: "틈이 없으면 없다", state: { source: shell, half: "left", slot: null }, want: null },
-    { name: "끄는 중이 아니면 없다", state: { source: null, half: null, slot: null }, want: null },
-    { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "", shellId: null }, half: null, slot: 0 }, want: null },
+    { name: "셸을 틈 위에서 놓으면 그 둘이다", state: { source: shell, slot: 3 }, want: { shellId: 7, slot: 3 } },
+    { name: "틈이 없으면 없다", state: { source: shell, slot: null }, want: null },
+    { name: "끄는 중이 아니면 없다", state: { source: null, slot: null }, want: null },
+    { name: "작업 행이면 없다", state: { source: { kind: "work", slug: "a" }, slot: 0 }, want: null },
+    // restart 02a-5 — 채팅 탭도 묶음의 칸이라 같은 틈에 놓인다.
+    { name: "채팅 탭을 틈 위에서 놓으면 그 둘이다", state: { source: { kind: "chat", owner: "가", shellId: 4 }, slot: 0 }, want: { shellId: 4, slot: 0 } },
   ] as const)("$name", ({ state, want }) => {
     expect(shellMoveOf(state)).toEqual(want);
   });
@@ -190,7 +157,7 @@ function gestureWindow() {
     vi.stubGlobal("document", {
       body: { classList: { add: (name: string) => classes.add(name), remove: (name: string) => classes.delete(name) } },
     });
-    dragStore.setState(() => ({ source: null, half: null, slot: null }));
+    dragStore.setState(() => ({ source: null, slot: null }));
     return () => {
       // 다음 검사로 눌림이 새지 않게 손을 뗀다 — 이미 거둬졌으면 아무도 안 듣는다.
       pointer("pointerup", 0);
@@ -211,7 +178,7 @@ describe("끄는 셸이 사라지면", () => {
   const shell: DragSource = { kind: "shell", owner: "", shellId: 3 };
   const gone = () => false;
 
-  function arm(source: DragSource | RowDragSource) {
+  function arm(source: AnyDragSource) {
     const calls: string[] = [];
     armDrag(source, { clientX: 0, clientY: 0 }, {
       drop: () => calls.push("drop"),
@@ -259,10 +226,10 @@ describe("끄는 셸이 사라지면", () => {
     expect(calls).toEqual(["drop", "end"]);
   });
 
-  // 셸이 없는 원천(문서 칸 · 작업 행)은 셸 목록과 무관하다 — 「없다」고 답해도 거두지 않는다.
+  // 묶음의 칸이 아닌 원천(작업 행 · 편집기 항목)은 셸 목록과 무관하다 — 「없다」고 답해도 거두지 않는다.
   it.each([
-    { name: "문서 칸", source: { kind: "spec", owner: "", shellId: null } as DragSource },
     { name: "작업 행", source: { kind: "work", slug: "a" } as RowDragSource },
+    { name: "편집기 항목", source: { kind: "entry", path: [1] } as EntryDragSource },
   ])("$name 끌기는 거두지 않는다", ({ source }) => {
     const calls = arm(source);
     cancelGoneShellDrag(gone);
@@ -313,7 +280,7 @@ describe("그 종류의 눌림을 거두면", () => {
 
     cancelPress("entry");
 
-    expect(dragStore.state).toEqual({ source: null, half: null, slot: null });
+    expect(dragStore.state).toEqual({ source: null, slot: null });
     expect(classes.has("dragging-row")).toBe(false);
     pointer("pointermove", 20);
     expect(dragStore.state.source).toBeNull();
@@ -371,7 +338,7 @@ describe("끌기 계측", () => {
 
   // 포인터 종류를 모르는 사건도 온다(합성 이벤트 · 오래된 엔진) — 빈 칸 대신 그렇다고 적는다.
   it("포인터 종류를 모르면 그렇게 적는다", () => {
-    expect(dragTraceLine({ source: "spec", moment: "threshold", dx: 5, dy: 0, pointerType: "", swallowed: false })).toContain(
+    expect(dragTraceLine({ source: "chat", moment: "threshold", dx: 5, dy: 0, pointerType: "", swallowed: false })).toContain(
       "pointerType=?",
     );
   });
@@ -406,7 +373,7 @@ describe("끌기 계측", () => {
       vi.stubGlobal("document", { body: { classList: { add: () => {}, remove: () => {} } } });
       vi.stubEnv("DEV", true);
       vi.spyOn(console, "debug").mockImplementation((line: string) => void lines.push(line));
-      dragStore.setState(() => ({ source: null, half: null, slot: null }));
+      dragStore.setState(() => ({ source: null, slot: null }));
       return () => {
         pointer("pointerup", 0);
         for (const run of timers) run();

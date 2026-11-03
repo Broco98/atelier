@@ -5,12 +5,11 @@ import { AnsweredCards } from "./AnsweredCards";
 import { threadApi } from "./api";
 import { useArrival } from "./arrival";
 import type { AskTurn } from "./asks";
-import type { Avatar } from "./faces";
-import type { ProjectAddChoiceEntry, ProjectChoiceEntry, SpaceChoiceEntry, WorkChoiceEntry } from "./fold";
+import type { ProjectAddChoiceEntry, ProjectChoiceEntry, ServiceChoiceEntry, WorkChoiceEntry } from "./fold";
 import { describeProjectAddCard, projectAddChoiceCard } from "./project-add-card";
 import { projectChoiceText } from "./project-card";
 import ProjectCard from "./ProjectCard";
-import { describeSpaceCard, spaceChoiceCard } from "./space-card";
+import { describeServiceCard, serviceChoiceCard } from "./service-card";
 import { cardOfChoice, type ToolCard, type ToolCardAsk, type ToolCardShapes, type ToolChoiceEntry } from "./tool-cards";
 import type { ToolQuestionOption, ToolQuestionView } from "./tool-question";
 import ToolQuestionCard from "./ToolQuestionCard";
@@ -21,17 +20,16 @@ import WorkProposalCard from "./WorkProposalCard";
 // (`ThreadFlow`)은 `ToolChoiceRow` 하나로 그린다. 값 · 글의 표는 `tool-cards.ts`다.
 //
 // - **카드는 답을 넘기기만 한다.** 고른 것은 기록의 답 줄로 오고, 그 줄이 오면 접기가 카드를 빼서 카드가 걷히고 그 도구 줄 자리에 결정 줄이 선다.
-// - **Thread 도구 질문 카드**(Space 질문 · Project 추가 — 03 티켓 08 · 12)는 겉과 키가 하나다(`ToolQuestionCard`). 글은 그 갈래의 순수 함수
-//   (`describe…Card`)가 짓고, 고른 번호 줄의 답을 그 갈래의 답 명령으로 넘긴다(`ToolQuestionSlot`). Space 질문 카드는 esc · 「나중에」가 「나중에」,
-//   Project 추가 카드는 「나중에」가 없어 esc가 마지막 줄 「추가하지 않기」다(03 결정 12). 붙인 Space는 칩 · 범위 줄 · 머리 줄이, 추가한 Project는
+// - **Thread 도구 질문 카드**(Service 질문 · Project 추가 — 03 티켓 08 · 12)는 겉과 키가 하나다(`ToolQuestionCard`). 글은 그 갈래의 순수 함수
+//   (`describe…Card`)가 짓고, 고른 번호 줄의 답을 그 갈래의 답 명령으로 넘긴다(`ToolQuestionSlot`). Service 질문 카드는 esc · 「나중에」가 「나중에」,
+//   Project 추가 카드는 「나중에」가 없어 esc가 마지막 줄 「추가하지 않기」다(03 결정 12). 붙인 Service는 칩 · 범위 줄 · 머리 줄이, 추가한 Project는
 //   결과 카드가 기록의 답 줄 뒤에 따라온다.
 
 /** 입력창 자리의 Thread 도구 카드가 받는 것. */
 export interface ToolCardProps<A> {
   thread: string;
-  /** 물은 참여자의 화면 이름 · 얼굴(들어옴 줄, `ThreadModel.cast`). */
+  /** 그 채팅의 Runtime 이름(`runtimeNameOf`) — 카드의 물음과 머리에 선다. */
   name: string;
-  avatar: Avatar | null;
   /** 맨 앞의 답하지 않은 카드. 부르는 쪽이 요청 id를 key로 건다 — 다음 카드가 오면 새로 선다. */
   card: A;
   /** 물음 차례의 「1 / 2」(`askTurn`) — 묶음에 물음이 하나뿐이면 null. */
@@ -49,16 +47,16 @@ interface ToolCardScreen<C extends ToolCard> {
 const SCREENS: { readonly [C in ToolCard]: ToolCardScreen<C> } = {
   work: { Card: WorkProposalCard, Row: WorkChoiceRow },
   project: { Card: ProjectCard, Row: ProjectChoiceRow },
-  space: {
+  service: {
     Card: (props) => (
       <ToolQuestionSlot
         {...props}
-        describe={describeSpaceCard}
-        answer={threadApi.answerSpace}
-        later={(thread, request) => threadApi.answerSpace(thread, request, { kind: "later" })}
+        describe={describeServiceCard}
+        answer={threadApi.answerService}
+        later={(thread, request) => threadApi.answerService(thread, request, { kind: "later" })}
       />
     ),
-    Row: SpaceChoiceRow,
+    Row: ServiceChoiceRow,
   },
   "project-add": {
     Card: (props) => <ToolQuestionSlot {...props} describe={describeProjectAddCard} answer={threadApi.answerProjectAdd} />,
@@ -94,7 +92,6 @@ type AnsweringView<T> = ToolQuestionView & { options: (ToolQuestionOption & { an
 function ToolQuestionSlot<A extends ToolCardAsk, T>({
   thread,
   name,
-  avatar,
   card,
   count = null,
   next,
@@ -110,8 +107,6 @@ function ToolQuestionSlot<A extends ToolCardAsk, T>({
   const view = describe(card, name);
   return (
     <ToolQuestionCard
-      who={card.who}
-      avatar={avatar}
       view={view}
       onPick={(at) => answer(thread, card.requestId, view.options[at].answer)}
       onLater={later && (() => later(thread, card.requestId))}
@@ -122,14 +117,14 @@ function ToolQuestionSlot<A extends ToolCardAsk, T>({
 }
 
 /**
- * Work 만들기 결정 줄(화면 2 보드 `.done-line` · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양이다. 만들었으면 ✓와 「Work
- * 만들기 · api-server · fix/refund-api」, 아니면 →와 「Work 없이 계속함」.
+ * Work 만들기 결정 줄(화면 2 보드 `.done-line` · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양이다. 만들었으면 ✓와 「작업공간
+ * 만들기 · api-server · fix/refund-api」, 아니면 →와 「작업공간 없이 계속함」.
  */
 function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
   const Icon = entry.created ? Check : ArrowRight;
   const text = entry.created
-    ? ["Work 만들기", ...entry.projects, ...(entry.branch ? [entry.branch] : [])].join(" · ")
-    : "Work 없이 계속함";
+    ? ["작업공간 만들기", ...entry.projects, ...(entry.branch ? [entry.branch] : [])].join(" · ")
+    : "작업공간 없이 계속함";
   return (
     <p
       data-decision={entry.created ? "work-created" : "work-skipped"}
@@ -143,7 +138,7 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
 
 /**
  * Work 밖 Project 결정 줄(v1 티켓 32 · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양에 폴더 글리프, Project 이름은
- * `fg-secondary`(보드 `.o`)다. 「web-app을 이 Work에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을 고치지 않기로 함」.
+ * `fg-secondary`(보드 `.o`)다. 「web-app을 이 작업공간에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을 고치지 않기로 함」.
  */
 function ProjectChoiceRow({ entry }: { entry: ProjectChoiceEntry }) {
   const { name, after } = projectChoiceText(entry.choice, entry.project);
@@ -162,16 +157,16 @@ function ProjectChoiceRow({ entry }: { entry: ProjectChoiceEntry }) {
 }
 
 /**
- * Space 질문 카드에 답한 줄(03 티켓 08 · 캔버스 F4-WorkSpaced · F4-KitChat 「답한 뒤」) — 질문 카드에 답한 카드와 같은 한 줄이다: ✓ ·
- * 「어느 Space에서 할까요?」 · 고른 Space(「Space 없이」), 나중에면 시계와 「Space는 나중에 정하기로 함」. Space 줄은 따로 서지 않는다 — 이
- * 줄이 그 결정이다(`spaceChoiceCard`).
+ * Service 질문 카드에 답한 줄(03 티켓 08 · 캔버스 F4-WorkSpaced · F4-KitChat 「답한 뒤」) — 질문 카드에 답한 카드와 같은 한 줄이다: ✓ ·
+ * 「어느 Service에서 할까요?」 · 고른 Service(「Service 없이」), 나중에면 시계와 「Service는 나중에 정하기로 함」. Service 줄은 따로 서지 않는다 — 이
+ * 줄이 그 결정이다(`serviceChoiceCard`).
  */
-function SpaceChoiceRow({ entry }: { entry: SpaceChoiceEntry }) {
-  return <AnsweredCards cards={[spaceChoiceCard(entry)]} card="space" choice={entry.choice} arrival={entry.key} />;
+function ServiceChoiceRow({ entry }: { entry: ServiceChoiceEntry }) {
+  return <AnsweredCards cards={[serviceChoiceCard(entry)]} card="service" choice={entry.choice} arrival={entry.key} />;
 }
 
 /**
- * Project 추가 카드에 답한 줄(03 티켓 12) — Space 질문 카드에 답한 줄과 같은 한 줄이다: ✓ · 「notes는 git 저장소가 아니에요. 어떻게 할까요?」 ·
+ * Project 추가 카드에 답한 줄(03 티켓 12) — Service 질문 카드에 답한 줄과 같은 한 줄이다: ✓ · 「notes는 git 저장소가 아니에요. 어떻게 할까요?」 ·
  * 고른 답(「git init 하고 추가」). 추가했으면 바로 뒤에 결과 카드가 따로 선다(`projectAddChoiceCard`).
  */
 function ProjectAddChoiceRow({ entry }: { entry: ProjectAddChoiceEntry }) {

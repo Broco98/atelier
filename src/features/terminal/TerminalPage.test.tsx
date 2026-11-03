@@ -139,10 +139,10 @@ describe("최상위 터미널의 탭 줄", () => {
     expect(markup.slice(markup.indexOf(">", card) + 1)).toMatch(/^<div[^>]*\sdata-tab-row="/);
   });
 
-  it("머리 줄의 자리 · 끌기는 셸이 든다 — 화면은 이름만 건네고, 판 안은 창을 끄는 자리가 아니다", () => {
-    // 02 구현 스펙 §3. 머리 줄(높이 · 신호등 · 사이드바를 따라 옮겨 가는 이름 자리 · 창 끌기)은 앱 셸 하나가 그린다(`ShellHeadRow` —
-    // `ShellHead.test.tsx`). 화면이 제 머리 줄을 다시 세우면 줄이 둘이 되고 신호등 여백 · 끄는 자리도 둘로 갈린다. 칸은 흰 판 안이라
-    // 회색 틈이 없어 끄는 자리가 아니다.
+  it("머리 줄의 자리 · 끌기는 셸이 든다 — 화면은 이름만 건네고, 카드 자리는 창을 끄는 자리가 아니다", () => {
+    // 02 구현 스펙 §3. 머리 줄(높이 · 신호등 · 셸 컨트롤 뒤 이름 자리 · 창 끌기)은 앱 셸 하나가 그린다(`ShellHeadRow` —
+    // `ShellHead.test.tsx`). 화면이 제 머리 줄을 다시 세우면 줄이 둘이 되고 신호등 여백 · 끄는 자리도 둘로 갈린다. 카드와 카드
+    // 사이 틈도 끄는 자리가 아니다(`Frame` 머리말 — 끄는 것은 머리 줄 하나다).
     terminalStore.setState(() => seed(1, TOP).state);
     const markup = html();
     expect(markup).not.toContain("titlebar-");
@@ -209,7 +209,7 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   // UI개선 결정 11 — **이 화면도 탭을 끌어 순서를 바꾼다.** 떨굴 분할이 없어 소비자는 탭 줄 하나다.
   // 제스처는 기능 폴더 밖 공용 모듈이라 `features/works`를 안 부른다(위 import 검사 그대로).
   it("탭을 끄는 자리와 틈 소비자를 이 화면이 준다", () => {
-    expect(source).toContain("if (shellId !== null) armDrag({ kind: \"shell\", owner, shellId }, from);");
+    expect(source).toContain('onDragTab={(shellId, from) => armDrag({ kind: "shell", owner, shellId }, from)}');
     expect(source).toContain("slot={slot}");
     expect(source).toContain("onSlot={hoverSlot}");
     expect(source).toContain("onDropSlot={dropShellOnSlot}");

@@ -1,7 +1,7 @@
 //! 대화 호스트 — Thread 엔진의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! three-axes가 지은 몸(엔진 확인 · 로그인 · 턴 차례 · 멈추기 · 대기 줄 · 권한 답 · 되살리기 · 끄기) 위에 v1이 Thread를 자리로
-//! 세웠다(v1 티켓 04, [`thread`]) — 열쇠가 (Thread, 참여자)인 Session들이 턴 차례 · 런타임 · 로그인 창구를 쓴다. three-axes의 work
+//! 세웠다(v1 티켓 04, [`thread`]) — 열쇠가 채팅 id 하나인 Session들이 턴 차례 · 런타임 · 로그인 창구를 쓴다. three-axes의 work
 //! 대화(열쇠가 (work, 대화)이고 기록이 `works/<slug>/agents/`에 서던 자리)는 Work 안 대화창과 함께 걷었다(v1 티켓 08).
 //!
 //! Session 하나 = Runtime 프로세스 하나 · Runtime 쪽 세션 하나다. 동시 개수 상한은 없다(three-axes 결정 19).
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
@@ -17,19 +18,22 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
-use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiter, Waiting};
+use crate::login::{self, EngineState, LoginDesk, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::policy::Card;
 use crate::quote::Quote;
 use crate::records::{self, PermissionLine, QuestionLine, RecordLine, Recorder, SessionState, TurnEndLine, QUESTION_CARD};
 use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms, Ruling, RuntimeEvent, SessionPlace, Sink, Turns};
 
+mod chunks;
 mod thread;
 mod turn_order;
 
 pub use thread::{
-    DocWriting, ProjectAddChoice, ProjectChoice, QuestionReply, Reply, SpaceChoice, SpacePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
+    DocWriting, ProjectAddChoice, ProjectChoice, QuestionReply, Reply, ServiceChoice, ServicePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
 };
+pub use chunks::{FlowChunk, FlowKind};
+use chunks::{discarded, is_chunk, Chunks};
 use thread::VanishWatch;
 use turn_order::{Draft, Preamble, Seat, TurnHands, TurnOrder};
 
@@ -42,20 +46,29 @@ const CLAUDE_OPEN_LIMIT: Duration = Duration::from_secs(10);
 /// 둔다.
 const SETTING_LIMIT: Duration = Duration::from_secs(10);
 
-/// 호스트가 내보내는 것 — 엔진 상태와 Thread의 기록 줄 · 대기 줄 · 목록 요약.
+/// Codex 채팅에서 카드로 사람을 기다리는 앱 기능 도구의 한도(스펙 「01c — Codex」 「도구 제한 시간」). Codex는 MCP 도구를 300초에서 끊고 앱이
+/// 그 값을 늘릴 길이 없다 — 그 전에 앱이 카드를 닫아야 뒤늦은 답이 사라지지 않는다.
+const CODEX_CARD_LIMIT: Duration = Duration::from_secs(280);
+
+/// 쌓인 글을 화면 조각으로 묶는 박자(스펙 「01b — 스트리밍」).
+const CHUNK_BEAT: Duration = Duration::from_millis(33);
+
+/// 호스트가 내보내는 것 — 엔진 상태와 Thread의 기록 줄 · 흐르는 글 · 대기 줄 · 목록 요약.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostEvent {
-    /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 엔진을 확인할 때, Runtime이 로그인을 요구할 때,
-    /// 로그인 명령이 돌고 끝날 때 나간다(three-axes 티켓 12).
+    /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 빠진 것. 엔진을 확인할 때, 세션을 열다 못 찾았을 때, Runtime이 로그인을 요구할 때
+    /// 나간다(three-axes 티켓 12 · restart 01c-9).
     Engine(EngineState),
     /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이다(v1 티켓 04). 화면은 Thread를 이것 하나로 그린다.
     ThreadRecord { thread: String, line: RecordLine },
-    /// Thread 참여자 하나의 Session의 대기 줄 바뀜 — 그 대기 줄 전체.
-    ThreadQueue { thread: String, who: String, queue: Vec<QueuedMessage> },
-    /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 참여자가 늘었다(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
+    /// 흐르는 글 한 조각 — 기록하지 않는다. 그 흐름의 기록 줄보다 늘 먼저 나간다.
+    ThreadChunk { thread: String, chunk: FlowChunk },
+    /// Thread의 Session의 대기 줄 바뀜 — 그 대기 줄 전체.
+    ThreadQueue { thread: String, queue: Vec<QueuedMessage> },
+    /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 이름 · 읽은 자리(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
     ThreadList(atelier_core::ThreadSummary),
     /// Work 하나에서 지금 쓰는 중인 문서들이 바뀜 — 그 Work의 목록 전체(v1 티켓 34 · §12). spec 폴더 안 파일에 편집 도구가 도는
-    /// 동안이다. Work 카드의 문서 줄이 파란 점과 쓰는 Agent의 이름을 세운다.
+    /// 동안이다. Work 카드의 문서 줄이 파란 점을 세운다.
     WorkWriting { work: String, writing: Vec<DocWriting> },
 }
 
@@ -98,8 +111,14 @@ pub struct HostBuilder {
     emit: Arc<Emit>,
     login_shell_limit: Duration,
     open_limit: Option<Duration>,
+    card_limit: Duration,
     thread_tools: Option<TranslatorCommand>,
+    runtime_mark: Option<Arc<MintMark>>,
 }
+
+/// 채팅 id → 그 채팅의 Runtime에 심을 표식의 값([`crate::RUNTIME_KEY_ENV`]). 앱이 준다 — 값의 모양(이 실행의 세대와 채팅 id)은 그것을 읽는
+/// 앱의 수집이 정한다(`processes::runtime_key`). 엔진은 변수 이름만 안다.
+pub(crate) type MintMark = dyn Fn(&str) -> String + Send + Sync;
 
 impl HostBuilder {
     /// Thread 도구 중계 서버 명령(v1 티켓 15 · S12) — 앱에서는 `current_exe` + `thread-tools`, 검사에서는 중계 서버 시험 bin이다.
@@ -107,6 +126,14 @@ impl HostBuilder {
     /// Session에 Thread 도구가 없다.
     pub fn thread_tools(mut self, relay: TranslatorCommand) -> Self {
         self.thread_tools = Some(relay);
+        self
+    }
+
+    /// **Runtime에 표식을 심는다**(restart 03-7) — 채팅의 Runtime을 띄울 때마다 env에 [`crate::RUNTIME_KEY_ENV`] = `mint(채팅 id)`를
+    /// 심는다. Runtime의 자손이 물려받아 앱의 `Processes`가 그 채팅으로 묶고, 앱을 끌 때 · 다음 실행의 시작 정리가 그것으로 끝낸다. 주지
+    /// 않으면 심지 않는다(검사의 호스트). 어느 쪽이든 로그인 env의 남의 표식은 넘기지 않는다(`login_env::AgentEnv`).
+    pub fn mark_runtimes(mut self, mint: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
+        self.runtime_mark = Some(Arc::new(mint));
         self
     }
 
@@ -122,6 +149,12 @@ impl HostBuilder {
         self
     }
 
+    /// Codex 채팅에서 카드로 사람을 기다리는 앱 기능 도구의 한도. 기본은 280초다 — 검사에서는 줄여도 된다.
+    pub fn card_limit(mut self, limit: Duration) -> Self {
+        self.card_limit = limit;
+        self
+    }
+
     pub fn build(self) -> ConversationHost {
         ConversationHost(Arc::new(HostCore {
             logins: LoginDesk::new(Arc::clone(&self.emit)),
@@ -131,10 +164,12 @@ impl HostBuilder {
             emit: self.emit,
             login_shell_limit: self.login_shell_limit,
             open_limit: self.open_limit,
+            card_limit: self.card_limit,
             login_env: Mutex::new(None),
             revivals: Mutex::new(HashMap::new()),
             threads: thread::Threads::default(),
             thread_tools: self.thread_tools,
+            runtime_mark: self.runtime_mark,
         }))
     }
 }
@@ -173,13 +208,15 @@ pub struct HostCore {
     emit: Arc<Emit>,
     login_shell_limit: Duration,
     open_limit: Option<Duration>,
+    /// Codex 채팅의 카드 한도([`CODEX_CARD_LIMIT`]).
+    card_limit: Duration,
     /// S7 — 로그인 env는 호스트가 도는 동안 한 번 읽어 메모리에 쥔다. 「다시 확인」만 다시 읽는다.
     /// 기록하지 않는다 — 비밀이 기록에 남지 않게(워크플로 S37).
     ///
     /// 읽는 동안 잠금을 쥔다. 두 엔진 확인이 함께 와도 셸은 한 번만 뜨고, 뒤의 것이 앞의 결과를 쓴다.
     login_env: Mutex<Option<AgentEnv>>,
     /// Session마다 띄우기(되살리기 · 다시 띄우기 · 참여)를 하나씩 세우는 잠금 — 함께 온 보내기 둘이 Runtime을 둘 띄우지 않고,
-    /// 같은 Agent를 멘션한 말 둘이 엇갈려도 한 번만 들어오게(three-axes 티켓 10 · v1 티켓 13). 설정 바꾸기도 되살리기의 끝을 이것으로
+    /// 말 둘이 엇갈려도 한 번만 들어오게(three-axes 티켓 10 · v1 티켓 13). 설정 바꾸기도 되살리기의 끝을 이것으로
     /// 기다린다. 잠금 차례의 맨 바깥이다 — 이 문 → 설정 → Session 표 → Session의 대화(`state`) → 기록. 문의 이름으로 찾는다.
     revivals: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 Session과 도는 로그인 명령을 쥔다(three-axes 티켓 12).
@@ -188,15 +225,21 @@ pub struct HostCore {
     threads: thread::Threads,
     /// Thread 도구 중계 서버 명령(v1 티켓 15) — 없으면 Thread의 Session에 Thread 도구를 싣지 않는다.
     thread_tools: Option<TranslatorCommand>,
+    /// Runtime에 심을 표식을 짓는 것(restart 03-7 · [`HostBuilder::mark_runtimes`]) — 없으면 표식을 심지 않는다.
+    runtime_mark: Option<Arc<MintMark>>,
 }
 
 /// Session 하나의 기록과 턴의 상태. 런타임의 sink가 함께 쥔다 — 받은 것은 sink가 곧바로 적는다.
 ///
-/// 잠금 순서는 늘 `state` → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고, 같은 잠금 안에서 대기 줄의 다음 말을 보낸다 — 그래야
+/// 잠금 순서는 늘 `state` → 조각 → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고, 같은 잠금 안에서 대기 줄의 다음 말을 보낸다 — 그래야
 /// 다음 말의 `sent` 줄이 턴 끝 줄보다 앞에 서지 않고, 그 사이에 온 보내기가 대기 줄을 앞지르지 못한다.
 struct Conv {
     recorder: Recorder,
     state: Mutex<ConvState>,
+    /// 쌓이는 글 조각(restart 01b) — `state`와 따로 쥔다. 권한 줄은 `state`를 쥐지 않고 적는데 그 앞에 쌓인 글을 써야 한다.
+    chunks: Mutex<Chunks>,
+    /// 조각이 쌓였다고 박자에 알린다([`pace_chunks`]). 놓이면 박자도 끝난다.
+    pushed: Sender<()>,
     /// 턴 도중에 Runtime이 로그인을 요구하면 그 Session을 로그인 창구에 쥐게 한다(three-axes 티켓 12).
     login: LoginWatch,
     /// 설정 바꾸기를 하나씩 세운다 — 엔진에 넣은 차례와 `thread.json`에 남는 차례가 엇갈리지 않게(three-axes 티켓 09). `state`와
@@ -221,8 +264,8 @@ struct ConvState {
 /// 변환기가 표시한 턴 밖 턴의 시작 · 끝(three-axes S4) — `session_info_update`의 `_meta.atelier.outOfTurn`.
 enum OutOfTurn {
     Started,
-    /// 끝 — 몸은 `session/prompt`의 답과 같은 꼴(`stopReason` · `_meta`)이다.
-    Ended(Value),
+    /// 끝 — 몸은 `session/prompt`의 답(`stopReason` · `_meta`)이나 오류(`{code, message, data}`)와 같은 꼴이다.
+    Ended(Result<Value, Value>),
 }
 
 impl OutOfTurn {
@@ -234,7 +277,7 @@ impl OutOfTurn {
         let mark = &update["_meta"]["atelier"]["outOfTurn"];
         match mark["state"].as_str()? {
             "started" => Some(OutOfTurn::Started),
-            "ended" => Some(OutOfTurn::Ended(mark["response"].clone())),
+            "ended" => Some(OutOfTurn::Ended(mark.get("error").cloned().map_or_else(|| Ok(mark["response"].clone()), Err))),
             _ => None,
         }
     }
@@ -256,7 +299,12 @@ impl ConvState {
 
 impl Conv {
     fn new(recorder: Recorder, login: LoginWatch, vanish: VanishWatch) -> Arc<Self> {
-        Arc::new(Self { recorder, state: Mutex::new(ConvState::fresh()), login, setting: Mutex::new(()), vanish })
+        let state = Mutex::new(ConvState::fresh());
+        let (pushed, beats) = mpsc::channel();
+        let conv = Arc::new(Self { recorder, state, chunks: Mutex::default(), pushed, login, setting: Mutex::new(()), vanish });
+        let weak = Arc::downgrade(&conv);
+        std::thread::spawn(move || pace_chunks(weak, beats));
+        conv
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -277,6 +325,54 @@ impl Conv {
         order.seat(ConvHands { conv: self, turns: turns.as_ref() })
     }
 
+    fn lock_chunks(&self) -> MutexGuard<'_, Chunks> {
+        self.chunks.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 조각 하나를 받는다 — 턴 안이면 쌓고, 턴 밖이면 곧바로 쓴다. 꺼낸 Session도 쓴다: 끈 Session의 쌓인 글을 비울 자리는 끄기 하나뿐이라
+    /// 그 뒤에 쌓으면 잃는다. 그래서 턴을 보고 쌓는 사이 `state`를 쥔다.
+    fn chunk(&self, raw: Value) -> Result<(), records::RecordError> {
+        let state = self.lock_state();
+        if !state.order.turning() || state.taken {
+            self.spill();
+            return self.recorder.update(raw);
+        }
+        let mut chunks = self.lock_chunks();
+        let written = chunks.push(raw).map_or(Ok(()), |line| self.recorder.update(line));
+        // 받는 쪽은 Session이 사는 동안 산다.
+        let _ = self.pushed.send(());
+        written
+    }
+
+    /// 지금 흐르는 글 — 받은 글 전부다.
+    fn flowing(&self) -> Option<FlowChunk> {
+        self.lock_chunks().flowing()
+    }
+
+    /// 쌓인 글의 보내지 않은 몫을 화면 조각으로 낸다. 내는 동안 잠금을 쥔다 — 그 흐름의 기록 줄이 조각을 앞서지 않게.
+    fn send_chunk(&self) {
+        if let Some(chunk) = self.lock_chunks().unsent() {
+            self.recorder.chunk(chunk);
+        }
+    }
+
+    /// 쌓인 글을 기록 줄로 쓴다. 이 줄을 쓰는 동안 잠금을 쥔다 — 다른 스레드가 비운 글보다 뒤의 줄이 앞서지 않게.
+    fn spill(&self) {
+        let mut chunks = self.lock_chunks();
+        if let Some(Err(error)) = chunks.take().map(|line| self.recorder.update(line)) {
+            eprintln!("{error}");
+        }
+    }
+
+    /// 변환기가 버리라고 한 메시지의 쌓인 글을 버리고 화면에 그 흐름을 지우는 조각을 보낸다 — claude가 그 메시지를 처음부터 다시 받는다
+    /// (restart 01b-10). 내는 동안 잠금을 쥔다 — 다음 흐름의 조각이 앞서지 않게.
+    fn discard(&self, raw: &Value) {
+        let mut chunks = self.lock_chunks();
+        if let Some(chunk) = discarded(raw).and_then(|message| chunks.discard(message)) {
+            self.recorder.chunk(chunk);
+        }
+    }
+
     /// 런타임이 넘긴 것을 기록에 적는 sink.
     fn sink(self: &Arc<Self>) -> Sink {
         let conv = Arc::clone(self);
@@ -284,7 +380,21 @@ impl Conv {
     }
 
     fn receive(&self, event: RuntimeEvent) {
+        match &event {
+            // 스펙의 비우는 때에 없는 줄은 글을 끊지 않는다 — `stderr`는 스레드가 달라 조각과 차례도 없다.
+            RuntimeEvent::Stderr(_) | RuntimeEvent::AuthStatus(_) => {}
+            // 죽음은 수신 루프 밖에서 온다 — 죽었다고 적은 뒤에 비워야 그사이 쌓인 글이 남지 않는다.
+            RuntimeEvent::Died(_) => {}
+            // 버리라는 표지는 쌓인 글을 쓰지 않고 버린다.
+            RuntimeEvent::Update(raw) if is_chunk(raw) || discarded(raw).is_some() => {}
+            _ => self.spill(),
+        }
         let written = match event {
+            RuntimeEvent::Update(raw) if is_chunk(&raw) => self.chunk(raw),
+            RuntimeEvent::Update(raw) if discarded(&raw).is_some() => {
+                self.discard(&raw);
+                Ok(())
+            }
             RuntimeEvent::Update(raw) => match OutOfTurn::of(&raw) {
                 Some(OutOfTurn::Started) => {
                     let written = self.recorder.update(raw);
@@ -292,9 +402,9 @@ impl Conv {
                     self.seat(&mut state).self_started();
                     written
                 }
-                Some(OutOfTurn::Ended(response)) => {
+                Some(OutOfTurn::Ended(result)) => {
                     let mut state = self.lock_state();
-                    self.seat(&mut state).self_ended(response)
+                    self.seat(&mut state).self_ended(result)
                 }
                 None => self.recorder.update(raw),
             },
@@ -354,6 +464,7 @@ impl Conv {
                 // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡는다.
                 let mut state = self.lock_state();
                 state.order.died();
+                self.spill();
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
@@ -365,6 +476,16 @@ impl Conv {
             // 기록이 막혀도 Session은 이어 간다 — sink는 오류를 돌려줄 곳이 없다.
             eprintln!("{error}");
         }
+    }
+}
+
+/// 화면 조각의 박자 — 조각이 쌓이면 [`CHUNK_BEAT`] 뒤에 그동안 쌓인 글을 보낸다. 쌓이는 조각이 없으면 잠들고, Session이 놓이면 끝난다.
+fn pace_chunks(conv: Weak<Conv>, pushed: Receiver<()>) {
+    while pushed.recv().is_ok() {
+        std::thread::sleep(CHUNK_BEAT);
+        while pushed.try_recv().is_ok() {}
+        let Some(conv) = conv.upgrade() else { return };
+        conv.send_chunk();
     }
 }
 
@@ -428,10 +549,6 @@ impl TurnHands for ConvHands<'_> {
         self.conv.recorder.sent(text, quote, attachments, prompt, send_now)
     }
 
-    fn called(&mut self, call: &thread::Assignment, text: &str, prompt: &[Value]) -> Result<(), records::RecordError> {
-        self.conv.recorder.call(call.from(), call.started(text, prompt))
-    }
-
     /// 엔진을 가리지 않는다 — 턴 도중의 `-32000`도 `session/new`의 것과 같은 로그인 필요 줄이다(three-axes 티켓 12). Session의
     /// 잠금을 쥔 채 적고 쥐어 둔다 — 그 사이에 보내기가 끼지 않고, 대기 줄도 로그인을 기다린다.
     fn login_lost(&mut self) -> Result<(), records::RecordError> {
@@ -470,19 +587,19 @@ impl TurnHands for ConvHands<'_> {
 /// sink 안이라 호스트를 부를 수 없으므로 창구를 함께 쥔다 — 창구는 Session의 잠금을 쥔 채 불러도 된다.
 struct LoginWatch {
     agent: Agent,
-    /// 다시 띄울 자리 — Thread 참여자의 Session이다.
-    waiter: Waiter,
+    /// 다시 띄울 Session의 Thread.
+    thread: String,
     desk: Arc<LoginDesk>,
 }
 
 impl LoginWatch {
     fn required(&self) {
-        self.desk.login_required(self.agent, self.waiter.clone());
+        self.desk.login_required(self.agent, self.thread.clone());
     }
 
     /// 그 Session이 로그인을 기다리면 그 엔진 — 그동안은 대기 줄이 가지 않는다(S13의 걸림).
     fn waiting(&self) -> Option<Agent> {
-        self.desk.waiting_for(&self.waiter)
+        self.desk.waiting_for(&self.thread)
     }
 }
 
@@ -499,7 +616,9 @@ fn mark_taken<'a>(taken: impl IntoIterator<Item = &'a Conv>) {
 /// 하나마다 1초씩 줄을 세우면 N초가 된다.
 fn end_together(mut agents: Vec<(&mut AgentProcess, &Conv)>) {
     let deadline = Instant::now() + runtime::SHUTDOWN_GRACE;
-    for (agent, _) in agents.iter_mut() {
+    for (agent, conv) in agents.iter_mut() {
+        // 끈 Session에는 죽음도 턴 끝도 오지 않는다 — 쌓인 글은 여기서 쓴다.
+        conv.spill();
         agent.begin_shutdown();
     }
     for (agent, conv) in agents {
@@ -541,8 +660,8 @@ pub enum HostError {
     PermissionClosed { thread: String, request: String },
     /// 그 권한 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
     PermissionOption { request: String, option: String },
-    /// 「다시 묻지 않기」를 줄 수 없는 답(v1 티켓 24) — 판정이 그 물음에 허락을 내지 않았거나(`ask_before`가 물었다 · 계획 넘어가기 ·
-    /// 그 밖의 도구) 허락하는 선택지가 아니다. 아무것도 적지 않았고 요청은 그대로 걸려 있다.
+    /// 「다시 묻지 않기」를 줄 수 없는 답(v1 티켓 24) — 판정이 그 물음에 허락을 내지 않았거나(앱 경계가 물었다 · 계획 넘어가기 · 그 밖의
+    /// 도구) 허락하는 선택지가 아니다. 아무것도 적지 않았고 요청은 그대로 걸려 있다.
     PermissionNoGrant { request: String },
     /// 질문 카드의 요청에 권한 답을 주었다(v1 티켓 26) — 질문은 질문의 답(물음마다의 답 · 나중에)으로만 닫는다. 요청은 그대로 걸려 있다.
     NotPermission { request: String },
@@ -562,29 +681,15 @@ pub enum HostError {
     BadAttachment(String),
     /// Thread 폴더를 읽거나 쓰지 못했다.
     Record(String),
-    /// 로그인 명령을 띄우지 못했다.
+    /// 터미널에서 칠 로그인 명령을 짓지 못했다 — 찾은 실행 파일의 경로를 글로 읽지 못했다(restart 01c-10).
     Login(String),
     /// 그 id의 Thread가 없다(v1 티켓 04) — 폴더가 없거나 id의 꼴이 아니다.
     ThreadNotFound(String),
-    /// 그 Agent의 정의 파일이 깨졌다(v1 구현 스펙 §6 「깨진 파일」) — 부를 수 없다. 까닭은 사람이 읽을 글이다.
-    AgentBroken { handle: String, reason: String },
-    /// 그 Thread에 그 handle의 참여자가 없다.
-    ParticipantNotFound { thread: String, handle: String },
-    /// 멘션한 이름(`call` — @ 뒤)이 이 Thread의 범위에 없다(v1 구현 스펙 §6 범위) — Work 없는 Thread는 Library만, Work에 이은
-    /// Thread는 Library와 그 Work의 Project들이다. 보내기 전에 거절한다(v1 티켓 13).
-    AgentNotFound { call: String, work: Option<String> },
-    /// 멘션한 맨 이름이 Project 여럿에 있다 — 붙인 이름(`calls`) 가운데 하나로 불러야 한다(v1 티켓 11).
-    AgentAmbiguous { call: String, calls: Vec<String> },
-    /// 멘션한 Agent와 같은 handle의 다른 Agent가 이미 이 Thread에 있다 — Session은 (Thread, handle)마다 하나다.
-    HandleTaken { call: String, handle: String },
     /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
     BadTitle,
-    /// 「다시 맡기기」로 부를 수 없다(v1 티켓 17) — `tools.agents`에 없음 · 범위 밖 · 호출 고리 안(§8 「부를 수 있나」). 까닭은
-    /// Agent 부르기 도구가 돌려주는 글 그대로다.
-    CallRefused(String),
     /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
     QuestionClosed { thread: String, request: String },
-    /// 「Work 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
+    /// 「작업공간 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
     /// 적지 않았고 카드는 그대로 서 있다.
     WorkNotCreated(String),
     /// 읽기만 된 Thread — 이은 Work가 보관됐거나 지워졌다(v1 티켓 38). 아무것도 적지 않았다.
@@ -592,8 +697,10 @@ pub enum HostError {
     /// 「붙이고 고치기」로 Project를 Work에 붙이지 못했다(v1 티켓 32) — 까닭은 core의 글(등록 · git · baseBranch)이다. 아무것도 적지
     /// 않았고 Work 밖 Project 카드는 그대로 서 있다.
     ProjectNotAttached(String),
-    /// 붙이려는 Space의 파일이 없다(03 구현 스펙 §9) — 지웠거나 slug가 틀렸다. 아무것도 적지 않았다.
-    SpaceNotFound(String),
+    /// 붙이려는 Service의 파일이 없다(03 구현 스펙 §9) — 지웠거나 slug가 틀렸다. 아무것도 적지 않았다.
+    ServiceNotFound(String),
+    /// 첫 말 전에 고른 Project가 등록되어 있지 않다 — 그사이 뺐거나 slug가 틀렸다. 아무것도 세우지 않았다.
+    ProjectNotFound(String),
     /// Project 추가 카드의 답으로 Project를 등록하지 못했다(03 티켓 12) — 까닭은 core의 글(git이 실패했다 …)이거나 카드에 없던 답이다.
     /// 아무것도 적지 않았고 카드는 그대로 서 있다.
     ProjectNotAdded(String),
@@ -602,7 +709,7 @@ pub enum HostError {
 impl fmt::Display for HostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HostError::WorkNotFound(work) => write!(f, "work를 찾을 수 없습니다: {work}"),
+            HostError::WorkNotFound(work) => write!(f, "작업공간을 찾을 수 없습니다: {work}"),
             HostError::LoginShell(error) => write!(f, "{error}"),
             HostError::EngineMissing { agent, missing } => {
                 let names: Vec<&str> = missing.iter().map(|program| program.name).collect();
@@ -615,7 +722,7 @@ impl fmt::Display for HostError {
                 write!(f, "이미 닫힌 권한 요청입니다. 답했거나 거둬진 요청에는 답할 수 없습니다")
             }
             HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
-            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「늘 허용」으로 허락할 수 없어요 — Policy가 매번 묻게 한 일이에요"),
+            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 다시 묻지 않게 허락할 수 없어요 — 매번 물어야 하는 일이에요"),
             HostError::NotPermission { .. } => write!(f, "질문에는 답이나 「나중에」로 답해 주세요"),
             HostError::NotQuestion { .. } => write!(f, "질문이 아닌 요청이에요 — 승인 카드에서 골라 주세요"),
             HostError::LoginRequired { agent, .. } => {
@@ -626,31 +733,15 @@ impl fmt::Display for HostError {
             HostError::BadQuote(reason) | HostError::BadAttachment(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
-            HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없어요: {thread}"),
-            HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했어요: {reason}"),
-            HostError::ParticipantNotFound { thread, handle } => write!(f, "Thread {thread}에 @{handle} Agent가 없어요"),
-            HostError::AgentNotFound { call, work: None } => {
-                write!(f, "@{call} — 이 Thread에서 부를 수 없는 Agent예요. Work 없는 Thread에서는 Library의 Agent만 불러요")
-            }
-            HostError::AgentNotFound { call, work: Some(work) } => write!(
-                f,
-                "@{call} — 이 Thread에서 부를 수 없는 Agent예요. Library와 Work `{work}`의 Project에 있는 Agent만 불러요"
-            ),
-            HostError::AgentAmbiguous { call, calls } => {
-                let calls: Vec<String> = calls.iter().map(|call| format!("@{call}")).collect();
-                write!(f, "@{call} — 같은 handle이 Project 여럿에 있어요. {} 가운데 하나로 불러 주세요", calls.join(" · "))
-            }
-            HostError::HandleTaken { call, handle } => {
-                write!(f, "@{call} — 이 Thread에는 이미 다른 @{handle} Agent가 들어와 있어요")
-            }
-            HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
-            HostError::CallRefused(reason) => write!(f, "{reason}"),
+            HostError::ThreadNotFound(thread) => write!(f, "채팅을 찾을 수 없어요: {thread}"),
+            HostError::BadTitle => write!(f, "채팅 이름이 비었어요"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
-            HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
-            HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 Work의 Thread는 읽기만 돼요"),
-            HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 Work의 Thread는 읽기만 돼요"),
+            HostError::WorkNotCreated(reason) => write!(f, "작업공간을 만들지 못했어요 — {reason}"),
+            HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 작업공간의 채팅은 읽기만 돼요"),
+            HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 작업공간의 채팅은 읽기만 돼요"),
             HostError::ProjectNotAttached(reason) => write!(f, "Project를 붙이지 못했어요 — {reason}"),
-            HostError::SpaceNotFound(slug) => write!(f, "Space를 찾지 못했어요: {slug}"),
+            HostError::ServiceNotFound(slug) => write!(f, "Service를 찾지 못했어요: {slug}"),
+            HostError::ProjectNotFound(slug) => write!(f, "Project를 찾지 못했어요: {slug}"),
             HostError::ProjectNotAdded(reason) => write!(f, "Project를 추가하지 못했어요 — {reason}"),
         }
     }
@@ -678,16 +769,19 @@ impl ConversationHost {
             emit: Arc::new(emit),
             login_shell_limit: login_env::DEFAULT_LIMIT,
             open_limit: None,
+            card_limit: CODEX_CARD_LIMIT,
             thread_tools: None,
+            runtime_mark: None,
         }
     }
 
     /// 엔진 확인 — 그 엔진을 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾고, 찾았으면 로그인돼 있는지 엔진에게 묻는다
-    /// (three-axes 티켓 12). `reread`는 안내 카드의 「다시 확인」이다. 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 env를 새로
-    /// 읽는다. v1의 화면은 Claude만 묻는다(S3) — Codex를 찾는 길은 크레이트에 남는다.
+    /// (three-axes 티켓 12). `reread`는 안내 카드의 「다시 찾기」 · 「다시 확인」이다. 설치하거나 터미널에서 로그인한 뒤 앱을 다시 켜지
+    /// 않고 이어 가도록 로그인 env를 새로 읽는다.
     ///
     /// - 답은 엔진 상태 이벤트로도 나간다 — 같은 엔진을 쓰는 다른 Thread의 카드도 따라 바뀐다.
-    /// - 로그인돼 있으면 그 엔진의 로그인을 기다리던 Session을 다시 띄운다 — 터미널에서 로그인하고 「다시 확인」을 누른 때다.
+    /// - 로그인돼 있으면 그 엔진의 로그인을 기다리던 Session을 다시 띄운다(`relaunch_waiting`) — 터미널에서 로그인하고 「다시 확인」을
+    ///   누른 때다(restart 01c-10 — 앱 안 로그인은 없다).
     ///
     /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다리고(한도 10초), 로그인을 묻는다(한도 10초).
     pub fn check_engine(&self, agent: Agent, reread: bool) -> Result<EngineCheck, LoginShellError> {
@@ -700,6 +794,17 @@ impl ConversationHost {
         Ok(check)
     }
 
+    /// 터미널에서 칠 그 엔진의 로그인 명령 한 줄(restart 01c-10 — 「터미널에서 로그인」). 로그인 셸의 PATH에서 찾은 실행 파일이라, 앱이
+    /// 확인하는 그 프로그램으로 로그인한다. 못 찾으면 그 엔진의 「못 찾음」을 알린다 — 카드가 「설치 안내」로 바뀐다. 로그인은 묻지 않는다.
+    ///
+    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
+    pub fn login_command(&self, agent: Agent) -> Result<String, HostError> {
+        let env = self.login_env(false)?;
+        let programs = self.find_programs(agent, &env)?;
+        login::login_command(agent, &programs)
+            .ok_or_else(|| HostError::Login(format!("{}의 로그인 명령을 짓지 못했습니다", agent.display_name())))
+    }
+
     /// 로그인 셸의 PATH — Runtime 밖의 도구(Work의 PR을 읽는 `gh`, v1 티켓 33)도 Runtime처럼 내 터미널과 같은 자리에서
     /// 찾게 한다. Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보인다. 쥔 로그인 env를 쓰고, 셸을 다시 띄우지 않는다.
     /// 읽지 못하면 없다 — 부르는 쪽이 앱의 PATH로 물러선다.
@@ -709,59 +814,11 @@ impl ConversationHost {
         self.login_env(false).ok()?.path().map(OsString::from)
     }
 
-    /// 로그인 시작 — 그 엔진의 로그인 명령(`claude auth login` · `codex login`)을 TTY 없이 새 세션에 띄운다(three-axes
-    /// 결정 30). 명령이 브라우저를 스스로 연다. 기다리지 않는다 — 진행은 엔진 상태 이벤트로 온다:
-    ///
-    /// 1. 도는 중(링크 없음) → 명령이 `https://` URL을 찍으면 도는 중(링크) — 「링크 복사」의 값이다.
-    /// 2. 명령이 끝나면 확인을 저절로 다시 돌고 「끝남」과 그 답(됨 · 안 됨)을 알린다.
-    /// 3. 됨이면 그 엔진의 로그인을 기다리던 Session을 다시 띄운다. 기록은 그대로다.
-    ///
-    /// 엔진마다 한 번에 하나다 — 이미 돌면 새로 띄우지 않고 지금의 진행을 다시 알린다. 로그인 명령의 끝을 지켜보는 스레드가
-    /// 호스트를 약하게 쥐므로 `Arc`로 부른다.
-    ///
-    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
-    pub fn start_login(self: Arc<Self>, agent: Agent) -> Result<(), HostError> {
-        let env = self.login_env(false)?;
-        let programs = find_programs(agent, &env)?;
-        let host = Arc::downgrade(&self);
-        self.logins
-            .start(agent, &programs, &env, &login::quiet_place(&env, &self.data_root), move |ended| {
-                if let Some(host) = host.upgrade() {
-                    host.login_ended(agent, ended);
-                }
-            })
-            .map_err(HostError::Login)
-    }
-
-    /// 로그인 취소 — 도는 로그인 명령의 프로세스 그룹에 SIGTERM을 보낸다(SIGINT가 아니다). 1초 안에 끝나지 않으면 그룹째
-    /// SIGKILL이다. 「끝남(취소)」은 엔진 상태 이벤트로 온다. 도는 것이 없으면 아무 일도 하지 않는다.
-    ///
-    /// 막히는 호출이다 — 최대 1초 남짓.
-    pub fn cancel_login(&self, agent: Agent) {
-        self.logins.cancel(agent);
-    }
-
-    /// 로그인 명령이 끝났다 — 확인을 다시 돌고 「끝남」을 알리고, 됨이면 기다리던 Session을 다시 띄운다. 끝을 지켜보는
-    /// 스레드에서 돈다.
-    fn login_ended(&self, agent: Agent, ended: LoginProgress) {
-        let (found, logged_in) = match self.login_env(false) {
-            Ok(env) => match self.engine_check(agent, &env) {
-                EngineCheck::Found { logged_in, .. } => (true, Some(logged_in)),
-                EngineCheck::Missing { .. } => (false, None),
-            },
-            Err(_) => (false, None),
-        };
-        self.logins.announce(EngineState { agent, found, logged_in, login: Some(ended) });
-        if logged_in == Some(true) {
-            self.relaunch_waiting(agent);
-        }
-    }
-
     /// 그 엔진의 로그인을 기다리던 Session들을 다시 띄운다 — 같은 기록에 이어 적고, 되살리기의 길(resume → load → 새로)로 연다.
     /// 막히는 호출이다 — Session마다 세션이 열릴 때까지 기다린다.
     fn relaunch_waiting(&self, agent: Agent) {
-        for Waiting { waiter, .. } in self.logins.take_waiting(agent) {
-            if let Err(error) = self.relaunch_session(&waiter.thread, &waiter.handle) {
+        for Waiting { thread, .. } in self.logins.take_waiting(agent) {
+            if let Err(error) = self.relaunch_session(&thread) {
                 eprintln!("{error}");
             }
         }
@@ -771,6 +828,15 @@ impl ConversationHost {
     fn revival_gate(&self, gate: &str) -> Arc<Mutex<()>> {
         let mut gates = self.revivals.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         Arc::clone(gates.entry(gate.to_owned()).or_default())
+    }
+
+    /// 세션을 열 Runtime의 실행 파일들을 찾는다 — 못 찾으면 그 엔진의 「못 찾음」을 빠진 것과 함께 알린다(restart 01c-9 — 선 채팅은 세션을 열 때
+    /// 확인한다). 화면이 그 Runtime의 채팅에 설치 안내 카드를 세운다. 로그인은 묻지 않는다 — 열 때 Runtime이 로그인 필요로 답한다.
+    fn find_programs(&self, agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundProgram>, HostError> {
+        discovery::look_up(agent, env.path()).map_err(|missing| {
+            self.logins.announce_check(agent, &EngineCheck::Missing { missing: missing.clone() });
+            HostError::EngineMissing { agent, missing }
+        })
     }
 
     /// 찾고, 찾았으면 로그인을 묻는다.
@@ -786,12 +852,13 @@ impl ConversationHost {
 
     /// 앱 종료 확인 창의 셈(three-axes 티켓 23 · S13 · v1 구현 스펙 S40) — 떠 있는 Session 모두에서 턴이 도는 Session · 대기 중인
     /// 말 · 답하지 않은 권한 요청을 센다. 셈의 원천이 화면이 아니라 여기인 것은, 대기 줄이 이 메모리에만 있고 지금 화면이 열지 않은
-    /// Thread의 Session도 함께 꺼지기 때문이다. 떠 있지 않은 Session(다시 켠 뒤)은 셀 것이 없다. 기다리지 않는다.
+    /// Thread의 Session도 함께 꺼지기 때문이다. 떠 있지 않은 Session(다시 켠 뒤)은 셀 것이 없다. 다시 열지 못해 대기 줄째 둔 대화는
+    /// 그 대기 줄을 센다(restart 01b-6). 기다리지 않는다.
     ///
     /// Runtime이 스스로 이어 간 턴(three-axes 티켓 16 · S4)도 「턴이 도는 Session」이다 — 끄면 그 턴도 잃는다.
     pub fn quit_counts(&self) -> QuitCounts {
         let mut counts = QuitCounts::default();
-        for conv in self.threads.live_convs() {
+        for conv in self.threads.held_convs() {
             let state = conv.lock_state();
             counts.running += usize::from(state.order.turning());
             counts.queued += state.order.queued();
@@ -806,12 +873,9 @@ impl ConversationHost {
     /// 모든 Session의 stdin을 **한꺼번에** 닫고 1초를 **한 번만** 기다린 뒤 그룹들을 SIGKILL한다 — Session마다 1초씩 줄을 세우면
     /// N초가 된다.
     pub fn shut_down(&self) {
-        // 로그인 명령도 끈다 — SIGTERM을 먼저 보내 두고, Session들을 끄는 1초 뒤에 남은 것을 SIGKILL한다.
-        self.logins.begin_close();
         let mut sessions = self.threads.drain_sessions();
         mark_taken(sessions.iter().map(|session| &*session.conv));
         end_together(sessions.iter_mut().map(|session| (&mut session.agent, &*session.conv)).collect());
-        self.logins.finish_close();
     }
 
     /// 쥔 로그인 env. 없거나 다시 읽으라면 셸을 띄워 읽는다. 다시 읽기가 실패하면 쥔 것도 버린다 —
@@ -838,8 +902,8 @@ impl ConversationHost {
         Ok(WorkAt { meta, places })
     }
 
-    fn login_watch(&self, agent: Agent, waiter: Waiter) -> LoginWatch {
-        LoginWatch { agent, waiter, desk: Arc::clone(&self.logins) }
+    fn login_watch(&self, agent: Agent, thread: String) -> LoginWatch {
+        LoginWatch { agent, thread, desk: Arc::clone(&self.logins) }
     }
 }
 
@@ -869,26 +933,19 @@ fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
     })
 }
 
-/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이 · 지시문 파일 · 내장 도구 · 금지. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
+/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
 #[derive(Debug, Clone, Default)]
 struct ClaudeChoice {
-    /// 권한 모드 — Thread의 Session은 늘 싣는다: `default`, 「계획만」이면 `plan`(v1 구현 스펙 S17 · v1 티켓 22).
+    /// 권한 모드 — Thread의 Session은 늘 싣는다: `default`, 「계획」이면 `plan`(v1 구현 스펙 S17 · v1 티켓 22).
     mode: Option<String>,
     model: Option<String>,
     effort: Option<String>,
-    /// 지시문 파일 — Thread 참여자의 정의 스냅숏 본문(v1 구현 스펙 S4).
-    instructions: Option<PathBuf>,
-    /// 정의 스냅숏의 `tools.builtin` — 추상 이름 그대로다. `None`이면 기본 도구 전부다(§3).
-    tools: Option<Vec<atelier_core::BuiltinTool>>,
-    /// 정의 스냅숏의 `policy.forbid` — 추상 이름 · 명령 패턴 그대로다(S19).
-    forbid: Vec<String>,
 }
 
 /// Claude를 띄우는 것 — 변환기(앱에서는 이 실행 파일의 하위 모드 `acp-claude`)를 로그인 env 그대로 띄운다. 변환기가
-/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이 · 지시문 파일 ·
-/// 내장 도구 · 금지)은 `session/new`의 `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지
-/// 않는다(three-axes 결정 16). 되살릴 때(`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다
-/// (v1 티켓 03 · 12). 도구 · 금지는 추상 이름 그대로 싣고, Claude Code의 이름으로 옮기는 일은 변환기가 한다(v1 티켓 12).
+/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이)은 `session/new`의
+/// `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지 않는다(three-axes 결정 16). 되살릴 때
+/// (`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다(v1 티켓 03).
 ///
 /// 변환기는 앱과 같은 판이어야 연다 — 다르면 「판 어긋남」으로 열기 실패다(워크플로 S4).
 fn claude_launch(
@@ -910,15 +967,6 @@ fn claude_launch(
     if let Some(effort) = &choice.effort {
         atelier.insert("effort".into(), json!(effort));
     }
-    if let Some(instructions) = &choice.instructions {
-        atelier.insert("instructionsFile".into(), json!(instructions));
-    }
-    if let Some(tools) = &choice.tools {
-        atelier.insert("builtinTools".into(), json!(tools));
-    }
-    if !choice.forbid.is_empty() {
-        atelier.insert("forbid".into(), json!(choice.forbid));
-    }
     let launch = Launch {
         program: translator.program.clone(),
         args: translator.args.clone(),
@@ -935,15 +983,25 @@ fn claude_launch(
     (launch, terms)
 }
 
-/// 그 엔진을 띄우는 데 드는 실행 파일들 — 로그인 셸의 PATH에서 찾는다. 못 찾으면 빠진 것과 설치 명령을 싣고 실패한다.
-fn find_programs(agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundProgram>, HostError> {
-    discovery::look_up(agent, env.path()).map_err(|missing| HostError::EngineMissing { agent, missing })
+/// Codex를 띄우는 것(restart 스펙 「01c — Codex」 연결) — 찾은 `codex-acp`를 로그인 env 그대로, 인자 없이 띄우고 찾은 `codex`를
+/// `CODEX_PATH`로 준다(three-axes 결정 26 — `codex-acp`가 사용자의 `codex`를 돌린다). 앱이 짓는 변환기가 아니라 판을 맞춰 보지 않고, 세션을 여는
+/// 요청에 Atelier의 값(`_meta`)을 싣지 않는다 — ACP 표준 값(`cwd` · `additionalDirectories` · `mcpServers`)만 간다. 모드 · 모델 · 생각 깊이는 연 뒤에 넣는다
+/// (`thread.rs`의 `settle_codex`).
+fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &SessionPlace) -> (Launch, OpenTerms) {
+    let found = |name: &str| {
+        programs.iter().find(|program| program.name == name).map(|program| program.path.clone()).expect("찾은 것에 codex 셋이 있다")
+    };
+    let mut vars = env.vars().clone();
+    vars.insert(OsString::from("CODEX_PATH"), found("codex").into_os_string());
+    let launch = Launch { program: found("codex-acp"), args: Vec::new(), env: vars, cwd: place.cwd.clone() };
+    (launch, OpenTerms::default())
 }
+
 
 /// 되살리기를 언제 하나(three-axes 티켓 10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Revive {
-    /// 떠 있지 않거나 죽었을 때만 — 보내기.
+    /// 떠 있지 않거나 죽었을 때만 — 보내기 · 다시 잇기. 산 턴을 끊지 않는다.
     IfNotRunning,
     /// 떠 있어도 끄고 다시 — 로그인이 「됨」으로 바뀐 뒤(three-axes 티켓 12) · 생각 깊이를 바꾼 뒤(v1 티켓 05).
     EvenIfRunning,
@@ -953,12 +1011,14 @@ enum Revive {
 }
 
 /// 사람이 바꾸는 Session의 설정 하나 — Runtime에 넣는 요청과 `config` 줄이 짝을 이룬다. Runtime이 떠 있는 Session에 곧바로 넣는
-/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 권한 모드(「계획만」을 들고 날 때, v1 티켓 23)다. 생각 깊이는 띄울 때의 플래그로만
-/// 받는다(v1 티켓 05).
+/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 모드(Claude는 「계획」을 들고 날 때 — v1 티켓 23, Codex는 Codex 모드 — restart 01c-5)다. Claude의
+/// 생각 깊이는 띄울 때의 플래그로만 받는다(v1 티켓 05). Codex의 생각 깊이는 `configOptions`의 `reasoning_effort`라 곧바로 넣는다.
 enum Setting {
     Model(String),
-    /// claude의 권한 모드 — `default` · `plan`(S17, `AskLevel::claude_mode`).
-    Mode(&'static str),
+    /// 모드 — claude의 권한 모드(`default` · `plan`, S17 · `AskLevel::claude_mode`)이거나 Codex 모드(Codex가 `modes`로 보낸 id).
+    Mode(String),
+    /// Codex의 생각 깊이 — `configOptions`의 `reasoning_effort` 값.
+    Effort(String),
 }
 
 impl Setting {
@@ -967,6 +1027,7 @@ impl Setting {
         match self {
             Setting::Model(model) => ("session/set_config_option", json!({"configId": "model", "value": model})),
             Setting::Mode(mode) => ("session/set_mode", json!({"modeId": mode})),
+            Setting::Effort(effort) => ("session/set_config_option", json!({"configId": "reasoning_effort", "value": effort})),
         }
     }
 
@@ -975,6 +1036,16 @@ impl Setting {
         match self {
             Setting::Model(model) => json!({"model": model}),
             Setting::Mode(mode) => json!({"mode": mode}),
+            Setting::Effort(effort) => json!({"effort": effort}),
+        }
+    }
+
+    /// 안내 글의 이름과 값 — 「모드 바꾸기(workspace-write)」.
+    fn described(&self) -> String {
+        match self {
+            Setting::Model(model) => format!("모델 바꾸기({model})"),
+            Setting::Mode(mode) => format!("모드 바꾸기({mode})"),
+            Setting::Effort(effort) => format!("생각 깊이 바꾸기({effort})"),
         }
     }
 }

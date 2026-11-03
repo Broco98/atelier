@@ -3,6 +3,8 @@ import { useCanGoBack, useRouter } from "@tanstack/react-router";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
 import { Hint } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { headButton } from "./ShellHead";
 
 interface HistoryButtonProps {
   label: string;
@@ -11,8 +13,8 @@ interface HistoryButtonProps {
   children: React.ReactNode;
 }
 
-// 갈 수 없으면 옅어지고(`fg-titlebar-disabled` #cbcbcb — Codex) 눌러도 반응하지 않는다 — 눌러도 아무 일이 없는 버튼을
-// 활성처럼 보여주지 않는다 (disabled:pointer-events-none은 hover 배경까지 함께 막는다)
+// 갈 수 없으면 옅어지고(불투명도 .4 — 시안 Main의 뒤로 · 앞으로 `opacity: .4`, restart 03-12a. 한때 Codex `fg-titlebar-disabled` #cbcbcb였다)
+// 눌러도 반응하지 않는다 — 눌러도 아무 일이 없는 버튼을 활성처럼 보여주지 않는다 (disabled:pointer-events-none은 hover 배경까지 함께 막는다)
 function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProps) {
   return (
     <button
@@ -21,7 +23,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       disabled={disabled}
       aria-label={label}
       tabIndex={0}
-      className="icon-button-quiet text-fg-titlebar focus-ring disabled:pointer-events-none disabled:text-fg-titlebar-disabled"
+      className={cn(headButton(), "disabled:pointer-events-none disabled:opacity-40")}
     >
       {children}
     </button>
@@ -40,7 +42,8 @@ interface ShellControlsProps {
 }
 
 // 신호등 오른쪽에 붙는 셸 컨트롤 행 — 사이드바 토글 → 뒤로 → 앞으로 → 검색(02 구현 스펙 §3 — 순서는 지금 Atelier 그대로, 모양은
-// Codex 값: 버튼 28 · 사이 6 · 글리프 `fg-titlebar` #898a8b). 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
+// 시안 Main `.ra-tbtn`: 버튼 28 · 사이 0 · 글리프 15 `fg-secondary`, restart 03-12a — 한때 Codex 값 사이 6 · `fg-titlebar` #898a8b). 단추는 머리
+// 줄의 아이콘 단추 한 벌이다(`headButton` — 둥글기 4). 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
 //
 // **머리 줄 안에 선다**(`ShellHeadRow`의 왼쪽 칸) — 한때 `absolute`로 사이드바 맨 위 띠에 겹쳐 떴다. 자리(신호등 끝에서 16 —
 // `--titlebar-controls-left`)와 전체화면에 들고 날 때 옮겨 가는 박자는 그 칸이 든다. **창의 첫 Tab 영역이다** — 머리 줄이 DOM의 맨
@@ -108,7 +111,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
         type="button"
         onClick={onOpenSearch}
         tabIndex={0}
-        className="icon-button-quiet text-fg-titlebar focus-ring"
+        className={headButton()}
       >
         <Search className="size-3.75" />
       </Hint>

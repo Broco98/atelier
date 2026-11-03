@@ -3,7 +3,7 @@ import { Store } from "@tanstack/react-store";
 /**
  * 무엇인가를 눌러 끄는 몸짓 하나(결정 86 · UI개선 스펙 S4·S5). **HTML5 드래그가 아니라
  * 포인터 이벤트다** — WKWebView의 `dragstart`가 텍스트 선택과 섞이고, 끄는 동안 그릴 것(놓일
- * 절반의 밝아짐)을 우리가 쥐고 있어야 한다.
+ * 틈의 표시)을 우리가 쥐고 있어야 한다.
  *
  * **기능 폴더 밖에 사는 것은 import 금지 검사 둘 때문이다.** 작업 기능 폴더는 `/terminal`이
  * 못 부르고, 터미널 기능 폴더는 사이드바 목록이 못 부른다 — 탭(두 화면)과 작업 행(사이드바)이
@@ -14,27 +14,22 @@ import { Store } from "@tanstack/react-store";
  * 도착점(본문)의 공통 조상이 앱 루트 가까이라, 거기에 드래그 상태를 얹으면 끄는 동안 앱 전체가
  * 다시 그려진다.
  *
- * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽 모듈의 일이다: 탭은
- * 본문의 절반(`split-view.ts`)과 탭 줄의 틈, 작업 행은 목록의 틈(`features/works/row-drop.ts`), 편집기
- * 항목은 그 트리의 앞·뒤·안(`features/spec-layout/draft.ts`).
- * 여기 있는 것은 탭의 두 소비자가 적는 **칸**과 그 칸에 적는 함수 — 두 값이 동시에 안 켜진다는
- * 불변식을 한 곳에서 지키려고 여기 모인다 — 그리고 좌표로 자리를 정하는 쪽에 주는 끄는 동안의
+ * 놓일 자리의 판정(몇 번째 틈)은 여기 없다 — 받는 쪽 모듈의 일이다: 탭은 탭 줄의 틈, 작업 행은 목록의
+ * 틈(`features/works/row-drop.ts`), 편집기 항목은 그 트리의 앞·뒤·안(`features/spec-layout/draft.ts`).
+ * 여기 있는 것은 탭 줄이 적는 **틈**과 그 틈에 적는 함수, 그리고 좌표로 자리를 정하는 쪽에 주는 끄는 동안의
  * 포인터와 「놓았다」·「끝났다」(`DragHandlers`)다.
+ *
+ * 한때 탭을 본문의 절반 위로 끌어 분할을 세웠다(결정 90) — restart 02a-13이 분할을 걷으며 그 받는 쪽(본문 절반의
+ * 겹판)과 절반 칸도 걷었다. 탭은 이제 탭 줄의 틈에만 놓인다.
  */
-
-/** 본문의 어느 절반인가. 열이 아니라 **화면의 절반**이다 — 아직 분할이 아닐 때도 성립한다. */
-export type SplitHalf = "left" | "right";
 
 /**
- * 탭 줄에서 끌 수 있는 것 — 문서 칸과 **묶음의 칸** 둘(셸 칸 · 파일 탭 — git-integration 결정 31). 묶음의 칸은 종류를 안 가리고
- * 그 묶음의 어느 틈에나 놓인다.
- *
- * 본문 위로 끌어 분할을 세우는 것도 셋 다다(결정 90 · git-integration 스토리 56) — 문서 칸은 문서 열에, 묶음의 칸은 묶음 열에
- * 선다(`split-view.ts`).
+ * 탭 줄에서 끌 수 있는 것 — **묶음의 칸**(셸 칸 · 파일 탭 — git-integration 결정 31 · 채팅 탭 — restart 02a-5). 묶음의
+ * 칸은 종류를 안 가리고 그 묶음의 어느 틈에나 놓인다. 한때 문서 칸(`spec`)도 끌렸다(restart 02a-13이 그 칸을 걷었다).
  */
-export type DragKind = "spec" | "shell" | "code";
+export type DragKind = "shell" | "code" | "chat";
 
-/** 탭 줄에서 끈 것. 놓일 자리는 탭 줄의 틈이거나 본문의 절반이다(`split-view.ts`). */
+/** 탭 줄에서 끈 것. 놓일 자리는 탭 줄의 틈이다. */
 export interface DragSource {
   kind: DragKind;
   /**
@@ -46,21 +41,18 @@ export interface DragSource {
    */
   owner: string;
   /**
-   * 끈 **묶음 칸**의 id — `kind`가 `shell` · `code`일 때만 있다(문서 칸은 묶음의 칸이 아니다). 틈에 놓으면 그 칸을 옮기고,
-   * 떨군 셸은 터미널 열에 서야 해서 필요하다.
+   * 끈 **묶음 칸**의 id. 틈에 놓으면 그 칸을 옮긴다.
    *
    * 이름이 「셸」인 것은 묶음에 셸만 서던 때의 것이다 — 레지스트리의 `moveShell`처럼 이름은 두고 뜻을 묶음의 칸으로 넓혔다
    * (git-integration 판 01). 셸 id와 파일 탭 id는 한 줄에서 발급되어 안 겹친다(`BundleTab`).
    */
-  shellId: number | null;
+  shellId: number;
 }
 
 /**
- * 사이드바에서 끈 **작업 행**(UI개선 스펙 §4). 놓일 자리는 목록의 틈이고 본문은 받지 않는다 —
- * 그래서 탭의 원천과 종류가 갈린다. 다만 상태(`DragState.source`)에는 둘이 함께 실린다: 한 번에
- * 하나만 끌리고, 탭 줄·사이드바가 「무엇이든 끌리는 중인가」를 한 값으로 읽는다. 탭만 받는 쪽은
- * 아래 `tabDragOf`로 읽는다 — 거르는 자리가 받는 쪽마다 흩어지면 하나가 빠진 날 분할 겹판이 작업 행
- * 끌기에도 선다.
+ * 사이드바에서 끈 **작업 행**(UI개선 스펙 §4). 놓일 자리는 목록의 틈이다 — 그래서 탭의 원천과 종류가
+ * 갈린다. 다만 상태(`DragState.source`)에는 둘이 함께 실린다: 한 번에 하나만 끌리고, 탭 줄·사이드바가
+ * 「무엇이든 끌리는 중인가」를 한 값으로 읽는다.
  *
  * owner가 아니라 **slug**를 싣는다. 이 원천을 만드는 사이드바 목록은 터미널을 모르고(그쪽 import
  * 금지 검사), owner는 셸 레지스트리의 말이다 — 작업 행에는 셸이 없어도 slug는 늘 있다.
@@ -72,7 +64,7 @@ export interface RowDragSource {
 
 /**
  * 「spec 레이아웃」 편집기의 트리에서 끈 **항목**(spec 레이아웃 티켓 13). 놓일 자리는 그 트리 안이고 본문·탭 줄·
- * 사이드바는 받지 않는다 — 탭만 받는 쪽은 `tabDragOf`로 거른다.
+ * 사이드바는 받지 않는다.
  *
  * 자리는 맨 위 항목에서부터의 인덱스 경로다(편집기의 `EntryPath`와 같은 모양). **그 타입을 부르지 않고 여기
  * 적는다** — 편집기의 타입은 기능 폴더에 살아, 부르는 순간 이 모듈의 import 검사가 빨개진다(머리말).
@@ -86,38 +78,18 @@ export interface EntryDragSource {
 export type AnyDragSource = DragSource | RowDragSource | EntryDragSource;
 
 export interface DragState {
-  /** `null`이면 아무것도 안 끌고 있다 — 받는 쪽의 겹판도 그때는 서지 않는다. */
+  /** `null`이면 아무것도 안 끌고 있다. */
   source: AnyDragSource | null;
-  /** 지금 포인터가 어느 절반 위인가. 놓기 전에는 `null`일 수 있다(본문 밖). */
-  half: SplitHalf | null;
   /**
    * 지금 포인터가 탭 줄의 몇 번째 틈 위인가 — **끄는 셸이 딸린 화면 셸들 사이**의 번호(0..n)다
    * (UI개선 스펙 §6). 탭 줄 밖이거나 놓아도 제자리인 틈이면 `null`이다.
-   *
-   * **한 눌림을 두 소비자가 나눠 본다**(S10) — 받침은 `half`를, 탭 줄은 이것을 적고, 떼는
-   * 순간 포인터 아래의 소비자가 제 값을 읽는다. 그래서 **`half`와 동시에 켜지지 않는다**:
-   * 둘이 함께 켜져 있으면 「놓은 곳이 이긴다」가 아니라 둘 다 이긴다. 그 판정은 이 모듈의
-   * `hover` 한 곳이 한다.
    */
   slot: number | null;
 }
 
-const IDLE: DragState = { source: null, half: null, slot: null };
+const IDLE: DragState = { source: null, slot: null };
 
 export const dragStore = new Store<DragState>(IDLE);
-
-/**
- * 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`).
- *
- * **탭 종류로 좁힌다.** 「작업 행이 아니면 탭」으로 거르면 원천 종류가 늘어나는 날 새 종류가 조용히 탭으로
- * 읽힌다 — 편집기 항목(`EntryDragSource`)을 끄는 순간 분할 겹판이 섰을 것이다.
- *
- * 파일 탭(`code`)도 든다 — 본문 절반에 놓으면 spec과 그 파일로 분할된다(git-integration 스토리 56). 한때 셸 칸만 받았다.
- */
-export function tabDragOf(state: DragState): DragSource | null {
-  const source = state.source;
-  return source !== null && (source.kind === "spec" || source.kind === "shell" || source.kind === "code") ? source : null;
-}
 
 /**
  * 드래그로 인정하는 최소 이동(결정 86). **안 두면 그냥 클릭이 드래그로 읽혀 탭을 못
@@ -136,7 +108,7 @@ export function farEnough(dx: number, dy: number): boolean {
  */
 export interface DragTrace {
   /**
-   * 무엇을 끌었나 — 작업 행(`work`)인지 탭(`shell` · `spec`)인지가 가설을 가른다. 편집기 항목(`entry`)도 같은 문턱을
+   * 무엇을 끌었나 — 작업 행(`work`)인지 탭(`shell` · `code` · `chat`)인지가 가설을 가른다. 편집기 항목(`entry`)도 같은 문턱을
    * 지나므로 함께 적힌다.
    */
   source: AnyDragSource["kind"];
@@ -174,8 +146,8 @@ export interface DragPoint {
 }
 
 /**
- * **좌표로 놓일 자리를 정하는 쪽**이 거는 손잡이(작업 행 — UI개선 스펙 S6). 탭은 안 건다: 그쪽
- * 받는 자리(본문 절반)는 겹판이 스스로 「내 위다」를 말하지만, 목록의 틈은 행 **사이**라 그 위를
+ * **좌표로 놓일 자리를 정하는 쪽**이 거는 손잡이(작업 행 — UI개선 스펙 S6). 탭은 안 건다: 탭 줄의
+ * 틈은 탭 줄이 포인터 이동으로 스스로 적지만(`hoverSlot`), 목록의 틈은 행 **사이**라 그 위를
  * 지나가는 요소가 없다.
  *
  * 문턱을 넘은 끌기에만 온다 — 문턱 안쪽의 눌림은 클릭이지 끌기가 아니다.
@@ -214,8 +186,8 @@ let armed: { source: AnyDragSource; disarm: () => void } | null = null;
 
 /**
  * **끄는 셸이 사라졌으면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 원천의 `shellId`는 누른 순간
- * 실려 떼기까지 안 바뀌어서, 그 셸이 끝나도(pty exit · `×` · ⌘W · 아카이빙의 회수) 안 거두면 받침이
- * 선 채 **없는 셸로** 분할이 켜진다. `alive`는 그 칸이 아직 묶음에 있는지를 아는 쪽(터미널 스토어)이 준다 —
+ * 실려 떼기까지 안 바뀌어서, 그 셸이 끝나도(pty exit · `×` · ⌘W · 아카이빙의 회수) 안 거두면 틈이
+ * 선 채 **없는 셸을** 옮긴다. `alive`는 그 칸이 아직 묶음에 있는지를 아는 쪽(터미널 스토어)이 준다 —
  * 이 모듈은 기능 폴더를 못 부른다(머리말).
  *
  * **파일 탭도 같다** — 끄는 사이 `×` · ⌘W로 닫히면 놓을 칸이 없다. 셸 칸과 같은 원천 필드(`shellId`)에 같은 줄의 id라
@@ -224,11 +196,11 @@ let armed: { source: AnyDragSource; disarm: () => void } | null = null;
  * - **문턱 전의 눌림도 거둔다.** 누른 뒤 5px 전에 셸이 끝나면 남은 리스너가 다음 이동에서 죽은 id로
  *   끌기를 시작한다. 그때는 끌기가 아니었으므로 클릭을 삼킬 것도 없이 리스너만 뗀다.
  * - 문턱 뒤면 Esc와 같은 길(`abort`)이다 — 표시를 걷고, 뗄 때 클릭을 삼키고, `drop`을 안 부른다.
- * - **묶음 칸 끌기만 본다.** 문서 칸(`shellId`가 없다)과 작업 행은 묶음과 무관하다.
+ * - **묶음 칸 끌기만 본다.** 작업 행과 편집기 항목은 묶음과 무관하다.
  */
 export function cancelGoneShellDrag(alive: (shellId: number) => boolean): void {
   const source = armed?.source;
-  if (!isBundleDrag(source) || source.shellId === null || alive(source.shellId)) return;
+  if (!isBundleDrag(source) || alive(source.shellId)) return;
   armed?.disarm();
 }
 
@@ -335,7 +307,7 @@ export function armDrag(
 
     // **끈 것이 눌린 것으로도 읽히면 안 된다.** 5px을 넘긴 뒤 출발한 탭 위로 되돌아와
     // 놓으면 pointerdown/up이 같은 버튼이라 브라우저가 `click`을 낸다 — 그러면 한 제스처가
-    // 「분할을 안 켰다」와 「탭을 눌렀다」 둘을 함께 하게 된다.
+    // 「순서를 안 바꿨다」와 「탭을 눌렀다」 둘을 함께 하게 된다.
     //
     // 한 번만 삼키고 **곧바로 거둔다.** `once: true`로 두면 클릭이 안 오는 경우(본문에서
     // 놓았을 때)에 이 리스너가 남아 다음에 아무 데나 누른 클릭을 먹는다.
@@ -379,65 +351,30 @@ export function armDrag(
 }
 
 /**
- * 한 눌림의 두 소비자(받침의 절반 · 탭 줄의 틈)가 값을 적는 **유일한 자리**다(UI개선
- * 스펙 S10). 아래 적는 함수 셋이 모두 이것을 지나고, 이 모듈 밖에서는 `dragStore`를 고치지
- * 않는다(pointer-drag.test.ts가 소스를 훑어 센다).
+ * 포인터가 탭 줄의 이 틈 위를 지난다(`null`이면 틈이 아닌 자리). 틈을 적는 **유일한 자리**다 — 이 모듈 밖에서는
+ * `dragStore`를 고치지 않는다(pointer-drag.test.ts가 소스를 훑어 센다).
  *
- * - **한쪽이 켜지면 다른 쪽이 꺼진다.** 둘이 함께 켜져 있으면 떼는 순간 두 소비자가 각자 제 값을
- *   보고 순서도 바꾸고 분할도 켠다 — 「놓은 곳이 이긴다」가 아니라 둘 다 이긴다.
- * - 끄는 것(`null`)은 **제 값만** 끈다 — 틈을 떠났다고 받침의 절반까지 꺼지면 안 된다.
+ * - **끄는 중일 때만 적는다.** 탭 줄은 누른 순간부터 이동을 보고하는데(문턱은 여기서만 안다),
+ *   문턱 전이나 Esc로 취소한 뒤에 틈이 서면 드래그가 아닌 눌림이 순서를 바꾼다.
  * - **바뀔 때만 새 상태를 만든다** — 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로
- *   다시 그려지고, 본문에는 마크다운 트리가 통째로 들어 있다.
- */
-function hover(next: { half: SplitHalf | null } | { slot: number | null }): void {
-  dragStore.setState((state) => {
-    const half = "half" in next ? next.half : next.slot === null ? state.half : null;
-    const slot = "slot" in next ? next.slot : next.half === null ? state.slot : null;
-    return state.half === half && state.slot === slot ? state : { ...state, half, slot };
-  });
-}
-
-/**
- * 포인터가 탭 줄의 이 틈 위를 지난다(`null`이면 틈이 아닌 자리).
- *
- * **끄는 중일 때만 적는다.** 탭 줄은 누른 순간부터 이동을 보고하는데(문턱은 여기서만 안다),
- * 문턱 전이나 Esc로 취소한 뒤에 틈이 서면 드래그가 아닌 눌림이 순서를 바꾼다.
+ *   다시 그려진다.
  */
 export function hoverSlot(slot: number | null): void {
   if (dragStore.state.source === null) return;
-  hover({ slot });
+  dragStore.setState((state) => (state.slot === slot ? state : { ...state, slot }));
 }
 
 /**
- * 포인터가 본문의 이 절반 위를 지난다. 받침(겹판)은 끄는 중에만 서므로 따로 거르지 않는다.
- * 어느 절반인지를 **정하는 것**은 받는 쪽(`split-view.ts` · 겹판)이다 — 여기는 적기만 한다.
- */
-export function hoverHalf(half: SplitHalf): void {
-  hover({ half });
-}
-
-/**
- * 포인터가 겹판 **밖으로** 나갔다. 밝아짐을 끈다.
- *
- * **놓을 수 없는 자리인데 밝아 있으면 안 된다.** 놓기를 받는 것은 겹판 자신의 `pointerup`
- * 이라, 탭 줄로 되돌아가 손을 떼면 분할은 안 켜진다(거기서는 틈이 받는다 — `DragState.slot`).
- * 그때까지 반쪽이 밝은 채면 화면이 「여기 놓인다」고 말해 놓고 다른 일을 하는 셈이다.
- */
-export function clearHalf(): void {
-  hover({ half: null });
-}
-
-/**
- * 탭 줄에서 손을 뗀 순간 옮길 것 — 끄는 것이 **묶음의 칸**(셸 칸 · 파일 탭)이고 틈이 켜져 있을 때만 있다. 받는 쪽(터미널
+ * 탭 줄에서 손을 뗀 순간 옮길 것 — 끄는 것이 **묶음의 칸**(셸 칸 · 파일 탭 · 채팅 탭)이고 틈이 켜져 있을 때만 있다. 받는 쪽(터미널
  * 스토어)이 드래그 상태의 모양(원천 · 틈)을 몰라도 되게 여기서 꺼낸다. 이름은 셸만 끌리던 때의 것이다(`DragSource.shellId`).
  */
 export function shellMoveOf(state: DragState): { shellId: number; slot: number } | null {
   const { source, slot } = state;
-  if (!isBundleDrag(source) || source.shellId === null || slot === null) return null;
+  if (!isBundleDrag(source) || slot === null) return null;
   return { shellId: source.shellId, slot };
 }
 
-/** 끄는 것이 **묶음의 칸**인가 — 셸 칸이든 파일 탭이든(`DragKind`). 문서 칸 · 작업 행 · 편집기 항목은 아니다. */
+/** 끄는 것이 **묶음의 칸**인가 — 셸 칸 · 파일 탭 · 채팅 탭(`DragKind`). 작업 행 · 편집기 항목은 아니다. */
 function isBundleDrag(source: AnyDragSource | null | undefined): source is DragSource {
-  return source?.kind === "shell" || source?.kind === "code";
+  return source?.kind === "shell" || source?.kind === "code" || source?.kind === "chat";
 }

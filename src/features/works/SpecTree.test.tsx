@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import SpecTree from "./SpecTree";
+import SpecTree, { TreeRows } from "./SpecTree";
 import type { SpecTreeGroup, SpecTreeItem } from "./types";
 
 // **입력은 손으로 적은 spec 트리다**(spec 레이아웃 구현 스펙 Testing 「앱」). 앱에는 규칙이 없어서 — 무엇을
@@ -184,4 +184,42 @@ describe("SpecTree 경로 복사 버튼", () => {
   // 복사 버튼은 Tab 정류장이 아니어도 포커스는 받는다(보조 기술 · 코드 · WebKit 밖의 누름). 그때 앱의 포커스 링이고(codex-ds 결정 11)
   // 포커스만으로는 뜨지 않으며 행 hover에 뜨는 것은 칠한 값으로 L3 `primitives.spec.ts` 「키보드 포커스는 … 행 안 버튼에서 같은
   // 링이다」가 잰다(클래스 문자열은 재지 않는다).
+});
+
+// **넓힌 카드의 Project 트리는 촘촘한 행이다**(restart 02b-8 · SummarySheet 「넓힌 카드 — Project」 · 보드 `.ra-tree-row` · `.ra-ext`). spec 패널의
+// 트리는 그대로다 — 같은 행(`TreeRows`)을 `dense`로 부른 것만 달라진다.
+describe("넓힌 카드 Project 트리의 행(TreeRows `dense`)", () => {
+  const rows = (items: SpecTreeItem[], changed: readonly string[] = []) =>
+    renderToStaticMarkup(
+      <TreeRows
+        dense
+        items={items}
+        depth={0}
+        current={null}
+        isOpen={() => true}
+        onOpenChange={() => {}}
+        onSelect={() => {}}
+        lookOf={(item) => ({ glyph: null, changed: changed.includes(item.path) })}
+      />,
+    );
+  /** 이름이 `name`인 파일 행의 이름 버튼. */
+  const button = (markup: string, name: string) =>
+    (markup.match(/<button(?![^>]*aria-expanded)[^>]*>[\s\S]*?<\/button>/g) ?? []).find((one) => one.includes(`>${name}</span>`)) ?? "";
+
+  it("파일 행 앞에는 확장자의 첫 글자가 서고, 행의 이름에는 들지 않는다(꼬리표 「MD」 대신)", () => {
+    const markup = rows([file("src/watcher.rs"), file("WatcherBanner.tsx"), file("package.json"), file("README.md"), file("Makefile")]);
+    expect(button(markup, "watcher.rs")).toMatch(/<span aria-hidden="true" data-ext="rs"[^>]*>R<\/span>/);
+    expect(button(markup, "WatcherBanner.tsx")).toMatch(/data-ext="ts"[^>]*>T</);
+    expect(button(markup, "package.json")).toMatch(/data-ext="json"[^>]*>J</);
+    expect(button(markup, "README.md")).toMatch(/data-ext="md"[^>]*>M</);
+    expect(button(markup, "Makefile")).not.toContain("data-ext");
+    expect(markup).not.toContain(">MD<");
+  });
+
+  it("바뀐 파일은 이름이 파란 글자이고 끝에 점이 선다 — 바뀌지 않은 파일에는 없다", () => {
+    const markup = rows([file("src/watcher.rs"), file("src/events.rs")], ["src/watcher.rs"]);
+    expect(button(markup, "watcher.rs")).toMatch(/data-changed=""/);
+    expect(button(markup, "watcher.rs")).toMatch(/<span aria-hidden="true" data-changed-dot=""/);
+    expect(button(markup, "events.rs")).not.toMatch(/data-changed/);
+  });
 });

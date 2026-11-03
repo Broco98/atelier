@@ -1,3 +1,4 @@
+import type { ReadingPlace } from "@/features/thread/reading-place";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import { pressed, TAB_HOTKEYS } from "@/lib/hotkeys";
 import type { Attention } from "./shell-attention";
@@ -149,14 +150,26 @@ export interface Shell {
 /**
  * **묶음**의 칸 하나(CONTEXT 「묶음」 · git-integration 판 01 S10) — 탭의 종류와 그 칸이 가리키는 것만 든다.
  *
- * 종류는 둘이다 — 셸과 **파일 탭**(`code`, CONTEXT 「파일 탭」). 셸 칸의 데이터(상태 · 이름 · 키 …)는 지금처럼
- * `ShellsState.shells`에 살고, 칸은 그 셸을 id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을 갈아 끼우는 리듀서(`patch`)가
- * 두 자리를 고쳐야 한다. 파일 탭은 데이터가 정체(`CodeTarget`)뿐이라 칸이 직접 든다. 02판이 `diff`를 더한다.
+ * 종류는 셋이다 — 셸, **파일 탭**(`code`, CONTEXT 「파일 탭」), **채팅 탭**(`chat`, restart 02a-4 · CONTEXT 「채팅 탭」). 셸 칸의
+ * 데이터(상태 · 이름 · 키 …)는 지금처럼 `ShellsState.shells`에 살고, 칸은 그 셸을 id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을
+ * 갈아 끼우는 리듀서(`patch`)가 두 자리를 고쳐야 한다. 파일 탭은 데이터가 정체(`CodeTarget`)뿐이라 칸이 직접 들고, 채팅 탭도
+ * 정체(채팅 id)만 든다 — 채팅의 이름 · 기록은 채팅 쪽 캐시와 스토어에 산다.
  *
  * **id는 종류를 가리지 않고 한 줄에서 발급한다**(`nextId`). 켜진 칸(`activeByOwner`) · 끌기 · 탭 줄의 콜백이 모두 수 하나로
  * 칸을 부르므로, 번호가 종류마다 따로 돌면 셸 3과 파일 탭 3이 같은 칸으로 읽힌다.
+ *
+ * 채팅 탭은 **읽던 자리**(`place`, restart 02a-6)도 든다 — 숨은 채팅 탭은 내려가므로 굴림 자리를 칸이 쥐었다가 돌아오면 되살린다
+ * (`keepChatPlace`). 칸이 빠지면 함께 사라진다 — 다시 연 탭은 새 탭이라 바닥에서 연다.
+ *
+ * **새 채팅 탭**(`new-chat`, restart 02a-8)은 아직 채팅이 없는 채팅 탭이다 — 정체가 없어 칸마다 따로다(같은 화면에 여럿 설 수 있다).
+ * 첫 말의 답이 오면 같은 자리 · 같은 id의 채팅 탭이 된다(`settleNewChatTab`). 입력 중인 글 · 첨부는 칸의 id로 지은 열쇠에 산다
+ * (`features/thread`의 `newChatKey`) — 칸은 그것을 모른다.
  */
-export type BundleTab = { kind: "shell"; id: number } | ({ kind: "code"; id: number } & CodeTarget);
+export type BundleTab =
+  | { kind: "shell"; id: number }
+  | ({ kind: "code"; id: number } & CodeTarget)
+  | { kind: "chat"; id: number; thread: string; place?: ReadingPlace }
+  | { kind: "new-chat"; id: number };
 
 /**
  * 파일 탭이 가리키는 것 — 그 work의 **프로젝트**와 그 워크트리 기준 **경로**(조각은 `/`). 이 둘이 파일 탭의 정체다 —
@@ -543,51 +556,144 @@ export function hasBundleTab(state: ShellsState, id: number): boolean {
  * 셸 상한(`atCap`)은 안 본다: 상한은 프로세스의 수라 셸만 센다(스토리 46).
  */
 export function openCodeTab(state: ShellsState, owner: ShellOwner, target: CodeTarget): ShellsState {
+  return openTab(
+    state,
+    owner,
+    (tab) => tab.kind === "code" && tab.project === target.project && tab.path === target.path,
+    (id) => ({ kind: "code", id, project: target.project, path: target.path }),
+  );
+}
+
+/**
+ * 그 화면 묶음에 **채팅 탭**을 연다(restart 02a-4) — 파일 탭과 같은 규칙이다. 같은 채팅의 칸이 이미 있으면 그 칸을 켜고, 없으면
+ * 묶음 **끝에** 붙이고 켠다. 최상위 터미널(`""`)은 받지 않는다 — 채팅 탭은 작업공간 화면에만 선다.
+ */
+export function openChatTab(state: ShellsState, owner: ShellOwner, thread: string): ShellsState {
+  return openTab(
+    state,
+    owner,
+    (tab) => tab.kind === "chat" && tab.thread === thread,
+    (id) => ({ kind: "chat", id, thread }),
+  );
+}
+
+/**
+ * 그 화면 묶음 끝에 **새 채팅 탭**을 하나 세우고 켠다(restart 02a-8 — `+` · ⌘T의 「새 채팅」). 늘 새 칸이다 — 새 채팅 탭에는 정체가 없어
+ * 이미 선 새 채팅 탭과 겹치지 않는다. 최상위 터미널(`""`)은 받지 않는다 — 채팅 탭은 작업공간 화면에만 선다.
+ */
+export function openNewChatTab(state: ShellsState, owner: ShellOwner): ShellsState {
+  return openTab(state, owner, () => false, (id) => ({ kind: "new-chat", id }));
+}
+
+/**
+ * 지금 탭이 **새 채팅 탭**이 되게 한다(restart 02a-8) — 주소가 새 채팅 탭을 말할 때(`tab=chat`, `thread` 없음) 작업공간 화면이 부른다.
+ * 어느 새 채팅 탭인지는 주소에 없어 묶음이 쥔다(셸의 `withShellActive`와 같다). 지금 탭이 새 채팅 탭이면 그대로, 묶음에 새 채팅 탭이 있으면
+ * 그 첫 칸을 켜고, 없으면 끝에 하나 세운다 — 채팅이 없는 작업공간을 처음 여는 길 · 요약 카드 「이 작업공간에서 새 채팅」 · `?work=`가 이것이다.
+ */
+export function withNewChatActive(state: ShellsState, owner: ShellOwner): ShellsState {
+  if (slugOfOwner(owner) === null) return state;
+  if (activeTabOf(state, owner)?.kind === "new-chat") return state;
+  const found = bundleOf(state, owner).find((tab) => tab.kind === "new-chat");
+  return found ? activateShell(state, found.id) : openNewChatTab(state, owner);
+}
+
+/**
+ * **새 채팅 탭이 채팅 탭이 된다**(restart 02a-8) — 그 칸의 첫 말의 답이 왔다(`thread_start`가 채팅 id를 돌려줬다). 같은 자리 · 같은 id의
+ * 채팅 탭으로 바꾼다. **켜짐은 건드리지 않는다** — 꺼진 탭이면 꺼진 채 채팅이 된다(사람을 그 탭으로 끌고 오지 않는다). 켜진 탭이면 작업공간
+ * 화면이 주소를 그 채팅으로 따라간다(묶음 → 주소). 그 칸이 이미 빠졌으면(답을 기다리는 사이 닫았다) 받은 상태 그대로다 — 채팅은 남아
+ * 사이드바에서 연다.
+ */
+export function settleNewChatTab(state: ShellsState, id: number, thread: string): ShellsState {
+  const owner = bundleOwnerOf(state, id);
+  if (owner === null) return state;
+  const tabs = bundleOf(state, owner);
+  const at = tabs.findIndex((tab) => tab.id === id);
+  if (tabs[at]?.kind !== "new-chat") return state;
+  const next = [...tabs];
+  next[at] = { kind: "chat", id, thread };
+  return { ...state, bundles: { ...state.bundles, [owner]: next } };
+}
+
+/** 그 화면 묶음에서 그 채팅의 탭이 쥔 읽던 자리(restart 02a-6). 탭이 없거나 쥔 자리가 없으면 `null`이다 — 바닥에서 연다. */
+export function chatPlaceOf(state: ShellsState, owner: ShellOwner, thread: string): ReadingPlace | null {
+  const tab = bundleOf(state, owner).find((one) => one.kind === "chat" && one.thread === thread);
+  return tab?.kind === "chat" ? (tab.place ?? null) : null;
+}
+
+/**
+ * 그 채팅의 탭에 **읽던 자리**를 쥔다(restart 02a-6) — 채팅 탭이 내려갈 때 화면이 건넨다. 탭이 없으면(닫혔다 · 작업공간이 사라졌다)
+ * 받은 상태 그대로다 — 쥘 탭이 없다. 같은 자리면 그대로다 — 묶음을 새로 세우면 그 화면이 다시 그려진다(`sameScreen`).
+ *
+ * 차례 · 켜진 칸은 안 바뀐다 — 그 칸 하나만 자리를 바꿔 든다. 셸 배열도 그대로라 차례를 바꾸는 자리(`withBundle`)를 타지 않는다.
+ */
+export function keepChatPlace(state: ShellsState, owner: ShellOwner, thread: string, place: ReadingPlace): ShellsState {
+  const tabs = bundleOf(state, owner);
+  const at = tabs.findIndex((one) => one.kind === "chat" && one.thread === thread);
+  const tab = tabs[at];
+  if (tab?.kind !== "chat" || samePlace(tab.place ?? null, place)) return state;
+  const next = [...tabs];
+  next[at] = { ...tab, place };
+  return { ...state, bundles: { ...state.bundles, [owner]: next } };
+}
+
+/** 두 자리가 같은가 — 바닥끼리거나, 위에서 잰 거리가 같다. */
+function samePlace(a: ReadingPlace | null, b: ReadingPlace): boolean {
+  return a !== null && a.kind === b.kind && (a.kind === "bottom" || (b.kind === "at" && a.top === b.top));
+}
+
+/** 프로세스 없는 칸(파일 탭 · 채팅 탭)을 여는 한 벌 — 같은 정체면 그 칸을 켜고, 없으면 끝에 붙이고 켠다. 최상위 터미널은 안 받는다. */
+function openTab(
+  state: ShellsState,
+  owner: ShellOwner,
+  same: (tab: BundleTab) => boolean,
+  make: (id: number) => BundleTab,
+): ShellsState {
   if (slugOfOwner(owner) === null) return state;
   const tabs = bundleOf(state, owner);
-  const same = tabs.find(
-    (tab) => tab.kind === "code" && tab.project === target.project && tab.path === target.path,
-  );
-  if (same) return activateShell(state, same.id);
+  const found = tabs.find(same);
+  if (found) return activateShell(state, found.id);
   const id = state.nextId;
-  const tab: BundleTab = { kind: "code", id, project: target.project, path: target.path };
   return {
     ...state,
-    bundles: { ...state.bundles, [owner]: [...tabs, tab] },
+    bundles: { ...state.bundles, [owner]: [...tabs, make(id)] },
     activeByOwner: { ...state.activeByOwner, [owner]: id },
     nextId: id + 1,
   };
 }
 
 /**
- * 파일 탭 하나를 **확인 없이** 묶음에서 뺀다(스토리 37 · 50 — 프로세스가 없어 물을 것이 없다). 다음 켜질 칸은 셸을 닫을
- * 때와 같은 이웃 규칙이다(`withoutTab`).
+ * **보기 탭**(파일 탭 · 채팅 탭 — 프로세스가 없이 무엇을 보여 주기만 하는 칸) 하나를 **확인 없이** 묶음에서 뺀다(git-integration 스토리
+ * 37 · 50 · restart 02a-5 — 물을 것이 없다). 다음 켜질 칸은 셸을 닫을 때와 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * 채팅 탭을 빼도 **채팅은 남는다** — 칸은 화면 위의 자리일 뿐이고 채팅 · 세션 · 돌던 턴은 코어가 쥔다(구현 스펙 「02a」). 사이드바에서
+ * 다시 연다.
  *
  * **셸 칸은 여기로 빼지 않는다** — 받은 상태 그대로다. 셸을 닫는 길은 확인 창을 거치는 하나다(`requestCloseShell`).
  */
-export function removeCodeTab(state: ShellsState, id: number): ShellsState {
+export function removeViewTab(state: ShellsState, id: number): ShellsState {
   const owner = bundleOwnerOf(state, id);
   if (owner === null) return state;
-  if (bundleTabOf(state, owner, id)?.kind !== "code") return state;
+  if (bundleTabOf(state, owner, id)?.kind === "shell") return state;
   return withoutTab(state, owner, id);
 }
 
 /**
- * 그 화면 묶음의 **파일 탭을 모두** 뺀다 — 그 work이 아카이브 · 삭제되어 화면이 사라질 때다. 셸은 프로세스라 셸을 닫는 길
- * (`removeShell`)로 빠지고, 파일 탭은 물을 것이 없어 여기서 한꺼번에 빠진다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
+ * 그 화면 묶음의 **셸이 아닌 칸을 모두** 뺀다 — 파일 탭과 채팅 탭(restart 02a-4)이다. 그 work이 아카이브 · 삭제되어 화면이 사라질
+ * 때다. 셸은 프로세스라 셸을 닫는 길(`removeShell`)로 빠지고, 나머지 칸은 프로세스가 없어 물을 것이 없으니 여기서 한꺼번에 빠진다.
+ * 채팅 탭을 빼도 채팅은 남는다 — 칸은 화면 위의 자리일 뿐이다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
  *
  * 묶음이 비면 키째 걷힌다 — 남기면 지운 work의 slug로 새 work이 설 때 옛 탭이 그 줄에 서고, 켜진 칸도 그것을 가리킨다.
- * 파일 탭이 없으면 받은 상태 그대로다.
+ * 셸이 아닌 칸이 없으면 받은 상태 그대로다.
  */
-export function withoutCodeTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
+export function withoutNonShellTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
   return bundleOf(state, owner)
-    .filter((tab) => tab.kind === "code")
+    .filter((tab) => tab.kind !== "shell")
     .reduce((next, tab) => withoutTab(next, owner, tab.id), state);
 }
 
 /**
- * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로 답한다
- * (지금 탭이 파일 탭이면 그쪽은 `null`이다).
+ * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든 채팅 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로
+ * 답한다(지금 탭이 셸이 아니면 그쪽은 `null`이다).
  */
 export function activeTabOf(state: ShellsState, owner: ShellOwner): BundleTab | null {
   const id = activeIdOf(state, owner);
@@ -603,14 +709,15 @@ export function bundleTabOf(state: ShellsState, owner: ShellOwner, id: number): 
 }
 
 /**
- * 지금 탭이 셸이 되게 한다 — 이미 셸이거나 묶음에 셸이 없으면 받은 상태 그대로다. 지금 탭이 파일 탭이면 **묶음의 첫 셸**을
- * 켠다.
+ * 지금 탭이 셸이 되게 한다 — 이미 셸이거나 묶음에 셸이 없으면 받은 상태 그대로다. 지금 탭이 파일 탭 · 채팅 탭이면 **묶음의 첫
+ * 셸**을 켠다.
  *
- * 주소가 「본문은 셸이다」(`tab=terminal`)라고 말하는데 묶음의 지금 탭이 파일 탭인 자리가 있다 — 파일 탭을 연 뒤 뒤로가기로
+ * 주소가 「본문은 셸이다」(`tab=terminal`)라고 말하는데 묶음의 지금 탭이 셸이 아닌 자리가 있다 — 파일 탭 · 채팅 탭을 연 뒤 뒤로가기로
  * 셸 화면 주소에 돌아왔을 때다. 주소에는 어느 셸인지가 없어(결정 33) 고를 것이 묶음의 차례뿐이다.
  */
 export function withShellActive(state: ShellsState, owner: ShellOwner): ShellsState {
-  if (activeTabOf(state, owner)?.kind !== "code") return state;
+  const active = activeTabOf(state, owner);
+  if (active === null || active.kind === "shell") return state;
   const shell = bundleOf(state, owner).find((tab) => tab.kind === "shell");
   return shell ? activateShell(state, shell.id) : state;
 }
@@ -722,7 +829,7 @@ export function shellsEmptied(before: ShellTally, now: ShellTally): boolean {
  * 그 화면에서 **켜진 셸** 자체. 없으면 `null`이다.
  *
  * `activeIdOf` → `shellsOf(...).find(...)` 2단 체인이 화면 셋에 그대로 베껴져 있었다
- * (터미널 본문·최상위 탭 줄·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
+ * (터미널 본문·최상위 탭 줄·그때의 분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
  * 한 곳만 고쳐도 화면마다 다른 셸을 켜진 것으로 부른다.
  */
 export function activeShellOf(state: ShellsState, owner: ShellOwner): Shell | null {
@@ -1087,7 +1194,7 @@ export function shellHotkey(event: KeyPress): ShellHotkey | null {
   // window에서 듣는 앱 셸이 그것을 받아 연다. 셸에 포커스가 있는 시간이 이 앱에서 제일
   // 길기 때문에 이 한 줄이 「어디서든 열린다」의 절반을 든다.
   if (shellNavKey(event) !== null || searchHotkey(event)) return "app";
-  if (pressed(event, "newShell")) return "new";
+  if (pressed(event, "newTab")) return "new";
   if (pressed(event, "closeShell")) return "close";
   return null;
 }
@@ -1198,7 +1305,8 @@ export function sameScreen(
   if (a === b) return true;
   if (a.shells.length !== b.shells.length) return false;
   if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
-  // 묶음은 그 화면의 차례가 바뀔 때만 새 배열이다(`openShell` · `withBundle` · `removeShell`) — 정체로 견주면 된다.
+  // 묶음은 그 화면의 차례가 바뀌거나(`openShell` · `withBundle` · `removeShell`) 채팅 탭이 읽던 자리를 바꿔 쥘 때만(`keepChatPlace` — 탭을
+  // 옮길 때 한 번이다) 새 배열이다 — 정체로 견주면 된다.
   if (bundleOf(a, owner) !== bundleOf(b, owner)) return false;
   const mine = shellsOf(a, owner);
   const theirs = shellsOf(b, owner);
@@ -1563,15 +1671,15 @@ export type ClosePath =
   | "spawnRace";
 
 /**
- * 닫는 자리 → 닫기 IPC의 까닭(티켓 11). **까닭은 이 표 한 곳에서 고른다.** 판 04의 `●`가 까닭으로 켜지는데(시작
- * 정리 · MCP 아카이브 · 셸 스스로 끝남 · 「못 끝냄」만), 자리마다 따로 고르면 사람이 누른 닫기가 점을 켤 수 있다.
+ * 닫는 자리 → 닫기 IPC의 까닭(티켓 11). **까닭은 이 표 한 곳에서 고른다.** 정리 기록이 이 까닭을 적는다 — 자리마다 따로
+ * 고르면 사람이 누른 닫기가 다른 까닭으로 적힐 수 있다.
  *
  * 사람이 누르지 않은 닫기 셋(`reclaim` · `openFailed` · `spawnRace`)도 「셸 닫기」다. 자손이 없거나 모두 셸 도우미라
  * 정리 기록은 서지 않는다(프로세스 스펙 P1) — 백엔드가 그렇게 거른다.
  *
- * **MCP 아카이브의 조용한 셸만 「MCP 아카이브」다**(티켓 12) — 사람 손 없이 닫은 것이라 `●`가 설 수 있는 까닭이다.
+ * **MCP 아카이브의 조용한 셸만 「MCP 아카이브」다**(티켓 12) — 사람 손 없이 닫은 것이다.
  * 주인 잃은 셸의 [모두 닫기](`ownerless`)는 **사람이 누른 닫기라 「셸 닫기」다**(프로세스 스펙 S41). 같은 셸이어도 누가
- * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 [모두 닫기]를 누를 때마다 점이 선다.
+ * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 누른 [모두 닫기]가 MCP 아카이브로 적힌다.
  *
  * `Processes`의 닫기 둘(`quiet` · `offscreen` · 티켓 32)도 사람이 누른 닫기라 「셸 닫기」다(프로세스 스펙 S44 · S42). 「화면 밖
  * 셸」은 까닭이 아니다 — 기록은 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다. 셸 탭 메뉴의 「다른 셸 모두 닫기」(`others`)도

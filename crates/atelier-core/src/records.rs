@@ -4,7 +4,7 @@
 //! 종류 · 「반쪽 줄」 규칙이 두 곳으로 갈리면 한쪽이 적은 줄을 다른 쪽 읽기가 조용히 버린다. 대화 호스트(`atelier-acp`)가
 //! 이 크레이트에 의존하므로 정본은 이쪽에 산다(v1 티켓 02).
 //!
-//! - 한 줄은 `{seq, at, kind, who?, payload}`이고 seq는 기록마다 1부터 는다. 줄 하나는 쓰기 한 번에 붙는다.
+//! - 한 줄은 `{seq, at, kind, payload}`이고 seq는 기록마다 1부터 는다. 줄 하나는 쓰기 한 번에 붙는다.
 //! - 끝에 줄바꿈이 없는 꼬리는 쓰는 중이거나 쓰다 끊긴 줄이라 읽기가 버린다. 반쪽 줄은 끝에만 생긴다.
 
 use std::fs::{File, OpenOptions};
@@ -22,10 +22,6 @@ pub struct RecordLine {
     pub seq: u64,
     pub at: String,
     pub kind: RecordKind,
-    /// 그 줄을 낸 참여자의 handle(v1 구현 스펙 S8). **사람과 시스템의 줄에는 칸이 없다** — three-axes 대화 기록은 이 칸 없이
-    /// 적혀 축복한 기록(`tests/records/`)과 글자 하나 다르지 않다.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub who: Option<String>,
     pub payload: Value,
 }
 
@@ -35,7 +31,7 @@ pub struct RecordLine {
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
     /// 보낸 말 — 화면에 보일 글 · 인용(붙었으면) · 실제로 보낸 내용 블록(머리말 · 인용 블록 포함) · 지금 보내기였는지. Thread는
-    /// 받는 Agent · 첨부 경로 · 넘긴 머리말과 지난 말을 함께 담는다.
+    /// 첨부 경로 · 넘긴 머리말과 지난 말을 함께 담는다.
     Sent,
     /// `session/update` 원문(턴 밖 것 포함).
     Update,
@@ -43,39 +39,30 @@ pub enum RecordKind {
     TurnEnd,
     /// 대화의 수명 — 띄우는 중 · 열림 · 계정 상태 · 로그인 필요 · 판 경고 · 죽음 · 닫힘.
     Session,
-    /// 에이전트의 stderr 한 줄 — 화면에 그리지 않는다.
+    /// 에이전트의 stderr 한 줄이나 앱이 내는 경고 한 줄 — 이어진 줄이 화면의 Runtime 경고 하나로 선다.
     Stderr,
     /// 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들(three-axes 결정 22). 턴 끝 줄 바로 앞에 서고, 바뀐 것이
     /// 없는 턴에는 없다.
     Changes,
     /// 권한 — 요청 원문(물음), 그 뒤에 같은 요청 id로 답(고른 optionId)이나 거둬짐(까닭)이 한 줄 더 선다(three-axes 티켓 08).
-    /// v1은 판정 결과(허용 · 거절 · 물음)와 그 까닭(Policy 이름)을 함께 담는다.
+    /// v1은 판정 결과(허용 · 거절 · 물음)와 그 까닭을 함께 담는다.
     Permission,
-    /// 사람이 바꾼 것 — 바꾼 칸과 새 값(에이전트 · 모델 · 모드 · 계획).
+    /// 사람이 바꾼 것 — 바꾼 칸과 새 값(모델 · 생각 깊이 · 모드).
     Config,
-    /// Agent가 낸 질문과 답. Work 만들기 카드도 이 종류다.
+    /// Runtime이 낸 질문과 답. Work 만들기 카드도 이 종류다.
     Question,
-    /// 참여 — 참여자가 Thread에 들어왔다.
-    Joined,
-    /// 나감 — 참여자가 Thread에서 나갔다.
-    Left,
     /// Work 연결 · worktree 생성 · Project 붙임.
     Work,
     /// Thread 이름 바꿈.
     Title,
     /// 물어보는 정도 바꿈.
     Mode,
-    /// Agent 호출의 시작과 끝 — 부른 쪽 · 불린 쪽 · 맡긴 말 · 받은 말 · 걸린 시간 · 실패 까닭.
-    Call,
     /// 이 Work의 PR이 처음 보였을 때와 상태가 바뀔 때.
     Pr,
-    /// Library에 Agent를 저장함 — Agent가 Thread 도구 「Agent 저장」으로 둔 정의의 handle · 이름 · 얼굴 · 자리(v1 티켓 19). 시스템 줄
-    /// 「Library에 리뷰어를 저장함」이 이것이다.
-    Library,
-    /// Space가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Space, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Space를 사내 도구로
-    /// 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」가 이것이다. Work의 Space가 바뀌면 그 Work의 Thread마다 선다(S9).
-    Space,
-    /// Agent가 대화로 한 설정(03 구현 스펙 §12) — 무엇을 했나(Project 추가 · Project 고침 · Space 만듦 · Space 고침) · 대상 slug · 이름과
+    /// Service가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Service, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Service를 사내 도구로
+    /// 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」가 이것이다. Work의 Service가 바뀌면 그 Work의 Thread마다 선다(S9).
+    Service,
+    /// Agent가 대화로 한 설정(03 구현 스펙 §12) — 무엇을 했나(Project 추가 · Project 고침 · Service 만듦 · Service 고침) · 대상 slug · 이름과
     /// 카드의 첫 줄 · 둘째 줄 글. 흐름의 결과 카드 「Project를 추가했어요 — landing-page · 열기」가 이것이다.
     Setting,
 }
@@ -108,9 +95,9 @@ impl RecordLog {
         self.last_seq
     }
 
-    /// 한 줄을 적고 그 줄을 돌려준다 — 부르는 쪽이 같은 값을 이벤트로 내보낸다. `who`는 참여자의 줄에만 준다(S8).
-    pub fn append(&mut self, kind: RecordKind, who: Option<&str>, payload: Value) -> Result<RecordLine> {
-        let line = RecordLine { seq: self.last_seq + 1, at: record_time(), kind, who: who.map(str::to_owned), payload };
+    /// 한 줄을 적고 그 줄을 돌려준다 — 부르는 쪽이 같은 값을 이벤트로 내보낸다.
+    pub fn append(&mut self, kind: RecordKind, payload: Value) -> Result<RecordLine> {
+        let line = RecordLine { seq: self.last_seq + 1, at: record_time(), kind, payload };
         let mut text = serde_json::to_string(&line).expect("기록 줄은 JSON이다");
         text.push('\n');
         // 한 번의 쓰기로 줄 전체를 붙인다 — 반쪽 줄은 끝에만 생길 수 있고, 읽기가 그것을 버린다.
@@ -172,4 +159,23 @@ fn ends_mid_line(path: &Path) -> bool {
 /// 기록의 시각 — 로컬 시각대의 RFC 3339, 밀리초까지.
 pub fn record_time() -> String {
     chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 앞_판이_적은_library_줄과_call_줄은_읽기가_건너뛰고_그_seq는_이어_적는_자리로_센다() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        let line = |seq: u64, kind: &str| format!(r#"{{"seq":{seq},"at":"2026-11-02T04:00:00.000+09:00","kind":"{kind}","payload":{{}}}}"#);
+        let text = [line(1, "title"), line(2, "library"), line(3, "mode"), line(4, "call")].join("\n") + "\n";
+        std::fs::write(&path, &text).unwrap();
+
+        let read: Vec<(u64, RecordKind)> = read_records(&path, 0).unwrap().into_iter().map(|one| (one.seq, one.kind)).collect();
+
+        assert_eq!(read, [(1, RecordKind::Title), (3, RecordKind::Mode)]);
+        assert_eq!(last_record_seq(&text), 4);
+    }
 }

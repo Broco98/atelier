@@ -13,6 +13,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { useThreads, useWorkMarks } from "@/features/thread/hooks";
 import { lastSaid } from "@/features/thread/preview";
 import { WorkThreads } from "@/features/thread/SidebarThreads";
+import { useOpenChat } from "@/features/thread/chat-door";
 import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
 import { landingOf, threadCounts, threadsOf } from "@/features/thread/work-threads";
 import { useMoveWork, useSetWorkPinned, useSetWorkTitle, useWorks } from "./hooks";
@@ -33,6 +34,7 @@ import { useRoving } from "@/lib/roving";
 import { readExpanded, rovingKeys, splitWorkSections, threadRowKey, toggleExpanded } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
+import { newChatDoor } from "@/routes/-work-search";
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 한때 초안 구역의 접힘(`sidebar-drafts-open`)도 여기 있었다 — 구역이 걷히면서(UI개선 결정 5) 키도
@@ -48,7 +50,7 @@ const WORKS_EXPANDED_KEY = "sidebar-works-expanded";
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 //
-// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드). 줄 오른쪽 끝에 그 Thread들
+// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「채팅 목록과 아바타」 보드). 줄 오른쪽 끝에 그 Thread들
 // 가운데 가장 센 상태 표시 하나가 서고(02 티켓 05 · S8 — Thread 수는 호버 카드로, S9), ▸로 펴면 그 Thread들이 줄 아래에 한 줄씩 들여 선다
 // (펼침은 기억한다). 줄을 누르면 그 Work에서 가장 최근의 Thread로 가고, 없으면 그
 // Work를 고른 새 Thread로 간다 — 옛 작업 화면(`/works/<slug>`)은 ⌘K에서 연다. 지금 보는 Thread가 접힌 Work 안에 있으면 그 Work 줄이
@@ -86,6 +88,7 @@ function SidebarWorkList({
   const { data: works = [] } = useWorks();
   const { data: threads = [] } = useThreads();
   const navigate = useNavigate();
+  const openChat = useOpenChat();
   const setPinned = useSetWorkPinned();
   const setTitle = useSetWorkTitle();
   const [pinnedOpen, setPinnedOpen] = useState(
@@ -134,9 +137,10 @@ function SidebarWorkList({
   const openSlug = useRouterState({
     select: (state) => workSlugOf(state.location.pathname),
   });
-  // 지금 보는 Thread(v1 티켓 37) — 펼친 Work 아래 그 줄이 켜지고(줄이 스스로 단다), 접힌 Work 안이면 그 Work 줄이 켜진다.
+  // 켜진 채팅(v1 티켓 37) — 펼친 Work 아래 그 줄이 켜지고(줄이 스스로 단다), 접힌 Work 안이면 그 Work 줄이 켜진다. 작업공간 화면의 채팅
+  // 탭(`thread=`)도 켜진 채팅이다(restart 02a-4 — `threadIdOf`).
   const openThread = useRouterState({
-    select: (state) => threadIdOf(state.location.pathname),
+    select: (state) => threadIdOf(state.location),
   });
   const threadWork = openThread === null ? null : (threads.find((thread) => thread.id === openThread)?.work ?? null);
 
@@ -153,7 +157,9 @@ function SidebarWorkList({
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const listed = (slug: string | null) => slug !== null && works.some((work) => work.slug === slug);
   const threadShown = threadWork !== null && nestedOf(threadWork).length > 0;
-  const selectedSlug = listed(openSlug) ? openSlug : listed(threadWork) && !threadShown ? threadWork : null;
+  // 펼친 Work 아래 켜진 채팅의 줄이 섰으면 그 줄이 켜지고 Work 줄은 꺼진다 — 채팅 탭은 Work 화면 주소(`openSlug`)에 서지만 지금 보는
+  // 것은 그 채팅이다(restart 02a-4). 접혀 있으면 Work 줄이 켜진다.
+  const selectedSlug = threadShown ? null : listed(openSlug) ? openSlug : listed(threadWork) ? threadWork : null;
   // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행(펼친 Work 아래 지금 보는 Thread의 줄도), 고른 것이 없거나 접힌
   // 구획에 있으면 첫 머리다. ↑↓는 목록 상자가 받는다(아래 `data-worklist`).
   const roving = useRoving(
@@ -251,16 +257,18 @@ function SidebarWorkList({
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
-  // 그 Work의 대화로 간다(v1 티켓 37 · 구현 스펙 §13) — 가장 최근의 Thread, 없으면 그 Work를 고른 새 Thread(`/?work=` — v1 티켓 34의
-  // 씨앗)다. 최근은 마지막 말의 때이고(`landingOf`), 그 말은 사이드바가 이미 읽어 둔 기록에서 **누른 순간에** 센다(`useWaiting`이 모든
+  // 그 Work의 대화로 간다(v1 티켓 37 · 구현 스펙 §13) — 가장 최근의 Thread, 없으면 그 작업공간의 새 채팅 탭이다(restart 02a-8 —
+  // `newChatDoor`). 최근은 마지막 말의 때이고(`landingOf`), 그 말은 사이드바가 이미 읽어 둔 기록에서 **누른 순간에** 센다(`useWaiting`이 모든
   // Thread를 읽는다) — 목록이 기록 줄마다 다시 그려지지 않게 구독하지 않는다. 아직 못 읽은 Thread는 선 때로 견준다.
   const goTo = (slug: string, pointer: boolean) => {
     closeCard();
     if (pointer) quiet.current = slug;
     const records = threadRecordStore.state;
     const landing = landingOf(threads, slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
-    if (landing.kind === "thread") void navigate({ to: "/threads/$id", params: { id: landing.id } });
-    else void navigate({ to: "/", search: { work: landing.work } });
+    // 그 채팅은 이 작업공간의 채팅 탭에 선다(restart 02a-4 — `useOpenChat`). 채팅이 없으면 그 작업공간의 새 채팅 탭이다(restart 02a-8).
+    const thread = landing.kind === "thread" ? threads.find((one) => one.id === landing.id) : undefined;
+    if (thread) openChat(thread);
+    else void navigate(newChatDoor(slug));
   };
 
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
@@ -441,8 +449,8 @@ function SidebarWorkList({
             - inset 그림자: 행의 배경(선택·hover)이 그 위를 덮는다.
             - 상자 안 `::before`: 내용과 함께 굴러 올라가 버린다.
             부모의 윗변이 곧 상자의 윗변이라 띠가 있으면 띠 아래, 없으면 nav 아래가 저절로 된다.
-            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 사람 줄의 윗선과
-            같은 폭이고 같은 선이다(0.5px `border-heavy` 면 — DS의 선, codex-ds 티켓 19). 누를 것이 아니라
+            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 선은
+            0.5px `border-heavy` 면이다(DS의 선, codex-ds 티켓 19). 누를 것이 아니라
             `pointer-events-none`이다: 첫 행 윗변을 가리면 안 된다. */}
         {scrolled && (
           <div

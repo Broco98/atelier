@@ -4,10 +4,12 @@
 //!
 //! 세션 열기(three-axes 티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
 //! 턴(three-axes 티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
-//! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답).
+//! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답, 실패면 오류). 답과 생각은 `--include-partial-messages`로 받아
+//! 조각으로 옮긴다(restart 01b).
 //! 제어(three-axes 티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
 //! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
 //! 질문(`AskUserQuestion` → 물음을 실은 요청, v1 티켓 26), 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
+//! `system/status`는 대화 정리의 줄이기도 하다(restart 01b-4, 몸은 [`super::stream`]).
 //! 되살리기(three-axes 티켓 16) — `session/resume` · `session/load`를 둘 다 `claude … --resume <세션 id>`로 연다(워크플로 S19).
 //! 백그라운드(16, S4) · 미로그인(16, S3)은 턴의 갈래([`Turn`])에 있다.
 //!
@@ -28,10 +30,11 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use super::agent_flags;
+use super::mcp_flags;
 use super::stream::{self, Stream};
 use crate::login::AUTH_REQUIRED;
 use crate::redact;
+use crate::thread_tools::APP_TOOLS_FAILED;
 
 /// 모드 다섯 — claude의 모드 이름 그대로다(three-axes 결정 16 · 27). `bypassPermissions`는 띄울 때 허락하지 않았으면 도중에
 /// 고를 수 없으므로(`bypass_not_launched`, 실측 함정 38) 넣지 않는다.
@@ -48,6 +51,13 @@ const ALLOW_ONCE: &str = "allow_once";
 const ALLOW_SESSION: &str = "allow_session";
 const REJECT: &str = "reject";
 const IMPLEMENT_PLAN: &str = "implement_plan";
+
+/// claude를 띄울 때 얹는 설정 — 계획 모드가 자동 모드 판정을 쓰지 않게 한다(구현 스펙 「01a — 권한」, live 점검 01a).
+///
+/// 자동 모드를 쓸 수 있는 계정의 claude는 `--permission-mode plan`에서도 그 판정으로 돌아, 명령 · 웹 · 일부 MCP를 `can_use_tool` 없이
+/// 실행한다. 앱의 판정(앱 경계 · 쓰기 자리 · 모드 표)을 지나지 않는 길이다. 사용자 설정이 아니라 띄우는 인자로 끈다. 세션 도중에 칩이
+/// 「계획」으로 바꾸기도 하므로 모드와 상관없이 언제나 준다.
+const PLAN_ASKS_THE_APP: &str = r#"{"useAutoModeDuringPlan":false}"#;
 const REVISE_PLAN: &str = "revise_plan";
 /// 질문의 선택지 id — 답하기 · 나중에(v1 티켓 26).
 const ANSWER: &str = "answer";
@@ -127,6 +137,8 @@ pub(super) struct Machine {
     stream: Stream,
     /// 첫 `system/init`을 알렸다. claude는 턴마다 `init`을 다시 내지만 새 세션이 아니다 — 같은 원문을 거듭 싣지 않는다.
     init_announced: bool,
+    /// 앱이 넘긴 MCP 서버의 이름 — [`Machine::warn_failed_app_servers`]가 이 서버의 실패만 읽는다. 경고하면 비운다 — 경고는 claude 하나에 한 번이다.
+    app_servers: Vec<String>,
     /// 변환기가 claude에 보낸 제어 요청의 다음 번호(`request_id`의 꼬리).
     next_control: u64,
     /// 변환기가 호스트에 보낸 요청(`session/request_permission`)의 다음 id — 0부터 센다(codex-acp와 같다).
@@ -281,20 +293,17 @@ impl Machine {
     /// 답은 claude의 `initialize` 답에서 한다([`Machine::opened`]).
     ///
     /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) · `mcpServers` ·
-    /// `_meta.atelier{claudePath, permissionMode, model, effort, instructionsFile, builtinTools, forbid}`.
+    /// `_meta.atelier{claudePath, permissionMode, model, effort}`.
     ///
-    /// Agent 정의에서 오는 것(v1 구현 스펙 §3 · S4) — 지시문은 Thread 폴더에 둔 정의 스냅숏 파일의 경로로 받아
-    /// `--append-system-prompt-file`로 claude의 기본 시스템 프롬프트 **뒤에** 붙인다(바꾸면 Claude Code의 도구 · 환경 안내가
-    /// 사라진다). 모델 · 생각 깊이는 `--model` · `--effort`다. 변환기는 그 파일을 읽지 않고 값을 고르지도 않는다 — 비우면 플래그를
-    /// 주지 않아 claude의 기본값을 쓴다.
+    /// **시스템 프롬프트를 건드리지 않는다** — 터미널의 claude와 같은 시스템 프롬프트로 뜬다. 자리는 첫 말이 말한다. 모델 · 생각 깊이는
+    /// `--model` · `--effort`다. 변환기는 값을 고르지 않는다 — 비우면 플래그를 주지 않아 claude의 기본값을 쓴다.
     ///
-    /// 내장 도구 · 금지(v1 티켓 12)는 추상 이름으로 받아 Claude Code의 이름으로 옮긴다([`agent_flags`]) — `--tools` ·
-    /// `--disallowedTools`다. ACP `mcpServers`는 claude의 MCP 설정으로 옮겨 `--mcp-config`로 넘긴다 — 사용자 MCP와 커넥터는 그와
-    /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 넘겨받은 서버(Thread 도구, v1 티켓 15)의 도구는 `--allowedTools`로 묻지
-    /// 않게 한다. 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로 답한다.
+    /// ACP `mcpServers`는 claude의 MCP 설정으로 옮겨 `--mcp-config`로 넘긴다([`mcp_flags`]) — 사용자 MCP와 커넥터는 그와 함께
+    /// `claude -p`가 스스로 붙인다(three-axes 결정 23). 넘겨받은 서버(Thread 도구, v1 티켓 15)의 도구는 `--allowedTools`로 묻지
+    /// 않게 한다. stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로 답한다.
     ///
-    /// resume · load는 되살리기다(three-axes 티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
-    /// 도구 · 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
+    /// resume · load는 되살리기다(three-axes 티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · MCP는
+    /// 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
     /// Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
     /// 호스트는 다음 단계로 넘어간다.
@@ -321,15 +330,11 @@ impl Machine {
         let mode = atelier["permissionMode"].as_str();
         let model = atelier["model"].as_str();
         let effort = atelier["effort"].as_str();
-        let instructions = atelier["instructionsFile"].as_str();
-        let tools = agent_flags::tools(&atelier["builtinTools"]);
-        let mcp_config = agent_flags::mcp_config(&params["mcpServers"]);
-        let (tools, mcp_config) = match (tools, mcp_config) {
-            (Ok(tools), Ok(mcp_config)) => (tools, mcp_config),
-            (Err(reason), _) | (_, Err(reason)) => return self.send(error(id, -32602, &reason)),
+        let mcp_config = match mcp_flags::mcp_config(&params["mcpServers"]) {
+            Ok(mcp_config) => mcp_config,
+            Err(reason) => return self.send(error(id, -32602, &reason)),
         };
-        let disallowed = agent_flags::disallowed(&atelier["forbid"]);
-        let allowed = agent_flags::allowed(&params["mcpServers"]);
+        let allowed = mcp_flags::allowed(&params["mcpServers"]);
         let reviving = revive.is_some();
         let session_id = revive.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
@@ -340,8 +345,11 @@ impl Machine {
             "--output-format",
             "stream-json",
             "--verbose",
+            "--include-partial-messages",
             "--permission-prompt-tool",
             "stdio",
+            "--settings",
+            PLAN_ASKS_THE_APP,
             if reviving { "--resume" } else { "--session-id" },
             &session_id,
         ];
@@ -358,15 +366,6 @@ impl Machine {
         if let Some(effort) = effort {
             args.extend(["--effort", effort]);
         }
-        if let Some(instructions) = instructions {
-            args.extend(["--append-system-prompt-file", instructions]);
-        }
-        if let Some(tools) = &tools {
-            args.extend(["--tools", tools]);
-        }
-        if let Some(disallowed) = &disallowed {
-            args.extend(["--disallowedTools", disallowed]);
-        }
         if let Some(mcp_config) = &mcp_config {
             args.extend(["--mcp-config", mcp_config]);
         }
@@ -377,6 +376,7 @@ impl Machine {
 
         // 새 claude의 세션 — 상태를 처음으로 돌린다. 되살리지 못한 세션은 기억한다.
         *self = Machine { forgotten: self.forgotten.take(), out: std::mem::take(&mut self.out), ..Machine::default() };
+        self.app_servers = mcp_flags::names(&params["mcpServers"]);
         self.open = Open::Opening(Opening { id: id.clone(), session_id, model: model.map(str::to_owned), revive: reviving, claude });
         self.out.push(Output::Launch(launch));
         // 쓰지 못했으면 claude가 이미 끝난 것이다 — 그 끝([`Input::ClaudeEnded`])에서 이 요청에 답한다.
@@ -542,6 +542,8 @@ impl Machine {
             self.changed(&line["response"]);
         } else if line["type"] == "system" && line["subtype"] == "status" {
             self.mode_changed(&line);
+            let updates = self.stream.updates(&line);
+            self.forward(updates);
         } else if line["type"] == "control_request" && line["request"]["subtype"] == "can_use_tool" {
             self.ask_permission(&line);
         } else if line["type"] == "control_cancel_request" {
@@ -550,21 +552,23 @@ impl Machine {
             self.asked.retain(|_, asked| asked.request_id != line["request_id"]);
         } else if line["type"] == "system" && line["subtype"] == "init" {
             self.self_turn_started();
+            self.warn_failed_app_servers(&line);
             self.announce_init(line);
         } else if line["type"] == "result" && matches!(self.open, Open::Opening(_)) {
             // 세션이 열리기 전의 `result` — 되살릴 세션이 없어 claude가 initialize에 답하지 않고 끝난다(판 02 관문 G4).
             self.not_opened(&line);
         } else if line["type"] == "result" {
             self.turn_ended(&line);
-        } else if line["type"] == "assistant" && line["error"] == AUTHENTICATION_FAILED {
-            // S3 — 로그인이 안 된 claude의 `<synthetic>` 오류(실측 함정 32 · 33). 답으로 옮기지 않는다 — 내장 명령의
-            // `<synthetic>` 답과는 `error` 키로 가른다. 그 턴의 `result`가 `-32000`이 된다.
+        } else if line["type"] == "assistant" && line["is_api_error_message"] == true {
+            // API 오류를 감싼 `<synthetic>` 줄(실측 함정 32 · 33, 2.1.316 실측). 답으로 옮기지 않는다 — 같은 글이 그 턴의 `result`에
+            // 실려 까닭이 되고, 내장 명령의 `<synthetic>` 답에는 이 표지가 없다. 미로그인(S3)이면 그 턴의 `result`가 `-32000`이 된다.
             if let Turn::Ours { auth_failed, .. } = &mut self.turn {
-                *auth_failed = true;
+                *auth_failed |= line["error"] == AUTHENTICATION_FAILED;
             }
         } else {
             let updates = self.stream.updates(&line);
             self.forward(updates);
+            self.out.extend(self.stream.take_warnings().into_iter().map(Output::Stderr));
         }
     }
 
@@ -651,6 +655,18 @@ impl Machine {
         let Some(session_id) = self.session_id().filter(|_| !self.init_announced) else { return };
         self.init_announced = true;
         self.send(session_update(&session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"claudeCode": {"init": init}}})));
+    }
+
+    /// `system/init`의 `mcp_servers`에서 앱이 넘긴 서버가 `failed`면 경고 줄을 남긴다(구현 스펙 「01b — 그 밖의 Runtime 신호」).
+    ///
+    /// 사용자가 둔 서버의 실패와 `needs-auth` · `pending`은 읽지 않는다 — 녹음 19세션 중 18세션에서 사용자 플러그인 서버 둘이 늘
+    /// `failed`여서 채팅마다 경고가 선다. 첫 `init`에서 `pending`이던 서버가 뒤에서 실패할 수 있어 `init`마다 본다.
+    fn warn_failed_app_servers(&mut self, init: &Value) {
+        let mut servers = init["mcp_servers"].as_array().into_iter().flatten();
+        if servers.any(|server| server["status"] == "failed" && self.app_servers.iter().any(|name| server["name"] == *name)) {
+            self.app_servers.clear();
+            self.out.push(Output::Stderr(APP_TOOLS_FAILED.to_owned()));
+        }
     }
 
     /// `system/init` — claude가 턴 하나를 시작한다. 걸린 `session/prompt`가 없으면 claude가 백그라운드 작업 알림으로 스스로 시작한
@@ -816,15 +832,16 @@ impl Machine {
         }
     }
 
-    /// claude의 `result` — 턴 끝 하나다. 사용량을 알리고, 걸린 `session/prompt`에 끝 까닭으로 답한다. 둘째 턴부터 다시 오는
-    /// `system/init`은 새 세션이 아니므로 턴은 같은 세션에서 이어진다.
+    /// claude의 `result` — 턴 끝 하나다. 사용량을 알리고, 걸린 `session/prompt`에 끝 까닭으로 답한다. 실패한 턴이면 오류로 답한다
+    /// ([`turn_outcome`]). 둘째 턴부터 다시 오는 `system/init`은 새 세션이 아니므로 턴은 같은 세션에서 이어진다.
     ///
     /// - 백그라운드 작업이 남아도 여기서 턴을 끝낸다(S4) — 워크플로 티켓 09의 「한 턴으로 접기」는 하지 않는다. 사람이 dev 서버처럼
     ///   오래 사는 작업 뒤에 갇히지 않는다.
     /// - 걸린 `session/prompt`가 없는 `result`는 claude가 스스로 이어 간 턴의 끝이다 — `_meta.atelier.outOfTurn`으로 표시한 턴 밖
-    ///   끝 알림(`session_info_update`)을 낸다. 몸은 `session/prompt`의 답과 같은 꼴이다. 그 턴 뒤로 미뤄 둔 말이 있으면 이제 넣는다.
+    ///   끝 알림(`session_info_update`)을 낸다. 몸은 `session/prompt`의 답이나 오류와 같은 꼴이다. 그 턴 뒤로 미뤄 둔 말이 있으면 이제 넣는다.
     fn turn_ended(&mut self, result: &Value) {
         let Some(session_id) = self.session_id() else { return };
+        self.stream.turn_ended();
         if let Some(usage) = self.stream.usage(result) {
             self.send(session_update(&session_id, usage));
         }
@@ -835,15 +852,22 @@ impl Machine {
                     let data = json!({"claudeCode": {"result": result}});
                     self.send(error_with_data(&id, AUTH_REQUIRED, "Authentication required", data));
                 } else {
-                    self.send(reply(&id, stream::prompt_response(result, interrupted)));
+                    let answer = match turn_outcome(result, interrupted) {
+                        Ok(response) => reply(&id, response),
+                        Err(error) => json!({"jsonrpc": "2.0", "id": id, "error": error}),
+                    };
+                    self.send(answer);
                 }
                 return;
             }
             Turn::Claudes { interrupted, held } => (interrupted, held),
             Turn::Idle => (false, None),
         };
-        let response = stream::prompt_response(result, interrupted);
-        self.send(out_of_turn(&session_id, json!({"state": "ended", "response": response})));
+        let mark = match turn_outcome(result, interrupted) {
+            Ok(response) => json!({"state": "ended", "response": response}),
+            Err(error) => json!({"state": "ended", "error": error}),
+        };
+        self.send(out_of_turn(&session_id, mark));
         let Some(held) = held else { return };
         self.turn = Turn::Ours { id: held.id, interrupted: false, auth_failed: false };
         self.to_claude(held.line);
@@ -853,12 +877,11 @@ impl Machine {
     /// 요청에 답하고, 같은 id의 다음 단계(load)가 claude를 다시 띄우지 않게 기억한다.
     fn not_opened(&mut self, result: &Value) {
         let Some(opening) = self.take_opening() else { return };
-        let errors: Vec<&str> = result["errors"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-        let why = if errors.is_empty() { result["subtype"].as_str().unwrap_or("result").to_owned() } else { errors.join(" · ") };
+        let why = stream::why(result);
         let reason = if opening.revive {
-            format!("claude가 세션을 되살리지 못했습니다: {why}")
+            format!("claude가 세션을 되살리지 못했어요: {why}")
         } else {
-            format!("claude가 세션을 열지 못했습니다: {why}")
+            format!("claude가 세션을 열지 못했어요: {why}")
         };
         self.send(error(&opening.id, -32603, &reason));
         self.open = Open::Failed;
@@ -876,12 +899,12 @@ impl Machine {
             return self.out.push(Output::Exit(0));
         }
         if let Some(opening) = self.take_opening() {
-            self.send(error(&opening.id, -32603, &format!("claude가 initialize에 답하지 않고 끝났습니다 ({status})")));
+            self.send(error(&opening.id, -32603, &format!("claude가 initialize에 답하지 않고 끝났어요 ({status})")));
             self.open = Open::Failed;
             return;
         }
         if matches!(self.open, Open::Open { .. }) {
-            self.out.push(Output::Stderr(format!("변환기: claude가 끝났습니다 ({status})")));
+            self.out.push(Output::Stderr(format!("Claude Code가 끝났어요 ({status})")));
             self.out.push(Output::Exit(code.filter(|code| *code != 0).unwrap_or(1)));
         }
     }
@@ -889,7 +912,7 @@ impl Machine {
     /// claude를 띄우지 못했다 — 그 열기를 오류로 답하고 다음 열기를 받는다.
     fn launch_failed(&mut self, error_text: &str) {
         let Some(opening) = self.take_opening() else { return };
-        let reason = format!("claude를 실행할 수 없습니다: {} — {error_text}", opening.claude);
+        let reason = format!("claude를 실행하지 못했어요: {} — {error_text}", opening.claude);
         self.send(error(&opening.id, -32603, &reason));
     }
 
@@ -994,6 +1017,15 @@ fn reply(id: &Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
 
+/// 턴의 끝 — `session/prompt`의 답, 실패한 턴이면 그 오류(`{code, message, data}`). 호스트는 오류를 턴 끝 줄의 `error` 칸에 적는다. 턴
+/// 밖 끝 표지도 같은 값을 싣는다. `data`에는 답의 `_meta`처럼 `result` 원문을 싣는다.
+fn turn_outcome(result: &Value, interrupted: bool) -> Result<Value, Value> {
+    match stream::failure(result, interrupted) {
+        Some(why) => Err(json!({"code": -32603, "message": why, "data": {"claudeCode": {"result": result}}})),
+        None => Ok(stream::prompt_response(result, interrupted)),
+    }
+}
+
 /// claude `AskUserQuestion`의 물음들 → 엔진이 읽는 꼴(v1 티켓 26) — `{question, header?, description?, multiSelect, options[]{label,
 /// description?}}`. 빈 글 칸은 뺀다. 미리보기(`preview`)는 싣지 않는다 — 질문 카드는 글로만 고른다. 물음 글이 없는 물음 · 이름이 없는
 /// 선택지는 버린다.
@@ -1043,7 +1075,7 @@ fn session_update(session_id: &str, update: Value) -> Value {
 }
 
 /// 턴 밖 턴의 표지(S4) — `session_info_update`의 `_meta.atelier.outOfTurn`에 시작(`{state: "started"}`) · 끝(`{state: "ended",
-/// response}`)을 싣는다. 호스트와의 계약이다(`host.rs`의 `OutOfTurn`).
+/// response}`, 실패면 `{state: "ended", error}`)을 싣는다. 호스트와의 계약이다(`host.rs`의 `OutOfTurn`).
 fn out_of_turn(session_id: &str, mark: Value) -> Value {
     session_update(session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"outOfTurn": mark}}}))
 }

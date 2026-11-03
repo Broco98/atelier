@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, AddProject, ArchiveEntry, ArchivedDocs, Destination,
-    DeletedSpace, FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView, RestoredSpace, SearchResults,
-    Space, SpaceDetail, SpaceDraft, SpacePatch, SpaceUsage, WorkView, WorkWithSpecTree, WorktreeTree,
+    DeletedService, FolderLook, NewProjectPlace, ProjectRemoval, ProjectUsage, ProjectView, RestoredService, SearchResults,
+    Service, ServiceDetail, ServiceDraft, ServiceUsage, WorkView, WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -73,20 +73,6 @@ pub async fn new_project(parent: String, name: String) -> CmdResult<ProjectView>
     .map_err(|e| format!("Project를 만들지 못했습니다: {e}"))?
 }
 
-#[tauri::command]
-pub async fn update_project(
-    slug: String,
-    name: Option<String>,
-    description: Option<String>,
-    base_branch: Option<String>,
-) -> CmdResult<ProjectView> {
-    tauri::async_runtime::spawn_blocking(move || {
-        atelier_core::update_project(&projects_dir(), &slug, ProjectPatch { name, description, base_branch }).map_err(err)
-    })
-    .await
-    .map_err(|e| format!("Project를 고치지 못했습니다: {e}"))?
-}
-
 /// 재설정 — 폴더를 찾을 수 없는 Project가 새 자리를 고른다(03 구현 스펙 §15 · §16). git 저장소의 뿌리만 받고 경로만 바꾼다.
 #[tauri::command]
 pub async fn relocate_project(slug: String, folder: String) -> CmdResult<ProjectView> {
@@ -97,10 +83,10 @@ pub async fn relocate_project(slug: String, folder: String) -> CmdResult<Project
     .map_err(|e| format!("Project를 재설정하지 못했습니다: {e}"))?
 }
 
-// Project 제거(03 구현 스펙 §15 · §16) — 확인 창이 읽는 것 · 제거 · 되돌리기. 셋 다 core를 부르기만 한다(L4 다리도 같은 입구다). Space
+// Project 제거(03 구현 스펙 §15 · §16) — 확인 창이 읽는 것 · 제거 · 되돌리기. 셋 다 core를 부르기만 한다(L4 다리도 같은 입구다). Service
 // 파일 · Work 파일을 함께 읽고 고쳐 데이터 루트를 넘긴다.
 
-/// 제거 확인 창이 읽는 것 — 이 Project를 적은 Space들, 이 Project를 고치는 진행 중인 Work들. 창의 세 갈래가 이것으로 갈린다.
+/// 제거 확인 창이 읽는 것 — 이 Project를 적은 Service들, 이 Project를 고치는 진행 중인 Work들. 창의 세 갈래가 이것으로 갈린다.
 #[tauri::command]
 pub async fn project_usage(slug: String) -> CmdResult<ProjectUsage> {
     atelier_core::project_usage(&data_root(), &slug).map_err(err)
@@ -118,75 +104,86 @@ pub async fn restore_project(slug: String) -> CmdResult<ProjectView> {
     atelier_core::restore_project(&data_root(), &slug).map_err(err)
 }
 
-// **Space는 파일이다**(03 구현 스펙 §8 · §17) — 셋 다 core를 부르기만 한다. 검사 · 글 단위 고치기는 core 하나이고(S7), 기록 줄을 남기지
+// **Service는 파일이다**(03 구현 스펙 §8 · §17) — 셋 다 core를 부르기만 한다. 검사 · 글 단위 고치기는 core 하나이고(S7), 기록 줄을 남기지
 // 않으니 엔진을 지나지 않는다(`thread_` 접두가 아니라 L4 다리로도 탄다). 문제 있는 파일도 목록에 선다.
 #[tauri::command]
-pub async fn list_spaces() -> CmdResult<Vec<Space>> {
-    atelier_core::list_spaces(&data_root()).map_err(err)
+pub async fn list_services() -> CmdResult<Vec<Service>> {
+    atelier_core::list_services(&data_root()).map_err(err)
 }
 
-/// Space 하나와 함께 쓰는 Space — 상세 화면이 한 번에 읽는다.
+/// Service 파일들의 폴더(홈은 `~` — restart 03-3). 목록 줄 · 상세의 ⋯ 「경로 복사」가 그 아래 `<slug>.md`를 짓는다 — 누른 자리에서 곧바로
+/// 클립보드에 써야 해서(웹뷰는 누름 밖의 쓰기를 막는다) 화면이 미리 한 번 읽어 둔다. 파일을 읽지 않는다.
 #[tauri::command]
-pub async fn get_space(slug: String) -> CmdResult<SpaceDetail> {
-    atelier_core::space_detail(&data_root(), &slug).map_err(err)
+pub async fn services_folder() -> CmdResult<String> {
+    Ok(atelier_core::collapse_home(&atelier_core::services_in(&data_root())))
 }
 
-/// 상세의 설명 · 넣기 · 빼기(되돌리기는 `before`로 제자리에 넣는다). 고친 칸만 바꾸고, 새 문제를 만들면 쓰지 않고 그 문제를 말한다.
+/// Service 하나와 함께 쓰는 Service — 상세 화면이 한 번에 읽는다.
 #[tauri::command]
-pub async fn update_space(
-    slug: String,
-    name: Option<String>,
-    description: Option<String>,
-    add: Option<Vec<String>>,
-    before: Option<String>,
-    remove: Option<Vec<String>>,
-) -> CmdResult<Space> {
-    let patch =
-        SpacePatch { name, description, add: add.unwrap_or_default(), before, remove: remove.unwrap_or_default() };
-    atelier_core::update_space(&data_root(), &slug, patch).map_err(err)
+pub async fn get_service(slug: String) -> CmdResult<ServiceDetail> {
+    atelier_core::service_detail(&data_root(), &slug).map_err(err)
 }
 
-// **Space 파일 고치기 화면**(03 구현 스펙 §13 · 관계 편집 · 직접 만들기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면
-// 새 Space다. 검사는 core 하나이고 화면은 따로 검사하지 않는다(S7) — 저장도 같은 검사로 거절한다.
+// **Service 파일 고치기 화면**(03 구현 스펙 §13 · 파일로 고치기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면 새
+// Service다(core의 길 — 그 화면 「직접 만들기」는 restart 03-15c에서 걷혀 앱은 늘 slug를 보낸다). 검사는 core 하나이고 화면은 따로 검사하지
+// 않는다(S7) — 저장도 같은 검사로 거절한다.
 #[tauri::command]
-pub async fn read_space_text(slug: String) -> CmdResult<String> {
-    atelier_core::read_space_text(&data_root(), &slug).map_err(err)
+pub async fn read_service_text(slug: String) -> CmdResult<String> {
+    atelier_core::read_service_text(&data_root(), &slug).map_err(err)
 }
 
-/// 고치는 글 하나의 검사(문제 · 조각 자리)와 미리보기 · 안내 줄 · 새 Space의 파일 이름.
+/// 고치는 글 하나의 검사(문제 · 조각 자리)와 미리보기 · 안내 줄 · 새 Service의 파일 이름.
 #[tauri::command]
-pub async fn check_space(slug: Option<String>, text: String) -> CmdResult<SpaceDraft> {
-    tauri::async_runtime::spawn_blocking(move || atelier_core::draft_space(&data_root(), slug.as_deref(), &text).map_err(err))
+pub async fn check_service(slug: Option<String>, text: String) -> CmdResult<ServiceDraft> {
+    tauri::async_runtime::spawn_blocking(move || atelier_core::draft_service(&data_root(), slug.as_deref(), &text).map_err(err))
         .await
-        .map_err(|e| format!("Space 파일을 검사하지 못했습니다: {e}"))?
+        .map_err(|e| format!("Service 파일을 검사하지 못했습니다: {e}"))?
 }
 
-/// 사람이 쓴 글을 그대로 쓴다 — 문제가 있으면 쓰지 않는다. 새 Space면 글의 이름에서 slug를 짓는다.
+/// 사람이 쓴 글을 그대로 쓴다 — 문제가 있으면 쓰지 않는다. 새 Service면 글의 이름에서 slug를 짓는다.
 #[tauri::command]
-pub async fn save_space_text(slug: Option<String>, text: String) -> CmdResult<Space> {
-    atelier_core::save_space_text(&data_root(), slug.as_deref(), &text).map_err(err)
+pub async fn save_service_text(slug: Option<String>, text: String) -> CmdResult<Service> {
+    atelier_core::save_service_text(&data_root(), slug.as_deref(), &text).map_err(err)
 }
 
-/// Space 지우기 확인 창이 읽는 것(03 구현 스펙 §8 「쓰임」 · §14) — 이 Space에 이은 진행 중인 Work 수와 이 Space로 읽는 Thread 수. 읽기만
-/// 하고 core를 부르기만 한다(L4 다리로도 탄다). 지우기 · 되돌리기는 줄을 남기므로 엔진을 지난다(`thread_delete_space` ·
-/// `thread_restore_space`).
+/// Service 지우기 확인 창이 읽는 것(03 구현 스펙 §8 「쓰임」 · §14) — 이 Service에 이은 진행 중인 Work 수와 이 Service로 읽는 Thread 수. 읽기만
+/// 하고 core를 부르기만 한다(L4 다리로도 탄다). 지우기 · 되돌리기는 줄을 남기므로 엔진을 지난다(`thread_delete_service` ·
+/// `thread_restore_service`).
 #[tauri::command]
-pub async fn space_usage(slug: String) -> CmdResult<SpaceUsage> {
-    tauri::async_runtime::spawn_blocking(move || atelier_core::space_usage(&data_root(), &slug).map_err(err))
+pub async fn service_usage(slug: String) -> CmdResult<ServiceUsage> {
+    tauri::async_runtime::spawn_blocking(move || atelier_core::service_usage(&data_root(), &slug).map_err(err))
         .await
-        .map_err(|e| format!("Space의 쓰임을 읽지 못했습니다: {e}"))?
+        .map_err(|e| format!("Service의 쓰임을 읽지 못했습니다: {e}"))?
 }
 
-/// 읽는 범위(03 구현 스펙 §7) — Space(slug · 이름 · 문제 있음) · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Space · 빈 Space · 등록
-/// 없음). `thread`가 있으면 그 Thread의 범위, 없으면 보내기 전의 새 Thread — 입력창이 고른 Work · Space로 센다. 요약 카드 「소스」와
-/// Space 메뉴가 이것을 그린다. 읽기만 하고 core를 부르기만 한다(L4 다리로도 탄다).
+/// 읽는 범위(03 구현 스펙 §7) — Service(slug · 이름 · 문제 있음) · Project 범위 · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Service · 빈 Service ·
+/// Project · 등록 없음). `thread`가 있으면 그 Thread의 범위, 없으면 보내기 전의 새 Thread — 입력창이 고른 Work · Service · Project로 센다. 요약 카드
+/// 「소스」와 범위 칩이 이것을 그린다. 읽기만 하고 core를 부르기만 한다(L4 다리로도 탄다).
 #[tauri::command]
 pub async fn reading_scope(
     thread: Option<String>,
     work: Option<String>,
-    space: Option<String>,
+    service: Option<String>,
+    project: Option<String>,
 ) -> CmdResult<atelier_core::ReadingScope> {
-    atelier_core::reading_scope_of(&data_root(), thread.as_deref(), work.as_deref(), space.as_deref()).map_err(err)
+    atelier_core::reading_scope_of(&data_root(), thread.as_deref(), work.as_deref(), service.as_deref(), project.as_deref()).map_err(err)
+}
+
+/// 입력창의 「@」 언급이 찾는 파일(restart 02b-3) — 작업 폴더 · spec 폴더 · 읽는 범위의 Project와 그 안의 파일. 인자는 `reading_scope`와 같은
+/// slug들이고 경로를 받지 않는다. 자리마다 `git ls-files`를 기다리거나 폴더를 걷으므로 work 목록처럼 blocking 풀에서 돈다 — 범위 없음은 등록된
+/// Project 전부다.
+#[tauri::command]
+pub async fn mention_files(
+    thread: Option<String>,
+    work: Option<String>,
+    service: Option<String>,
+    project: Option<String>,
+) -> CmdResult<Vec<atelier_core::MentionPlace>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::mention_files(&data_root(), thread.as_deref(), work.as_deref(), service.as_deref(), project.as_deref()).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("언급할 파일을 찾지 못했습니다: {e}"))?
 }
 
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
@@ -219,7 +216,7 @@ pub async fn get_work(slug: String) -> CmdResult<WorkWithSpecTree> {
     Ok(works.remove(0))
 }
 
-/// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (update_project와 같은 규칙).
+/// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (core `update_project`와 같은 규칙).
 #[tauri::command]
 pub async fn set_work_title(slug: String, title: String) -> CmdResult<WorkView> {
     atelier_core::update_work_title(&works_dir(), &slug, &title).map_err(err)
@@ -344,7 +341,7 @@ pub async fn list_work_changes(slug: String) -> CmdResult<Vec<atelier_core::Proj
         atelier_core::list_work_changes(&works_dir(), &projects_dir(), &slug).map_err(err)
     })
     .await
-    .map_err(|e| format!("Work의 변경을 읽지 못했습니다: {e}"))?
+    .map_err(|e| format!("작업공간의 변경을 읽지 못했습니다: {e}"))?
 }
 
 /// 변경 하나의 diff(S23) — 넓힌 카드의 diff 보기가 받는 unified patch다. `..` · 절대 경로는 명령 실패다.
@@ -396,43 +393,6 @@ pub async fn search(query: String, destinations: Vec<Destination>) -> CmdResult<
 #[tauri::command]
 pub async fn touch_recent_work(slug: String) -> CmdResult<()> {
     atelier_core::touch_recent_work(&data_root(), &slug).map_err(err)
-}
-
-// Agent 정의(v1 구현 스펙 §6 · §18) — @ 메뉴와 Library 화면이 읽는다. 범위 · 고르기 규칙은 전부 코어에 있고 여기는 넘기기만 한다
-// (L4 다리도 같은 입구를 부른다). `work`가 없으면 Library만, 있으면 그 Work의 Project들까지가 범위다.
-
-/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것(까닭과 함께). Library와 Project마다 폴더를 읽고 파일을 하나씩 읽으므로 work
-/// 목록처럼 blocking 풀에서 돈다.
-#[tauri::command]
-pub async fn list_agents(work: Option<String>) -> CmdResult<atelier_core::AgentRoster> {
-    tauri::async_runtime::spawn_blocking(move || atelier_core::find_agents(&data_root(), work.as_deref()).map_err(err))
-        .await
-        .map_err(|e| format!("Agent 목록을 읽지 못했습니다: {e}"))?
-}
-
-/// 범위 안 Agent 파일 하나의 원문 — 부르는 이름(`reviewer` · `api-server/reviewer`)으로 고른다. 깨진 파일도 준다(무엇이
-/// 틀렸는지 보게). 범위를 다시 찾아 고르므로 목록처럼 blocking 풀에서 돈다.
-#[tauri::command]
-pub async fn read_agent_file(work: Option<String>, call: String) -> CmdResult<String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        atelier_core::read_agent_file(&data_root(), work.as_deref(), &call).map_err(err)
-    })
-    .await
-    .map_err(|e| format!("Agent 파일을 읽지 못했습니다: {e}"))?
-}
-
-/// Library 화면의 「Finder에서 열기」(v1 티켓 19 · 구현 스펙 §16) — 그 Agent 파일을 Finder에서 골라 보인다. 고치는 길의 하나가 외부
-/// 편집기라서 폴더가 아니라 파일 자리다. 경로를 받지 않고 부르는 이름으로 범위 안에서 푼다(`read_agent_file`과 같은 까닭). 푸는 일은
-/// 범위를 다시 찾으므로 blocking 풀에서 돈다.
-#[tauri::command]
-pub async fn reveal_agent_file(app: tauri::AppHandle, work: Option<String>, call: String) -> CmdResult<()> {
-    use tauri_plugin_opener::OpenerExt;
-    let path = tauri::async_runtime::spawn_blocking(move || {
-        atelier_core::agent_file_path(&data_root(), work.as_deref(), &call).map_err(err)
-    })
-    .await
-    .map_err(|e| format!("Agent 파일을 찾지 못했습니다: {e}"))??;
-    app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
 /// 입력창의 첨부 칩(v1 티켓 06 · 구현 스펙 S30) — `+`로 고르거나 끌어다 놓은 경로를 첨부로 잰다(크기 · 폴더인가). 내용은 읽지
@@ -498,15 +458,18 @@ pub async fn open_archived_spec_folder(app: tauri::AppHandle, slug: String) -> C
 // PTY 명령 일곱. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 
+// `command`는 시작 명령이다(restart 01c-10) — 셸이 처음 말한 뒤 그 줄을 쳐 넣는다. 「터미널에서 로그인」이 로그인 명령을 싣고, 그 밖의
+// 셸은 `null`이다.
 #[tauri::command]
 pub async fn pty_spawn(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
+    command: Option<String>,
     on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
 ) -> CmdResult<pty::PtySpawned> {
-    pty::spawn(&pool, cwd, cols, rows, on_frame)
+    pty::spawn(&pool, cwd, cols, rows, command, on_frame)
 }
 
 #[tauri::command]
@@ -608,7 +571,7 @@ pub async fn processes_snapshot(
         .map_err(|e| format!("프로세스 스냅샷을 찍지 못했습니다: {e}"))
 }
 
-// nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(프로세스 결정 11 · 티켓 29). 모든
+// nav 메타의 요약 — 앱 전체 CPU와 메모리 합계(프로세스 결정 10 · 티켓 29 · restart 03-11). 모든
 // 화면에 선 nav 메타가 10초마다 부른다(`src/features/processes/hooks.ts`). 답은 Rust의 배경 표본이 10초마다 앉힌 마지막 장이다 —
 // 부를 때마다 표를 찍지 않는다. 첫 장이 아직 없으면 그 자리에서 모으므로(표 한 장과 판정) blocking 풀에서 돌린다.
 #[tauri::command]
@@ -621,7 +584,8 @@ pub async fn processes_summary(
         .map_err(|e| format!("프로세스 요약을 읽지 못했습니다: {e}"))
 }
 
-// 요약 카드의 추이 — 배경 표본이 10초마다 든 앱 전체 메모리 합계의 1시간치(360점), 오래된 것부터(프로세스 결정 10 · 티켓 30). 화면이
+// 요약 카드의 추이 — 배경 표본이 10초마다 든 맥 전체 CPU와 아틀리에 CPU의 1시간치(360점), 오래된 것부터(프로세스 결정 10 · 티켓 30 ·
+// restart 03-5 — 한때 앱 전체 메모리 합계였다). 화면이
 // 열려 있는 동안 요약이 올 때마다 한 번 부른다(`src/features/processes/hooks.ts`의 `trendQuery`) — 새 박자는 없다. 고리를 복사할
 // 뿐이라 표를 찍지 않고 기다리지도 않는다(blocking 풀이 필요 없다). 앱을 다시 켜면 빈다.
 #[tauri::command]
@@ -646,13 +610,14 @@ pub async fn processes_cleanup_log(
 }
 
 // 사람이 고른 프로세스를 끝낸다 — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리](프로세스 결정 6 · 티켓 31). 받는 것은
-// **화면이 보인 신원(pid, 시작 시각) 목록**이다 — 여기서 다시 판정하지 않는다. 신호까지 보내고 돌아오며(S5) 유예와 SIGKILL은
-// 풀의 뒤 스레드가 돈다. 정리 기록에 까닭 「손으로」로 적힌다. 신호 전에 표 한 장을 찍으니 blocking 풀에서 돌린다.
+// **화면이 보인 신원(pid, 시작 시각) 목록**이다 — 여기서 다시 판정하지 않는다. **유예와 SIGKILL까지 기다려 대상마다 결과를
+// 돌려준다**(restart 03-10 — 화면이 줄에 끝남 · 강제로 끝냄 · 못 끝냄 · 이미 없음을 세운다). 정리 기록에 까닭 「손으로」로 적힌다.
+// 신호 전에 표 한 장을 찍고 최악 2초 남짓 기다리니 blocking 풀에서 돌린다.
 #[tauri::command]
 pub async fn processes_end(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     targets: Vec<crate::processes::Identity>,
-) -> CmdResult<()> {
+) -> CmdResult<Vec<crate::processes::ending::EndResult>> {
     let pool = Arc::clone(&pool);
     tauri::async_runtime::spawn_blocking(move || pty::end_by_hand(&pool, &targets))
         .await
@@ -678,35 +643,6 @@ pub async fn read_settings() -> CmdResult<crate::settings::Settings> {
 #[tauri::command]
 pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()> {
     crate::settings::write(&data_root(), &settings)
-}
-
-/// 사람 메뉴에 서는 이름(v1 구현 스펙 S27 · 티켓 07) — 이 컴퓨터 계정의 전체 이름(macOS 「사용자 및 그룹」의 이름 — passwd의 GECOS
-/// 첫 칸)이고, 비었으면 로그인 이름이다. 둘 다 없으면 `None`이고 화면이 「나」로 선다. 앱이 이름을 따로 묻거나 적어 두지 않는다 —
-/// 이 컴퓨터를 쓰는 사람이 곧 그 계정이다.
-#[tauri::command]
-pub async fn person_name() -> CmdResult<Option<String>> {
-    Ok(display_name(account_full_name().as_deref(), std::env::var("USER").ok().as_deref()))
-}
-
-/// 이름을 고르는 규칙 — GECOS는 쉼표로 칸을 가른다(전체 이름 · 방 · 전화 …). 첫 칸이 비면 로그인 이름이다.
-fn display_name(gecos: Option<&str>, login: Option<&str>) -> Option<String> {
-    let full = gecos.and_then(|gecos| gecos.split(',').next()).map(str::trim).filter(|name| !name.is_empty());
-    full.or_else(|| login.map(str::trim).filter(|name| !name.is_empty())).map(str::to_owned)
-}
-
-/// 지금 계정의 GECOS 칸. `getpwuid_r`은 부른 쪽의 버퍼에 쓰므로 다른 스레드의 조회와 엇갈리지 않는다.
-fn account_full_name() -> Option<String> {
-    let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
-    let mut buffer = vec![0 as libc::c_char; 4096];
-    let mut found: *mut libc::passwd = std::ptr::null_mut();
-    // SAFETY: 버퍼와 그 길이를 함께 넘기고, 돌아온 포인터는 그 버퍼 안을 가리킨다 — 이 함수 안에서만 읽는다.
-    let status =
-        unsafe { libc::getpwuid_r(libc::getuid(), &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) };
-    if status != 0 || found.is_null() || entry.pw_gecos.is_null() {
-        return None;
-    }
-    // SAFETY: 위에서 널이 아님을 봤고, 글자는 위 버퍼 안의 NUL로 끝나는 C 문자열이다.
-    Some(unsafe { std::ffi::CStr::from_ptr(entry.pw_gecos) }.to_string_lossy().into_owned())
 }
 
 /// 예외 목록의 기본값(프로세스 결정 5 · 프로세스 스펙 S7). 설정의 `terminal.processExceptions`가 `null`일 때 판정이
@@ -832,7 +768,7 @@ pub async fn startup_report(
 //
 // - 명령은 이름 · 인자 · 위임 한 줄이다. 엔진에는 `to_host` 한 길로만 간다 — 어느 부름이 막히는지 명령이 고르지 않는다.
 // - 턴은 기다리지 않는다 — 보내기 · 멈추기 · 지금 전하기 · 권한 답은 말이나 멈춤이나 답을 보내고 돌아온다. 열쇠는 Thread id이고,
-//   답과 턴 끝은 `thread::RECORD_EVENT`로, 대기 줄은 `thread::QUEUE_EVENT`로, 목록 요약은 `thread::LIST_EVENT`로 온다.
+//   답과 턴 끝은 `thread::RECORD_EVENT`로, 흐르는 글은 `thread::CHUNK_EVENT`로, 대기 줄은 `thread::QUEUE_EVENT`로, 목록 요약은 `thread::LIST_EVENT`로 온다.
 // - 엔진의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
 // - 다리로 탈 수 없다(`in_app_only`) — 엔진은 오래 사는 Agent를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
 // - v1은 Claude Code만 띄우므로(S3) 엔진을 고르는 인자가 없다. three-axes의 Work 안 대화창(`chat_*`)은 v1 티켓 08이 걷었다.
@@ -859,29 +795,25 @@ where
         .map_err(|e| e.to_string())
 }
 
-/// Claude Code를 로그인 셸의 PATH에서 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 확인」이다.
+/// 그 Runtime을 로그인 셸의 PATH에서 찾고 로그인돼 있는지 묻는다(restart 01c-9 — Runtime마다다). `reread`는 안내 카드의 「다시 찾기」 ·
+/// 「다시 확인」이다.
 #[tauri::command]
 pub async fn thread_check_engine(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    runtime: atelier_acp::Runtime,
     reread: bool,
 ) -> CmdResult<atelier_acp::EngineCheck> {
-    to_host(&engine, "Claude Code를 확인하지 못했습니다", move |host| host.check_engine(atelier_acp::Agent::Claude, reread)).await
+    to_host(&engine, "Runtime을 확인하지 못했습니다", move |host| host.check_engine(runtime.into(), reread)).await
 }
 
-/// Claude Code의 로그인 명령을 띄운다. 진행과 끝은 엔진 상태 이벤트(`thread::ENGINE_EVENT`)로 온다.
+/// 그 Runtime의 로그인 명령 한 줄(restart 01c-10) — 「터미널에서 로그인」이 Terminal에 연 새 셸에 친다(`pty_spawn`의 `command`). 앱은
+/// 로그인 명령을 띄우지 않는다. 로그인을 마친 뒤 「다시 확인」(`thread_check_engine`)이 기다리던 채팅을 다시 띄운다.
 #[tauri::command]
-pub async fn thread_start_login(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
-    to_host(&engine, "로그인을 시작하지 못했습니다", |host| host.start_login(atelier_acp::Agent::Claude)).await
-}
-
-/// 도는 로그인 명령을 거둔다.
-#[tauri::command]
-pub async fn thread_cancel_login(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
-    to_host(&engine, "로그인을 취소하지 못했습니다", |host| {
-        host.cancel_login(atelier_acp::Agent::Claude);
-        Ok::<_, Infallible>(())
-    })
-    .await
+pub async fn thread_login_command(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    runtime: atelier_acp::Runtime,
+) -> CmdResult<String> {
+    to_host(&engine, "로그인 명령을 찾지 못했습니다", move |host| host.login_command(runtime.into())).await
 }
 
 /// 앱 종료 확인 창의 셈(S40 · three-axes 티켓 23) — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 대기 줄은
@@ -890,7 +822,7 @@ pub async fn thread_cancel_login(engine: tauri::State<'_, Arc<atelier_acp::Conve
 pub async fn thread_quit_counts(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
 ) -> CmdResult<atelier_acp::QuitCounts> {
-    to_host(&engine, "Thread를 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
+    to_host(&engine, "채팅을 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
 }
 
 /// Thread 목록 — 모든 Thread의 요약, 새것부터. 엔진의 색인을 읽는다.
@@ -898,7 +830,7 @@ pub async fn thread_quit_counts(
 pub async fn thread_list(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
 ) -> CmdResult<Vec<atelier_core::ThreadSummary>> {
-    to_host(&engine, "Thread 목록을 읽지 못했습니다", |host| host.list_threads()).await
+    to_host(&engine, "채팅 목록을 읽지 못했습니다", |host| host.list_threads()).await
 }
 
 /// Thread 하나의 지금 — `thread.json` · 기록의 끝 · 떠 있나 · 대기 줄. 다시 켠 뒤 · ⌘R 뒤 화면이 Thread를 열 때 읽는다.
@@ -907,7 +839,7 @@ pub async fn thread_get(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
 ) -> CmdResult<atelier_acp::ThreadView> {
-    to_host(&engine, "Thread를 읽지 못했습니다", move |host| host.thread(&thread)).await
+    to_host(&engine, "채팅을 읽지 못했습니다", move |host| host.thread(&thread)).await
 }
 
 /// 그 Thread의 기록에서 `after` 다음 seq의 줄들 — 화면은 이것으로 그리고, 그 뒤는 기록 줄 이벤트로 잇는다.
@@ -917,34 +849,41 @@ pub async fn thread_read_record(
     thread: String,
     after: u64,
 ) -> CmdResult<Vec<atelier_acp::RecordLine>> {
-    to_host(&engine, "Thread 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
+    to_host(&engine, "채팅 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
 }
 
-/// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
-/// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
-/// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
+/// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 고른 Runtime의
+/// Session을 열어 그 Runtime이 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 이을 Work가 없거나 Runtime을 찾지
+/// 못하면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 /// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 칩에서 고른 값이다(v1 티켓 23) — 이은 Work면 그 Work의 정도가
-/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 Space 칩에서
-/// 고른 Space(`space` — `{slug}`, 「Space 없음」이면 `{slug: null}`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Space가 된다, S4).
-/// 고르지 않은 칸은 `null`이다.
+/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 범위 칩에서
+/// 고른 Service(`service` — `{slug}`, 「Service 없음」이면 `{slug: null}`)와 Project(`project`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Service가
+/// 된다, S4). 고르지 않은 칸은 `null`이다. Runtime(`runtime` — `claude-code` · `codex`)은 새 채팅에서만 고르는 채팅의 값이다(restart 01c-3) — Codex
+/// 채팅은 모델 · 생각 깊이를 받지 않는다. 인용(`quote` — 작업공간의 새 채팅 탭이 넓힌 카드의 문서에서 고른 글, restart 02a-11)은 이은 Work의
+/// spec 폴더를 가리키는 인용 블록으로 첫 말 본문 앞에 간다 — 올바르지 않으면 아무것도 세우지 않는다.
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     text: String,
     attachments: Vec<String>,
     link: atelier_acp::ThreadLink,
+    runtime: atelier_acp::Runtime,
     mode: Option<atelier_acp::AskLevel>,
     model: Option<String>,
     effort: Option<String>,
-    space: Option<atelier_acp::SpacePick>,
+    service: Option<atelier_acp::ServicePick>,
+    project: Option<String>,
+    quote: Option<atelier_acp::Quote>,
 ) -> CmdResult<String> {
-    let picks = atelier_acp::StartPicks { mode, model, effort, space };
-    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
+    let picks = atelier_acp::StartPicks { runtime, mode, model, effort, service, project };
+    to_host(&engine, "채팅을 시작하지 못했습니다", move |host| {
+        host.start_thread_quoting(&text, &attachments, link, picks, quote.as_ref())
+    })
+    .await
 }
 
-/// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
-/// 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 멘션이 범위 밖 · 깨진 파일 · 없는 첨부면 아무것도 적지 않고 그 까닭이 오류
-/// 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30). 인용(`quote` — 넓힌 카드의 문서에서 고른 글, v1 티켓
+/// 있는 Thread에 말한다. 턴을 기다리지 않는다. 다시 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 없는 첨부면 아무것도 적지 않고
+/// 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30). 인용(`quote` — 넓힌 카드의 문서에서 고른 글, v1 티켓
 /// 35 · S41)은 이은 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 간다 — 올바르지 않으면 아무것도 적지 않는다.
 #[tauri::command]
 pub async fn thread_send(
@@ -997,26 +936,31 @@ pub async fn thread_send_now(
     to_host(&engine, "지금 전하지 못했습니다", move |host| host.send_thread_now(&thread, &queued)).await
 }
 
-/// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다. 승인
-/// 카드(v1 티켓 24)의 「다시 묻지 않기」면 `remember`, 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
+/// 다시 잇기 — 말을 보내지 않고 재개 차례로 Session만 연다. 끊긴 턴은 다시 보내지 않고, 대기 줄은 맨 앞부터 간다.
+#[tauri::command]
+pub async fn thread_reconnect(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>, thread: String) -> CmdResult<()> {
+    to_host(&engine, "다시 잇지 못했습니다", move |host| host.reconnect_thread(&thread)).await
+}
+
+/// 권한 답 — 그 Thread의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다. 승인 카드(v1 티켓 24)의 「다시 묻지
+/// 않기」면 `remember`, 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
 #[tauri::command]
 pub async fn thread_answer_permission(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     request: String,
     option: String,
     remember: bool,
     words: Option<String>,
 ) -> CmdResult<()> {
     to_host(&engine, "권한 요청에 답하지 못했습니다", move |host| {
-        host.reply_thread_permission(&thread, &who, &request, &atelier_acp::Reply { option, remember, words })
+        host.reply_thread_permission(&thread, &request, &atelier_acp::Reply { option, remember, words })
     })
     .await
 }
 
-/// Work 만들기 카드의 답(v1 티켓 30) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「Work 만들기」(`create`, 카드에서 고친
-/// Project들 · 브랜치)나 「Work 없이 계속」으로 답한다. 만들지 못하면 그 까닭으로 실패하고 카드는 그대로 서 있다.
+/// Work 만들기 카드의 답(v1 티켓 30) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「작업공간 만들기」(`create`, 카드에서 고친
+/// Project들 · 브랜치)나 「작업공간 없이 계속」으로 답한다. 만들지 못하면 그 까닭으로 실패하고 카드는 그대로 서 있다.
 #[tauri::command]
 pub async fn thread_answer_work(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -1031,23 +975,22 @@ pub async fn thread_answer_work(
     } else {
         atelier_acp::WorkChoice::Continue
     };
-    to_host(&engine, "Work 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
+    to_host(&engine, "작업공간 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
 }
 
-/// 질문 답(v1 티켓 26) — 그 참여자의 Session에 걸린 질문(`request` — `question` 줄의 요청 id)에 물음마다의 답(`answers`)으로
+/// 질문 답(v1 티켓 26) — 그 Thread의 Session에 걸린 질문(`request` — `question` 줄의 요청 id)에 물음마다의 답(`answers`)으로
 /// 답한다. 질문 카드의 「나중에」면 `later`이고 답은 비운다.
 #[tauri::command]
 pub async fn thread_answer_question(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     request: String,
     answers: Vec<atelier_acp::QuestionAnswer>,
     later: bool,
 ) -> CmdResult<()> {
     to_host(&engine, "질문에 답하지 못했습니다", move |host| {
         let reply = if later { atelier_acp::QuestionReply::Later } else { atelier_acp::QuestionReply::Answer(answers) };
-        host.answer_thread_question(&thread, &who, &request, &reply)
+        host.answer_thread_question(&thread, &request, &reply)
     })
     .await
 }
@@ -1065,29 +1008,29 @@ pub async fn thread_answer_project(
         "attach" => atelier_acp::ProjectChoice::Attach,
         "read" => atelier_acp::ProjectChoice::ReadOnly,
         "decline" => atelier_acp::ProjectChoice::Decline,
-        other => return Err(format!("Work 밖 Project 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
+        other => return Err(format!("작업공간 밖 Project 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
     };
-    to_host(&engine, "Work 밖 Project 카드에 답하지 못했습니다", move |host| host.answer_project(&thread, &request, choice)).await
+    to_host(&engine, "작업공간 밖 Project 카드에 답하지 못했습니다", move |host| host.answer_project(&thread, &request, choice)).await
 }
 
-/// Space 질문 카드의 답(03 §11 · 티켓 08) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 그 Space(`space` + `space`의 slug) ·
-/// 「Space 없이」(`none`) · 「나중에」(`later` — esc)로 답한다. 고른 Space는 그 Thread(Work에 이었으면 그 Work)에 적힌다. 적지 못하면 그
+/// Service 질문 카드의 답(03 §11 · 티켓 08) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 그 Service(`service` + `service`의 slug) ·
+/// 「Service 없이」(`none`) · 「나중에」(`later` — esc)로 답한다. 고른 Service는 그 Thread(Work에 이었으면 그 Work)에 적힌다. 적지 못하면 그
 /// 까닭으로 실패하고 카드는 그대로 서 있다.
 #[tauri::command]
-pub async fn thread_answer_space(
+pub async fn thread_answer_service(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     request: String,
     choice: String,
-    space: Option<String>,
+    service: Option<String>,
 ) -> CmdResult<()> {
-    let choice = match (choice.as_str(), space) {
-        ("space", Some(slug)) => atelier_acp::SpaceChoice::Space(slug),
-        ("none", _) => atelier_acp::SpaceChoice::Without,
-        ("later", _) => atelier_acp::SpaceChoice::Later,
-        (other, _) => return Err(format!("Space 질문 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
+    let choice = match (choice.as_str(), service) {
+        ("service", Some(slug)) => atelier_acp::ServiceChoice::Service(slug),
+        ("none", _) => atelier_acp::ServiceChoice::Without,
+        ("later", _) => atelier_acp::ServiceChoice::Later,
+        (other, _) => return Err(format!("Service 질문 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
     };
-    to_host(&engine, "Space 질문 카드에 답하지 못했습니다", move |host| host.answer_space(&thread, &request, choice)).await
+    to_host(&engine, "Service 질문 카드에 답하지 못했습니다", move |host| host.answer_service(&thread, &request, choice)).await
 }
 
 /// Project 추가 카드의 답(03 §12 · 티켓 12) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「git init 하고 추가」(`init`) ·
@@ -1110,31 +1053,29 @@ pub async fn thread_answer_project_add(
     to_host(&engine, "Project 추가 카드에 답하지 못했습니다", move |host| host.answer_project_add(&thread, &request, choice)).await
 }
 
-/// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
+/// 모델 바꾸기 — 그 채팅의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 채팅의 값이다.
 #[tauri::command]
 pub async fn thread_set_model(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     model: String,
-) -> CmdResult<atelier_core::Participant> {
-    to_host(&engine, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &who, &model)).await
+) -> CmdResult<atelier_core::ThreadFile> {
+    to_host(&engine, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &model)).await
 }
 
 /// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — claude `--effort`의 값 하나. 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터
-/// 들고, 떠 있지 않으면 띄울 때 든다. 턴이 도는 동안은 거절된다. 답은 바뀐 참여자 줄이다.
+/// 들고, 떠 있지 않으면 띄울 때 든다. 턴이 도는 동안은 거절된다. 답은 바뀐 채팅의 값이다.
 #[tauri::command]
 pub async fn thread_set_effort(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    who: String,
     effort: String,
-) -> CmdResult<atelier_core::Participant> {
-    to_host(&engine, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &who, &effort)).await
+) -> CmdResult<atelier_core::ThreadFile> {
+    to_host(&engine, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &effort)).await
 }
 
 /// 물어보는 정도 바꾸기(v1 티켓 23 · S18) — 입력창 아래 칩 · `/plan` · `/policy`. Work에 이은 Thread면 그 Work의 정도다. 판정은 다음
-/// 요청부터 따르고, 「계획만」으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄로 남는다.
+/// 요청부터 따르고, 「계획」으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄로 남는다.
 #[tauri::command]
 pub async fn thread_set_mode(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -1144,68 +1085,55 @@ pub async fn thread_set_mode(
     to_host(&engine, "물어보는 정도를 바꾸지 못했습니다", move |host| host.set_thread_mode(&thread, mode)).await
 }
 
-/// Thread의 Space 붙이기 · 바꾸기 · 빼기(`space` 없음, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Space가 바뀐다(§9). 떠 있는 Session은
-/// 그대로 두고 다음 말부터 새 범위로 이어 연다. 바꾼 것은 Space 줄(`space`)로 남는다. 없는 Space는 그 까닭으로 거절된다.
+/// Codex 모드 바꾸기(restart 01c-5) — Codex 채팅의 모드 칩. Codex가 보낸 모드 id 하나이고 채팅마다의 값이다. 떠 있으면 곧바로 넣고, 아니면 열 때
+/// 든다. Claude Code 채팅이면 거절된다. 답은 바뀐 채팅의 값이다.
 #[tauri::command]
-pub async fn thread_set_space(
+pub async fn thread_set_codex_mode(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
-    space: Option<String>,
-) -> CmdResult<()> {
-    to_host(&engine, "Space를 바꾸지 못했습니다", move |host| host.set_thread_space(&thread, space.as_deref())).await
+    mode: String,
+) -> CmdResult<atelier_core::ThreadFile> {
+    to_host(&engine, "Codex 모드를 바꾸지 못했습니다", move |host| host.set_thread_codex_mode(&thread, &mode)).await
 }
 
-/// Work의 Space 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Space 메뉴(03 티켓 05). 그 Work의 Thread마다 Space 줄이 선다(S9).
+/// Work의 Service 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Service 메뉴(03 티켓 05). 그 Work의 Thread마다 Service 줄이 선다(S9).
 #[tauri::command]
-pub async fn thread_set_work_space(
+pub async fn thread_set_work_service(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     work: String,
-    space: Option<String>,
+    service: Option<String>,
 ) -> CmdResult<()> {
-    to_host(&engine, "Work의 Space를 바꾸지 못했습니다", move |host| host.set_work_space(&work, space.as_deref())).await
+    to_host(&engine, "작업공간의 Service를 바꾸지 못했습니다", move |host| host.set_work_service(&work, service.as_deref())).await
 }
 
-/// Space 지우기(03 티켓 07 · §9 · §14) — 확인 창의 「삭제」. 파일을 지운 자리로 옮기고 그 Space에 이은 칸을 비우며, 그 Space로 읽던
-/// Thread마다 「지워짐」 줄(`space`)을 남긴다. Project · 대화 · 문서 · worktree는 그대로다. 없는 Space는 그 까닭으로 거절된다.
+/// Service 지우기(03 티켓 07 · §9 · §14) — 확인 창의 「삭제」. 파일을 지운 자리로 옮기고 그 Service에 이은 칸을 비우며, 그 Service로 읽던
+/// Thread마다 「지워짐」 줄(`service`)을 남긴다. Project · 대화 · 문서 · worktree는 그대로다. 없는 Service는 그 까닭으로 거절된다.
 #[tauri::command]
-pub async fn thread_delete_space(
+pub async fn thread_delete_service(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     slug: String,
-) -> CmdResult<DeletedSpace> {
-    to_host(&engine, "Space를 지우지 못했습니다", move |host| host.delete_space(&slug)).await
+) -> CmdResult<DeletedService> {
+    to_host(&engine, "Service를 지우지 못했습니다", move |host| host.delete_service(&slug)).await
 }
 
-/// Space 되돌리기 — 지운 뒤 토스트의 「되돌리기」만 부른다(S10). 비웠던 칸 가운데 아직 빈 것에 다시 적고 「되돌림」 줄을 남긴다. 그사이
+/// Service 되돌리기 — 지운 뒤 토스트의 「되돌리기」만 부른다(S10). 비웠던 칸 가운데 아직 빈 것에 다시 적고 「되돌림」 줄을 남긴다. 그사이
 /// 같은 slug가 다시 쓰였으면 core의 글(「slug is in use again: …」)로 거절된다.
 #[tauri::command]
-pub async fn thread_restore_space(
+pub async fn thread_restore_service(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     slug: String,
-) -> CmdResult<RestoredSpace> {
-    to_host(&engine, "Space를 되돌리지 못했습니다", move |host| host.restore_space(&slug)).await
+) -> CmdResult<RestoredService> {
+    to_host(&engine, "Service를 되돌리지 못했습니다", move |host| host.restore_service(&slug)).await
 }
 
-/// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 「최근 Work」를 고르면 물어보는 정도 칩이 이것을 보인다.
+/// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 Thread의 물어보는 정도 칩이 이것을 보인다.
 /// 읽기만 한다. 없는 Work는 그 까닭이 오류 글이다.
 #[tauri::command]
 pub async fn thread_work_mode(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     work: String,
 ) -> CmdResult<atelier_acp::AskLevel> {
-    to_host(&engine, "Work의 물어보는 정도를 읽지 못했습니다", move |host| host.work_ask_level(&work)).await
-}
-
-/// 다시 맡기기(v1 티켓 17 · 구현 스펙 §8) — 호출 줄에서 사람이 `from`의 부르기를 같은 글(`text`)로 `to`에게 다시 한다. 기다리지
-/// 않는다 — 부르기 · 결과(부른 Agent의 다음 말)는 기록 줄로 온다. 부를 수 없으면 그 까닭으로 거절된다.
-#[tauri::command]
-pub async fn thread_call_again(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    thread: String,
-    from: String,
-    to: String,
-    text: String,
-) -> CmdResult<()> {
-    to_host(&chats, "다시 맡기지 못했습니다", move |host| host.call_again(&thread, &from, &to, &text)).await
+    to_host(&engine, "작업공간의 물어보는 정도를 읽지 못했습니다", move |host| host.work_ask_level(&work)).await
 }
 
 /// 이름 바꾸기 — 위 막대에서 사람이 고친 이름(v1 티켓 05). `thread.json` · `title` 줄 · 목록 요약이 함께 바뀐다. 답은 바뀐 목록
@@ -1232,17 +1160,6 @@ pub async fn thread_mark_read(
 
 #[cfg(test)]
 mod tests {
-    /// 사람 메뉴의 이름(v1 티켓 07) — 계정의 전체 이름(GECOS의 첫 칸)이 먼저고, 비었으면 로그인 이름이다. 둘 다 비면 없다.
-    #[test]
-    fn 사람의_이름은_계정의_전체_이름이고_없으면_로그인_이름이다() {
-        use super::display_name;
-        assert_eq!(display_name(Some("홍길동,,,"), Some("gildong")).as_deref(), Some("홍길동"));
-        assert_eq!(display_name(Some("  "), Some("gildong")).as_deref(), Some("gildong"));
-        assert_eq!(display_name(None, Some("gildong")).as_deref(), Some("gildong"));
-        assert_eq!(display_name(Some(""), Some("")), None);
-        assert_eq!(display_name(None, None), None);
-    }
-
     use std::convert::Infallible;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, RwLock};
@@ -1349,21 +1266,20 @@ mod tests {
     /// - `processes_snapshot`(티켓 26): 화면이 열려 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms).
     /// - `processes_summary`(티켓 29): 답은 대개 배경 표본이 앉힌 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 표 한 장과
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
-    /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
-    ///   돈다(`pty::end_by_hand`).
+    /// - `processes_end`(티켓 31 · restart 03-10): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍고, 대상마다 결과를 돌려주려
+    ///   유예와 SIGKILL까지 기다린다 — 최악 2초 남짓(`pty::end_by_hand`).
     /// - `read_worktree_file`(git-integration 판 01): 디스크에서 파일 하나를 읽고 실제 경로를 두 번 푼다 — 파일 탭이 보일 때만 오지만
     ///   큰 파일이면 그 읽기가 ms 단위다.
-    /// - `list_agents` · `read_agent_file`(v1 티켓 11): Library와 Work의 Project마다 Agent 폴더를 읽고 파일을 하나씩 읽는다 — @ 메뉴가
-    ///   열릴 때마다 온다.
     /// - `list_work_changes`(v1 티켓 33): Project마다 git을 세 번 기다린다(갈라진 커밋 · 증감 · 아직 모르는 파일). Work 카드가
     ///   worktree가 바뀔 때마다 부른다.
     /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
     /// - `list_projects` · `get_project`(03 티켓 10): Project마다 git을 기다린다(브랜치 · 원격 브랜치 `remoteBranches`).
     /// - `inspect_project_folder`(03 티켓 09): 추가 창이 폴더를 고를 때마다 git을 여러 번 기다린다(저장소인가 · 뿌리 · 원격).
     /// - `create_project` · `new_project`(03 티켓 09): `git init` · 빈 첫 커밋 · 기준 브랜치를 기다린다.
-    /// - `update_project` · `relocate_project`(03 티켓 10 · 09): 기준 브랜치 검사 · 새 자리의 뿌리를 git에게 묻는다.
-    /// - `check_space`(03 티켓 04): 고치기 화면이 칠 때마다 Space 파일 전부와 등록부를 읽는다.
-    /// - `space_usage`(03 티켓 07): Work 파일 전부와 Thread 파일 전부를 읽는다.
+    /// - `relocate_project`(03 티켓 09): 새 자리의 뿌리를 git에게 묻는다.
+    /// - `check_service`(03 티켓 04): 고치기 화면이 칠 때마다 Service 파일 전부와 등록부를 읽는다.
+    /// - `service_usage`(03 티켓 07): Work 파일 전부와 Thread 파일 전부를 읽는다.
+    /// - `mention_files`(restart 02b-3): 찾는 자리마다 `git ls-files`를 기다리거나 폴더를 걷는다 — 범위 없음은 등록된 Project 전부다.
     ///
     /// Thread 명령(`thread_work_prs`도 — v1 티켓 36, `gh`를 기다리고 `pr` 줄을 남기는 것이 엔진이다)은 여기 없다 — 어느 엔진 부름이
     /// 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을 blocking 풀에서 기다린다. 길은
@@ -1380,9 +1296,6 @@ mod tests {
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
             ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
-            ("list_agents", "atelier_core::find_agents(", "find_agents("),
-            ("read_agent_file", "atelier_core::read_agent_file(", "read_agent_file("),
-            ("reveal_agent_file", "atelier_core::agent_file_path(", "agent_file_path("),
             ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
             ("list_work_changes", "atelier_core::list_work_changes(", "list_work_changes("),
             ("read_work_diff", "atelier_core::read_work_diff(", "read_work_diff("),
@@ -1391,10 +1304,10 @@ mod tests {
             ("inspect_project_folder", "atelier_core::inspect_folder(", "inspect_folder("),
             ("create_project", "atelier_core::add_project(", "add_project("),
             ("new_project", "atelier_core::new_project(", "new_project("),
-            ("update_project", "atelier_core::update_project(", "update_project("),
             ("relocate_project", "atelier_core::relocate_project(", "relocate_project("),
-            ("check_space", "atelier_core::draft_space(", "draft_space("),
-            ("space_usage", "atelier_core::space_usage(", "space_usage("),
+            ("check_service", "atelier_core::draft_service(", "draft_service("),
+            ("service_usage", "atelier_core::service_usage(", "service_usage("),
+            ("mention_files", "atelier_core::mention_files(", "mention_files("),
         ] {
             let body = command_body(command);
             let blocking = body

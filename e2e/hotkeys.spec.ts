@@ -23,6 +23,8 @@ const 표 = JSON.parse(readFileSync(new URL("../src/lib/hotkeys.json", import.me
 
 const 사이드바토글 = (page: Page) => page.getByRole("button", { name: "사이드바 토글", exact: true });
 const 사이드바폭 = (page: Page) => page.locator("aside").first().evaluate((el) => Math.round(el.getBoundingClientRect().width));
+/** 접힌 사이드바 상자의 폭 — 본문 카드 왼쪽 틈 8로 남는다(restart 02a-2 · 시안 `.ra-side[data-open=false]`). 한때 0이었다. */
+const 접힌폭 = 8;
 
 test("사이드바 토글의 도움말에 ⌘B가 서고 상태를 탄다 — 이름은 그대로이고 키는 설명 · aria-keyshortcuts로 남는다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -40,7 +42,7 @@ test("사이드바 토글의 도움말에 ⌘B가 서고 상태를 탄다 — �
   // 접으면 도움말이 「펼치기」다 — 비켰다가 다시 올린다. 버튼은 접힌 뒤에도 머리 줄 그 자리에 남는다.
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect.poll(() => 사이드바폭(page)).toBe(0);
+  await expect.poll(() => 사이드바폭(page)).toBe(접힌폭);
   await page.mouse.move(600, 400);
   await expect(툴팁(page)).toHaveCount(0);
   await toggle.hover();
@@ -54,7 +56,7 @@ test("단축키가 있는 머리 줄 버튼은 표의 글자를 설명으로, �
   const 버튼들 = [
     { 버튼: 사이드바토글(page), 글자: "⌘B", 값: "Meta+B" },
     { 버튼: 창검색버튼(page), 글자: "⌘K", 값: "Meta+K" },
-    { 버튼: page.getByRole("button", { name: "작업 패널 접기", exact: true }), 글자: "⌘Enter", 값: "Meta+Enter" },
+    { 버튼: page.getByRole("button", { name: "작업공간 패널 접기", exact: true }), 글자: "⌘Enter", 값: "Meta+Enter" },
   ];
   for (const { 버튼, 글자, 값 } of 버튼들) {
     await expect(버튼).toHaveAccessibleDescription(글자);
@@ -139,29 +141,31 @@ test("메뉴 바 흉내로 보낸 ⌘B · ⌘Enter · ⌘T · ⌘1이 키를 누
   const 메뉴로 = (code: string) => fireEvent(page, "hotkey:menu", code);
 
   // ⌘B — 사이드바를 접고 편다.
-  expect(await 사이드바폭(page)).toBeGreaterThan(0);
+  expect(await 사이드바폭(page)).toBeGreaterThan(접힌폭);
   await 메뉴로("KeyB");
-  await expect.poll(() => 사이드바폭(page)).toBe(0);
+  await expect.poll(() => 사이드바폭(page)).toBe(접힌폭);
   await 메뉴로("KeyB");
-  await expect.poll(() => 사이드바폭(page)).toBeGreaterThan(0);
+  await expect.poll(() => 사이드바폭(page)).toBeGreaterThan(접힌폭);
 
   // ⌘Enter — 작업 패널을 여닫는다.
-  const 패널토글 = page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
+  const 패널토글 = page.getByRole("button", { name: /^작업공간 패널 (접기|펼치기)$/ });
   await expect(패널토글).toHaveAttribute("aria-expanded", "true");
   await 메뉴로("Enter");
   await expect(패널토글).toHaveAttribute("aria-expanded", "false");
   await 메뉴로("Enter");
   await expect(패널토글).toHaveAttribute("aria-expanded", "true");
 
-  // ⌘T — 셸을 열고 본문이 터미널로 간다. ⌘1 — 다시 spec으로 온다.
-  const 셸칸 = page.locator('[data-tab="shell"]');
-  const 스펙칸 = page.locator('[data-tab="spec"]');
-  await expect(스펙칸).toHaveAttribute("aria-pressed", "true");
-  const 처음 = await 셸칸.count();
+  // ⌘T — 새 채팅 탭을 하나 더 세우고 켠다(restart 02a-8 — 한때 셸을 열었다). ⌘1 — 묶음의 첫 칸으로 온다(02a-13 — 한때 spec 칸이었다).
+  // 채팅이 없는 작업공간이라 처음 연 화면이 이미 새 채팅 탭 하나다.
+  const 새채팅칸 = page.locator('[data-tab="new-chat"] button[aria-pressed]');
+  await expect(새채팅칸).toHaveCount(1);
+  await expect(새채팅칸.first()).toHaveAttribute("aria-pressed", "true");
   await 메뉴로("KeyT");
-  await expect(셸칸).toHaveCount(처음 + 1);
-  await expect(스펙칸).toHaveAttribute("aria-pressed", "false");
+  await expect(새채팅칸).toHaveCount(2);
+  await expect(새채팅칸.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(새채팅칸.first()).toHaveAttribute("aria-pressed", "false");
   await 메뉴로("Digit1");
-  await expect(스펙칸).toHaveAttribute("aria-pressed", "true");
+  await expect(새채팅칸.first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

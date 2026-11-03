@@ -4,7 +4,6 @@ import {
   awaitSpawned,
   clipboardWrites,
   installFixtureBackend,
-  ipcCallArgs,
   kills,
   middle,
   openShell,
@@ -18,11 +17,12 @@ import {
   이름표,
   테두리,
   토큰색,
+  새채팅탭으로비킨다,
 } from "./harness";
 import { rowOf, settle, squeezedWidth, widenSidebar } from "./tab-row";
 
-// codex-ds 티켓 29 — **셸 탭 · spec 탭을 우클릭하고 셸 탭 이름을 바꾼다**(codex-ds 스펙 §9 · S7 · S8 · 구현 노트 Q8 ~ Q11).
-// 셸 탭과 spec 탭이 제 메뉴를 가진 대상이 된다. work 대상(`work-context-menu.spec.ts`)과 같은 잣대다 — 메뉴가 커서 자리에 서고,
+// codex-ds 티켓 29 — **셸 탭을 우클릭하고 셸 탭 이름을 바꾼다**(codex-ds 스펙 §9 · S7 · S8 · 구현 노트 Q8 ~ Q11).
+// 셸 탭이 제 메뉴를 가진 대상이 된다(한때 spec 탭도 — restart 02a-13이 걷었다). work 대상(`work-context-menu.spec.ts`)과 같은 잣대다 — 메뉴가 커서 자리에 서고,
 // 켜진 탭 · 주소는 그대로이며, 열린 동안만 대상에 대상 테두리(포커스 링)가 선다. ⇧F10 · 메뉴 키는 포커스된 탭의 같은 메뉴를
 // 그 탭 곁에 연다. 셸 탭의 이름은 그 자리에서 고친다(F2 · 메뉴 · 두 번 누르기) — 사람이 붙인 이름은 메모리에만 있고(IPC가 없다)
 // OSC 타이틀보다 앞서며, 비우면 원래 이름으로 돌아간다.
@@ -39,8 +39,6 @@ const 터미널셸메뉴차례 = ["이름 바꾸기F2", "—", "닫기⌘W", "�
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 항목 = (page: Page, name: string) => 메뉴(page).getByRole("menuitem", { name, exact: true });
 
-/** 맨 앞 문서 칸. */
-const 스펙탭 = (page: Page) => page.locator('[data-tab="spec"]');
 
 /** 그 칸의 닫기 버튼 이름 — `<칸 이름> 닫기`다. 칸 이름이 그대로 실려, 칸이 지금 무엇으로 불리는지를 여기서 읽는다. */
 const 닫기이름 = (page: Page, at: number) =>
@@ -67,7 +65,10 @@ async function 프로젝트셸(page: Page) {
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
   const [first] = multiWork.worktrees;
   await page.locator('[data-tab="new"]').click();
-  // 메뉴는 「모든 프로젝트」에 포커스를 두고 선다 — 그 뒤의 ↓가 첫 프로젝트다(`shell-picker.spec.ts`).
+  // 「새 탭」 메뉴는 맨 윗줄 「새 채팅」에 포커스를 두고 선다 — ↓가 「모든 프로젝트」, 한 번 더가 첫 프로젝트다(restart 02a-8 ·
+  // `shell-picker.spec.ts`).
+  await expect(항목(page, "새 채팅")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(항목(page, "모든 프로젝트")).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(항목(page, first.project)).toBeFocused();
@@ -222,109 +223,8 @@ test("셸 탭 메뉴의 「작업 폴더 경로 복사」는 그 셸이 뜬 폴�
 // 「다른 셸 모두 닫기」가 실제로 닫는 칸과 그 확인 창(S8)은 `close-confirm-count.spec.ts`가 잰다 — 닫기 확인 창들이 그 파일에 모인다.
 // 여기서는 그 줄이 메뉴에 서고(위 줄 차례) 셸이 하나면 흐린 것(Terminal 검사)까지다.
 // ── spec 탭 메뉴 ──
-
-test("spec 탭을 우클릭하면 spec 탭 메뉴가 커서 자리에 서고, 켜짐 · 주소는 그대로이며 대상 테두리는 연 동안만 선다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  const url = page.url();
-  const 링 = `1px solid ${await 토큰색(page, "--accent")}`;
-  const target = 스펙탭(page);
-  await expect(target).toHaveAttribute("aria-pressed", "false");
-  expect(await 테두리(target)).toBeNull();
-
-  await target.click({ button: "right", position: { x: 6, y: 6 } });
-  const menu = 메뉴(page);
-  await expect(menu).toBeVisible();
-  await expect.poll(() => 줄차례(menu)).toEqual(["Finder에서 열기", "spec 경로 복사"]);
-  await 다떴다(menu);
-  const spot = (await target.boundingBox())!;
-  const card = (await menu.boundingBox())!;
-  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 흰 판의 테두리(0.5) 뒤로 대상이 반 픽셀에 서서 카드는 그 아래
-  // 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
-  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
-  expect(page.url()).toBe(url);
-  await expect(target).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(() => 테두리(target)).toBe(링);
-
-  // 바깥을 누르면 닫히고 테두리가 걷힌다.
-  const viewport = page.viewportSize()!;
-  await page.mouse.click(viewport.width - 8, viewport.height - 8);
-  await expect(menu).toHaveCount(0);
-  await expect.poll(() => 테두리(target)).toBeNull();
-
-  // Esc로 닫으면 포커스가 그 칸으로 돌아온다.
-  await target.click({ button: "right" });
-  await expect(menu).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await expect(target).toBeFocused();
-  expect(page.url()).toBe(url);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-for (const key of ["Shift+F10", "ContextMenu"]) {
-  test(`spec 탭에 포커스를 두고 ${key}를 누르면 같은 메뉴가 그 칸 곁에 서고 ↓가 첫 항목에 간다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-    await awaitSpawned(page, 1);
-    const url = page.url();
-    const 링 = `1px solid ${await 토큰색(page, "--accent")}`;
-    const target = 스펙탭(page);
-    await target.focus();
-    await expect(target).toBeFocused();
-
-    await page.keyboard.press(key);
-    const menu = 메뉴(page);
-    await expect(menu).toBeVisible();
-    await expect.poll(() => 줄차례(menu)).toEqual(["Finder에서 열기", "spec 경로 복사"]);
-    // 커서가 없으니 그 칸의 왼쪽 아래에 선다.
-    await 다떴다(menu);
-    const spot = (await target.boundingBox())!;
-    const card = (await menu.boundingBox())!;
-    // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
-    // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
-    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x), Math.floor(spot.y + spot.height)]);
-    await expect.poll(() => 테두리(target)).toBe(링);
-    // 메뉴를 열었을 뿐 문서로 가지 않았다.
-    await expect(target).toHaveAttribute("aria-pressed", "false");
-
-    // 카드 자신이 포커스를 쥐고, 그 뒤의 ↓가 첫 항목이다.
-    await expect(menu).toBeFocused();
-    await page.keyboard.press("ArrowDown");
-    await expect(항목(page, "Finder에서 열기")).toBeFocused();
-
-    await page.keyboard.press("Escape");
-    await expect(menu).toHaveCount(0);
-    await expect(target).toBeFocused();
-    expect(page.url()).toBe(url);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
-
-test("spec 탭 메뉴의 「Finder에서 열기」는 그 work의 spec 폴더를 열고, 「spec 경로 복사」는 spec 경로를 쓴다", async ({ page }) => {
-  await recordClipboard(page);
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-
-  await 스펙탭(page).click({ button: "right" });
-  await 항목(page, "Finder에서 열기").click();
-  await expect(메뉴(page)).toHaveCount(0);
-  // 날 경로를 넘기지 않는다 — 경로는 백엔드가 slug와 프로젝트로 푼다(codex-ds 스펙 S6). `null`이 spec 폴더다.
-  await expect
-    .poll(async () => (await ipcCallArgs(page, "open_work_folder", "slug")).map(({ args }) => args))
-    .toEqual([{ slug: plainWork.slug, project: null }]);
-
-  await 스펙탭(page).click({ button: "right" });
-  await 항목(page, "spec 경로 복사").click();
-  await expect(메뉴(page)).toHaveCount(0);
-  // 앱의 참조 표기다(`specDirRef` — 끝에 `/`). work 메뉴의 복사 ▸ 「spec 경로」와 같은 값이다.
-  await expect.poll(() => clipboardWrites(page)).toEqual([`${plainWork.specDir}/`]);
-  // 문서로 가지 않았다.
-  await expect(page).toHaveURL(/tab=terminal/);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
+// 한때 spec 탭이 제 메뉴(「Finder에서 열기」 · 「spec 경로 복사」)를 가진 대상이었다 — restart 02a-13이 spec 탭을 걷어 그 검사 넷을 걷었다.
+// 같은 두 일은 work 메뉴의 Finder ▸ · 복사 ▸ 「spec 경로」가 든다(`work-context-menu.spec.ts`).
 
 // ── 셸 탭 이름 바꾸기 (S7) ──
 // 이름 글자가 그대로 입력칸이 된다 — 창이 뜨지 않는다. 사람이 붙인 이름은 메모리에만 있어 나가는 IPC가 없다.
@@ -422,13 +322,12 @@ test("붙인 이름을 비우면 원래 이름(셸 이름)으로 돌아간다", 
 
 // 셸은 프롬프트마다 OSC 타이틀을 쏜다 — 사람이 붙인 이름이 그것에 덮이면 이름을 붙인 뜻이 없다. 비우면 그 타이틀로 돌아간다.
 // **타이틀이 실제로 닿았는가**는 같은 바이트 뒤에 OSC 9를 붙여 띠로 잰다 — 한 덩어리를 파서가 차례로 읽으므로 띠가 서면 앞의
-// 타이틀도 지났다. 그래서 문서를 보는 중에(그 셸을 안 보는 중에 — 「확인할 것」이 서도록) 넣는다.
+// 타이틀도 지났다. 그래서 새 채팅 탭을 보는 중에(그 셸을 안 보는 중에 — 「확인할 것」이 서도록) 넣는다.
 test("붙인 이름은 OSC 타이틀보다 앞서고, 비우면 그 타이틀로 돌아간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  await 스펙탭(page).click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
+  await 새채팅탭으로비킨다(page);
 
   await 이름표(page, 0).focus();
   await page.keyboard.press("F2");
@@ -459,8 +358,7 @@ test("지금 보이는 이름을 손수 다시 쳐서 저장하면 그 이름이
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  await 스펙탭(page).click();
-  await expect(page).not.toHaveURL(/tab=terminal/);
+  await 새채팅탭으로비킨다(page);
   const name = 이름표(page, 0);
 
   // 손대지 않고 Enter — 붙지 않으니 타이틀이 오면 그 이름이 된다.
@@ -529,12 +427,17 @@ const 고치는자리 = (input: Locator) =>
 // 칸은 줄이 좁으면 바닥(44px)까지 준다(결정 20). 고치는 동안 앞말이 제 글자 폭을 다 쥐면 좁은 칸에서 입력칸이 0으로 눌리고 앞말이 칸
 // 밖으로 넘친다. 그래서 앞말은 그 상자의 절반까지만 서고 넘으면 말줄임으로 준다 — 고치는 글자가 적어도 그만큼을 쥔다. 넓은 칸에서는 앞말이
 // 다 선다. 좁은 칸은 넓혀 둔 사이드바가 탭 줄의 바닥에 눌리는 창 폭에서 선다(`squeezedWidth`, `tab-row.ts`).
+//
+// 칸의 폭은 글 폭이다(restart 02a-5 — 최대 200, 한때 모두 180). 그래서 넓은 칸은 셸 이름이 길어야 선다 — 셸 타이틀(OSC)로 긴 이름을 준다.
 test("좁은 칸에서 이름을 고쳐도 앞말이 입력칸을 밀어내지 않고 칸 밖으로 안 넘친다", async ({ page }) => {
   await widenSidebar(page);
   await installFixtureBackend(page);
   const first = await 프로젝트셸(page);
   const name = 이름표(page, 0);
   const input = 이름칸(page, 0);
+  const LONG = "넓은 칸을 세우는 긴 셸 이름";
+  await writeShell(page, `\x1b]0;${LONG}\x07`, 1);
+  await expect.poll(() => 닫기이름(page, 0)).toBe(`${first.project} · ${LONG} 닫기`);
 
   // 넓은 칸 — 앞말이 줄지 않고 다 선다.
   await name.focus();
@@ -547,8 +450,8 @@ test("좁은 칸에서 이름을 고쳐도 앞말이 입력칸을 밀어내지 �
 
   await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   await settle(page, () => rowOf(page));
-  // 전제: 칸이 이름을 접는 폭(88px) 아래다 — 넓으면 아무것도 안 잰다.
-  expect((await rowOf(page)).tabs[0]).toBeLessThan(88);
+  // 전제: 칸이 이름을 접는 폭(55px — restart 02a-5, 한때 88px) 아래다 — 넓으면 아무것도 안 잰다.
+  expect((await rowOf(page)).tabs[0]).toBeLessThan(55);
 
   await name.focus();
   await page.keyboard.press("F2");
@@ -622,21 +525,16 @@ test("셸 탭을 ⌃를 누른 채 눌러 움직여도 끌기가 안 선다", as
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("셸 탭 · spec 탭을 ⌃클릭하면 켜지지 않는다 — ⌃ 없는 클릭은 켠다", async ({ page }) => {
+// 한때 spec 탭의 ⌃클릭도 쟀다 — restart 02a-13이 spec 탭을 걷었다.
+test("셸 탭을 ⌃클릭하면 켜지지 않는다 — ⌃ 없는 클릭은 켠다", async ({ page }) => {
   await installFixtureBackend(page);
   await 셸둘(page);
 
   await 이름표(page, 0).dispatchEvent("click", { ctrlKey: true });
   // ⌃ 없는 클릭이 둘째를 켜는 것을 앵커로 삼는다 — 같은 길(클릭 사건)이 거름 하나로 갈린다.
   await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "false");
-  await 스펙탭(page).dispatchEvent("click", { ctrlKey: true });
-  await expect(page).toHaveURL(/tab=terminal/);
-  await expect(스펙탭(page)).toHaveAttribute("aria-pressed", "false");
 
   await 이름표(page, 0).dispatchEvent("click");
   await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
-  await 스펙탭(page).dispatchEvent("click");
-  await expect(page).not.toHaveURL(/tab=terminal/);
-  await expect(스펙탭(page)).toHaveAttribute("aria-pressed", "true");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

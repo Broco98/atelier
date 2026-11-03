@@ -4,7 +4,7 @@ import { Card, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import { TAB_ROW_CARD } from "@/components/shell/panel-layout";
 import { cn } from "@/lib/utils";
-import ShellTabs from "./ShellTabs";
+import ShellTabs, { type ChatTabs } from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
   activeIdOf,
@@ -44,7 +44,7 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 머리 줄(앱 셸의 `ShellHeadRow`)의
 // 성질이다. 탭 줄은 한동안 그 줄에 칸들을 세우다가, 그 탭이 보여 줄 카드의 머리로 내려왔다(codex-ds 스펙 §4 · ShellTabs 머리말).
 //
-// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 흰 판 안에 터미널 칸 하나가 서고 그 칸의 머리가 탭 줄이다 —
+// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 카드 자리에 터미널 카드 하나가 서고 그 카드의 머리가 탭 줄이다 —
 // 위치 글자 줄은 없다(ui-refresh 결정 5: 카드는 제게 필요한 머리만 인다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
 // 16(DS `Terminal`)은 셸의 집이 든다(`TerminalPane`의 그 주석).
 //
@@ -55,6 +55,12 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 사정을 든다.
 /** 이 화면의 nav 항목 — 머리 줄의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("terminal");
+
+/**
+ * 채팅 탭의 몫(탭 줄의 `chat` — 이름 · 이름 바꾸기 · ⋯ 항목) — 이 화면에는 채팅 탭이 서지 않아 부를 일이 없다. 회차마다 같은 값이다.
+ * `features/thread`를 부르지 않는다 — 채팅 화면의 무게가 이 화면까지 따라오지 않게.
+ */
+const NO_CHAT: ChatTabs = { title: () => "", onRename: () => {}, menu: () => null };
 
 function TerminalPage() {
   /**
@@ -88,9 +94,8 @@ function TerminalPage() {
     (a, b) => sameScreen(a, b, owner),
   );
 
-  // 끄는 동안 탭 줄에 세울 틈(UI개선 결정 11). **틈 하나만 구독한다** — 이 화면에는 분할 받침이 없어
-  // 드래그 상태의 나머지(원천 · 절반)로 그릴 것이 없고, 통째로 읽으면 끌기를 걸고 걷을 때마다
-  // 이 화면이 다시 그려진다.
+  // 끄는 동안 탭 줄에 세울 틈(UI개선 결정 11). **틈 하나만 구독한다** — 드래그 상태의 나머지(원천)로 그릴 것이
+  // 없고, 통째로 읽으면 끌기를 걸고 걷을 때마다 이 화면이 다시 그려진다.
   const slot = useStore(dragStore, (state) => state.slot);
   // 끄는 중인가 — 탭 줄이 가장자리에서 구를지를 이것으로 가른다(`ShellTabs`의 `dragging`). 참거짓 하나라
   // 끌기를 걸고 걷을 때만 다시 그려진다.
@@ -136,8 +141,8 @@ function TerminalPage() {
       const state = terminalStore.state;
       // 세는 것은 이 화면의 **묶음**이다 — `/terminal`의 묶음에는 셸만 선다.
       const tabs = bundleOf(state, owner);
-      // 첫 셸이 ⌘1이다 — 이 화면에는 문서가 없어 자리를 밀지 않는다. 아래 탭 줄도 같은
-      // 이유로 셸부터 세우므로(`spec={null}`) 보이는 순서와 이 키가 고르는 것이 같다.
+      // 첫 셸이 ⌘1이다 — 아래 탭 줄도 셸부터 세우므로 보이는 순서와 이 키가 고르는 것이 같다(작업공간 화면도 같다 —
+      // restart 02a-13이 그 화면의 문서 칸을 걷었다).
       const next = shellForNav(tabs, activeIdOf(state, owner), nav, 1);
       if (next !== null) selectShell(next);
     };
@@ -177,7 +182,7 @@ function TerminalPage() {
     // 탭 줄이 터미널 카드의 머리다(codex-ds 스펙 §4 「탭 줄」 — work 화면과 같은 규칙). 카드가 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
     // 머리 줄에는 화면 이름 「Terminal」 하나가 선다(codex-ds 스펙 §6) — 이 화면에는 머리에 둘 할 일이 없다(셸을 여는 `+`는
     // 탭 줄의 것이다). 이름 · 아이콘은 nav 항목에서 읽는다(`navItem`).
-    <Frame head={{ icon: PLACE.icon, name: PLACE.label }}>
+    <Frame head={{ name: PLACE.label }}>
       <Card
         as="main"
         label="터미널"
@@ -193,11 +198,10 @@ function TerminalPage() {
             projects={[]}
             // 메뉴가 안 서므로 보일 곳이 없지만 값은 사실대로 준다 — 데이터 루트라 cwd가 없다.
             defaultCwd={topTerminal().cwd}
-            // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
-            // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
-            spec={null}
             // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
             showing
+            // 채팅 탭은 이 화면에 서지 않는다(`openChatTab`이 최상위 터미널을 안 받는다 — restart 02a-4). 줄의 계약이 필수라 준다.
+            chat={NO_CHAT}
             // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
             onSelect={selectShellWithFocus}
             // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
@@ -207,12 +211,8 @@ function TerminalPage() {
             onRename={renameShell}
             onCloseOthers={(id) => void closeOtherShells(id)}
             onOpen={() => openNewShell(topTerminal())}
-            // **이 화면도 탭을 끈다**(UI개선 결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
-            // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
-            // 가지므로 여기서 거른다. 탭 줄 밖에서 놓으면 아무 일도 없다.
-            onDragTab={(shellId, from) => {
-              if (shellId !== null) armDrag({ kind: "shell", owner, shellId }, from);
-            }}
+            // **이 화면도 탭을 끈다**(UI개선 결정 11) — 소비자는 탭 줄의 틈 하나다. 탭 줄 밖에서 놓으면 아무 일도 없다.
+            onDragTab={(shellId, from) => armDrag({ kind: "shell", owner, shellId }, from)}
             slot={slot}
             onSlot={hoverSlot}
             onDropSlot={dropShellOnSlot}

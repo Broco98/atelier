@@ -26,7 +26,7 @@ import type { ProjectView } from "./types";
 // Project 추가 창(03 구현 스펙 §16 · 캔버스 v52 F1-ProjectAdd · F1-ProjectNew · F4-ProjNoGit · F4-KitProject 「추가 창 — 소스 폴더」). 「Project
 // 이름」 칸 · 「소스 폴더」 스위치와 그 칸 · 아래 안내 · 오른쪽 아래 단추다. 무엇을 보일지는 `project-add.ts`가 고르고, 여기는 그리고 부른다.
 //
-// - **앱에 하나다** — 앱 루트(`AppShell`)에 서고, 여는 길(Projects 「Project 추가」 · 끌어 놓기 · Space 상세 · 범위 줄)은 모두
+// - **앱에 하나다** — 앱 루트(`AppShell`)에 서고, 여는 길(Projects 「Project 추가」 · 끌어 놓기 · Service 상세 · 범위 줄)은 모두
 //   `addProject`(`add-store.ts`)다. 끝나면 추가한 Project가 그 길로 돌아간다.
 // - 폴더를 고르는 순간 core가 살핀다(`inspect_project_folder`). 「새로 만들기」는 이름을 칠 때마다 그 자리를 묻는다(`new_project_place`).
 // - 실패(git이 이름 · 이메일이 없어 첫 커밋을 못 한 것 같은)는 창 안에 그 글 그대로 선다 — 창을 닫지 않고 고쳐 다시 누른다.
@@ -194,10 +194,10 @@ function AddBody({ seq, folder, done }: { seq: number; folder: string | null; do
         </p>
       )}
 
-      {/* 아래 안내(스토리 116) — Project · Space · Work의 관계를 처음에 안다. */}
+      {/* 아래 안내(스토리 116) — Project · Service · Work의 관계를 처음에 안다. */}
       <div className="flex items-start gap-3 rounded-xl bg-fill-soft px-4 py-3.5 text-chat-meta break-keep text-fg-secondary">
         <Lightbulb className="mt-0.5 size-4 shrink-0" aria-hidden />
-        <span>Project는 git 레포 하나예요. Space로 묶으면 Agent가 함께 읽고, Work는 고칠 Project에만 worktree를 만들어요.</span>
+        <span>Project는 git 레포 하나예요. Service로 묶으면 Runtime이 함께 읽고, 작업공간은 고칠 Project에만 worktree를 만들어요.</span>
       </div>
 
       {/* 오른쪽 아래 단추 — 채우기 전엔 꺼져 있다(시안 회색). 36 둥근 큰 버튼이다. */}

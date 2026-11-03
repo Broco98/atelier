@@ -8,7 +8,7 @@
 //! argv 전체를, 수집이 프로세스마다 부른 이름 · 명령줄 · 표식을 읽을 때는 argv와 env 하나를 본다. 원래 pty
 //! 층에 argv만 읽는 파서로 있던 것을 env까지 넓혀 여기로 옮겼다.
 
-use super::SHELL_KEY_ENV;
+use super::{RUNTIME_KEY_ENV, SHELL_KEY_ENV};
 
 /// 한 프로세스의 exec 때 문자열 — 커널이 채운 버퍼를 **빌려** 본다. 수집은 프로세스 수백 개를 버퍼
 /// 하나로 돌려 읽으므로(프로세스 스펙 S2), 행마다 argv 전체를 문자열로 떠 두지 않는다. 가르기는 모든 OS에서 재지만 부르는 수집은
@@ -16,6 +16,8 @@ use super::SHELL_KEY_ENV;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) struct ProcArgs<'b> {
     argc: usize,
+    /// 실행 파일 경로 — argc 뒤 첫 문자열(NUL은 뺐다).
+    path: &'b [u8],
     /// argv[0]부터 버퍼 끝까지. 실행 파일 경로와 정렬용 NUL은 이미 건넜다.
     strings: &'b [u8],
 }
@@ -33,7 +35,13 @@ impl<'b> ProcArgs<'b> {
             .iter()
             .position(|b| *b != 0)
             .map_or(rest.len(), |at| path_end + at);
-        Some(Self { argc, strings: &rest[start..] })
+        Some(Self { argc, path: &rest[..path_end], strings: &rest[start..] })
+    }
+
+    /// 실행 파일 경로 — exec 때 커널이 받은 그대로다(부른 이름 argv[0]과 다르다). 비었거나 UTF-8이 아니면 없는 것으로 센다 — 「다른
+    /// 앱」의 번들을 가르는 값이라(`apps::bundle_name`) 대체 글자로 고친 경로는 쓸모가 없다.
+    pub(crate) fn exec_path(&self) -> Option<&'b str> {
+        std::str::from_utf8(self.path).ok().filter(|path| !path.is_empty())
     }
 
     /// exec 때의 argv. 조각이 argc보다 적으면(잘린 버퍼) 있는 만큼만 준다.
@@ -60,7 +68,17 @@ impl<'b> ProcArgs<'b> {
 
     /// 표식. 비었거나 UTF-8이 아니면 없는 것으로 센다 — 앱이 심는 값은 `<세대>-<번호>` 꼴의 ASCII다.
     pub(crate) fn shell_key(&self) -> Option<&'b str> {
-        std::str::from_utf8(self.var(SHELL_KEY_ENV)?).ok().filter(|key| !key.is_empty())
+        self.text(SHELL_KEY_ENV)
+    }
+
+    /// Runtime의 표식(restart 03-7) — 채팅의 Runtime이 물려준 `<세대>:<채팅 id>`(`runtime_key`). 셸의 표식과 같은 규칙으로 읽는다.
+    pub(crate) fn runtime_key(&self) -> Option<&'b str> {
+        self.text(RUNTIME_KEY_ENV)
+    }
+
+    /// env에서 이름 하나의 글자 값. 비었거나 UTF-8이 아니면 없는 것으로 센다.
+    fn text(&self, name: &str) -> Option<&'b str> {
+        std::str::from_utf8(self.var(name)?).ok().filter(|value| !value.is_empty())
     }
 }
 
@@ -196,6 +214,46 @@ mod tests {
             "env는 빈 문자열에서 끝난다 — 그 뒤는 커널이 덧붙인 것이다"
         );
         assert_eq!(args.shell_key(), Some("1790081243175-18"));
+    }
+
+    /// **실행 파일 경로는 버퍼 맨 앞의 칸이다**(restart 03-6 — 「다른 앱」이 이 경로의 앱 번들로 묶는다). 부른 이름(argv[0])과 다르다 —
+    /// 사람이 `node`로 불러도 커널이 받은 경로는 따로 온다. 경로가 빈 버퍼는 경로가 없다.
+    #[test]
+    fn the_exec_path_is_the_head_of_the_buffer() {
+        let buf = kernel_buffer(1, "/Applications/Sketchpad.app/Contents/MacOS/Sketchpad", 6, &["Sketchpad", "PATH=/usr/bin", ""]);
+        let args = ProcArgs::parse(&buf).expect("모양이 맞는 버퍼다");
+        assert_eq!(args.exec_path(), Some("/Applications/Sketchpad.app/Contents/MacOS/Sketchpad"));
+        assert_eq!(texts(args.argv()), ["Sketchpad"], "경로를 argv로 읽었다");
+
+        let blank = kernel_buffer(1, "", 2, &["x", ""]);
+        assert_eq!(ProcArgs::parse(&blank).expect("모양이 맞는 버퍼다").exec_path(), None);
+    }
+
+    /// **Runtime의 표식도 env에서 읽는다**(restart 03-7) — 채팅의 Runtime이 띄운 dev 서버의 모양. 셸의 표식과 따로 읽는다: 하나를 읽은
+    /// 자리에서 다른 것을 지우지 않는다. 표식 모양의 인자는 표식이 아니고, 이름이 같아야 하며, 빈 값은 표식이 아니다.
+    #[test]
+    fn the_runtime_marker_comes_apart_from_the_shell_marker() {
+        let buf = kernel_buffer(
+            2,
+            "/opt/homebrew/bin/node",
+            3,
+            &[
+                "node",
+                "ATELIER_RUNTIME=forged:x",
+                "PATH=/usr/bin",
+                "ATELIER_RUNTIMEX=1790081243175:20261010-090000",
+                "ATELIER_RUNTIME=1790081243175:20261010-100000",
+                "ATELIER_SHELL=1790081243175-18",
+                "",
+            ],
+        );
+        let args = ProcArgs::parse(&buf).expect("모양이 맞는 버퍼다");
+        assert_eq!(args.runtime_key(), Some("1790081243175:20261010-100000"));
+        assert_eq!(args.shell_key(), Some("1790081243175-18"), "Runtime의 표식을 읽느라 셸의 표식을 잃었다");
+
+        let bare = kernel_buffer(1, "/x", 0, &["x", "ATELIER_SHELL=a-1", "ATELIER_RUNTIME="]);
+        let bare = ProcArgs::parse(&bare).expect("모양이 맞는 버퍼다");
+        assert_eq!((bare.runtime_key(), bare.shell_key()), (None, Some("a-1")), "빈 Runtime 표식을 표식으로 읽었다");
     }
 
     /// 시스템 바이너리(`/bin/sleep`)는 env가 0개로 읽힌다 — 표식이 없는 것이다(프로세스 결정의 사실 4).

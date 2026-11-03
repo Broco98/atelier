@@ -129,7 +129,7 @@ export function useOpenInHoverGroup<Details extends { isCanceled: boolean }>(
 }
 
 /**
- * 시간 토큰 하나(ms) — 문서 뿌리에서 읽는다(`panel-layout.ts`의 `panelMotionMs`와 같은 길). 리터럴로 다시 적으면 토큰을 고친 날 타이머만
+ * 시간 토큰 하나(ms) — 문서 뿌리에서 읽는다(`thread/motion.ts`의 `motionMs`와 같은 길). 리터럴로 다시 적으면 토큰을 고친 날 타이머만
  * 옛 길이로 남는다. **늦게 읽는다** — 모듈이 뜰 때는 스타일시트가 없을 수 있고, node 검사에는 문서가 없다. 풀린 값만 기억한다(토큰은 앱이
  * 도는 동안 안 바뀐다). 안 풀리면(스타일시트 없이 그린 자리) 0이다.
  */

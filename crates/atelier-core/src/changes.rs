@@ -121,7 +121,7 @@ fn project_changes(projects_root: &Path, project: &str, worktree: &Path) -> Chan
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum FileDiff {
-    /// git의 unified diff 한 파일 — 화면의 diff 보기(`@pierre/diffs`의 `PatchDiff`)가 그대로 받는다. 목록의 +/−와 같은
+    /// git의 unified diff 한 파일 — 넓힌 카드의 변경 보기(`WideDiff`)가 그대로 받아 줄 목록으로 읽는다. 목록의 +/−와 같은
     /// 알고리즘(git)이 낸 덩어리라 둘이 어긋나지 않는다.
     Patch { patch: String },
     /// 바이너리 — git의 「Binary files … differ」 한 줄을 diff 보기에 넘기지 않는다.

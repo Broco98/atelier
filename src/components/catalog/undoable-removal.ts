@@ -3,7 +3,7 @@ import { showProblem } from "@/components/ui/confirm-store";
 import { showUndoToast } from "@/components/ui/toast";
 
 // **빼기 · 지우기의 흐름 하나 — 쓰임을 읽고 창을 열고, 빼면 「되돌리기」 토스트**(03 구현 스펙 §14 「지우기」 · §16 「제거 창」 · 03 코드 리뷰 D1).
-// Project 제거(`useProjectRemoval`)와 Space 삭제(`useSpaceDelete`)가 함께 쓴다 — 한쪽은 훅, 한쪽은 목록 화면 안에 적혀 있던 같은 차례다.
+// Project 제거(`useProjectRemoval`)와 Service 삭제(`useServiceDelete`)가 함께 쓴다 — 한쪽은 훅, 한쪽은 목록 화면 안에 적혀 있던 같은 차례다.
 //
 //   ask(item)      쓰임을 읽어(`usage`) 창을 연다. 못 읽으면 「<failed> — 까닭」
 //   confirm(item)  지운다(`remove`). 답이 막힘이면(`blocked` — 그사이 진행 중인 Work가 붙었다) 창이 그 자리에서 막힌 갈래로 바뀐다. 뺐으면

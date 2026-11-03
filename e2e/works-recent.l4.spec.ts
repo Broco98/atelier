@@ -35,13 +35,15 @@ test("work 화면을 열면 이력 파일에 그 work이 적힌다", async ({ pa
   await installRealBackend(page, sandbox);
 
   // **아직 아무것도 없다.** 읽기가 파일을 만들지 않는다는 것이 이 한 줄이다 — 앱을 켜고
-  // 사이드바가 목록을 읽는 것만으로는 이력이 안 생긴다.
+  // 사이드바가 목록을 읽는 것만으로는 이력이 안 생긴다. 빈 Projects 목록의 제목은 「등록한 Project가 없어요」다(restart 03-1).
   await page.goto("/projects");
-  await expect(page.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "등록한 Project가 없어요", exact: true })).toBeVisible();
   expect(recentSlugs(home)).toEqual([]);
 
+  // 작업공간 화면이 섰다는 앵커는 그 work의 작업공간 패널이다 — 작업공간을 열어도 기본 문서를 열지 않는다(restart 02a-13 — 한때 본문에
+  // 기본 문서 「개요」가 섰다).
   await page.goto("/works/먼저것");
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "작업공간 패널", exact: true })).toBeVisible();
 
   // 다리를 타고 파일시스템까지 다녀오므로 즉시가 아니다.
   await expect.poll(() => recentSlugs(home)).toEqual(["먼저것"]);
@@ -54,7 +56,7 @@ async function workRows(page: Page): Promise<string[]> {
   const names = await page.getByRole("option").evaluateAll((els) =>
     els.map((el) => el.textContent?.trim() ?? ""),
   );
-  return names.filter((name) => name.endsWith("작업"));
+  return names.filter((name) => name.endsWith("만든 작업"));
 }
 
 // 결정 11. **마지막으로 연 것이 위다** — 이력 파일을 쓰는 쪽과 읽어 순서를 세우는 쪽이
@@ -71,14 +73,16 @@ test("마지막으로 연 work이 빈 팔레트의 첫 작업 줄이다", async 
 
   // 이력이 비어 있을 때의 기본 순서 — 만든 순이다.
   await page.goto("/projects");
-  await expect(page.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "등록한 Project가 없어요", exact: true })).toBeVisible();
   await 검색팔레트를연다(page);
   await expect.poll(() => workRows(page)).toEqual(["나중에 만든 작업", "먼저 만든 작업"]);
   await page.keyboard.press("Escape");
 
   // 만든 순으로는 아래인 쪽을 연다.
+  // 작업공간 화면이 섰다는 앵커는 그 work의 작업공간 패널이다 — 작업공간을 열어도 기본 문서를 열지 않는다(restart 02a-13 — 한때 본문에
+  // 기본 문서 「개요」가 섰다).
   await page.goto("/works/먼저것");
-  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "작업공간 패널", exact: true })).toBeVisible();
   await expect.poll(() => recentSlugs(home)).toEqual(["먼저것"]);
 
   await page.keyboard.press("Meta+k");

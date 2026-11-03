@@ -157,11 +157,12 @@ describe("Codex 토큰", () => {
     }
   });
 
-  // 다크는 shadcn 기본값이 아니라 DS 다크 값이다 — 대표 넷이 `.dark`에 제 값으로 선다(물려받은 라이트 값이 아니다).
+  // 다크는 shadcn 기본값이 아니라 DS 다크 값이다 — 대표 넷이 `.dark`에 제 값으로 선다(물려받은 라이트 값이 아니다). 창 바탕
+  // `surface-shell`은 restart 시안이 DS #343434에서 #090909로 바꿔 아래 「restart 시안 토큰」이 잰다.
   it(".dark가 DS 다크 값을 든다", () => {
     const DARK: Record<string, string> = {
       surface: "#181818",
-      "surface-shell": "#343434",
+      "surface-sidebar": "#222222",
       fg: "#ffffff",
       "fill-hover": "rgba(255, 255, 255, 0.12)",
       "shadow-hairline": "0 0 0 0.5px #ffffff1f",
@@ -201,9 +202,9 @@ describe("Codex 토큰", () => {
 // **Codex 실측 값이 토큰으로 선다**(02 구현 스펙 §3~§12 · 티켓 01). DS 2판 표에 없는 값 — Codex 화면을 재어 시안(캔버스 v35)이 적은
 // 것이다. 쓰는 화면은 02~12가 짓는다. 쓰는 자리가 아직 없어 L3가 못 재므로, 값과 유틸리티를 여기서 잰다.
 describe("Codex 실측 색", () => {
-  // 스펙 그대로다 — 이름 → 라이트 값. 다크는 적지 않는다(라이트만, v1 S34 — `.dark`에서는 라이트 값을 물려받는다).
+  // 스펙 그대로다 — 이름 → 라이트 값. 다크는 대개 적지 않는다(라이트만, v1 S34 — `.dark`에서는 라이트 값을 물려받는다). restart 시안이
+  // 다크 값을 준 다섯은 아래 「restart 시안 토큰」이 잰다.
   const COLORS: Record<string, string> = {
-    "fg-bubble": "#0c274a",
     "fg-placeholder": "#c7c7c8",
     "fg-subtle": "#8e8f90",
     "fg-faint": "#a4a4a5",
@@ -213,10 +214,7 @@ describe("Codex 실측 색", () => {
     "fg-titlebar-disabled": "#cbcbcb",
     "fg-thinking": "#aeaeae",
     mine: "#2c67c5",
-    "surface-codespan": "#e8e9e9",
     "surface-tray": "#f4f4f4",
-    "border-panel": "#e8e8e8",
-    "border-summary": "#dadadb",
     "border-slot": "rgba(26, 28, 31, 0.078)",
     "border-faint": "rgba(0, 0, 0, 0.04)",
     separator: "#e5e5e5",
@@ -231,11 +229,11 @@ describe("Codex 실측 색", () => {
     "fg-tray-locked-icon": "rgba(26, 28, 31, 0.4)",
     "fg-tray-ghost": "rgba(26, 28, 31, 0.45)",
     "fg-tray-ghost-icon": "rgba(26, 28, 31, 0.35)",
-    // 03 시안 v52의 고른 Space 칩(03 티켓 06) — 흰 면을 두르는 0.5 고리.
+    // 03 시안 v52의 고른 범위 칩(03 티켓 06) — 흰 면을 두르는 0.5 고리.
     "border-tray-on": "rgba(26, 28, 31, 0.14)",
     // 03 시안의 「되돌리기」 토스트 — 짙은 면 위 글자 단추(F1-SpaceDetail `.toast .btn`).
     "link-on-solid": "#8fb8fb",
-    // 03 시안의 Space 파일 고치기 화면(04) — 미리보기 칸 바탕 · 문제 글과 면 · 괜찮음 알약 · 커서 줄의 조각 면.
+    // 03 시안의 Service 파일 고치기 화면(04) — 미리보기 칸 바탕 · 문제 글과 면 · 괜찮음 알약 · 커서 줄의 조각 면.
     "surface-preview": "#f5f5f6",
     "fg-problem": "#b4302a",
     "problem-soft": "rgba(207, 58, 51, 0.08)",
@@ -286,15 +284,15 @@ describe("Codex 실측 색", () => {
 });
 
 describe("Codex 실측 그림자", () => {
-  // 스펙 그대로다 — 흰 판의 위 그림자(§3) · 사람 메뉴(§5) · 요약 카드(§7) · 입력창(§9 — DS `composer`의 바깥 흐림 40이 80이다).
+  // 스펙 그대로다 — 사람 메뉴(§5 — 지금은 되돌리기 알림이 읽는다) · 요약 카드(§7). 흰 판의 위 그림자(§3) · 입력창(§9)의 값은 읽는 자리가 없어
+  // 걷었다(restart 코드 리뷰).
   const SHADOWS: Record<string, string> = {
-    "shadow-panel": "0 -1px 8px rgba(0, 0, 0, 0.03)",
     "shadow-menu": "0 0 0 0.5px rgba(26, 28, 31, 0.117), 0 8px 24px rgba(0, 0, 0, 0.08)",
     "shadow-summary": "0 6px 20px rgba(0, 0, 0, 0.06)",
-    "shadow-prompt": "0 0 0 1px #0000000a, 0 2px 8px #0000000a, 0 4px 80px 8px #00000006",
   };
 
-  // DS `composer`는 입력창 자리 카드 · 알림 카드 · 읽기만 줄도 읽는다 — 값을 고치지 않고 입력창의 새 이름(`prompt`)을 더했다.
+  // DS `composer`는 입력창 자리 카드 · 알림 카드도 읽는다 — 한때 값을 고치지 않고 입력창의 새 이름(`prompt`)을 더했었다. restart 02b-2부터
+  // 입력창도 다시 이 값을 읽는다(시안 Composer `--shadow-composer`).
   it("DS 입력창 그림자는 그대로다", () => {
     expect(declared(blocks, "light", "shadow-composer")).toBe("0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006");
   });
@@ -314,17 +312,6 @@ describe("Codex 실측 글자", () => {
     expect(themed("text-codespan")).toBe("0.92em");
     expect(themed("text-codespan--line-height")).toBeUndefined();
     expect(ruleOf(await utilities(["text-codespan"]), "text-codespan")).toContain("font-size: var(--text-codespan)");
-  });
-
-  // 첫 화면의 「무엇을 만들까요?」(스펙 §11 · 시안 F1-Home) — 28 / 34 · 400 · 자간 −0.2.
-  it("첫 화면 물음 단계는 28 / 34에 자간 −0.2다", async () => {
-    expect(themed("text-home")).toBe("28px");
-    expect(themed("text-home--line-height")).toBe("34px");
-    expect(themed("text-home--letter-spacing")).toBe("-0.2px");
-    expect(themed("text-home--font-weight")).toBeUndefined();
-    const rule = ruleOf(await utilities(["text-home"]), "text-home");
-    expect(rule).toContain("font-size: var(--text-home)");
-    expect(rule).toContain("letter-spacing: var(--tw-tracking, var(--text-home--letter-spacing))");
   });
 });
 
@@ -348,7 +335,6 @@ describe("Codex 둥글기", () => {
     row: ["10px", "12.5px"],
     summary: ["12px", "15px"],
     tray: ["15px", null],
-    speech: ["16px", "22px"],
     slot: ["20px", "25px"],
     prompt: ["22px", null],
   };
@@ -394,7 +380,7 @@ describe("Codex 움직임 토큰", () => {
   // 스펙 §12의 줄 → 새 토큰과 값.
   const NEW: [줄: string, 토큰: string, 값: string][] = [
     ["툴팁 — 지연 200ms(호버 카드가 함께 읽는 `duration-tip` 150과 나눈다)", "delay-tip", "200ms"],
-    ["사이드바 열고 닫기 — .3s(작업 패널과 나누는 `PANEL_MOTION` 220과 따로 둔다)", "duration-sidebar", "300ms"],
+    ["사이드바 열고 닫기 — .3s(작업공간 패널의 `PANEL_MOTION` 500과 따로 둔다)", "duration-sidebar", "300ms"],
     ["사이드바 열고 닫기 — spring의 linear() 근사", "ease-spring", SPRING],
     ["생각 중 — 한 바퀴 4s(띠는 첫 1s에 지나간다)", "duration-think", "4000ms"],
     ["생각 중 — 보인 뒤 600ms에 시작", "delay-think", "600ms"],
@@ -501,9 +487,19 @@ describe("모션 토큰", () => {
     "think-shimmer": { 토큰: "think", 곡선: "var(--ease-shimmer)" },
     // 작업 중 점(Codex `_typing-dot-wave`) — 1s `steps(3)` 파도.
     "typing-dots": { 토큰: "wave", 곡선: "var(--ease-wave)" },
-    "writing-pulse": byName["세 점"],
+    // 요약 카드 소스의 쓰는 중 점은 SummarySheet 움직임 「쓰는 중」의 1.6초 되풀이다(restart 02b-8 — 한때 세 점의 박자).
+    "writing-pulse": { 토큰: "writing", 곡선: "var(--ease-default)" },
+    // 요약 카드가 열린다(Motion · restart 02b-8) — 220ms `ease-enter-snappy`, 오른쪽 위 (4, −4) · .98에서.
+    "summary-in": { 토큰: "panel", 곡선: "var(--ease-enter-snappy)" },
     "spin-thread": byName["회전"],
-    "view-in": { 토큰: "panel", 곡선: "var(--ease-panel)" },
+    // 넓힌 카드의 보기는 카드가 넓어지는 박자로 옅음에서 선다(보드 `.ra-vw` · restart 02b-8 — 한때 220ms).
+    "view-in": { 토큰: "panel-open", 곡선: "var(--ease-panel)" },
+    // 목록에서 상세로 · 상세에서 목록으로(Motion 「목록에서 상세로」 · PlaceSheet 「움직임과 조작」 · restart 03-1) — 240ms `ease-enter-snappy`, 상세는
+    // 오른쪽 10에서 · 목록은 왼쪽 10에서 옅음을 벗으며 선다.
+    "place-in": { 토큰: "place", 곡선: "var(--ease-enter-snappy)" },
+    "place-back": { 토큰: "place", 곡선: "var(--ease-enter-snappy)" },
+    // 보낸 말이 선다(Motion 「보낸 말이 선다」 · 보드 `.ra-msg.rise` — restart 02b-7) — 아래 12 · .985배에서 320ms `ease-enter-snappy`.
+    "msg-rise": { 토큰: "rise", 곡선: "var(--ease-enter-snappy)" },
   };
 
   it("Thread의 움직임 유틸리티가 그 시간 · 곡선 토큰을 읽는다", async () => {
@@ -529,14 +525,16 @@ describe("모션 토큰", () => {
   });
 
   // 펼침은 높이 0 → auto다(Motion 보드 「작업 묶음 펼침」) — 줄 하나짜리 격자의 줄이 0fr에서 1fr로 자라고, 그 안 상자가 잘라 담는다.
-  // 높이(`height: auto`)는 전이가 걸리지 않아 격자의 줄로 옮긴다. 다 펼쳐 멎으면 자르지 않는다 — 안의 단추 초점 고리가 잘리지 않게.
+  // 높이(`height: auto`)는 전이가 걸리지 않아 격자의 줄로 옮긴다. 다 펼쳐 멎으면 자르지 않는다 — 안의 단추 초점 고리가 잘리지 않게. 자르기는
+  // 칠하기만 바꾸는 `clip-path`다 — `overflow`를 바꾸면 안을 다시 배치해 큰 로그에서 다 펼친 장면이 45ms 멎었다(restart 03-15a).
   it("펼침은 격자의 줄과 투명도가 함께 0에서 펼친 모양으로 움직인다", async () => {
     const rule = utilityCss(await utilities(["unfold"]), "unfold") ?? "";
     expect(rule).toContain("grid-template-rows: 0fr");
     expect(rule).toContain("transition-property: grid-template-rows, opacity");
     expect(rule).toMatch(/\[data-open\][^{]*\{[^}]*grid-template-rows: 1fr;[^}]*opacity: 1/);
-    expect(rule).toMatch(/> \*[^{]*\{[^}]*min-height: 0;[^}]*overflow: hidden/);
-    expect(rule).toMatch(/\[data-settled\][^{]*> \*[^{]*\{[^}]*overflow: visible/);
+    expect(rule).toMatch(/> \*[^{]*\{[^}]*min-height: 0;[^}]*clip-path: inset\(0\)/);
+    expect(rule).toMatch(/\[data-settled\][^{]*> \*[^{]*\{[^}]*clip-path: none/);
+    expect(rule).not.toContain("overflow");
   });
 
   // 반짝임은 멎으면 흐린 글자다 — 띠(그라디언트)가 글자 한 자리에 굳어 진한 얼룩으로 남지 않는다.
@@ -624,5 +622,101 @@ describe("모션 토큰", () => {
     const open = css.indexOf("{", queries[0].index);
     const body = bodyAt(css, open) ?? "";
     expect(css.slice(open + body.length + 2).trim(), "동작 줄이기 블록 뒤의 CSS").toBe("");
+  });
+});
+
+// **restart 시안의 토큰이 선다**(restart 스펙 「02a」 · 스토리 106 · 티켓 02a-1). 값은 구현 지도 「토큰 — src/index.css」 표와 표 밖의 시안 값
+// 셋(`bubble-user-fg` · `size-send-chat` · 라이트 `fg-sidebar`)이고 시안의 `restart-tokens.css`(Version 92)와 맞댄 것이다. 쓰는 화면은
+// 02a-2부터 짓는다 — 쓰는 자리가 아직 없어 L3가 못 재므로, 값과 유틸리티를 여기서 잰다.
+describe("restart 시안 토큰", () => {
+  // 앱 틀의 둥글기 — Air 실측. 카드 8(02a-2 — 한때 흰 판 하나 12) · 레일 카드 6 · 틀 안의 버튼 · 선택 줄 · 입력칸 · 탭 4.
+  const RADII: Record<string, string> = { card: "8px", rail: "6px", ctl: "4px" };
+
+  it("앱 틀의 둥글기 셋이 @theme에 서고, 반경 유틸리티가 그 변수를 읽는다", async () => {
+    for (const [name, value] of Object.entries(RADII)) expect(themed(`radius-${name}`), name).toBe(value);
+    const built = await utilities(Object.keys(RADII).map((name) => `rounded-${name}`));
+    for (const name of Object.keys(RADII)) expect(ruleOf(built, `rounded-${name}`), name).toContain(`border-radius: var(--radius-${name})`);
+  });
+
+  // 카드 사이 · 창 끝 틈 8, 창 머리 줄 44, 입력창 보내기 원 28(앱과 Codex 실측), 레일 카드 폭 32(지금 토큰 그대로), 작업공간의 탭 줄 40
+  // (02a-5 — 시안 `.ra-tabs`의 높이, 구현 지도 「탭 줄」. 카드 머리 `size-toolbar` 46과 따로다).
+  const SIZES: Record<string, string> = { gap: "8px", titlebar: "44px", "send-chat": "28px", prail: "32px", "tab-row": "40px" };
+
+  it("틈 · 창 머리 · 보내기 원 · 레일 폭 · 탭 줄의 크기가 @theme에 선다", async () => {
+    for (const [name, value] of Object.entries(SIZES)) expect(themed(`size-${name}`), name).toBe(value);
+    expect(ruleOf(await utilities(["size-send-chat"]), "size-send-chat")).toContain("width: var(--size-send-chat)");
+  });
+
+  // 창 머리 줄 높이는 이 토큰 하나다 — 02a-2가 머리 줄을 옮기며 같은 값의 옛 이름(`--titlebar-height`)을 걷었다(`ShellHead.test.tsx`가 머리
+  // 줄이 이 이름을 읽는지 잰다).
+  it("창 머리 줄의 옛 이름이 남지 않는다", () => {
+    expect(declared(blocks, "light", "titlebar-height")).toBeUndefined();
+  });
+
+  // Motion 보드의 「바뀜」 · 「새로 추가」 시간 — 오른쪽 패널 · 레일 · 카드 넓힘의 여닫기 500(Codex spring .5, 지금 패널은 220), 레일 켜짐
+  // 표시가 칸 사이를 옮겨 가는 220, 보낸 말이 자리에 서는 320.
+  const DURATIONS: Record<string, string> = { "panel-open": "500ms", rail: "220ms", rise: "320ms", place: "240ms" };
+
+  it("Motion의 새 시간이 @theme에 서고, 시간 유틸리티가 그 변수를 읽는다", async () => {
+    for (const [name, value] of Object.entries(DURATIONS)) expect(themed(`duration-${name}`), name).toBe(value);
+    const built = await utilities(Object.keys(DURATIONS).map((name) => `duration-${name}`));
+    for (const name of Object.keys(DURATIONS))
+      expect(ruleOf(built, `duration-${name}`), name).toContain(`transition-duration: var(--duration-${name})`);
+    // 패널 여닫기는 02a-2부터 새 시간을 읽고(`panel-layout`의 `PANEL_MOTION`), 옛 패널 박자는 요약 카드가 열리는 박자 · 입력창 높이에 그대로다.
+    expect(themed("duration-panel")).toBe("220ms");
+  });
+
+  // 새 색 — 이름 → [라이트, 다크]. 레일 켜짐 면(다크는 Air 실측)과 사람 말풍선의 글자(표 밖의 시안 값).
+  const NEW_COLORS: Record<string, [string, string]> = {
+    "tool-rail-on": ["#eff0f0", "#2c2d2f"],
+    "bubble-user-fg": ["#0c264a", "#f6fafe"],
+  };
+
+  it("새 색이 라이트와 다크에 제 값으로 서고, 그 이름의 유틸리티가 변수를 읽는다", async () => {
+    for (const [name, [light, dark]] of Object.entries(NEW_COLORS)) {
+      expect(declared(blocks, "light", name), `${name} 라이트`).toBe(light);
+      expect(declared(blocks, "dark", name), `${name} 다크`).toBe(dark);
+    }
+    const built = await utilities(Object.keys(NEW_COLORS).map((name) => `bg-${name}`));
+    for (const name of Object.keys(NEW_COLORS)) expect(ruleOf(built, `bg-${name}`), name).toContain(`background-color: var(--${name})`);
+  });
+
+  // 지금 토큰의 값이 시안 값이 되는 자리 — 이름 → [라이트, 다크].
+  //   - 다크 창 바탕은 DS #343434(카드보다 밝다)가 아니라 Air 실측 #090909다 — 둥근 카드가 뜨려면 바탕이 카드(#181818)보다 어두워야 한다.
+  //     디자인 시스템과 어긋나는 결정이다(구현 지도 표).
+  //   - 「Codex 실측 색」 가운데 다크 값이 없던 다섯이 다크에서 같은 무게로 보이게 제 값을 든다(구현 지도 표).
+  //   - 라이트의 사이드바 글자는 본문 글자와 같은 #1a1c1f다(표 밖의 시안 값). 시안의 사이드바는 고른 줄을 글자가 아니라 면으로 가른다.
+  const CHANGED: Record<string, [string, string]> = {
+    "surface-shell": ["#f6f6f6", "#090909"],
+    "fg-thinking": ["#aeaeae", "rgba(255, 255, 255, 0.42)"],
+    "fg-placeholder": ["#c7c7c8", "rgba(255, 255, 255, 0.36)"],
+    "shimmer-band": ["rgba(255, 255, 255, 0.75)", "rgba(255, 255, 255, 0.9)"],
+    "accent-solid-pending": ["#a9c9fb", "#2d5aa8"],
+    "surface-tray": ["#f4f4f4", "#1f1f1f"],
+    "fg-sidebar": ["#1a1c1f", "#dddddd"],
+  };
+
+  it("다크 창 바탕 · 다크 값이 없던 다섯 · 라이트 사이드바 글자가 시안 값이다", () => {
+    for (const [name, [light, dark]] of Object.entries(CHANGED)) {
+      expect(declared(blocks, "light", name), `${name} 라이트`).toBe(light);
+      expect(declared(blocks, "dark", name), `${name} 다크`).toBe(dark);
+    }
+  });
+
+  // 구현 지도 표의 「바꾸지 않음」 — 이미 시안과 같은 값이다.
+  it("표의 「바꾸지 않음」 값이 시안 그대로다", () => {
+    const SAME: Record<string, string> = {
+      "radius-prompt": "22px",
+      "radius-bubble": "22px",
+      "size-panel": "340px",
+      "size-stream-fade": "240px",
+      "duration-sidebar": "300ms",
+    };
+    for (const [name, value] of Object.entries(SAME)) expect(themed(name), name).toBe(value);
+  });
+
+  // 턴 사이 48 — 간격 이름(`--gap-*`)이라 `@theme`에 올리지 않고 `:root`에 선다(`spacing-guard.test.ts`).
+  it("턴 사이 48이 :root에 수로 선다", () => {
+    expect(declared(blocks, "light", "gap-turn")).toBe("48px");
   });
 });

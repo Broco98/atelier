@@ -1,9 +1,9 @@
 //! L1 — Work와 이어짐(v1 티켓 30 · 구현 스펙 §7 S13 · §11 · S21): Thread 도구 「Project 목록」 · 「Work 읽기」 · 「Work 만들기 제안」.
 //!
 //! - Host가 「Work 만들기 제안」을 부르면 Work 만들기 카드가 `question` 줄로 서고, 도구는 사람이 고를 때까지 기다린다.
-//! - 「Work 만들기」 — core가 worktree 없이 Work를 만들고(v1 티켓 29), `thread.json`의 `work`가 서고, `work` 줄 「Work … 을 만들고 이
+//! - 「작업공간 만들기」 — core가 worktree 없이 Work를 만들고(v1 티켓 29), `thread.json`의 `work`가 서고, `work` 줄 「Work … 을 만들고 이
 //!   Thread에 연결함」이 남고, 도구가 만든 Work를 돌려준다.
-//! - 「Work 없이 계속」 — 아무것도 만들지 않고, 도구가 「사용자가 Work 없이 계속하기로 함」을 돌려준다.
+//! - 「작업공간 없이 계속」 — 아무것도 만들지 않고, 도구가 「사용자가 Work 없이 계속하기로 함」을 돌려준다.
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 폴더(`thread.json` · `events.jsonl`) · works 폴더 · 등록한 저장소 · 가짜 claude의 MCP 영수증만
 //! 본다.
@@ -12,13 +12,11 @@ mod common;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use atelier_acp::{ConversationHost, HostError, ThreadLink, WorkChoice};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
-
-/// 시험의 Library `host.md`.
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
 
 /// 가짜 claude가 첫 턴 앞머리에서 차례로 부를 Thread 도구들 — `FAKE_CLAUDE_MCP_CALL`.
 fn calling(sandbox: &Sandbox, calls: &[Value]) -> atelier_acp::ShellSource {
@@ -30,7 +28,7 @@ fn tool(name: &str, arguments: Value) -> Value {
     json!({"tool": name, "arguments": arguments})
 }
 
-/// 「환불 API 버그 고쳐줘」에 Host가 내미는 제안 — api-server를 고를 Project로 추천한다(캔버스 Cards 보드 「Work 만들기」).
+/// 「환불 API 버그 고쳐줘」에 Host가 내미는 제안 — api-server를 고를 Project로 추천한다(캔버스 Cards 보드 「작업공간 만들기」).
 fn refund_proposal() -> Value {
     tool(
         "propose_work",
@@ -85,7 +83,7 @@ fn request_of(asked: &Value) -> String {
 
 /// 그 Session의 claude가 부른 도구의 답 — 부른 차례대로.
 fn answers(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
-    sandbox.claude_mcp(&sandbox.thread_session_id(thread, "host")).into_iter().map(|call| call["call"].clone()).collect()
+    sandbox.claude_mcp(&sandbox.thread_session_id(thread)).into_iter().map(|call| call["call"].clone()).collect()
 }
 
 fn create(projects: &[&str], branch: &str) -> WorkChoice {
@@ -101,13 +99,11 @@ fn started(sandbox: &Sandbox, calls: &[Value]) -> (ConversationHost, String) {
 #[test]
 fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_worktree_없는_work가_서고_thread가_이어지며_도구가_그_work를_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server", "결제 · 환불 API");
     register(&sandbox, "web-app", "환불 버튼 화면");
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
 
     let asked = wait_card(&sandbox, &thread, "asked");
-    assert_eq!(asked["who"], "host", "제안한 Agent가 줄의 who다(S8)");
     let card = &asked["payload"];
     assert_eq!(card["title"], "환불 API 버그 수정");
     assert_eq!(card["slug"], "refund-api");
@@ -123,7 +119,7 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
         ]),
         "카드는 등록된 Project를 모두 싣는다 — Host 추천이 먼저 그 까닭과 함께, 나머지는 넣을 수 있게(스토리 90)"
     );
-    assert_eq!(card.get("space"), None, "Space가 없는 대화의 카드에는 Space 줄이 서지 않는다(03 §9)");
+    assert_eq!(card.get("service"), None, "Service가 없는 대화의 카드에는 Service 줄이 서지 않는다(03 §9)");
     assert!(of_kind(&sandbox.thread_record(&thread), "turn-end").is_empty(), "도구는 사람이 고를 때까지 기다린다 — 턴이 돈다");
 
     // 사람이 web-app을 넣고 만든다.
@@ -148,12 +144,11 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
     );
     let linked = of_kind(&record, "work");
     assert_eq!(linked.len(), 1, "{}", common::lines_text(&record));
-    assert!(linked[0].get("who").is_none(), "사람이 고른 일이라 work 줄에 who가 없다(S8): {}", linked[0]);
     assert_eq!(
         linked[0]["payload"],
         json!({"state": "created", "slug": "refund-api", "title": "환불 API 버그 수정", "branch": "fix/refund-api",
                "projects": ["api-server", "web-app"]}),
-        "시스템 줄 「Work 환불 API 버그 수정을 만들고 이 Thread에 연결함」이 이것을 읽는다"
+        "시스템 줄 「작업공간 환불 API 버그 수정을 만들고 이 채팅에 연결함」이 이것을 읽는다"
     );
     let at = |line: &Value| record.iter().position(|seen| seen == line).unwrap();
     let ended = record.iter().position(|line| line["kind"] == "turn-end").unwrap();
@@ -170,7 +165,6 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
 #[test]
 fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사용자가_work_없이_계속하기로_함을_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
 
@@ -185,7 +179,7 @@ fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사�
     assert_eq!(
         wait_card(&sandbox, &thread, "answered")["payload"],
         json!({"state": "answered", "requestId": request_of(&asked), "card": "work", "choice": "continue"}),
-        "결정한 뒤 「Work 없이 계속함」이 이 줄을 읽는다"
+        "결정한 뒤 「작업공간 없이 계속함」이 이 줄을 읽는다"
     );
     let answer = &answers(&sandbox, &thread)[0];
     assert_ne!(answer["isError"], true, "고른 것이지 실패가 아니다: {answer}");
@@ -201,9 +195,32 @@ fn work_없이_계속을_고르면_아무것도_만들지_않고_도구가_사�
 }
 
 #[test]
+fn claude_채팅의_카드는_codex의_카드_한도가_지나도_닫지_않고_사람의_답을_기다린다() {
+    // Codex 채팅은 이 한도에 카드를 닫는다(01c-8 · `thread_codex.rs`). Claude Code는 도구를 끊지 않는다.
+    let limit = Duration::from_millis(300);
+    let sandbox = Sandbox::new();
+    register(&sandbox, "api-server", "");
+    let host = sandbox.host_builder(calling(&sandbox, &[refund_proposal()]), |_| {}).card_limit(limit).build();
+    let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+
+    let asked = wait_card(&sandbox, &thread, "asked");
+    std::thread::sleep(limit * 4);
+    let record = sandbox.thread_record(&thread);
+    assert!(
+        of_kind(&record, "question").iter().all(|line| line["payload"]["state"] == "asked"),
+        "한도가 지나도 카드가 그대로 선다:\n{}",
+        common::lines_text(&record)
+    );
+    host.answer_work(&thread, &request_of(&asked), WorkChoice::Continue).expect("한도가 지난 뒤에도 답한다");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+    let answer = &answers(&sandbox, &thread)[0];
+    assert!(answer["content"][0]["text"].as_str().unwrap().starts_with("사용자가 Work 없이 계속하기로 함"), "{answer}");
+}
+
+#[test]
 fn 만들지_못하면_아무것도_적지_않고_카드가_그대로_서며_고쳐서_다시_고르면_선다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server", "");
     git(&api, &["branch", "fix/refund-api"]);
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
@@ -231,7 +248,6 @@ fn 만들지_못하면_아무것도_적지_않고_카드가_그대로_서며_고
 #[test]
 fn 카드를_세울_수_없는_제안은_그_까닭을_도구의_실패로_돌려주고_카드를_세우지_않는다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     sandbox.work("cart", &[]);
     let unknown = tool("propose_work", json!({"title": "t", "slug": "t-1", "reason": "r", "projects": [{"slug": "web-app"}]}));
@@ -264,7 +280,6 @@ fn 카드를_세울_수_없는_제안은_그_까닭을_도구의_실패로_돌�
 #[test]
 fn 사람이_thread를_멈추면_서_있는_카드를_거두고_도구는_사람이_멈춤을_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let (host, thread) = started(&sandbox, &[refund_proposal()]);
 
@@ -287,7 +302,6 @@ fn 사람이_thread를_멈추면_서_있는_카드를_거두고_도구는_사람
 #[test]
 fn project_목록은_등록된_project와_그_브랜치를_돌려주고_work_읽기는_이은_work의_spec_폴더와_project를_돌려준다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let api = register(&sandbox, "api-server", "결제 · 환불 API");
     git(&api, &["branch", "fix/login-timeout"]);
     let calls = [tool("list_projects", json!({})), tool("get_work", json!({}))];
@@ -316,12 +330,11 @@ fn project_목록은_등록된_project와_그_브랜치를_돌려주고_work_읽
 #[test]
 fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
     let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
     let thread = host
         .start_thread_asking("환불 API 버그 고쳐줘", &[], ThreadLink::NoWork, Some(atelier_acp::AskLevel::Edits))
-        .expect("편집은 허용으로 시작한 Thread");
+        .expect("편집 자동으로 시작한 Thread");
 
     let asked = wait_card(&sandbox, &thread, "asked");
     host.answer_work(&thread, &request_of(&asked), WorkChoice::Create { projects: Vec::new(), branch: None }).expect("기획만인 Work");
@@ -337,43 +350,61 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     assert!(work.get("branch").is_none_or(Value::is_null), "Project가 없으면 브랜치를 정하지 않는다");
 }
 
-/// 03 구현 스펙 §9 · S8 — Work 없이 한 대화의 Space는 Work 만들기 카드에 한 줄(「◇ 결제 서비스 · Space」)로 서고, 「Work 만들기」가 그
-/// Space를 새 Work로 옮기고 Thread의 칸은 비운다 — 이은 뒤로는 Work의 Space를 따른다(스토리 72 · 73).
+/// 03 구현 스펙 §9 · S8 — Work 없이 한 대화의 Service는 Work 만들기 카드에 한 줄(「◇ 결제 서비스 · Service」)로 서고, 「작업공간 만들기」가 그
+/// Service를 새 Work로 옮기고 Thread의 칸은 비운다 — 이은 뒤로는 Work의 Service를 따른다(스토리 72 · 73).
 #[test]
-fn thread의_space는_work_만들기_카드에_서고_만든_work로_옮겨_가며_thread의_칸은_비운다() {
+fn thread의_service는_work_만들기_카드에_서고_만든_work로_옮겨_가며_thread의_칸은_비운다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "");
-    let spaces = atelier_core::spaces_in(&sandbox.data_root());
-    std::fs::create_dir_all(&spaces).unwrap();
-    std::fs::write(spaces.join("결제-서비스.md"), "---\nname: 결제 서비스\nprojects:\n  - api-server\n---\n").unwrap();
+    let services = atelier_core::services_in(&sandbox.data_root());
+    std::fs::create_dir_all(&services).unwrap();
+    std::fs::write(services.join("결제-서비스.md"), "---\nname: 결제 서비스\nprojects:\n  - api-server\n---\n").unwrap();
     let (host, thread) = started(&sandbox, &[]);
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
-    host.set_thread_space(&thread, Some("결제-서비스")).expect("Space 붙이기");
+    host.set_thread_service(&thread, Some("결제-서비스")).expect("Service 붙이기");
     host.shut_down();
 
     let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
     host.send_to_thread(&thread, "Work로 만들어 줘").expect("둘째 말");
     let asked = wait_card(&sandbox, &thread, "asked");
-    assert_eq!(asked["payload"]["space"], json!({"slug": "결제-서비스", "name": "결제 서비스"}), "카드가 붙을 Space를 싣는다");
+    assert_eq!(asked["payload"]["service"], json!({"slug": "결제-서비스", "name": "결제 서비스"}), "카드가 붙을 Service를 싣는다");
     host.answer_work(&thread, &request_of(&asked), create(&["api-server"], "fix/refund-api")).expect("Work 만들기");
     sandbox.wait_thread_kind(&thread, "turn-end", 2);
     host.shut_down();
 
     let work: Value = serde_json::from_str(&std::fs::read_to_string(sandbox.work_dir("refund-api").join("work.json")).unwrap()).unwrap();
-    assert_eq!(work["space"], "결제-서비스", "Thread의 Space가 새 Work로 옮겨 간다");
+    assert_eq!(work["service"], "결제-서비스", "Thread의 Service가 새 Work로 옮겨 간다");
     let file = sandbox.thread_json(&thread);
-    assert_eq!((file["work"].clone(), file.get("space")), (json!("refund-api"), None), "Thread의 칸은 비운다 — Space는 Work 한 곳에 적힌다");
-    assert!(of_kind(&sandbox.thread_record(&thread), "space").len() == 1, "옮김은 Space 줄을 더 남기지 않는다 — 범위가 그대로다");
+    assert_eq!((file["work"].clone(), file.get("service")), (json!("refund-api"), None), "Thread의 칸은 비운다 — Service는 Work 한 곳에 적힌다");
+    assert!(of_kind(&sandbox.thread_record(&thread), "service").len() == 1, "옮김은 Service 줄을 더 남기지 않는다 — 범위가 그대로다");
 }
 
-/// 입력창 Work 칩의 「새 Work로 시작」(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
+/// Project 범위는 작업공간 밖 채팅의 값이다 — 작업공간에 이으면 지운다. 이은 뒤로는 그 작업공간의 범위를 따른다.
+#[test]
+fn 작업공간에_이으면_project_범위가_지워진다() {
+    let sandbox = Sandbox::new();
+    register(&sandbox, "api-server", "");
+    register(&sandbox, "web-app", "");
+    let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
+    let picks = atelier_acp::StartPicks { project: Some("api-server".into()), ..atelier_acp::StartPicks::default() };
+    let thread = host.start_thread_picking("환불 API 버그 고쳐줘", &[], ThreadLink::NoWork, picks).expect("Project를 고른 첫 말");
+    let asked = wait_card(&sandbox, &thread, "asked");
+    assert_eq!(sandbox.thread_json(&thread)["project"], "api-server");
+
+    host.answer_work(&thread, &request_of(&asked), create(&["api-server"], "fix/refund-api")).expect("Work 만들기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["work"].clone(), file.get("project")), (json!("refund-api"), None), "이으면 Project 범위가 지워진다");
+}
+
+/// 「새 작업공간」 칩을 둔 채 시작(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
 /// Work부터 만든다. `thread.json`에 그 표시(`newWork`)가 남아, Work가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린 「새 Work」다(03 S3).
 /// 「Work 없이」는 아무것도 하지 않는다.
 #[test]
 fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안을_먼저_하라고_하고_work_없이는_그_줄이_없다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
     let preamble = |thread: &str| {
         let record = sandbox.wait_thread_kind(thread, "turn-end", 1);
@@ -403,7 +434,6 @@ fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안
 #[test]
 fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     register(&sandbox, "api-server", "백엔드 — 결제 · 환불 API");
     register(&sandbox, "web-app", "프런트엔드 — 주문 상세의 환불 버튼 화면");
     let host = sandbox.host(recorded_work(&sandbox));
@@ -421,7 +451,7 @@ fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같�
             host.answer_work(&thread, &request, create(&["api-server"], "fix/refund-partial-amount")).expect("Work 만들기");
             card = Some(request.clone());
         } else {
-            host.answer_thread_permission(&thread, "host", &request, "allow_once").expect("이번만 허락");
+            host.answer_thread_permission(&thread, &request, "allow_once").expect("이번만 허락");
         }
         sandbox.wait_thread_record(&thread, |record| unanswered(record).is_none_or(|next| request_of(&next) != request));
     };
@@ -431,7 +461,7 @@ fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같�
     let decided: Vec<&Value> = of_kind(&record, "permission").into_iter().filter(|line| line["payload"]["state"] == "decided").collect();
     assert!(decided.is_empty(), "녹음의 물음은 모두 사람에게 온다 — 판정이 막은 것이 없다: {decided:?}");
 
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let fixed = common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]);
     let root = sandbox.data_root().parent().unwrap().to_path_buf();
     let real_root = root.canonicalize().unwrap();

@@ -1,149 +1,143 @@
 import { describe, expect, it } from "vitest";
-import {
-  agentChoices,
-  firstMention,
-  insertMention,
-  matchAgents,
-  mentionAt,
-  mentionOf,
-  recipientOf,
-  type AgentChoice,
-} from "./mentions";
-import type { AgentRoster } from "./types";
+import { inkOf, insertMention, matchMentions, mentionFiles, mentionQuery, paintMentions, type MentionPlace } from "./mentions";
 
-// @ 메뉴 · 멘션 · 받는 이(v1 티켓 14 · 구현 스펙 §14 · S9) — 화면이 엔진과 같은 규칙으로 받는 이를 읽는다. seam은 순수 함수들이다:
-// 멘션 문법(`firstMention` · `mentionAt`), 메뉴 목록(`agentChoices` · `matchAgents`), 받는 이(`recipientOf`) ·
-// 고른 이름 넣기(`insertMention`). 멘션 문법의 기대는 엔진 단위 시험(`host/thread.rs` `first_mention`)과 같은 예다.
+// 「@」 언급(restart 02b-3 · 시안 Composer 「「@」 언급」 · 「첨부 · 언급」) — 입력칸의 커서 앞 낱말이 `@`로 시작하면 메뉴가 그 뒤의 글자로 파일을
+// 찾는다. 고르면 그 낱말이 `@경로`로 바뀌고 언급 칠을 입는다. 보낼 때는 글 그대로 간다.
 
-const definition = (handle: string, name: string, description = "") => ({
-  handle,
-  name,
-  description,
-  avatar: null,
-  model: { prefer: null, effort: null },
-  policy: { askBefore: [], forbid: [] },
+describe("커서 앞 낱말", () => {
+  it("말의 처음이나 빈칸 뒤의 `@`부터 커서까지가 찾는 말이다", () => {
+    expect(mentionQuery("@wat", 4)).toEqual({ at: 0, end: 4, query: "wat" });
+    expect(mentionQuery("이 파일 봐 줘 @src/wa", 18)).toEqual({ at: 9, end: 18, query: "src/wa" });
+    expect(mentionQuery("@", 1)).toEqual({ at: 0, end: 1, query: "" });
+  });
+
+  it("커서가 낱말 가운데면 낱말 끝까지를 바꿀 자리로 잡는다", () => {
+    expect(mentionQuery("@watcher 봐 줘", 4)).toEqual({ at: 0, end: 8, query: "wat" });
+  });
+
+  it("낱말 가운데의 `@`(메일 주소) · 이미 띄어 쓴 뒤 · `@`가 없는 낱말은 찾지 않는다", () => {
+    expect(mentionQuery("me@example.com", 14)).toBeNull();
+    expect(mentionQuery("@wat ", 5)).toBeNull();
+    expect(mentionQuery("watcher", 7)).toBeNull();
+  });
 });
 
-const roster: AgentRoster = {
-  agents: [
-    { call: "docs", from: "library", path: "/x/docs.md", definition: definition("docs", "문서 작성자", "문서만 쓴다") },
-    { call: "host", from: "library", path: "/x/host.md", definition: definition("host", "Host", "다른 Agent를 부르지 않았을 때 답한다") },
-    { call: "reviewer", from: "library", path: "/x/reviewer.md", definition: definition("reviewer", "리뷰어", "바뀐 코드를 읽고 리뷰한다") },
-    { call: "tester", from: { project: "api" }, path: "/x/tester.md", definition: definition("tester", "테스터", "테스트를 돌린다") },
-  ],
-  broken: [
-    { call: "api/host", handle: "host", from: { project: "api" }, path: "/x/api/host.md", problem: { kind: "hostOutsideLibrary" } },
-    { call: "ghost", handle: "ghost", from: "library", path: "/x/ghost.md", problem: { kind: "unknownTool", tool: "teleport" } },
-  ],
-};
-
-/** 이 Thread에 이미 앉은 Host와 리뷰어 — 이름 · 얼굴은 기록의 `joined` 줄에서 온다. */
-const seated = [
-  { handle: "host", from: "library" as const, name: "Host", avatar: null },
-  { handle: "reviewer", from: "library" as const, name: "리뷰어", avatar: { shape: "circle", color: "green" } },
+/** 찾기 명령의 답 — 작업 폴더(이름 없음, 상대 자리) · spec 폴더 · 읽는 범위의 Project(이름, 절대 자리). 경로는 꾸민 값이다. */
+const PLACES: MentionPlace[] = [
+  { name: null, root: "", files: ["README.md", "src-tauri/src/watcher.rs", "src/features/works/watcher.test.ts", "src/lib/stopwatch.ts"] },
+  { name: "spec", root: "/data/works/refund/spec/", files: ["overview.md"] },
+  { name: "api-server", root: "/repos/api-server/", files: ["src/watcher.rs", "Cargo.toml"] },
 ];
 
-const rows = (choices: readonly AgentChoice[]) => choices.map((one) => [one.section, one.call, one.broken]);
-
-describe("멘션 문법은 엔진과 같다", () => {
-  it("말의 첫 멘션 — 조사는 남기고 끝의 문장 부호는 뗀다", () => {
-    expect(firstMention("@reviewer 봐 줘. @host는 기다려")?.name).toBe("reviewer");
-    expect(firstMention("다 됐으면 (@api-server/reviewer).")?.name).toBe("api-server/reviewer");
-    expect(firstMention("끝나면 @reviewer.")?.name).toBe("reviewer");
-    expect(firstMention("@reviewer가 봐 줘")?.name).toBe("reviewer가");
-    expect(firstMention("me@example.com으로 보내 줘")).toBeNull();
-    expect(firstMention("`@media` 쿼리를 고쳐 줘")).toBeNull();
-    expect(firstMention('```\n@app.route("/")\n```\n@tester 돌려 줘')?.name).toBe("tester");
-    expect(firstMention("@ 혼자 선 골뱅이")).toBeNull();
-    expect(firstMention("멘션 없는 말")).toBeNull();
-  });
-
-  it("커서가 선 멘션 — 메뉴가 찾는 말과, 고르면 갈아 끼울 자리", () => {
-    expect(mentionAt("@", 1)).toEqual({ start: 0, end: 1, query: "" });
-    expect(mentionAt("이거 @rev 봐", 7)).toEqual({ start: 3, end: 7, query: "rev" });
-    // 이름 가운데에 선 커서 — 찾는 말은 커서까지, 갈아 끼울 자리는 이름 끝까지다.
-    expect(mentionAt("@reviewer 봐", 4)).toEqual({ start: 0, end: 9, query: "rev" });
-    expect(mentionAt("me@exa", 6)).toBeNull();
-    expect(mentionAt("`@med", 5)).toBeNull();
-    expect(mentionAt("@reviewer 봐", 11)).toBeNull();
-  });
-
-  it("고른 이름을 넣으면 `@<call> `이 되고 커서는 그 뒤에 선다", () => {
-    expect(insertMention("이거 @rev 봐", { start: 3, end: 7 }, "reviewer")).toEqual({ text: "이거 @reviewer 봐", caret: 13 });
-    expect(insertMention("@", { start: 0, end: 1 }, "api/tester")).toEqual({ text: "@api/tester ", caret: 12 });
-  });
-});
-
-describe("@ 메뉴의 목록", () => {
-  it("이 Thread에 있는 Agent가 먼저, 그다음 Library · Project 순이고, 깨진 것은 그 자리에 까닭과 함께 선다", () => {
-    expect(rows(agentChoices(roster, seated))).toEqual([
-      ["이 Thread에 있음", "host", null],
-      ["이 Thread에 있음", "reviewer", null],
-      ["Library", "docs", null],
-      ["Library", "ghost", "모르는 도구가 있어요: teleport"],
-      ["api", "tester", null],
-      ["api", "api/host", "host는 Library에만 둘 수 있어요"],
-    ]);
-  });
-
-  it("이미 앉은 Agent는 기록의 이름 · 얼굴에 정의 파일의 설명을 붙인다", () => {
-    const reviewer = agentChoices(roster, seated)[1];
-    expect([reviewer.name, reviewer.avatar, reviewer.description]).toEqual([
-      "리뷰어",
-      { shape: "circle", color: "green" },
-      "바뀐 코드를 읽고 리뷰한다",
-    ]);
-  });
-
-  it("새 Thread에는 앉은 이가 없어 Host가 Library의 맨 앞에 선다", () => {
-    expect(rows(agentChoices(roster, [])).slice(0, 4)).toEqual([
-      ["Library", "host", null],
-      ["Library", "docs", null],
-      ["Library", "reviewer", null],
-      ["Library", "ghost", "모르는 도구가 있어요: teleport"],
-    ]);
-  });
-
-  it("친 글자로 거른다 — handle · 이름 · 부르는 이름에서 그 글자로 시작하는 것이 먼저다", () => {
-    const choices = agentChoices(roster, seated);
-    expect(matchAgents(choices, "").length).toBe(choices.length);
-    expect(matchAgents(choices, "re").map((one) => one.call)).toEqual(["reviewer"]);
-    expect(matchAgents(choices, "테").map((one) => one.call)).toEqual(["tester"]);
-    expect(matchAgents(choices, "o").map((one) => one.call)).toEqual(["host", "docs", "ghost", "api/host"]);
-  });
-});
-
-describe("받는 이", () => {
-  const choices = agentChoices(roster, seated);
-
-  it("멘션이 없으면 Host다(null)", () => {
-    expect(recipientOf("그냥 말", choices)).toBeNull();
-  });
-
-  it("멘션 이름의 가장 긴 앞부분 가운데 아는 이름이다 — 조사가 붙어도 고른다", () => {
-    // 입력칸이 칩으로 칠할 자리는 `@`부터 고른 이름 끝까지다 — 조사는 칠하지 않는다.
-    expect(recipientOf("@reviewer가 봐 줘", choices)).toMatchObject({
-      mention: "reviewer가",
-      agent: { call: "reviewer" },
-      at: { start: 0, end: 9 },
+describe("넣는 경로", () => {
+  it("작업 폴더 안의 파일은 상대 경로, 밖의 파일은 절대 경로이고 메뉴에는 자리 이름이 붙는다", () => {
+    const files = mentionFiles(PLACES);
+    expect(files.find((file) => file.path === "src-tauri/src/watcher.rs")).toEqual({
+      path: "src-tauri/src/watcher.rs",
+      shown: "src-tauri/src/watcher.rs",
+      place: null,
     });
-    expect(recipientOf("끝나면 @reviewer.", choices)).toMatchObject({ agent: { call: "reviewer" }, at: { start: 4, end: 13 } });
-    expect(recipientOf("@api/tester 돌려", choices)).toMatchObject({ agent: { call: "tester" } });
-    expect(recipientOf("@tester 돌려", choices)).toMatchObject({ agent: { call: "tester" } });
+    expect(files.find((file) => file.shown === "overview.md")).toEqual({ path: "/data/works/refund/spec/overview.md", shown: "overview.md", place: "spec" });
+    expect(files.find((file) => file.place === "api-server" && file.shown === "src/watcher.rs")?.path).toBe("/repos/api-server/src/watcher.rs");
   });
 
-  it("아는 이름이 없으면 멘션 그대로다 — 보내면 엔진이 거절 글을 준다", () => {
-    expect(recipientOf("@nobody 봐", choices)).toEqual({ mention: "nobody", agent: null, at: { start: 0, end: 7 } });
+  it("worktree가 여럿인 작업 폴더의 파일은 Project 폴더부터 적는다", () => {
+    expect(mentionFiles([{ name: null, root: "web-app/", files: ["src/a.ts"] }])).toEqual([
+      { path: "web-app/src/a.ts", shown: "web-app/src/a.ts", place: null },
+    ]);
   });
 });
 
-describe("보낸 말의 멘션", () => {
-  it("말풍선이 칠할 자리는 첫 멘션의 `@`부터 그 턴에 답한 이의 이름 끝까지다 — 조사 · Project 이름도 가른다", () => {
-    expect(mentionOf("@reviewer가 봐 줘", "reviewer")).toEqual({ start: 0, end: 9 });
-    expect(mentionOf("끝나면 @api/tester 돌려", "tester")).toEqual({ start: 4, end: 15 });
-    // 받는 이가 아닌 이름(엔진이 Host에게 보냈다)은 칠하지 않는다.
-    expect(mentionOf("@hostname 봐 줘", "host")).toEqual({ start: 0, end: 5 });
-    expect(mentionOf("@nobody 봐", "host")).toBeNull();
-    expect(mentionOf("그냥 말", "host")).toBeNull();
+describe("찾기", () => {
+  const found = (query: string) => matchMentions(mentionFiles(PLACES), query).map((file) => (file.place ? `${file.place}: ${file.shown}` : file.shown));
+
+  // Composer 「「@」 언급」 — `@wat`에 watcher.rs · watcher.test.ts가 선다.
+  it("이름이 그 글자로 시작하는 것, 이름이 품은 것, 경로가 품은 것 차례이고 같은 차례면 작업 폴더 · 짧은 경로가 먼저다", () => {
+    expect(found("wat")).toEqual([
+      "src-tauri/src/watcher.rs",
+      "src/features/works/watcher.test.ts",
+      "api-server: src/watcher.rs",
+      "src/lib/stopwatch.ts",
+    ]);
+    expect(found("works/")).toEqual(["src/features/works/watcher.test.ts"]);
+  });
+
+  it("대소문자를 가리지 않고, 자리 이름으로도 찾고, 글자가 띄엄띄엄 들어 있어도 맨 뒤에 선다", () => {
+    expect(found("CARGO")).toEqual(["api-server: Cargo.toml"]);
+    expect(found("api-server/src")).toEqual(["api-server: src/watcher.rs"]);
+    expect(found("swr")).toEqual(["src-tauri/src/watcher.rs", "src/features/works/watcher.test.ts", "api-server: src/watcher.rs"]);
+  });
+
+  it("빈 말이면 받은 차례 그대로다", () => {
+    expect(found("").slice(0, 2)).toEqual(["README.md", "src-tauri/src/watcher.rs"]);
+  });
+});
+
+describe("고르기", () => {
+  it("찾던 낱말이 `@경로`와 빈칸 하나로 바뀌고 커서가 그 뒤에 선다", () => {
+    const draft = "이거 @wat 봐 줘";
+    expect(insertMention(draft, mentionQuery(draft, 7)!, "src-tauri/src/watcher.rs")).toEqual({
+      draft: "이거 @src-tauri/src/watcher.rs 봐 줘",
+      caret: 29,
+      mention: "@src-tauri/src/watcher.rs",
+    });
+    expect(insertMention("@wat", mentionQuery("@wat", 4)!, "/repos/api-server/src/watcher.rs")).toEqual({
+      draft: "@/repos/api-server/src/watcher.rs ",
+      caret: 34,
+      mention: "@/repos/api-server/src/watcher.rs",
+    });
+  });
+
+  it("커서 뒤로 이어진 낱말까지 바꾼다", () => {
+    expect(insertMention("@watcher 봐 줘", mentionQuery("@watcher 봐 줘", 4)!, "src/w.ts").draft).toBe("@src/w.ts 봐 줘");
+  });
+
+  it("빈칸이 든 경로는 따옴표로 감싼다 — 언급이 어디서 끝나는지 글로 남는다", () => {
+    expect(insertMention("@배너", mentionQuery("@배너", 3)!, "/data/works/refund/spec/배너 시안.png").mention).toBe(
+      '@"/data/works/refund/spec/배너 시안.png"',
+    );
+  });
+});
+
+// Composer 「첨부 · 언급」의 `.ra-mention` — 메뉴로 넣은 언급만 칠을 입는다. 찾는 중인 `@wat`(「「@」 언급」 칸)은 칠하지 않는다.
+describe("언급 칠", () => {
+  const painted = (draft: string, mentions: string[]) =>
+    paintMentions(draft, mentions)
+      .filter((part) => part.mention)
+      .map((part) => part.text);
+
+  it("넣은 언급은 낱말째 칠하고 나머지 글은 그대로 둔다", () => {
+    expect(paintMentions("@src/watcher.rs 이 파일에서 재시도 간격도 같이 봐 줘", ["@src/watcher.rs"])).toEqual([
+      { text: "@src/watcher.rs", mention: true },
+      { text: " 이 파일에서 재시도 간격도 같이 봐 줘", mention: false },
+    ]);
+    expect(painted("@a.ts 와 @b.ts, 그리고 다시 @a.ts", ["@a.ts", "@b.ts"])).toEqual(["@a.ts", "@b.ts", "@a.ts"]);
+  });
+
+  it("찾는 중인 글자 · 고쳐 다른 경로가 된 언급은 칠하지 않는다", () => {
+    expect(painted("@wat", ["@src/watcher.rs"])).toEqual([]);
+    expect(painted("@src/watcher.rsx 봐 줘", ["@src/watcher.rs"])).toEqual([]);
+    expect(painted("@src/watcher.rs.bak", ["@src/watcher.rs"])).toEqual([]);
+    expect(painted("x@src/watcher.rs", ["@src/watcher.rs"])).toEqual([]);
+  });
+
+  it("바로 붙은 조사 · 문장 부호 앞에서 끝난 언급은 칠한다", () => {
+    expect(painted("@src/watcher.rs를 봐 줘", ["@src/watcher.rs"])).toEqual(["@src/watcher.rs"]);
+    expect(painted("끝은 @src/watcher.rs.", ["@src/watcher.rs"])).toEqual(["@src/watcher.rs"]);
+    expect(painted('@"spec/배너 시안.png" 봐 줘', ['@"spec/배너 시안.png"'])).toEqual(['@"spec/배너 시안.png"']);
+  });
+});
+
+// 한글 조합 — 입력기는 조합 중인 글자의 밑줄을 입력칸의 글자색으로 긋는다. 칠 층이 글자를 그리는 동안 입력칸 글자는 투명이라 밑줄이 사라진다.
+// 그래서 조합 중에는 입력칸이 글자를 그리고 칠 층은 면만 둔다 — 글자 자리는 두 층이 같아 흔들리지 않고, 조합이 끝나면 칠 층이 글자를 되받는다.
+describe("누가 글자를 그리나", () => {
+  it("언급이 서 있으면 칠 층이 그리고, 조합 중이면 입력칸이 그린다", () => {
+    expect(inkOf(true, false)).toBe("paint");
+    expect(inkOf(true, true)).toBe("field");
+  });
+
+  it("언급이 없으면 늘 입력칸이 그린다", () => {
+    expect(inkOf(false, false)).toBe("field");
+    expect(inkOf(false, true)).toBe("field");
   });
 });

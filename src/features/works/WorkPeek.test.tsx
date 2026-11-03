@@ -82,13 +82,13 @@ describe("hover 카드", () => {
 describe("hover 카드의 Thread 수 · 셸 수", () => {
   it("그 Work에 이은 Thread 수와 열린 셸 수가 선다", () => {
     const text = textOf(card({ threads: 3, shells: 2 }));
-    expect(text).toContain("Thread 3개");
+    expect(text).toContain("채팅 3개");
     expect(text).toContain("셸 2개");
   });
 
   it("Thread가 없으면 「아직 없어요」이고, 셸이 없으면 셸 칸이 없다 — 「없음」을 숫자로 말하지 않는다", () => {
     const text = textOf(card());
-    expect(text).toContain("Thread 아직 없어요");
+    expect(text).toContain("채팅 아직 없어요");
     expect(text).not.toContain("셸");
   });
 });

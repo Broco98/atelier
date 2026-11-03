@@ -58,7 +58,7 @@ export function InlineRename({
   value: string;
   /** 저장된 이름 — 「그대로」는 이것과 견준다(머리말). 보이는 이름이 다른 갈래에서 올 수 있는 자리가 준다. 없으면 `value`다. */
   saved?: string;
-  /** 입력칸의 이름(`aria-label`) — 무엇의 이름인가(「작업 이름」 · 「프로젝트 이름」). */
+  /** 입력칸의 이름(`aria-label`) — 무엇의 이름인가(「작업공간 이름」 · 「프로젝트 이름」). */
   label: string;
   /** 비운 채 저장할 때의 뜻 — `revert`는 원래 이름(부르지 않는다), `clear`는 빈 이름으로 부른다. */
   emptyMeans: "revert" | "clear";

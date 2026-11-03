@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use super::{snapshot, Identity, SHELL_KEY_ENV};
+use super::{snapshot, Identity, RUNTIME_KEY_ENV, SHELL_KEY_ENV};
 
 /// 자식의 역할을 싣는 변수. 앱은 이 이름을 모른다.
 pub(crate) const CHILD_ROLE: &str = "ATELIER_PROCESSES_TEST_CHILD";
@@ -129,6 +129,9 @@ fn a_child_the_real_tests_spawn() {
         }
         // 곧바로 끝난다. 부모가 거두기 전까지 좀비로 남는다.
         Some("exit") => {}
+        // 이 실행의 세대를 한 줄로 말하고 끝난다 — 함께 뜬 실행들의 세대를 견주는 검사(`shell_key`)가 쓴다. 세대는 처음 물을 때
+        // 잡히므로 이 줄이 이 실행이 세대를 짓는 순간이다.
+        Some("generation") => println!("generation=[{}]", super::shell_key::generation()),
         other => panic!("모르는 역할이다: {other:?}"),
     }
 }
@@ -165,6 +168,24 @@ impl Kid {
             .args(child_args())
             .env(CHILD_ROLE, role)
             .env(SHELL_KEY_ENV, key)
+            // 이 검사를 Atelier 채팅에서 돌렸으면 그 Runtime의 표식을 물려받는다 — 판정이 그것을 앱이 물려받은 키로 막는다.
+            .env_remove(RUNTIME_KEY_ENV)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("테스트 바이너리를 자식으로 띄운다");
+        Kid(child)
+    }
+
+    /// 채팅의 Runtime이 띄운 자식처럼 — 셸의 표식 없이 Runtime의 표식(`key`, Runtime 키)을 물고 뜬다(restart 03-7). 이 검사를 돌린 셸의
+    /// 표식은 지운다 — 물려받으면 자식이 셸의 자손으로도 읽힌다.
+    pub(crate) fn in_chat(role: &str, key: &str) -> Kid {
+        let child = Command::new(exe())
+            .args(child_args())
+            .env(CHILD_ROLE, role)
+            .env(RUNTIME_KEY_ENV, key)
+            .env_remove(SHELL_KEY_ENV)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())

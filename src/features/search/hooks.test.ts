@@ -111,9 +111,9 @@ describe("무엇을 물어 나가는가", () => {
   // 목록을 **리터럴로 적는다.** 표에서 뽑아 조립하면 구현을 베껴 적은 것이 되어, 표가 통째로
   // 기울어도 함께 기운다. 순서까지 적는 것은 코어가 건넨 순서로 줄을 세우기 때문이다
   // (`search.rs`의 `destination_hits`).
-  // 사람 메뉴의 다섯(03 구현 스펙 §4 — `Space`가 `Projects` 다음에 든다)과 설정.
+  // 사이드바 위 칸의 다섯(restart 02a-3 — 시안의 차례로 `Services`가 맨 앞이다)과 설정.
   it("nav 다섯과 설정을 목적지로 묻는다", () => {
     void searchQuery("아뜰").queryFn();
-    expect(asked.get("아뜰")).toEqual(["projects", "spaces", "terminal", "processes", "archive", "settings"]);
+    expect(asked.get("아뜰")).toEqual(["services", "projects", "terminal", "processes", "archive", "settings"]);
   });
 });

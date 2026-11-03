@@ -12,7 +12,7 @@ import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 import type { Waiting } from "./waiting";
 
 // 정적 마크업 seam — 「내 차례만」 목록 · Work 아래 Thread 줄이 **무엇을 말하는가**를 본다(v1 티켓 42 · 캔버스 Sidebar 보드 「내 차례만」 ·
-// 「내 차례만 · 비었을 때」 · 02 티켓 05). 그것을 켜는 위 줄 「내 차례」 행의 글자는 `components/shell/sidebar-item.test.tsx`가 본다. 무엇이
+// 「내 차례만 · 비었을 때」 · 02 티켓 05). 그것을 켜는 위 칸 「내 차례」 행의 글자는 `components/shell/sidebar-item.test.tsx`가 본다. 무엇이
 // 기다리는지 · 어떤 차례인지는 `waiting.test.ts`가, 줄의 상태가 무엇인지는 `status.test.ts`가 보고, 여기로는 그 결과만 들어온다. 누르면
 // 무엇이 바뀌는지는 정적 렌더에 없다 — 시안 비교 캡처와 L3가 본다.
 
@@ -26,8 +26,10 @@ const summary = (id: string, title: string): ThreadSummary => ({
   id,
   title,
   createdAt: "2026-10-10T09:00:00.000+09:00",
+  lastAt: "2026-10-10T09:00:00.000+09:00",
   work: null,
-  handles: ["host"],
+  service: null,
+  project: null,
   lastRead: 0,
   readOnly: null,
   broken: null,
@@ -60,8 +62,8 @@ describe("내 차례만", () => {
     expect(text.indexOf("환불 API 버그 고쳐줘")).toBeLessThan(text.indexOf("결제 페이지 리디자인"));
   });
 
-  it("비었으면 「지금은 나를 기다리는 Thread가 없어요」 한 줄이다", () => {
-    expect(textOf(list([]))).toBe("지금은 나를 기다리는 Thread가 없어요");
+  it("비었으면 「지금은 나를 기다리는 채팅이 없어요」 한 줄이다", () => {
+    expect(textOf(list([]))).toBe("지금은 나를 기다리는 채팅이 없어요");
   });
 });
 
@@ -80,7 +82,7 @@ describe("Thread 줄", () => {
     expect(rows).toHaveLength(2);
     expect(rows.map(textOf)).toEqual(["환불 API 버그 고쳐줘", "PR #142 리뷰"]);
     for (const row of rows) {
-      // 얼굴(`ThreadFaces` · `HostFace`)은 svg · 글자 상자였다 — 줄 안에 그림이 하나도 없다.
+      // 얼굴이 없다 — 줄 안에 그림이 하나도 없다.
       expect(row).not.toContain("<svg");
       expect(row).not.toContain("<img");
     }

@@ -22,10 +22,9 @@ import {
   토큰색,
   행버튼,
 } from "./harness";
-import { PROJECTS, WORKS } from "./fixtures";
+import { WORKS } from "./fixtures";
 
 const [pinnedWork, plainWork] = WORKS;
-const [billing] = PROJECTS;
 
 // codex-ds 티켓 31 — **입력칸 · 터미널에서 우리 편집 메뉴가 뜬다**(codex-ds 스펙 §9 · S9 · 구현 노트 Q12 · Q17). 우클릭하면 웹뷰의 기본
 // 메뉴 대신 앱의 편집 메뉴가 커서 자리에 선다.
@@ -103,17 +102,21 @@ const 고름 = (field: Locator) =>
 // ── 입력칸 ──
 
 /**
- * 메뉴를 받는 칸들. `ring`은 대상 테두리가 서는 자리 — 그 칸이 포커스 링을 입는 자리다. 검색칸은 감싼 상자가 입고(`InputGroup`),
+ * 메뉴를 받는 칸들. `ring`은 대상 테두리가 서는 자리 — 그 칸이 포커스 링을 입는 자리다. 목록의 찾기 칸은 감싼 상자가 입고(`PlaceSearch`),
  * 링을 두지 않는 칸(팔레트의 입력 줄)은 `null`이다. 칸은 **메뉴가 열린 동안에도 찾는다**(`includeHidden`) — 메뉴가 열리면 부품이
  * 바깥을 보조 기술에서 숨겨(`aria-hidden`) 역할로는 칸이 안 잡힌다. 열린 동안 칸의 자리 · 테두리 · 포커스를 재야 한다.
  */
 const 입력칸들: Array<{ name: string; setUp: (page: Page) => Promise<Locator>; ring: (field: Locator) => Locator | null }> = [
+  // 목록의 찾기 칸(restart 03-4 — 공용 목록 틀의 알약 칸, 감싼 상자가 링을 입는다). 한때 Archive 목록 칸 머리의 「아카이브 검색」(`InputGroup`)이었다.
   {
-    name: "Archive의 검색칸",
+    name: "Archive의 찾기 칸",
     ring: (field) => field.locator(".."),
     setUp: async (page) => {
-      await page.goto("/archive/shipped-work");
-      const field = page.getByRole("textbox", { name: "아카이브 검색", exact: true, includeHidden: true });
+      // 찾기 칸은 판 머리의 오른쪽 끝이라 기본 창(1280)에서는 그 자리를 우클릭하면 카드(248)가 창 안에 들려고 왼쪽으로 뒤집혀 서서 「커서
+      // 자리」를 잴 수 없다. 창을 넓혀 카드가 설 자리를 준다(가운데 열은 1120에서 멈춘다).
+      await page.setViewportSize({ width: 1680, height: 720 });
+      await page.goto("/archive");
+      const field = page.getByRole("searchbox", { name: "Archive 찾기", exact: true, includeHidden: true });
       await expect(field).toBeVisible();
       return field;
     },
@@ -138,8 +141,8 @@ const 입력칸들: Array<{ name: string; setUp: (page: Page) => Promise<Locator
     // 검색 팔레트의 입력 줄은 링을 두지 않는다 — 카드가 떠 있는 동안 포커스가 늘 그 칸에 있다(Input의 `bare`).
     ring: () => null,
     setUp: async (page) => {
-      await page.goto("/archive/shipped-work");
-      await expect(page.getByRole("textbox", { name: "아카이브 검색", exact: true })).toBeVisible();
+      await page.goto("/archive");
+      await expect(page.getByRole("searchbox", { name: "Archive 찾기", exact: true })).toBeVisible();
       await 검색팔레트를연다(page);
       const palette = page.getByRole("dialog", { name: "검색", includeHidden: true });
       const field = palette.getByRole("textbox", { name: "검색어", exact: true, includeHidden: true });
@@ -242,11 +245,10 @@ test("입력칸 메뉴가 고른 글자를 복사하고 잘라 내고, 클립보
   page.on("pageerror", (error) => errors.push(String(error)));
   await recordClipboard(page);
   await installFixtureBackend(page);
-  await page.goto("/archive/shipped-work");
-  const field = page.getByRole("textbox", { name: "아카이브 검색", exact: true });
-  // 목록의 두 아카이브 — 검색어가 무엇을 남기는지가 「화면의 상태(검색어)가 칸의 값을 따라왔다」를 말한다. 머리 띠에도 보는 아카이브의
-  // 이름이 서므로 목록 안에서 찾는다.
-  const 목록 = page.getByRole("region", { name: "아카이브 목록", exact: true });
+  await page.goto("/archive");
+  const field = page.getByRole("searchbox", { name: "Archive 찾기", exact: true });
+  // 목록의 두 아카이브 — 찾는 글이 무엇을 남기는지가 「화면의 상태(찾는 글)가 칸의 값을 따라왔다」를 말한다. 목록 표 안에서 찾는다.
+  const 목록 = page.getByRole("table", { name: "Archive 목록", exact: true });
   const 치운일 = 목록.getByText("치운 일", { exact: true });
   const 남은것 = 목록.getByText("문서가 남지 않은 것", { exact: true });
   await field.fill("zzz치운");
@@ -330,8 +332,8 @@ test("검색 팔레트의 검색어 칸에서 메뉴로 복사 · 붙여넣기�
   // 메뉴 카드는 팔레트(모달 창) 밖 — body 끝의 포털 — 에 선다. 그 카드의 줄을 눌러도 창이 「바깥을 눌렀다」로 닫히지 않아야 한다.
   await recordClipboard(page);
   await installFixtureBackend(page);
-  await page.goto("/archive/shipped-work");
-  await expect(page.getByRole("textbox", { name: "아카이브 검색", exact: true })).toBeVisible();
+  await page.goto("/archive");
+  await expect(page.getByRole("searchbox", { name: "Archive 찾기", exact: true })).toBeVisible();
   await 검색팔레트를연다(page);
   const palette = page.getByRole("dialog", { name: "검색" });
   const field = 검색어칸(palette);
@@ -365,15 +367,16 @@ test("검색 팔레트의 검색어 칸에서 메뉴로 복사 · 붙여넣기�
 
 // ── 이름을 고치는 칸 ──
 
-// 제자리 이름 바꾸기의 입력칸(`InlineRename`, 티켓 28)도 입력칸이다. 그 칸은 대상 메뉴(work · 프로젝트)의 자리에 선다 — 사이드바 행 ·
-// 프로젝트 목록 행의 칸은 행의 우클릭을 받는 목록 안이고, 머리 줄의 칸은 메뉴를 단 이름 자리를 갈아 끼운 것이다. 그래도 우클릭 ·
+// 제자리 이름 바꾸기의 입력칸(`InlineRename`, 티켓 28)도 입력칸이다. 그 칸은 대상 메뉴(work)의 자리에 선다 — 사이드바 행의 칸은 행의
+// 우클릭을 받는 목록 안이고, 머리 줄의 칸은 메뉴를 단 이름 자리를 갈아 끼운 것이다. 그래도 우클릭 ·
 // ⇧F10은 그 대상의 메뉴가 아니라 편집 메뉴를 열고, 메뉴가 포커스를 쥐어도 고치기는 끝나지 않는다(「다른 곳 = 저장」이 아니다) — 닫히면
 // 포커스가 고름째 그 칸으로 돌아와 이어 고친다. 픽스처의 이름 저장은 바뀐 이름을 기억하지 않아 저장은 나간 IPC로 잰다
 // (`inline-rename.spec.ts`).
 //
 // work의 두 칸은 대상 메뉴(`WorkContextMenu`)의 자리다 — 그 자리의 가름도 이 칸을 대상으로 치지 않는다. 그 가름이 넓어지는 날 이 칸을
-// 지키는 것이 자리의 물러섬(`opensEditMenu`)이고, 이 검사가 그날 빨개진다. Project 상세 제목(03 구현 스펙 §16)은 대상 메뉴가 없는 자리다 —
-// 한때 프로젝트 목록 행 · 머리 줄 이름이 대상 메뉴(`TargetMenu`)를 단 이름 칸이었다(03 결정 「10」이 걷었다).
+// 지키는 것이 자리의 물러섬(`opensEditMenu`)이고, 이 검사가 그날 빨개진다. 한때 프로젝트 목록 행 · 머리 줄 이름이 대상 메뉴(`TargetMenu`)를
+// 단 이름 칸이었고(03 결정 「10」이 걷었다), 그 뒤 Project 상세 제목이 대상 메뉴 없는 이름 칸이었다(restart 03-15c가 걷었다 — 보드 상세에는
+// 고치는 자리가 없다).
 
 const 이름칸들: Array<{
   name: string;
@@ -381,7 +384,7 @@ const 이름칸들: Array<{
   url: string;
   /** 칸 밖의 그 자리에서 서는 대상 메뉴 — 이 칸에서는 안 선다. 그 자리에 대상 메뉴가 없으면 `null`이다. */
   menu: "work" | null;
-  /** 고치는 이름의 work · 프로젝트. */
+  /** 고치는 이름의 work. */
   slug: string;
   /** 이름 저장 — 나가는 IPC와 이름이 실리는 인자(`slug` 옆). */
   save: { command: string; key: string };
@@ -399,7 +402,7 @@ const 이름칸들: Array<{
     setUp: async (page) => {
       await 행버튼(page, pinnedWork.title).focus();
       await page.keyboard.press("F2");
-      return workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업 이름", exact: true, includeHidden: true });
+      return workRow(page, pinnedWork.slug).getByRole("textbox", { name: "작업공간 이름", exact: true, includeHidden: true });
     },
   },
   {
@@ -412,20 +415,7 @@ const 이름칸들: Array<{
     ring: (field) => field.locator(".."),
     setUp: async (page) => {
       await 화면머리(page).getByText(plainWork.title, { exact: true }).dblclick();
-      return 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true, includeHidden: true });
-    },
-  },
-  {
-    name: "Project 상세 제목",
-    url: `/projects/${billing.slug}`,
-    menu: null,
-    slug: billing.slug,
-    save: { command: "update_project", key: "name" },
-    // 글자 폭 칸이다(`InlineRename`의 `text`) — 짝을 든 상자가 링을 입는다.
-    ring: (field) => field.locator(".."),
-    setUp: async (page) => {
-      await page.getByRole("button", { name: `${billing.name} — 이름 바꾸기`, exact: true }).click();
-      return page.getByRole("main").getByRole("textbox", { name: "Project 이름", exact: true, includeHidden: true });
+      return 화면머리(page).getByRole("textbox", { name: "작업공간 이름", exact: true, includeHidden: true });
     },
   },
 ];
@@ -721,7 +711,7 @@ test("⋯ 메뉴 · 상태 메뉴를 누른 채 끌어 줄 위에서 놓으면 �
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
 
-  await 끌어놓는다(page, page.getByRole("button", { name: "작업 메뉴", exact: true }), (menu) =>
+  await 끌어놓는다(page, page.getByRole("button", { name: "작업공간 메뉴", exact: true }), (menu) =>
     menu.getByRole("menuitem", { name: "고정 풀기", exact: true }),
   );
   await expect.poll(async () => (await ipcCallArgs(page, "set_work_pinned", "pinned")).map(({ args }) => args.pinned)).toEqual([false]);

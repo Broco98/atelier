@@ -2,7 +2,7 @@
 //!
 //! - **질문** — claude가 사람에게 묻는 `AskUserQuestion`은 판정을 지나지 않고 질문 카드가 된다(`question` 줄). 답하면 claude가 물은
 //!   입력에 답(물음 → 답)을 더한 allow가 가고, 「나중에」는 그 질문 하나만 닫는 deny다. 둘 다 답 줄로 남는다. 멈추면 거둬진다.
-//! - **계획 넘어가기** — 「계획만」에서 「계획대로 구현」을 고르면 물어보는 정도가 「매번 묻기」로 나간다 — 구현의 첫 편집부터 그
+//! - **계획 넘어가기** — 「계획」에서 「계획대로 구현」을 고르면 물어보는 정도가 「매번 묻기」로 나간다 — 구현의 첫 편집부터 그
 //!   정도로 묻는다. 「계획 다시 쓰기」에 쓴 말은 고정 문구와 함께 claude에게 가고 정도는 그대로다.
 //!
 //! 질문은 진짜 claude가 사람에게 물은 녹음(`thread-question-host`, v1 티켓 27 끝 점검)을 되감는다 — 첫 턴은 물음 둘을 묻고 답을
@@ -14,8 +14,6 @@ mod common;
 use atelier_acp::{AskLevel, HostError, QuestionAnswer, QuestionReply, Reply, ThreadLink};
 use common::{of_kind, wait_until, Sandbox};
 use serde_json::{json, Value};
-
-const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
 
 const FEE: &str = "부분 환불 수수료는 어떻게 할까요?";
 const SCREEN: &str = "어느 화면에 보일까요?";
@@ -34,10 +32,21 @@ fn refund_questions() -> Value {
     ]})
 }
 
+#[test]
+fn 묻지_않음에서도_질문은_질문_카드로_선다() {
+    let (sandbox, host) = asking_sandbox();
+    let thread = host.start_thread_asking("환불 수수료를 정해 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto)).expect("묻지 않음으로 새 Thread");
+
+    let asked = wait_line(&sandbox, &thread, "question", "asked", 1);
+    assert_eq!(asked["payload"]["questions"][0]["question"], FEE, "{asked}");
+    assert!(of_kind(&sandbox.thread_record(&thread), "permission").is_empty(), "판정 줄 없이 질문 카드다");
+
+    host.shut_down();
+}
+
 /// Host의 턴 둘이 각각 사람에게 묻는다(녹음 `thread-question-host`).
 fn asking_sandbox() -> (Sandbox, atelier_acp::ConversationHost) {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-question-host")]));
     (sandbox, host)
 }
@@ -79,7 +88,6 @@ fn 질문은_판정을_지나지_않고_질문_줄로_서고_답하면_claude가
     let thread = host.start_thread("환불 수수료를 정해 줘", ThreadLink::NoWork).expect("Work 없는 Thread");
 
     let asked = wait_line(&sandbox, &thread, "question", "asked", 1);
-    assert_eq!(asked["who"], "host");
     let payload = &asked["payload"];
     assert_eq!((payload["card"].clone(), payload["requestId"].clone()), (json!("question"), json!("0")));
     assert_eq!(payload["questions"][0]["question"], FEE, "물음은 엔진이 읽는 꼴로 선다: {payload}");
@@ -89,11 +97,11 @@ fn 질문은_판정을_지나지_않고_질문_줄로_서고_답하면_claude가
     assert!(of_kind(&record, "permission").is_empty(), "질문은 권한 줄이 아니다 — 판정도 묻지 않는다:\n{}", common::lines_text(&record));
 
     // 권한 답으로는 질문의 답을 줄 수 없고, 질문 답으로는 권한에 답할 수 없다 — 카드가 섞이지 않는다.
-    let refused = host.reply_thread_permission(&thread, "host", "0", &Reply::pick("answer"));
+    let refused = host.reply_thread_permission(&thread, "0", &Reply::pick("answer"));
     assert!(matches!(refused, Err(HostError::NotPermission { .. })), "{refused:?}");
 
     let answers = vec![answer(FEE, "비율대로 돌려준다"), answer(SCREEN, "주문 상세, 환불 내역")];
-    host.answer_thread_question(&thread, "host", "0", &QuestionReply::Answer(answers)).expect("답한다");
+    host.answer_thread_question(&thread, "0", &QuestionReply::Answer(answers)).expect("답한다");
 
     let answered = wait_line(&sandbox, &thread, "question", "answered", 1);
     assert_eq!(
@@ -102,7 +110,7 @@ fn 질문은_판정을_지나지_않고_질문_줄로_서고_답하면_claude가
                "answers": [{"question": FEE, "answer": "비율대로 돌려준다"}, {"question": SCREEN, "answer": "주문 상세, 환불 내역"}]}),
         "답 줄 — 화면의 「답함: …」 줄이 이것을 읽는다"
     );
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let mut input = refund_questions();
     input["answers"] = json!({FEE: "비율대로 돌려준다", SCREEN: "주문 상세, 환불 내역"});
     assert_eq!(decisions(&sandbox, &session, 1), [json!({"behavior": "allow", "updatedInput": input})], "claude는 답을 실은 allow를 받는다");
@@ -112,9 +120,9 @@ fn 질문은_판정을_지나지_않고_질문_줄로_서고_답하면_claude가
     host.send_to_thread(&thread, "다른 것도 물어봐").expect("둘째 말");
     let second = wait_line(&sandbox, &thread, "question", "asked", 2);
     assert_eq!(second["payload"]["requestId"], "1");
-    let not_question = host.answer_thread_question(&thread, "host", "9", &QuestionReply::Later);
+    let not_question = host.answer_thread_question(&thread, "9", &QuestionReply::Later);
     assert!(matches!(not_question, Err(HostError::PermissionClosed { .. })), "걸려 있지 않은 질문: {not_question:?}");
-    host.answer_thread_question(&thread, "host", "1", &QuestionReply::Later).expect("나중에");
+    host.answer_thread_question(&thread, "1", &QuestionReply::Later).expect("나중에");
 
     let later = wait_line(&sandbox, &thread, "question", "answered", 2);
     assert_eq!(later["payload"], json!({"state": "answered", "requestId": "1", "card": "question", "choice": "later"}));
@@ -131,9 +139,9 @@ fn 질문에_답한_thread의_기록이_검사_자료와_같다() {
     let thread = host.start_thread("환불 수수료를 정해 줘", ThreadLink::NoWork).expect("Work 없는 Thread");
     wait_line(&sandbox, &thread, "question", "asked", 1);
     let answers = vec![answer(FEE, "비율대로 돌려준다"), answer(SCREEN, "주문 상세, 환불 내역")];
-    host.answer_thread_question(&thread, "host", "0", &QuestionReply::Answer(answers)).expect("답한다");
+    host.answer_thread_question(&thread, "0", &QuestionReply::Answer(answers)).expect("답한다");
     let record = sandbox.wait_thread_record(&thread, |record| !of_kind(record, "turn-end").is_empty());
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
 
     host.shut_down();
     // Thread 화면의 접기(L2)와 L3(v1 티켓 28)가 질문 카드 · 「답함: …」 줄을 이것으로 잰다.
@@ -151,14 +159,13 @@ fn 질문이_걸린_채_멈추면_질문이_거둬지고_승인_답으로는_닫
 
     let withdrawn = wait_line(&sandbox, &thread, "question", "withdrawn", 1);
     assert_eq!(withdrawn["payload"], json!({"state": "withdrawn", "requestId": "0", "card": "question", "reason": "stopped"}));
-    let late = host.answer_thread_question(&thread, "host", "0", &QuestionReply::Later);
+    let late = host.answer_thread_question(&thread, "0", &QuestionReply::Later);
     assert!(matches!(late, Err(HostError::PermissionClosed { .. })), "거둬진 질문에는 답할 수 없다: {late:?}");
 }
 
 #[test]
-fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_나가고_다시_쓰기에_쓴_말은_claude에게_간다() {
+fn 계획에서_계획대로_구현을_고르면_정도가_매번_묻기로_나가고_다시_쓰기에_쓴_말은_claude에게_간다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     // 녹화의 작업 폴더를 claude의 자리(Thread 폴더)로 옮긴다 — 구현의 편집이 Thread 폴더 안이라 정도대로 묻는다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
@@ -166,14 +173,14 @@ fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_�
     ));
     let thread = host
         .start_thread_asking("hello.txt에 hi를 담는 계획을 짜 줘", &[], ThreadLink::NoWork, Some(AskLevel::Plan))
-        .expect("계획만 Thread");
+        .expect("계획 Thread");
 
-    // 다시 쓰기 — 쓴 말이 고정 문구 뒤에 붙어 간다. 정도는 그대로 계획만이다.
+    // 다시 쓰기 — 쓴 말이 고정 문구 뒤에 붙어 간다. 정도는 그대로 계획이다.
     let first = wait_line(&sandbox, &thread, "permission", "asked", 1);
     assert_eq!(first["payload"]["card"], "plan");
     let revise = Reply { words: Some("파일 이름을 greeting.txt로".into()), ..Reply::pick("revise_plan") };
-    host.reply_thread_permission(&thread, "host", "0", &revise).expect("다시 쓰기");
-    let session = sandbox.thread_session_id(&thread, "host");
+    host.reply_thread_permission(&thread, "0", &revise).expect("다시 쓰기");
+    let session = sandbox.thread_session_id(&thread);
     let told = sandbox.wait_thread_record(&thread, |record| !of_kind(record, "turn-end").is_empty());
     let denial = decisions(&sandbox, &session, 1)[0].clone();
     assert_eq!(denial["behavior"], "deny");
@@ -186,7 +193,7 @@ fn 계획만에서_계획대로_구현을_고르면_정도가_매번_묻기로_�
     host.send_to_thread(&thread, "파일 이름을 greeting.txt로 바꿔서 다시 물어").expect("둘째 말");
     let second = wait_line(&sandbox, &thread, "permission", "asked", 2);
     assert_eq!(second["payload"]["card"], "plan");
-    host.reply_thread_permission(&thread, "host", "1", &Reply::pick("implement_plan")).expect("계획대로 구현");
+    host.reply_thread_permission(&thread, "1", &Reply::pick("implement_plan")).expect("계획대로 구현");
 
     let edit = wait_line(&sandbox, &thread, "permission", "asked", 3);
     assert_eq!(

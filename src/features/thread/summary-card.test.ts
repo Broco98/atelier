@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ReadingScope, ScopeWhy } from "@/features/spaces/scope";
+import { describe, expect, it } from "vitest";
+import type { ReadingScope, ScopeWhy } from "@/features/services/scope";
 import type { ProjectChanges, ProjectPr, SpecTree } from "@/features/works/types";
 import type { DocWriting } from "./types";
 import {
@@ -11,11 +11,8 @@ import {
   freshFiles,
   prRows,
   projectRows,
-  readSummaryOpen,
   sourceProjects,
   summarySections,
-  writeSummaryOpen,
-  writerLine,
   type PrRow,
   type SummaryInput,
 } from "./summary-card";
@@ -103,7 +100,7 @@ describe("문서 칸", () => {
       { name: "review-notes.md", path: "review-notes.md", kind: "file", icon: null, group: null, children: [] },
     ],
   };
-  const host: DocWriting = { path: "design/api.md", who: "host", name: "Host", thread: "20261023-100000" };
+  const host: DocWriting = { path: "design/api.md", thread: "20261023-100000" };
 
   it("spec 트리의 파일을 트리 차례로 펴고, 쓰는 중인 문서에 그 Agent를 단다", () => {
     expect(docRows(tree, [host])).toEqual([
@@ -118,11 +115,6 @@ describe("문서 칸", () => {
     expect(docRows(tree, [fresh]).map((row) => row.path)).toEqual(["overview.md", "design/api.md", "review-notes.md", "plan.md"]);
   });
 
-  it("쓰는 중 문구는 이름의 받침에 맞는 조사를 단다", () => {
-    expect(writerLine("Host")).toBe("Host가 쓰는 중");
-    expect(writerLine("리뷰어")).toBe("리뷰어가 쓰는 중");
-    expect(writerLine("검토관")).toBe("검토관이 쓰는 중");
-  });
 });
 
 describe("Project 칸", () => {
@@ -219,8 +211,8 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
   };
   const kinds = (input: SummaryInput) => summarySections(input).map((one) => one.kind);
 
-  it("Work에 이은 Thread는 머리 → 변경 사항(+/− · PR 줄) → 결과물 → 소스 차례다", () => {
-    expect(kinds(live)).toEqual(["head", "changes", "outputs", "sources"]);
+  it("Work에 이은 Thread는 머리 → 변경 사항(+/− · PR 줄) → 소스 차례다 — 결과물 자리표시는 없다(SummarySheet 규격)", () => {
+    expect(kinds(live)).toEqual(["head", "changes", "sources"]);
     const [head, changes] = summarySections(live);
     expect(head).toEqual({ kind: "head", title: "환불 API 버그 수정", archived: false });
     expect(changes).toEqual({ kind: "changes", additions: 18, deletions: 6, prs: [pr] });
@@ -230,10 +222,11 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
     expect(summarySections({ ...live, changes: null, prs: [] })[1]).toEqual({ kind: "changes", additions: 0, deletions: 0, prs: [] });
   });
 
-  it("Work 없는 Thread는 결과물 · 소스만이고, 소스가 없으면 결과물 하나다(S20)", () => {
+  it("Work 없는 Thread는 소스(읽는 범위)만이다 — 읽는 Project가 없어도 빈 소스 칸이 선다(카드가 빈 상자로 서지 않는다)", () => {
     const loose: SummaryInput = { work: null, changes: null, prs: [], docs: [], projects: [{ project: "api-server", editing: false }] };
-    expect(kinds(loose)).toEqual(["outputs", "sources"]);
-    expect(kinds({ ...loose, projects: [] })).toEqual(["outputs"]);
+    expect(kinds(loose)).toEqual(["sources"]);
+    expect(summarySections({ ...loose, projects: [] })).toEqual([{ kind: "sources", shown: [], hidden: [] }]);
+    expect(kinds({ ...live, docs: [], projects: [] })).toEqual(["head", "changes"]);
   });
 
   it("소스는 spec 문서가 먼저, 그 뒤에 Project다 — 셋을 넘으면 셋만 보이고 나머지는 접힌다(S21)", () => {
@@ -248,7 +241,7 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
         { project: "web-app", editing: false },
       ],
     };
-    const sources = summarySections(many)[3];
+    const sources = summarySections(many)[2];
     expect(sources).toEqual({
       kind: "sources",
       shown: [
@@ -258,14 +251,39 @@ describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카
       ],
       hidden: [{ kind: "project", project: "web-app", editing: false }],
     });
-    const three = summarySections({ ...many, projects: many.projects.slice(0, 1) })[3];
+    const three = summarySections({ ...many, projects: many.projects.slice(0, 1) })[2];
     expect(three).toMatchObject({ hidden: [] });
     expect(three.kind === "sources" && three.shown).toHaveLength(3);
   });
 
+  it("쓰는 중인 문서는 소스 맨 위에 선다 — 「모두 보기」 뒤에 숨지 않는다(SummarySheet 「문서를 쓰는 중」)", () => {
+    const docs = [
+      { path: "overview.md", writer: null },
+      { path: "decisions.md", writer: null },
+      { path: "01-실패-신호/구현-스펙.md", writer: null },
+      { path: "01-실패-신호/재시도-규칙.md", writer: { path: "01-실패-신호/재시도-규칙.md", thread: "a" } },
+    ];
+    const sources = summarySections({ ...live, docs })[2];
+    expect(sources.kind === "sources" && sources.shown.map((row) => (row.kind === "doc" ? row.path : row.project))).toEqual([
+      "01-실패-신호/재시도-규칙.md",
+      "overview.md",
+      "decisions.md",
+    ]);
+  });
+
+  it("막 쓴 문서도 빛나는 동안은 맨 위에 남는다 — 쓰기를 마친 순간 「모두 보기」 뒤로 숨어 빛이 보이지 않는 일이 없다", () => {
+    const docs = ["overview.md", "decisions.md", "plan.md", "재시도-규칙.md"].map((path) => ({ path, writer: null }));
+    const shown = (raised: ReadonlySet<string>) => {
+      const sources = summarySections({ ...live, docs, raised })[2];
+      return sources.kind === "sources" ? sources.shown.map((row) => (row.kind === "doc" ? row.path : row.project)) : [];
+    };
+    expect(shown(new Set(["재시도-규칙.md"]))).toEqual(["재시도-규칙.md", "overview.md", "decisions.md"]);
+    expect(shown(new Set())).toEqual(["overview.md", "decisions.md", "plan.md"]);
+  });
+
   it("보관된 Work의 Thread도 같은 칸 차례이고 머리가 보관됐음을 든다", () => {
     const shelved = summarySections({ ...live, work: { title: "결제 웹훅 재시도", archived: true }, changes: null, prs: [] });
-    expect(shelved.map((one) => one.kind)).toEqual(["head", "changes", "outputs", "sources"]);
+    expect(shelved.map((one) => one.kind)).toEqual(["head", "changes", "sources"]);
     expect(shelved[0]).toEqual({ kind: "head", title: "결제 웹훅 재시도", archived: true });
   });
 });
@@ -278,13 +296,13 @@ describe("「변경 사항」이 여는 것", () => {
   });
 
   it("바뀐 것이 없으면 첫 Project의 트리이고, Project도 없으면 열 것이 없다", () => {
-    expect(changesTarget(null, ["api", "web"])).toEqual({ kind: "project", project: "api", file: null });
+    expect(changesTarget(null, ["api", "web"])).toEqual({ kind: "project", project: "api" });
     expect(changesTarget(null, [])).toBeNull();
   });
 });
 
 describe("막 쓴 문서(소스의 문서 줄이 잠깐 빛난다)", () => {
-  const writing = (path: string): DocWriting => ({ path, who: "host", name: "Host", thread: "20261025-100000" });
+  const writing = (path: string): DocWriting => ({ path, thread: "20261025-100000" });
 
   it("쓰는 중이던 문서가 쓰기를 마치면 막 쓴 문서다 — 아직 쓰는 중인 문서 · 처음 본 목록은 빛나지 않는다", () => {
     expect(finishedDocs([writing("설계.md"), writing("plan.md")], [writing("plan.md")])).toEqual(new Set(["설계.md"]));
@@ -303,7 +321,7 @@ describe("소스의 Project — 읽는 범위(03 §7)", () => {
   });
 
   it("Work 없는 Thread는 읽는 범위의 Project가 범위의 차례로 서고 모두 「읽기만」이다", () => {
-    expect(sourceProjects(scope(["web-app", "space"], ["api-server", "space"], ["cli", "readOnly"]), null)).toEqual([
+    expect(sourceProjects(scope(["web-app", "service"], ["api-server", "service"], ["cli", "readOnly"]), null)).toEqual([
       { project: "web-app", editing: false },
       { project: "api-server", editing: false },
       { project: "cli", editing: false },
@@ -311,7 +329,7 @@ describe("소스의 Project — 읽는 범위(03 §7)", () => {
   });
 
   it("Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저 서고, 그 뒤에 범위의 Project가 「읽기만」으로 선다", () => {
-    // 범위는 worktree에서 일하는 Project를 이미 뺐다(§7 규칙 4) — worktree가 없는 Work의 Project(web-app)는 범위가 「Work」로 싣는다.
+    // 범위는 worktree에서 일하는 Project를 이미 뺐다(§7 규칙 4) — worktree가 없는 Work의 Project(web-app)는 범위가 「작업공간」으로 싣는다.
     expect(sourceProjects(scope(["backoffice", "all"], ["web-app", "work"]), work(["api-server"]))).toEqual([
       { project: "api-server", editing: true },
       { project: "backoffice", editing: false },
@@ -322,42 +340,5 @@ describe("소스의 Project — 읽는 범위(03 §7)", () => {
   it("범위를 아직 읽지 못했으면 worktree가 선 Project만 서고, Work 없는 Thread는 소스가 없다", () => {
     expect(sourceProjects(undefined, work(["api-server"]))).toEqual([{ project: "api-server", editing: true }]);
     expect(sourceProjects(undefined, null)).toEqual([]);
-  });
-});
-
-describe("요약 카드 열림 기억(S22)", () => {
-  const stored = new Map<string, string>();
-  beforeEach(() => {
-    stored.clear();
-    globalThis.localStorage = {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => void stored.set(key, value),
-    } as Storage;
-  });
-  afterEach(() => {
-    // @ts-expect-error — 시험이 심은 저장소를 걷는다.
-    delete globalThis.localStorage;
-  });
-
-  it("Thread마다 기억하고, 적은 적이 없으면 열려 있다 — 같은 Work의 다른 Thread는 따로다", () => {
-    expect(readSummaryOpen("20261025-100000")).toBe(true);
-    writeSummaryOpen("20261025-100000", false);
-    expect(readSummaryOpen("20261025-100000")).toBe(false);
-    expect(readSummaryOpen("20261025-110000"), "다른 Thread는 따로다").toBe(true);
-    writeSummaryOpen("20261025-100000", true);
-    expect(readSummaryOpen("20261025-100000")).toBe(true);
-  });
-
-  it("저장소를 읽지 못하면 열린 것으로 본다", () => {
-    globalThis.localStorage = {
-      getItem: () => {
-        throw new Error("막힘");
-      },
-      setItem: () => {
-        throw new Error("막힘");
-      },
-    } as unknown as Storage;
-    writeSummaryOpen("20261025-100000", false);
-    expect(readSummaryOpen("20261025-100000")).toBe(true);
   });
 });

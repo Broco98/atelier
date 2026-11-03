@@ -38,12 +38,12 @@ function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
 // 카드 폭 — 쓰는 자리가 className으로 덮지 않고 여기서 고른다. ⋯ 메뉴 · 고르기 메뉴는 `size-menu`(260), 우클릭 메뉴는
 // `size-menu-ctx`(248)다(DS 「간격 · 반경 · 크기」). 하위 메뉴는 내용 폭을 따르되 168–220 안이다(DS `Menu` 보드 「판」) — 넘치는
 // 이름은 줄의 `truncate`가 줄임표로 접는다. 두 줄 줄(이름 아래 설명)의 설명이 긴 고르기 메뉴는 `note`다 — 내용 폭을 따르되 300에서
-// 시작하고 창 안에서 멈춘다(03 시안 v52 `.pmenu{min-width:300px}` — 입력창 트레이의 Work 칩 메뉴).
+// 시작하고 창 안에서 멈춘다(03 시안 v52 `.pmenu{min-width:300px}` — 입력창 트레이의 범위 메뉴).
 //
 // **03 시안의 고정 폭 다섯**(03 코드 리뷰 A4 — 쓰는 자리가 `w-44` · `w-77` …로 덮던 것을 이 표로 옮겼다). 이름은 쓰는 자리가 아니라 그 폭이
 // 무엇을 품는가다.
 //   act        176 — 할 일 이름이 짧은 ⋯ 메뉴(글리프 · 한두 낱말 — 시안 `.pop{min-width:176px}`). 목록 줄 · 상세 머리의 ⋯
-//   act-wide   192 — 할 일 이름이 한 낱말 더 긴 ⋯ 메뉴(「Space에서 빼기」). 표 줄의 ⋯
+//   act-wide   192 — 할 일 이름이 한 낱말 더 긴 ⋯ 메뉴(「Service에서 빼기」). 표 줄의 ⋯
 //   pair       280 — 이름 곁에 흐린 곁글(경로)이 한 줄로 서는 고르기 메뉴. 곁글이 말줄임으로 접힌다(시안 `.pop{min-width:280px}` — 03 시안-비교/03)
 //   note-fold  308 — `note`의 두 줄 줄을 고정 폭에 세워 설명을 낱말 단위로 접는다. 단추에 붙은 칸이라 내용 폭으로 넓어지지 않는다
 //              (시안 F4-SpaceNewMenu — 03 시안-비교/06)
@@ -60,13 +60,19 @@ const CARD_WIDTH = {
   // `note`의 바닥(300) · 끝(창 안)은 그대로 두고 폭만 박는다.
   "note-fold": "w-77 min-w-75 max-w-(--available-width)",
   "note-wide": "w-85",
+  // 목록 줄의 ⋯(restart 03-1 · 보드 PlaceSheet 「⋯ 메뉴」 `.pl-menu` — 208). 줄 아래에서 줄 오른쪽 끝에 맞춰 선다(`PlaceRowMenu`).
+  place: "w-52",
+  // 입력창 칩의 메뉴(restart 02b-2 · 시안 Composer `.ra-menu`) — 모드 · 모델은 280, Runtime · 범위는 320이다. 두 줄 줄의 설명이 이 폭에서
+  // 낱말 단위로 접혀 다 선다(Codex가 보낸 모드 설명).
+  prompt: "w-70",
+  "prompt-wide": "w-80",
 } as const
 
 /** ⋯ 메뉴 · 고르기 메뉴가 고르는 폭 — 우클릭 메뉴(`menu-ctx`)와 하위 메뉴(`sub`)의 폭은 그 부품이 정한다. */
 type ContentWidth = Exclude<keyof typeof CARD_WIDTH, "menu-ctx" | "sub">;
 
 type MenuCardProps = MenuPrimitive.Popup.Props &
-  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">
+  Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset" | "anchor">
 
 /**
  * **떠 있는 메뉴 카드 하나** — ⋯ 메뉴(`DropdownMenuContent`) · 하위 메뉴(`DropdownMenuSubContent`) · 우클릭 메뉴(`ContextMenuContent`)가
@@ -79,6 +85,7 @@ function MenuCard({
   alignOffset,
   side,
   sideOffset,
+  anchor,
   grows = false,
   className,
   ...props
@@ -94,13 +101,14 @@ function MenuCard({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        anchor={anchor}
       >
         <MenuPrimitive.Popup
           data-slot={dataSlot}
           // 떠 있는 **카드**의 표식이다 — 검사가 이것으로 카드를 하나로 센다(툴팁에는 안 단다).
           data-popover=""
           // **움직이지 않는다** — 한 프레임에 서고 곧바로 걷힌다(02 구현 스펙 §12 · Diff-Tokens 「메뉴 · 팝오버 열림」 — Codex). 움직이며 뜨는
-          // 메뉴는 모델 피커 하나다(`grows`): .32s(`duration-dropdown`) · `ease-enter-snappy` · 30ms 늦게 · scale 0.98 → 1. 늦는 동안은 첫
+          // 메뉴는 모델 피커 하나다(`grows`): .32s(`duration-dropdown`) · `ease-enter-snappy` · 30ms 늦게 · scale 0.98 → 1 · 아래 2에서. 늦는 동안은 첫
           // 장면(투명 · 0.98)에 머문다(`backwards` — 안 주면 30ms 동안 다 그려진 카드가 먼저 비쳤다가 사라진다). 닫힐 때는 그것도 곧바로
           // 걷힌다 — 걸린 움직임이 없으면 Base UI가 곧바로 내린다. 움직임은 index.css의 `animate-menu-enter`다(tw-animate의 `animate-in`은
           // 블러까지 움직여 이 곡선과 만나면 리눅스 WebKit이 죽는다).
@@ -140,10 +148,10 @@ function DropdownMenuContent({
   )
 }
 
-// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 2px**다(`menu-list`의 사이 — DS `.at-menu` `gap: 2px`). 묶음 안의
+// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 1px**다(`menu-list`의 사이 — 시안 `.ra-menu` `gap: 1px`, restart 03-12a). 묶음 안의
 // 줄은 목록의 직접 자식이 아니라 목록의 flex 사이를 받지 못한다 — registry의 맨 div 그대로면 묶음 안의 줄만 30 간격으로 붙어 선다
 // (상태 메뉴 · Archive 정렬 · 거르기, codex-ds 티켓 34). 안쪽 여백은 목록이 이미 주어 묶음은 사이만 든다.
-const GROUP = "flex flex-col gap-0.5"
+const GROUP = "flex flex-col gap-px"
 
 function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" className={cn(GROUP, className)} {...props} />

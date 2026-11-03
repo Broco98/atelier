@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { test as base } from "./evidence";
+import { test as base, type Page } from "./evidence";
 
 // L4가 쓰는 임시 세상. 테스트마다 새로 만들고 끝나면 지운다.
 
@@ -130,6 +130,19 @@ export function seedLayout(home: string, layout: unknown): string {
   writeFileSync(join(folder, "layout.json"), JSON.stringify(layout));
   return folder;
 }
+
+/**
+ * 작업공간 패널(`aside#work-panel`)의 spec 트리에 선 파일 행들, 위에서부터 — 각 행의 경로(`data-spec-file`)다. 트리는 work 목록의 답에
+ * 실린 `specTree`를 그대로 그리므로 레이아웃이 가른 차례가 이 줄에 선다.
+ *
+ * **여기 사는 이유는 「화면이 그 트리를 따른다」를 재는 L4가 여럿이기 때문이다**(`work-spec-tree` · `spec-layout-editor` · `spec-layout-page`).
+ * 한때 그 검사들은 작업공간을 열면 본문에 선 기본 문서의 글을 보았다 — restart 02a-13이 「작업공간을 열어도 기본 문서를 열지 않는다」로
+ * 바꿔 화면에서 기본 문서가 사라졌다(값은 코어가 그대로 보내 `askBackend`로 잰다).
+ */
+export const 패널트리 = (page: Page): Promise<string[]> =>
+  page
+    .locator("aside#work-panel [data-spec-file]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-spec-file") ?? ""));
 
 function treeReport(home: string): string {
   const entries = readdirSync(home, { recursive: true, encoding: "utf8" });

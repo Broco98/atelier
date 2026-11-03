@@ -13,6 +13,7 @@ import {
   asksBeforeClose,
   atCap,
   bundleOf,
+  chatPlaceOf,
   CLOSE_NOTICE,
   CLOSE_REASONS,
   closeNotice,
@@ -29,6 +30,7 @@ import {
   isInPlaceGap,
   isLiveShellOf,
   isQuietShell,
+  keepChatPlace,
   liveOwnerlessOf,
   markOwnerless,
   MAX_SHELLS,
@@ -36,7 +38,9 @@ import {
   needsCloseConfirm,
   NO_QUIET_NOTICE,
   NO_SHELLS,
+  openChatTab,
   openCodeTab,
+  openNewChatTab,
   openShell,
   otherCloseNotice,
   otherShellsOf,
@@ -50,6 +54,7 @@ import {
   quietShellsOf,
   quitNotice,
   removeShell,
+  removeViewTab,
   runningOn,
   runningShellsOf,
   searchHotkey,
@@ -79,7 +84,11 @@ import {
   workDefaultOrigin,
   workShellOrigin,
   workShellProjects,
-  withoutCodeTabsOf,
+  activeTabOf,
+  settleNewChatTab,
+  withNewChatActive,
+  withShellActive,
+  withoutNonShellTabsOf,
 } from "./shell-registry";
 import type { Shell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { attentionOn } from "./shell-attention";
@@ -425,7 +434,7 @@ describe("활성 칸을 제거하면 다음 활성이 정해진다", () => {
 // git-integration 판 01 — work이 아카이브 · 삭제되면 그 화면의 묶음이 통째로 사라져야 한다. 셸은 셸을 닫는 길(`removeShell`)로
 // 빠지지만 파일 탭은 그 길을 안 지나, 회수가 셸만 닫으면 묶음과 켜진 칸이 파일 탭을 든 채 남는다. 지운 work의 slug로 새 work이
 // 서면 옛 탭이 새 work의 탭 줄에 선다.
-describe("그 화면의 파일 탭을 한꺼번에 뺀다", () => {
+describe("그 화면의 파일 탭 · 채팅 탭을 한꺼번에 뺀다", () => {
   const ga = ownerFor("ga");
   const na = ownerFor("na");
   const fileA = { project: "fe", path: "src/a.ts" };
@@ -437,7 +446,7 @@ describe("그 화면의 파일 탭을 한꺼번에 뺀다", () => {
     state = openCodeTab(state, ga, fileB);
     state = openCodeTab(state, na, fileA);
 
-    const after = withoutCodeTabsOf(state, ga);
+    const after = withoutNonShellTabsOf(state, ga);
     expect(bundleOf(after, ga)).toEqual(ids.map((id) => ({ kind: "shell", id })));
     // 켜져 있던 `b.ts`(끝)가 빠지면 왼쪽 이웃이다
     expect(activeIdOf(after, ga)).toBe(ids[1]);
@@ -449,14 +458,228 @@ describe("그 화면의 파일 탭을 한꺼번에 뺀다", () => {
   it("파일 탭만 선 묶음은 키째 걷히고 켜진 칸도 없다", () => {
     const state = openCodeTab(openCodeTab(NO_SHELLS, ga, fileA), ga, fileB);
 
-    const after = withoutCodeTabsOf(state, ga);
+    const after = withoutNonShellTabsOf(state, ga);
     expect(after.bundles).toEqual({});
     expect(after.activeByOwner).toEqual({});
   });
 
   it("파일 탭이 없으면 받은 상태 그대로다", () => {
     const { state } = opened(2, originFor("ga"));
-    expect(withoutCodeTabsOf(state, ga)).toBe(state);
+    expect(withoutNonShellTabsOf(state, ga)).toBe(state);
+  });
+
+  // restart 02a-4 — 채팅 탭도 프로세스가 없는 칸이다. 지운 작업공간의 slug로 새 작업공간이 서면 옛 채팅 탭이 그 줄에 서지 않아야 한다.
+  it("채팅 탭도 함께 빠진다 — 셸 칸은 그대로다", () => {
+    const { state: shells, ids } = opened(1, originFor("ga"));
+    const state = openChatTab(openCodeTab(shells, ga, fileA), ga, "20261010-100000");
+
+    const after = withoutNonShellTabsOf(state, ga);
+    expect(bundleOf(after, ga)).toEqual([{ kind: "shell", id: ids[0] }]);
+    expect(activeIdOf(after, ga)).toBe(ids[0]);
+  });
+});
+
+// restart 02a-4 — 채팅이 작업공간 화면의 탭이 되었다. 채팅 탭은 셸 · 파일 탭과 같은 묶음에 서고 정체는 그 채팅이다.
+describe("채팅 탭을 묶음에 세운다", () => {
+  const ga = ownerFor("ga");
+  const X = "20261010-100000";
+  const Y = "20261010-110000";
+
+  it("묶음 끝에 서고 켜진다 — 이미 선 칸의 자리는 그대로다", () => {
+    const { state: shells, ids } = opened(1, originFor("ga"));
+    const state = openChatTab(shells, ga, X);
+    const tab = activeTabOf(state, ga);
+    expect(tab).toMatchObject({ kind: "chat", thread: X });
+    expect(bundleOf(state, ga).map((one) => one.id)).toEqual([ids[0], tab?.id]);
+  });
+
+  it("같은 채팅은 한 묶음에 하나만 서고, 다시 열면 그 칸이 켜진다", () => {
+    const first = openChatTab(NO_SHELLS, ga, X);
+    const xId = activeIdOf(first, ga);
+    const both = openChatTab(first, ga, Y);
+    const again = openChatTab(both, ga, X);
+    expect(bundleOf(again, ga)).toHaveLength(2);
+    expect(activeIdOf(again, ga)).toBe(xId);
+  });
+
+  it("최상위 터미널에는 서지 않는다", () => {
+    expect(openChatTab(NO_SHELLS, TOP.owner, X)).toBe(NO_SHELLS);
+  });
+
+  // 주소가 「본문은 셸이다」라고 말하는데 지금 탭이 채팅이면 첫 셸을 켠다 — 파일 탭일 때와 같다.
+  it("지금 탭이 채팅이면 셸로 가는 주소가 첫 셸을 켠다", () => {
+    const { state: shells, ids } = opened(2, originFor("ga"));
+    const state = withShellActive(openChatTab(shells, ga, X), ga);
+    expect(activeIdOf(state, ga)).toBe(ids[0]);
+  });
+
+  // restart 02a-6 — 숨은 채팅 탭은 내려가고 굴림 자리는 탭이 쥔다. 돌아오면 그 자리이고, 탭을 닫았다 다시 열면 새 탭이라 바닥에서 연다.
+  describe("읽던 자리", () => {
+    const reading = { kind: "at", top: 480 } as const;
+    const both = openChatTab(openChatTab(NO_SHELLS, ga, X), ga, Y);
+
+    it("탭마다 쥐고, 그 탭을 다시 켜도 그대로다", () => {
+      const kept = keepChatPlace(both, ga, X, reading);
+      expect(chatPlaceOf(kept, ga, X)).toEqual(reading);
+      expect(chatPlaceOf(kept, ga, Y)).toBeNull();
+      expect(chatPlaceOf(openChatTab(kept, ga, X), ga, X)).toEqual(reading);
+      expect(chatPlaceOf(keepChatPlace(kept, ga, X, { kind: "bottom" }), ga, X)).toEqual({ kind: "bottom" });
+    });
+
+    it("쥐어도 묶음의 차례와 켜진 칸은 그대로다", () => {
+      const kept = keepChatPlace(both, ga, X, reading);
+      expect(bundleOf(kept, ga).map((tab) => tab.id)).toEqual(bundleOf(both, ga).map((tab) => tab.id));
+      expect(activeIdOf(kept, ga)).toBe(activeIdOf(both, ga));
+    });
+
+    it("같은 자리를 다시 쥐면 상태가 그대로다", () => {
+      const kept = keepChatPlace(both, ga, X, reading);
+      expect(keepChatPlace(kept, ga, X, { kind: "at", top: 480 })).toBe(kept);
+    });
+
+    it("닫은 탭을 다시 열면 쥔 자리가 없다 — 탭이 없는 채팅의 자리는 쥐지 않는다", () => {
+      const closed = withoutNonShellTabsOf(keepChatPlace(both, ga, X, reading), ga);
+      expect(keepChatPlace(closed, ga, X, reading)).toBe(closed);
+      expect(chatPlaceOf(openChatTab(closed, ga, X), ga, X)).toBeNull();
+    });
+  });
+});
+
+// restart 02a-5 — 채팅 탭은 셸 탭처럼 닫힌다. 닫는 것은 묶음의 칸뿐이다 — 채팅과 세션은 남고 돌던 턴도 계속 돈다(채팅은 코어가 쥔다).
+// 파일 탭처럼 프로세스가 없는 칸이라 확인 없이 빠지고, 다음 켜질 칸은 셸을 닫을 때와 같은 이웃 규칙이다.
+// restart 02a-8 — **새 채팅 탭.** 첫 말을 보내면 채팅이 되는 탭이다. 주소는 `tab=chat`만 적고 어느 새 채팅 탭인지는 셸 탭처럼 묶음이 쥔다.
+describe("새 채팅 탭을 묶음에 세운다", () => {
+  const ga = ownerFor("ga");
+  const X = "20261010-100000";
+
+  it("+ · ⌘T는 늘 새 칸을 묶음 끝에 세우고 켠다 — 이미 선 칸의 자리는 그대로다", () => {
+    const { state: shells, ids } = opened(1, originFor("ga"));
+    const one = openNewChatTab(shells, ga);
+    const first = activeTabOf(one, ga);
+    expect(first).toMatchObject({ kind: "new-chat" });
+    const two = openNewChatTab(one, ga);
+    const second = activeTabOf(two, ga);
+    expect(second).toMatchObject({ kind: "new-chat" });
+    expect(second?.id).not.toBe(first?.id);
+    expect(bundleOf(two, ga).map((tab) => tab.id)).toEqual([ids[0], first?.id, second?.id]);
+  });
+
+  it("최상위 터미널에는 서지 않는다", () => {
+    expect(openNewChatTab(NO_SHELLS, TOP.owner)).toBe(NO_SHELLS);
+    expect(withNewChatActive(NO_SHELLS, TOP.owner)).toBe(NO_SHELLS);
+  });
+
+  // 주소가 새 채팅 탭을 말할 때(`tab=chat`, `thread` 없음) — 어느 탭인지는 묶음이 쥔다.
+  describe("주소가 새 채팅 탭을 말하면", () => {
+    it("지금 탭이 새 채팅 탭이면 그대로다", () => {
+      const state = openNewChatTab(openNewChatTab(NO_SHELLS, ga), ga);
+      expect(withNewChatActive(state, ga)).toBe(state);
+    });
+
+    it("묶음에 새 채팅 탭이 있으면 그 첫 칸을 켠다", () => {
+      const withNew = openNewChatTab(NO_SHELLS, ga);
+      const newId = activeIdOf(withNew, ga);
+      const state = withNewChatActive(openChatTab(withNew, ga, X), ga);
+      expect(activeIdOf(state, ga)).toBe(newId);
+      expect(bundleOf(state, ga)).toHaveLength(2);
+    });
+
+    it("없으면 묶음 끝에 하나 세우고 켠다 — 채팅이 없는 작업공간을 처음 열 때가 이 길이다", () => {
+      const { state: shells } = opened(1, originFor("ga"));
+      const state = withNewChatActive(shells, ga);
+      expect(activeTabOf(state, ga)).toMatchObject({ kind: "new-chat" });
+      expect(bundleOf(state, ga)).toHaveLength(2);
+    });
+  });
+
+  // 첫 말의 답이 왔다 — 그 칸이 같은 자리 · 같은 id의 채팅 탭이 된다. 켜짐은 건드리지 않는다: 꺼진 탭이면 꺼진 채 채팅이 된다(사람을 그 탭으로
+  // 끌고 오지 않는다).
+  describe("첫 말의 답이 오면 채팅 탭이 된다", () => {
+    it("같은 자리 · 같은 id의 채팅 탭이 되고 켜짐은 그대로다", () => {
+      const withNew = openNewChatTab(NO_SHELLS, ga);
+      const newId = activeIdOf(withNew, ga)!;
+      const shellOn = openShell(withNew, originFor("ga"))!;
+      const settled = settleNewChatTab(shellOn.state, newId, X);
+      expect(bundleOf(settled, ga)).toEqual([
+        { kind: "chat", id: newId, thread: X },
+        { kind: "shell", id: shellOn.id },
+      ]);
+      expect(activeIdOf(settled, ga)).toBe(shellOn.id);
+    });
+
+    it("켜진 새 채팅 탭이면 켜진 채 채팅 탭이 된다", () => {
+      const withNew = openNewChatTab(NO_SHELLS, ga);
+      const newId = activeIdOf(withNew, ga)!;
+      expect(activeTabOf(settleNewChatTab(withNew, newId, X), ga)).toEqual({ kind: "chat", id: newId, thread: X });
+    });
+
+    it("그 칸이 이미 닫혔으면 아무것도 바뀌지 않는다 — 채팅은 사이드바에서 연다", () => {
+      const withNew = openNewChatTab(NO_SHELLS, ga);
+      const newId = activeIdOf(withNew, ga)!;
+      const closed = removeViewTab(withNew, newId);
+      expect(settleNewChatTab(closed, newId, X)).toBe(closed);
+    });
+  });
+
+  it("확인 없이 닫히고 이웃이 켜진다", () => {
+    const { state: shells, ids } = opened(1, originFor("ga"));
+    const withNew = openNewChatTab(shells, ga);
+    const closed = removeViewTab(withNew, activeIdOf(withNew, ga)!);
+    expect(bundleOf(closed, ga).map((tab) => tab.id)).toEqual(ids);
+    expect(activeIdOf(closed, ga)).toBe(ids[0]);
+  });
+
+  it("셸로 가는 주소가 첫 셸을 켠다", () => {
+    const { state: shells, ids } = opened(2, originFor("ga"));
+    expect(activeIdOf(withShellActive(openNewChatTab(shells, ga), ga), ga)).toBe(ids[0]);
+  });
+});
+
+describe("보기 탭(파일 탭 · 채팅 탭)을 닫는다", () => {
+  const ga = ownerFor("ga");
+  const X = "20261010-100000";
+  const Y = "20261010-110000";
+
+  it("켜진 채팅 탭을 닫으면 그 칸만 빠지고 오른쪽 이웃이 켜진다", () => {
+    const { state: shells, ids } = opened(1, originFor("ga"));
+    const withX = openChatTab(shells, ga, X);
+    const xId = activeIdOf(withX, ga)!;
+    const both = openChatTab(withX, ga, Y);
+    const yId = activeIdOf(both, ga)!;
+    // 가운데 칸(X)을 켜 둔다 — 셸 · X · Y
+    const state = activateShell(both, xId);
+
+    const after = removeViewTab(state, xId);
+    expect(bundleOf(after, ga)).toEqual([
+      { kind: "shell", id: ids[0] },
+      { kind: "chat", id: yId, thread: Y },
+    ]);
+    expect(activeIdOf(after, ga)).toBe(yId);
+    // 셸은 한 칸도 안 움직인다
+    expect(after.shells).toBe(state.shells);
+  });
+
+  it("마지막 칸이면 묶음이 비고 켜진 칸도 없다", () => {
+    const state = openChatTab(NO_SHELLS, ga, X);
+    const after = removeViewTab(state, activeIdOf(state, ga)!);
+    expect(bundleOf(after, ga)).toEqual([]);
+    expect(activeIdOf(after, ga)).toBeNull();
+  });
+
+  it("파일 탭도 같은 길로 빠진다", () => {
+    const state = openCodeTab(openChatTab(NO_SHELLS, ga, X), ga, { project: "fe", path: "src/a.ts" });
+    const after = removeViewTab(state, activeIdOf(state, ga)!);
+    expect(bundleOf(after, ga).map((tab) => tab.kind)).toEqual(["chat"]);
+  });
+
+  it("셸 칸은 이 길로 빼지 않는다 — 셸은 확인 창을 거치는 길 하나다", () => {
+    const { state, ids } = opened(1, originFor("ga"));
+    expect(removeViewTab(state, ids[0])).toBe(state);
+  });
+
+  it("없는 칸이면 받은 상태 그대로다", () => {
+    const state = openChatTab(NO_SHELLS, ga, X);
+    expect(removeViewTab(state, 999)).toBe(state);
   });
 });
 
@@ -688,7 +911,7 @@ it("본문도 DOM 전역을 안 읽는다 — 머리말이 약속한 것이 이�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 판 03. 셸이 「어느 Work 것인가」를 갖게 되면서 목록 하나가 화면 여럿을 먹인다.
+// 판 03. 셸이 「어느 작업공간 것인가」를 갖게 되면서 목록 하나가 화면 여럿을 먹인다.
 
 const w = (projects: string[]): WorkView =>
   workFixture({
@@ -707,7 +930,7 @@ const w = (projects: string[]): WorkView =>
     specDir: "~/.atelier/works/w/spec",
   });
 
-// 결정 26. 아카이브·삭제가 「그 Work의 셸만」 거두려면 고르는 규칙이 한 자리에 있어야 한다.
+// 결정 26. 아카이브·삭제가 「그 작업공간의 셸만」 거두려면 고르는 규칙이 한 자리에 있어야 한다.
 describe("셸은 자기 화면 것만 보인다", () => {
   it("Work의 화면에는 그 Work의 셸만 있다", () => {
     let state = opened(1, originFor("가")).state;
@@ -1404,8 +1627,8 @@ describe("닫기 전에 묻는가", () => {
   });
 });
 
-// 티켓 11 — 닫기 IPC가 싣는 까닭. 판 04의 `●`는 까닭으로 켜진다(시작 정리 · MCP 아카이브 · 셸 스스로 끝남 · 「못
-// 끝냄」만). 사람이 누른 닫기나 사람이 누르지 않은 회수가 다른 까닭으로 새면 점이 켜지거나 기록이 거짓을 적는다.
+// 티켓 11 — 닫기 IPC가 싣는 까닭. 정리 기록이 이 까닭을 적는다. 사람이 누른 닫기나 사람이 누르지 않은 회수가 다른 까닭으로 새면
+// 기록이 거짓을 적는다.
 describe("닫기의 까닭", () => {
   it("아카이빙의 회수는 「아카이브」, MCP 아카이브의 조용한 셸은 「MCP 아카이브」이고 나머지 자리는 모두 「셸 닫기」다", () => {
     expect(Object.entries(CLOSE_REASONS).filter(([, reason]) => reason !== "shellClose")).toEqual([
@@ -1414,7 +1637,7 @@ describe("닫기의 까닭", () => {
     ]);
     // 사람이 누르지 않은 닫기 셋도 여기 든다 — 자손이 없거나 모두 셸 도우미라 기록은 백엔드가 안 세운다(P1).
     // 주인 잃은 셸의 [모두 닫기](`ownerless`)는 사람이 누른 닫기라 「셸 닫기」다(티켓 12 · S41) — 「MCP 아카이브」로 두면
-    // 판 04의 `●`가 사람이 누른 닫기로 켜진다.
+    // 정리 기록이 사람이 누른 닫기를 MCP 아카이브로 적는다.
     expect(Object.keys(CLOSE_REASONS).sort()).toEqual([
       "archive",
       "mcpArchive",
@@ -1881,7 +2104,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   });
 
   // 티켓 11. **닫기의 까닭은 표 한 곳에서 고른다**(`CLOSE_REASONS`). 닫기 IPC를 부르는 자리가 까닭 글자를 손으로
-  // 적으면 표가 거짓이 되고, 사람이 누른 닫기가 판 04의 `●`를 켤 수 있다. 그래서 IPC를 부르는 줄은 하나이고 그 줄이
+  // 적으면 표가 거짓이 되고, 정리 기록이 까닭을 거짓으로 적을 수 있다. 그래서 IPC를 부르는 줄은 하나이고 그 줄이
   // 표를 읽는다. 닫는 자리는 부르는 쪽마다 제 이름을 넘긴다 — 위 검사의 네 줄(사람 · 아카이브 · 회수)과 여기의 둘.
   it("닫기 IPC는 한 줄에서 나가고 까닭을 표에서 고른다", () => {
     expect(countOf(store, "terminalApi.kill("), "닫기 IPC를 부르는 줄이 늘었다 — `killPty`를 거친다").toBe(1);
@@ -1895,9 +2118,10 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
 
   // 결정 25. **셸이 뜨는 자리는 origin의 cwd다** — 펴는 것은 백엔드다. 래퍼가 인자를 싣는 것은 `api.test.ts`가 값으로
   // 재지만, **스토어가 그것을 실제로 넘기는지**는 어느 seam에도 안 보인다(이 모듈은 `@xterm/*`를 끌고 온다). 모드는
-  // 스토어가 모른다 — API 층의 상수다(ui-refresh 결정 22).
+  // 스토어가 모른다 — API 층의 상수다(ui-refresh 결정 22). 시작 명령(restart 01c-10)은 칸이 쥔 것을 그대로 싣는다 — 값으로는
+  // `terminal-store.test.ts`의 「시작 명령이 도는 셸」이 잰다.
   it("spawn이 origin의 cwd를 그대로 넘긴다", () => {
-    expect(store).toContain("const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);");
+    expect(store).toContain("const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, instance.command, channel);");
   });
 
   // **여는 origin과 조회하는 소유자가 같은 인자에서 나와야 한다.** 갈리면 `ensureShell`의 「비었나」가 영영 참이라,

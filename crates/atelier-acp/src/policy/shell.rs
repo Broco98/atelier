@@ -10,15 +10,12 @@ pub(super) struct Piece {
     pub(super) words: Vec<String>,
     /// `words`를 빈칸 하나로 이은 글.
     pub(super) run: String,
-    /// `run`의 명령 이름에서 경로를 뗀 글(`/usr/bin/git push` → `git push`) — 막는 쪽만 본다. 넘기는 쪽이 보면 `git status`의
-    /// 허락이 `./git status`(아무 실행 파일)를 넘긴다.
-    pub(super) bare: String,
     /// 걷은 git 전역 옵션이 git이 실행할 것을 바꾸나(`-c` · `--config-env` · `--exec-path` — `-c core.pager=…`는 아무 명령이나
-    /// 띄운다). 넘기는 쪽은 그때 `run`을 믿지 않는다.
+    /// 띄운다). 허락은 그때 `run`을 믿지 않는다.
     pub(super) reconfigured: bool,
     /// 셸이 실행할 것을 글에서 읽을 수 없는 조각이다(코드 리뷰 2차 A1) — 글을 흘려 넣은 셸(`… | sh` · `bash <<'EOF'` · `sh < 파일`),
-    /// 명령 이름이나 git · gh의 하위 명령에 치환 · 변수 · 글롭 · 중괄호 펼침이 든 조각(`$(echo git) push` · `$G push` · `git $(echo push)`). 막는
-    /// 쪽은 걸렸을 수 있다고 보고, 넘기는 쪽은 허락을 짓지 않는다.
+    /// 명령 이름이나 git · gh의 하위 명령에 치환 · 변수 · 글롭 · 중괄호 펼침이 든 조각(`$(echo git) push` · `$G push` · `git $(echo push)`).
+    /// 허락을 짓지 않는다.
     pub(super) opaque: bool,
 }
 
@@ -109,7 +106,7 @@ fn read_command(words: &[Word], pieces: &mut Vec<Piece>) {
         return;
     }
     let said = joined(words, |word| &word.raw);
-    // 머리 — 막는 규칙(push · merge)이 읽는 낱말이다. 명령 이름과, git이면 하위 명령, gh면 명령 · 하위 명령까지다.
+    // 머리 — 허락이 읽는 낱말이다. 명령 이름과, git이면 하위 명령, gh면 명령 · 하위 명령까지다.
     let (run, reconfigured, head) = match name {
         "git" => {
             let (run, reconfigured) = git_run(words);
@@ -120,8 +117,7 @@ fn read_command(words: &[Word], pieces: &mut Vec<Piece>) {
     };
     opaque |= run.iter().take(head).any(|word| word.unreadable());
     let run: Vec<String> = run.iter().map(|word| word.text.clone()).collect();
-    let bare = [name.to_owned()].into_iter().chain(run[1..].iter().cloned()).collect::<Vec<_>>().join(" ");
-    pieces.push(Piece { said, run: run.join(" "), words: run, bare, reconfigured, opaque });
+    pieces.push(Piece { said, run: run.join(" "), words: run, reconfigured, opaque });
 }
 
 fn joined<'w>(words: &'w [Word], part: impl Fn(&'w Word) -> &'w str) -> String {

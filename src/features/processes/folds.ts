@@ -8,43 +8,62 @@ import type { ProcessIdentity, ProcessSnapshot } from "./types";
 // `useFolds`). 여기는 그 규칙과 키다. 순수 함수다. 트리에서 무엇이 보이는지는 프로세스 줄의 도구다(`process-tree.ts`의 `shownNodes`).
 
 /** 구획 — 화면에 선 차례다. */
-export type SectionId = "works" | "ownerless" | "offscreen" | "confirmed" | "unknown" | "instances" | "exceptions" | "log";
+export type SectionId =
+  | "chats"
+  | "works"
+  | "ownerless"
+  | "offscreen"
+  | "app"
+  | "strays"
+  | "instances"
+  | "exceptions"
+  | "others"
+  | "log";
 
 /**
  * **ui-refresh 결정 28의 표** — 정리할 것이 있는 구획(작업 · 주인 잃은 셸 · 화면 밖 셸 · 확정 고아)은 펼쳐 열고, 보기 전용이거나 참고용인 구획
- * (출처 불명 · 다른 인스턴스 · 예외 · 정리 기록)은 접어 연다. 올 때마다 할 일이 펼쳐져 있다.
+ * (출처 불명 · 다른 인스턴스 · 예외 · 정리 기록)은 접어 연다. 올 때마다 할 일이 펼쳐져 있다. restart 03-6이 더한 둘은 시안 Processes를
+ * 따른다 — 아틀리에 앱(앱 본체 · 웹뷰)은 펼쳐 열고, 다른 앱은 접어 연다(「다른 앱은 처음에 접혀 있다」 — 시안 ProcessSheet). restart 03-7이 더한
+ * 채팅도 시안 Processes를 따라 펼쳐 연다 — 그 안의 dev 서버가 [끝내기]의 자리다. restart 03-11이 확정 고아 · 출처 불명을 한 구획 「손볼 것」으로
+ * 묶었다(시안 Processes) — 펼쳐 연다. 한때 출처 불명은 따로 접어 열었다.
  */
 export const OPEN_AT_FIRST: Readonly<Record<SectionId, boolean>> = {
+  chats: true,
   works: true,
   ownerless: true,
   offscreen: true,
-  confirmed: true,
-  unknown: false,
+  app: true,
+  strays: true,
   instances: false,
   exceptions: false,
+  others: false,
   log: false,
 };
 
 /**
- * 줄의 접힘 키 — 작업은 셸 주인, 셸은 셸 키, 다른 인스턴스의 머리는 실행의 세대, 프로세스(셸의 자손 · 고아 · 예외 · 다른 인스턴스의
- * 줄)는 신원이다. 줄은 처음에 다 펼침이라 화면은 접은 줄의 키만 든다. 종류마다 앞말을 달아 한 집합에 섞여도 다른 종류의 같은 글자와
+ * 줄의 접힘 키 — 작업은 셸 주인, 셸은 셸 키, 채팅은 채팅 id, 다른 인스턴스의 머리는 실행의 세대, 프로세스(채팅 · 셸의 자손 · 고아 ·
+ * 예외 · 다른 인스턴스의 줄)는 신원이다. 줄은 처음에 다 펼침이라 화면은 접은 줄의 키만 든다. 종류마다 앞말을 달아 한 집합에 섞여도 다른 종류의 같은 글자와
  * 안 겹친다 — 프로세스는 `identityKey` 그대로다(`shownNodes`가 그것으로 찾는다. 그 글자에는 `:`가 없다).
  */
 export const foldKey = {
   work: (owner: ShellOwner) => `work:${owner}`,
   shell: (shellKey: string) => `shell:${shellKey}`,
+  chat: (thread: string) => `chat:${thread}`,
   run: (generation: string | null) => `run:${generation ?? ""}`,
+  /** 손볼 것의 갈래 줄(확정 고아 · 출처 불명 — restart 03-11). */
+  strays: (kind: "confirmed" | "unknown") => `strays:${kind}`,
   process: (id: ProcessIdentity) => identityKey(id),
 };
 
 /**
  * 지금 화면에 설 수 있는 줄의 키 — 이 밖의 접은 키는 잊는다(사라진 줄이다). 작업은 선 work 줄(셸 묶음 · 주인 잃은 셸)의 것, 셸은 풀의
- * 셸, 프로세스는 판정이 실은 줄 전부, 실행은 백엔드가 준 실행과 어느 실행에도 안 묶인 묶음이다. 그 줄이 지금 접힌 구획이나 줄 밑에
+ * 셸, 채팅은 판정이 행을 실은 채팅, 프로세스는 판정이 실은 줄 전부, 실행은 백엔드가 준 실행과 어느 실행에도 안 묶인 묶음이다. 그 줄이 지금 접힌 구획이나 줄 밑에
  * 있어도 든다 — 안 보인다고 잊지 않는다.
  */
 export function liveFoldKeys(snapshot: ProcessSnapshot, groups: ReadonlyArray<GroupNode>): Set<string> {
   const { verdict } = snapshot;
   const rows = [
+    ...Object.values(verdict.chats),
     ...Object.values(verdict.descendants),
     ...Object.values(verdict.orphans.confirmed),
     ...Object.values(verdict.orphans.unknown),
@@ -54,9 +73,12 @@ export function liveFoldKeys(snapshot: ProcessSnapshot, groups: ReadonlyArray<Gr
   return new Set([
     ...groups.map((group) => foldKey.work(group.owner)),
     ...snapshot.pool.map((shell) => foldKey.shell(shell.shellKey)),
+    ...Object.keys(verdict.chats).map(foldKey.chat),
     ...rows.map((row) => foldKey.process(row.id)),
     ...snapshot.instances.map((instance) => foldKey.run(instance.generation)),
     foldKey.run(null),
+    foldKey.strays("confirmed"),
+    foldKey.strays("unknown"),
   ]);
 }
 

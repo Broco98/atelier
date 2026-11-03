@@ -1,21 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
-import { File, Folder, Image, X, type LucideIcon } from "lucide-react";
+import { FileText, Folder, Image, X, type LucideIcon } from "lucide-react";
 import { threadApi } from "./api";
 import { Arriving } from "./arrival";
 import { addAttachments, attachmentKind, attachmentName, attachmentSize, removeAttachment, type AttachmentKind } from "./attachments";
 import type { Attachment } from "./types";
 
-// 첨부의 부품(v1 티켓 06 · 구현 스펙 §14 S30 · 캔버스 Composer 보드 「파일을 끌어다 놓는 중」 · Messages 보드 「첨부」 · 「컴포저에 붙인
-// 첨부」) — 입력창의 칩, 끌어다 놓는 동안 입력창 자리에 서는 「놓으면 첨부합니다」, 내 말풍선 위의 칩.
+// 첨부의 부품(v1 티켓 06 · 구현 스펙 §14 S30 · restart 02b-2 · 시안 Composer 「첨부 · 언급」 · 「끌어다 놓는 중」 · 캔버스 Messages 보드 「첨부」)
+// — 입력창의 칩, 끌어다 놓는 동안을 알리는 상태(입력창이 표시를 두른다 — `ThreadComposer`), 내 말풍선 위의 칩.
 //
 // - **경로는 Tauri가 준다.** 웹뷰의 HTML5 drop은 파일의 경로를 주지 않는다 — 창의 끌어다 놓기 이벤트(`onDragDropEvent`)의 `paths`를
 //   쓴다. `+`는 OS 파일 고르기 창이다(파일 여럿). 폴더는 끌어다 놓아 붙인다.
 // - **받은 경로는 엔진이 잰다**(`describe_attachments` — 크기 · 폴더인가). 칩은 그 답으로 서고, 보낼 때 엔진이 같은 판정으로 다시 잰다.
 // - 내용은 읽지 않는다 — 그림도 칩(그림 아이콘 · 이름 · 크기)으로만 선다.
 
-const ICONS: Record<AttachmentKind, LucideIcon> = { file: File, image: Image, folder: Folder };
+/** 칩의 글리프 — 파일은 글 줄이 그어진 문서다(시안 Composer · Cards `ic-file-text`). 입력창의 칩과 말풍선 위의 칩이 같다. */
+const ICONS: Record<AttachmentKind, LucideIcon> = { file: FileText, image: Image, folder: Folder };
 
 /** 받은 경로를 재서 그 입력창(`key`)의 칩으로 더한다. 거절되면 그 글로 실패한다(칩은 그대로다). */
 export async function attachPaths(key: string, paths: readonly string[]): Promise<void> {
@@ -30,7 +31,7 @@ export async function pickFiles(): Promise<string[]> {
 }
 
 /**
- * 창에 파일을 끌고 들어온 동안 참이다 — 놓으면 `onDrop`이 그 경로들로 불린다. `enabled`가 거짓이면(보내는 중 · 입력창 자리에 카드)
+ * 창에 파일을 끌고 들어온 동안 참이다 — 놓으면 `onDrop`이 그 경로들로 불린다. `enabled`가 거짓이면(숨은 입력창 · 보내는 중 · 입력창 자리에 카드)
  * 듣지 않는다. 앱 안의 끌기(사이드바 줄 옮기기)는 경로가 없어 이 상태를 켜지 않는다.
  */
 export function useAttachmentDrop(enabled: boolean, onDrop: (paths: string[]) => void): boolean {
@@ -65,23 +66,14 @@ export function useAttachmentDrop(enabled: boolean, onDrop: (paths: string[]) =>
   return enabled && dragging;
 }
 
-/** 끌어다 놓는 동안 입력창 자리(보드 `.drop` — 옅은 파랑 · 1.5 안쪽 테두리 · 104 높이). 둥글기는 그 자리의 입력창과 같은 22다(02 티켓 10 · `rounded-prompt`). */
-export function DropZone() {
-  return (
-    <div
-      role="status"
-      className="flex h-26 flex-col items-center justify-center gap-1 rounded-prompt bg-accent-soft text-sm font-medium text-link inset-ring-[1.5px] inset-ring-accent-solid"
-    >
-      놓으면 첨부합니다
-      <span className="text-xs font-normal text-fg-secondary">파일 · 이미지 · 폴더</span>
-    </div>
-  );
-}
-
-/** 입력창 안의 칩 줄(보드 `.achip` — 30 높이 · 10 반경 · 옅은 면 · 이름 · 크기 · 빼기). 붙인 칩은 칩으로 나타난다(v1 티켓 43 · Motion 보드 「칩 나타남」). */
+/**
+ * 입력창 안의 칩 줄(시안 Composer 「첨부 · 언급」 `.ra-att`) — 28 높이 · 10 반경 · 옅은 면(`fill-soft`) · 12 `fg-secondary`의 글리프 14 · 이름 · ×12다.
+ * 줄은 좌우 4 들어서고 칩 사이는 6이다. 크기는 칩에 서지 않고 가리키면 경로와 함께 보인다. 붙인 칩은 칩으로 나타난다(v1 티켓 43 · Motion 「칩이
+ * 들어선다」).
+ */
 export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: string; attachments: readonly Attachment[] }) {
   return (
-    <ul aria-label="첨부" className="flex flex-wrap gap-1.5 pr-2.5">
+    <ul aria-label="첨부" className="flex flex-wrap gap-1.5 px-1">
       {attachments.map((attached) => {
         const name = attachmentName(attached);
         const size = attachmentSize(attached);
@@ -92,19 +84,20 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
             motion="chip-in"
             arrival={`attach:${attached.path}`}
             key={attached.path}
-            title={attached.path}
-            className="inline-flex h-7.5 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-1 pl-2.5 text-chat-meta"
+            title={size ? `${attached.path} · ${size}` : attached.path}
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-0.5 pl-2 text-xs text-fg-secondary"
           >
-            <Icon className="size-3.5 shrink-0 text-fg-secondary" aria-hidden />
+            <Icon className="size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0 truncate">{name}</span>
-            {size && <span className="shrink-0 text-xs text-fg-tertiary">{size}</span>}
+            {/* × — 이름 끝 6에 선 12 글리프다. 누를 자리는 글리프보다 크다(20). */}
             <button
               type="button"
+              tabIndex={0}
               aria-label={`${name} 빼기`}
               onClick={() => removeAttachment(draftKey, attached.path)}
-              className="flex size-5.5 shrink-0 items-center justify-center rounded-sm text-fg-tertiary transition-colors quiet-hover focus-ring"
+              className="-ml-1 flex size-5 shrink-0 items-center justify-center rounded-md transition-colors hover:text-fg focus-ring"
             >
-              <X className="size-3.5" aria-hidden />
+              <X className="size-3" aria-hidden />
             </button>
           </Arriving>
         );
@@ -113,24 +106,25 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
   );
 }
 
-/** 내 말풍선 위의 칩(보드 `.fchip` — 40 높이 · 떠 있는 면 · 그림 칸 24 · 이름 · 크기). 하나씩 한 줄에, 오른쪽에 붙는다. */
+/**
+ * 내 말풍선 위의 칩(Cards 보드 「내 말 — 첨부와 함께」 `.ra-att` · restart 02b-6) — 입력창의 칩과 같은 28 · 둥근 10 · `fill-soft` · 12 `fg-secondary`의
+ * 글리프 14 · 이름이고 ×가 없다(안쪽 오른쪽 6). 칩 사이 6으로 한 줄에 서서 오른쪽에 붙는다. 크기는 가리키면 경로와 함께 보인다. 한때 40 높이의
+ * 떠 있는 카드(보드 `.fchip`)가 하나씩 한 줄에 섰다.
+ */
 export function SentAttachments({ attachments }: { attachments: readonly Attachment[] }) {
   return (
-    <ul aria-label="첨부" className="flex max-w-[78%] flex-col items-end gap-2 self-end">
+    <ul aria-label="첨부" className="flex max-w-[78%] flex-wrap justify-end gap-1.5">
       {attachments.map((attached) => {
         const size = attachmentSize(attached);
         const Icon = ICONS[attachmentKind(attached)];
         return (
           <li
             key={attached.path}
-            title={attached.path}
-            className="inline-flex h-10 max-w-full items-center gap-2 rounded-2xl bg-surface pr-3 pl-2.5 text-chat-meta shadow-hairline"
+            title={size ? `${attached.path} · ${size}` : attached.path}
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-1.5 pl-2 text-xs text-fg-secondary"
           >
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-fill-soft text-fg-secondary">
-              <Icon className="size-3.5" aria-hidden />
-            </span>
+            <Icon className="size-3.5 shrink-0" aria-hidden />
             <span className="min-w-0 truncate">{attachmentName(attached)}</span>
-            {size && <span className="shrink-0 text-xs text-fg-tertiary">{size}</span>}
           </li>
         );
       })}

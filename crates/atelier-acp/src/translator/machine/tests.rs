@@ -1,4 +1,4 @@
-//! 변환기 상태 기계의 시험 — 진짜 claude가 낸 녹화(`tests/fixtures/claude-2.1.309`, v1 티켓 09)를 프로세스 없이 먹인다.
+//! 변환기 상태 기계의 시험 — 진짜 claude가 낸 녹화(`tests/fixtures/claude-<판>`)를 프로세스 없이 먹인다.
 //!
 //! 시험은 호스트 자리에 선다. ACP 메시지를 넣고, 상태 기계가 낸 ACP 줄 · claude stdin 줄 · 띄우기 · 끝을 본다. 상태 기계가
 //! 띄우라는 claude는 L1의 가짜 claude bin과 같은 몸(`src/fakes/claude_replay.rs`)이다 — 두 자리가 같은 녹화를 같은 규칙으로
@@ -100,9 +100,14 @@ impl Bench {
 
     /// `initialize`(요청 id 1)와 `session/new`(요청 id 2)로 세션을 연다.
     fn open(claude: Claude) -> Self {
+        Self::open_with(claude, json!([]))
+    }
+
+    /// [`Bench::open`]처럼 열되 앱이 이 MCP 서버들을 넘긴다.
+    fn open_with(claude: Claude, servers: Value) -> Self {
         let mut bench = Self::new(claude);
         bench.request("initialize", json!({"protocolVersion": 1}));
-        let id = bench.request("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}}));
+        let id = bench.request("session/new", json!({"cwd": CWD, "mcpServers": servers, "_meta": {"atelier": {}}}));
         bench.session_id = bench.result(id)["sessionId"].as_str().expect("연 세션 id").to_owned();
         bench
     }
@@ -165,6 +170,12 @@ impl Bench {
     }
 
     // ── claude 쪽에서 일어나는 것 ─────────────────────────────────────────────────────
+
+    /// claude가 줄 하나를 낸다 — 녹화에 없는 꼴을 재는 시험의 손잡이다.
+    fn claude_says(&mut self, line: Value) {
+        self.inbox.push_back(Input::Claude(line));
+        self.run();
+    }
 
     /// 문에서 멈춘 claude를 놓는다.
     fn release(&mut self) {
@@ -413,6 +424,77 @@ fn recorded(name: &str) -> Vec<Value> {
     claude_replay::json_lines(claude_replay::fixture(name).expect("녹화")).collect()
 }
 
+/// 낸 조각들 — (종류, 메시지 id, 글), 낸 차례대로.
+fn chunks_of(updates: &[Value]) -> Vec<(String, String, String)> {
+    updates
+        .iter()
+        .filter(|update| matches!(update["sessionUpdate"].as_str(), Some("agent_message_chunk" | "agent_thought_chunk")))
+        .map(|update| {
+            let text = update["content"]["text"].as_str().expect("조각의 글");
+            (update["sessionUpdate"].as_str().unwrap().to_owned(), update["messageId"].as_str().unwrap().to_owned(), text.to_owned())
+        })
+        .collect()
+}
+
+/// 그 메시지의 그 종류 조각을 시험이 스스로 합친 글.
+fn joined(chunks: &[(String, String, String)], kind: &str, message: &str) -> String {
+    chunks.iter().filter(|(k, id, _)| k == kind && id == message).map(|(_, _, text)| text.as_str()).collect()
+}
+
+/// 녹화의 대화 줄에서 글이 있는 완성 블록들 — (ACP 조각의 종류, 메시지 id, 글). 다시 열었을 때 보이는 글이다.
+fn finished_blocks(name: &str) -> Vec<(String, String, String)> {
+    let mut blocks = Vec::new();
+    for line in recorded(name).iter().filter(|line| line["type"] == "assistant" && line["parent_tool_use_id"].is_null()) {
+        let message = line["message"]["id"].as_str().unwrap();
+        for block in line["message"]["content"].as_array().unwrap() {
+            let (kind, text) = match block["type"].as_str() {
+                Some("text") => ("agent_message_chunk", &block["text"]),
+                Some("thinking") => ("agent_thought_chunk", &block["thinking"]),
+                _ => continue,
+            };
+            let text = text.as_str().unwrap();
+            if !text.is_empty() {
+                blocks.push((kind.to_owned(), message.to_owned(), text.to_owned()));
+            }
+        }
+    }
+    blocks
+}
+
+/// 녹화의 대화 조각 — (ACP 조각의 종류, 메시지 id, 글). 글이 없는 조각은 뺀다.
+fn recorded_deltas(name: &str) -> Vec<(String, String, String)> {
+    let mut deltas = Vec::new();
+    for line in recorded(name).iter().filter(|line| line["type"] == "stream_event" && line["parent_tool_use_id"].is_null()) {
+        let delta = &line["event"]["delta"];
+        let (kind, text) = match delta["type"].as_str() {
+            Some("text_delta") => ("agent_message_chunk", &delta["text"]),
+            Some("thinking_delta") => ("agent_thought_chunk", &delta["thinking"]),
+            _ => continue,
+        };
+        let text = text.as_str().unwrap();
+        if !text.is_empty() {
+            deltas.push((kind.to_owned(), line["api_message_id"].as_str().unwrap().to_owned(), text.to_owned()));
+        }
+    }
+    deltas
+}
+
+/// 조각이 든 녹화의 턴을 사람의 말로 다 돈다 — 권한 요청은 차례로 허락한다.
+fn all_turns(name: &'static str) -> Bench {
+    let mut bench = Bench::open(Claude::replaying(name));
+    let turns = recorded(name).iter().filter(|line| line["type"] == "result").count();
+    let mut answered = 0;
+    for _ in 0..turns {
+        bench.prompt("다음 턴");
+        while bench.permission_requests().len() > answered {
+            let id = bench.permission_requests()[answered]["id"].as_u64().unwrap();
+            answered += 1;
+            bench.answer(id, "allow_once");
+        }
+    }
+    bench
+}
+
 // ── 열기 ────────────────────────────────────────────────────────────────────────────
 
 /// 2.1.309의 `initialize` 응답 원문(v1 티켓 09 녹음) — 되감기가 답하는 것과 같은 파일이다.
@@ -516,9 +598,6 @@ fn claude의_계정_이메일_플랜과_플러그인_경로는_가린_채로_나
     }
 }
 
-/// Agent 정의 스냅숏 파일의 자리 — 상태 기계는 그 경로를 claude에 넘기기만 하고 읽지 않는다.
-const INSTRUCTIONS: &str = "/tmp/gate/threads/20261023-090000/agents/host.md";
-
 /// 그 열기 요청 하나로 연 변환기가 claude를 띄운 인자.
 fn launched_by(method: &str, params: Value) -> Vec<String> {
     let mut bench = Bench::new(Claude::replaying("2.1.309/twoturn-tools"));
@@ -531,36 +610,21 @@ fn launched_by(method: &str, params: Value) -> Vec<String> {
 }
 
 #[test]
-fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_든다() {
+fn 모델_생각_깊이와_mcp_서버는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_들고_시스템_프롬프트는_없다() {
     // v1 구현 스펙 §3 — `claude -p --resume`은 이 값들을 되살리지 않으므로 열 때마다 다시 받는다.
-    let meta = json!({"atelier": {
-        "instructionsFile": INSTRUCTIONS,
-        "model": "opus",
-        "effort": "high",
-        "builtinTools": ["read", "shell"],
-        "forbid": ["push"]
-    }});
+    let meta = json!({"atelier": {"model": "opus", "effort": "high"}});
     let servers = json!([{"name": "thread", "command": "atelier", "args": [], "env": []}]);
     let fresh = json!({"cwd": CWD, "mcpServers": servers, "_meta": meta});
     let revive = json!({"sessionId": "yesterday", "cwd": CWD, "mcpServers": servers, "_meta": meta});
 
     for (method, params) in [("session/new", fresh), ("session/resume", revive.clone()), ("session/load", revive)] {
         let args = launched_by(method, params);
+        assert!(!args.iter().any(|arg| arg.contains("system-prompt")), "{method}: 시스템 프롬프트를 건드리지 않는다: {args:?}");
         assert_eq!(
+            (flag(&args, "--model").as_deref(), flag(&args, "--effort").as_deref(), flag(&args, "--mcp-config").as_deref()),
             (
-                flag(&args, "--append-system-prompt-file").as_deref(),
-                flag(&args, "--model").as_deref(),
-                flag(&args, "--effort").as_deref(),
-                flag(&args, "--tools"),
-                flag(&args, "--disallowedTools").as_deref(),
-                flag(&args, "--mcp-config").as_deref(),
-            ),
-            (
-                Some(INSTRUCTIONS),
                 Some("opus"),
                 Some("high"),
-                Some(format!("Read,Glob,Grep,LS,Bash,{RUNTIME_TOOLS}")),
-                Some("Bash(git push),Bash(git push *)"),
                 Some(r#"{"mcpServers":{"thread":{"type":"stdio","command":"atelier","args":[],"env":{},"timeout":2147483647}}}"#),
             ),
             "{method}: {args:?}"
@@ -571,9 +635,49 @@ fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는
         }
     }
 
-    // 정의가 비우면 플래그도 없다 — claude의 기본 시스템 프롬프트 · 사용자의 모델 설정 · 기본 도구 전부를 그대로 쓴다.
+    // 비우면 플래그도 없다 — 사용자의 모델 설정 · 기본 도구 전부를 그대로 쓴다.
     let args = launched_by("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}}));
-    for name in ["--append-system-prompt-file", "--model", "--effort", "--tools", "--disallowedTools", "--mcp-config"] {
+    for name in ["--model", "--effort", "--mcp-config"] {
+        assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
+    }
+}
+
+#[test]
+fn 새로_열든_이어_열든_답을_조각으로_받도록_띄운다() {
+    let revive = json!({"sessionId": "yesterday", "cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}});
+    let opens = [
+        ("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}})),
+        ("session/resume", revive.clone()),
+        ("session/load", revive),
+    ];
+    for (method, params) in opens {
+        let args = launched_by(method, params);
+        assert!(args.iter().any(|arg| arg == "--include-partial-messages"), "{method}: {args:?}");
+    }
+}
+
+#[test]
+fn 계획_모드의_도구_호출이_앱의_판정을_지나도록_claude의_자동_판정을_끄고_띄운다() {
+    // 구현 스펙 「01a — 권한」, live 점검 01a. 자동 모드를 쓰는 계정은 `--permission-mode plan`도 자동 모드 판정으로 돌아, 명령과 웹이
+    // `can_use_tool` 없이 실행된다. 넷 모두로 재는 까닭은 칩이 세션 도중에 「계획」으로 바꾸기도 하기 때문이다.
+    let revive = json!({"sessionId": "yesterday", "cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}});
+    let opens = [
+        ("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {"permissionMode": "plan"}}})),
+        ("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {"permissionMode": "default"}}})),
+        ("session/resume", revive.clone()),
+        ("session/load", revive),
+    ];
+    for (method, params) in opens {
+        let args = launched_by(method, params);
+        let settings = flag(&args, "--settings").unwrap_or_else(|| panic!("{method}: --settings가 없다: {args:?}"));
+        assert_eq!(serde_json::from_str::<Value>(&settings).unwrap(), json!({"useAutoModeDuringPlan": false}), "{method}");
+    }
+}
+
+#[test]
+fn meta의_지운_칸은_읽지_않아_claude가_기본_도구_전부로_뜬다() {
+    let args = launched_with(json!({"builtinTools": ["read"], "instructionsFile": "/old/host.instructions.md"}));
+    for name in ["--tools", "--disallowedTools", "--append-system-prompt-file"] {
         assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
     }
 }
@@ -583,64 +687,10 @@ fn launched_with(atelier: Value) -> Vec<String> {
     launched_by("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": atelier}}))
 }
 
-/// Runtime의 반복이 쓰는 도구 — 내장 도구를 골라도 늘 남는다(결정.md 12).
-const RUNTIME_TOOLS: &str = "AskUserQuestion,ExitPlanMode,ToolSearch";
-
-#[test]
-fn 내장_도구는_추상_도구_표대로_claude_code_도구_이름으로_옮겨_tools로_들고_적지_않으면_기본_도구_전부다() {
-    // v1 구현 스펙 §3 「추상 도구」 표.
-    let table = [
-        (json!(["read"]), "Read,Glob,Grep,LS"),
-        (json!(["search"]), "Glob,Grep"),
-        (json!(["edit"]), "Edit,Write,NotebookEdit"),
-        (json!(["shell"]), "Bash"),
-        (json!(["web"]), "WebFetch,WebSearch"),
-        // 기본 리뷰어 — 겹치는 도구는 한 번만 든다.
-        (json!(["read", "search", "shell"]), "Read,Glob,Grep,LS,Bash"),
-    ];
-    for (builtin, tools) in table {
-        let args = launched_with(json!({"builtinTools": builtin}));
-        assert_eq!(flag(&args, "--tools"), Some(format!("{tools},{RUNTIME_TOOLS}")), "{builtin}: {args:?}");
-    }
-
-    // 빈 목록은 내장 도구 없음이다 — 능력 도구는 하나도 없고 반복의 도구만 남는다.
-    let args = launched_with(json!({"builtinTools": []}));
-    assert_eq!(flag(&args, "--tools").as_deref(), Some(RUNTIME_TOOLS), "{args:?}");
-
-    // 적지 않으면 플래그가 없다 — claude의 기본 도구 전부다(Host 기본 파일).
-    for atelier in [json!({}), json!({"builtinTools": null})] {
-        let args = launched_with(atelier);
-        assert!(!args.iter().any(|arg| arg == "--tools"), "{args:?}");
-    }
-}
-
-#[test]
-fn 금지는_s19_규칙으로_옮겨_disallowed_tools로_들고_명령_패턴은_그대로_간다() {
-    // v1 구현 스펙 S19 — 명령은 맨 명령과 인자가 붙은 명령을 함께 막는다.
-    let table = [
-        (json!(["edit"]), "Edit,Write,NotebookEdit"),
-        (json!(["shell"]), "Bash"),
-        (json!(["push"]), "Bash(git push),Bash(git push *)"),
-        (json!(["merge"]), "Bash(gh pr merge),Bash(gh pr merge *),Bash(git merge),Bash(git merge *)"),
-        (json!(["Bash(npx prisma migrate *)"]), "Bash(npx prisma migrate *)"),
-        (json!(["push", "Bash(rm -rf *)"]), "Bash(git push),Bash(git push *),Bash(rm -rf *)"),
-    ];
-    for (forbid, rules) in table {
-        let args = launched_with(json!({"forbid": forbid}));
-        assert_eq!(flag(&args, "--disallowedTools").as_deref(), Some(rules), "{forbid}: {args:?}");
-    }
-
-    // 마이그레이션 명령(`schema`)은 고정 목록이 없다 — 파일에 명령 패턴으로 적는다(S19). 옮길 규칙이 없으면 플래그도 없다.
-    for forbid in [json!([]), json!(["schema"])] {
-        let args = launched_with(json!({"forbid": forbid}));
-        assert!(!args.iter().any(|arg| arg == "--disallowedTools"), "{forbid}: {args:?}");
-    }
-}
-
 #[test]
 fn acp_mcp_서버는_claude의_mcp_설정으로_옮겨_mcp_config로_들고_사용자_mcp는_그대로_붙는다() {
     // ACP의 stdio 서버(`type`이 없다) — Thread 도구 서버(S12)가 이 길로 온다. 서버마다 claude의 도구 시간 제한을 가장 길게 준다
-    // — Agent 부르기(v1 티켓 16)는 불린 Agent의 턴과 사람의 승인을 기다리며 몇 분을 넘긴다(§8 「시간」).
+    // — 카드를 세운 Thread 도구는 사람이 고를 때까지 기다린다.
     let servers = json!([
         {
             "name": "atelier-thread",
@@ -678,16 +728,10 @@ fn acp_mcp_서버는_claude의_mcp_설정으로_옮겨_mcp_config로_들고_사�
 }
 
 #[test]
-fn 모르는_추상_도구나_stdio가_아닌_mcp_서버면_claude를_띄우지_않고_열기를_까닭으로_답한다() {
+fn stdio가_아닌_mcp_서버면_claude를_띄우지_않고_열기를_까닭으로_답한다() {
     let mut bench = Bench::new(Claude::replaying("2.1.309/twoturn-tools"));
     bench.request("initialize", json!({"protocolVersion": 1}));
 
-    // 모르는 추상 도구는 Agent 파일 오류다(§6) — 기본 도구 전부로도, 내장 도구 없음으로도 미끄러지지 않는다.
-    let unknown = bench.request(
-        "session/new",
-        json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {"builtinTools": ["read", "browse"]}}}),
-    );
-    assert_eq!(bench.error(unknown), json!({"code": -32602, "message": "모르는 추상 도구입니다: browse"}));
     // http · sse는 광고하지 않았다(ACP `mcpCapabilities`) — 받지 않는다.
     let http = bench.request(
         "session/new",
@@ -698,6 +742,648 @@ fn 모르는_추상_도구나_stdio가_아닌_mcp_서버면_claude를_띄우지_
 
     let opened = bench.request("session/new", json!({"cwd": CWD, "mcpServers": []}));
     assert!(bench.result(opened)["sessionId"].is_string(), "다음 열기를 받는다");
+}
+
+// ── 조각 ────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn 조각을_합친_글이_다시_연_글과_같고_받은_차례대로_나간다() {
+    for name in ["2.1.316/stream-thinking", "2.1.316/stream-turns", "2.1.316/stream-permission"] {
+        let bench = all_turns(name);
+        let chunks = chunks_of(&bench.updates());
+        let deltas = recorded_deltas(name);
+        assert!(!deltas.is_empty(), "{name}");
+
+        // 조각은 진짜 claude가 나눈 그대로 하나씩 나간다.
+        let streamed: Vec<_> = chunks.iter().filter(|chunk| deltas.contains(chunk)).cloned().collect();
+        assert_eq!(streamed, deltas, "{name}");
+
+        // 시험이 스스로 합친 글이 녹화의 완성 글과 같다.
+        for (kind, message, text) in finished_blocks(name) {
+            assert_eq!(joined(&chunks, &kind, &message), text, "{name} {kind} {message}");
+        }
+        assert!(bench.stderr().is_empty(), "실측에서는 합이 어긋나지 않았다 — {name}: {:?}", bench.stderr());
+    }
+}
+
+#[test]
+fn 생각_글도_조각으로_나간다() {
+    // 앱의 인자로는 생각 조각의 글이 비어 온다. 이 녹음만 `--thinking-display summarized`로 떴다.
+    let name = "2.1.316/stream-thinking";
+    let chunks = chunks_of(&all_turns(name).updates());
+    let thoughts = chunks.iter().filter(|(kind, _, _)| kind == "agent_thought_chunk").count();
+    assert_eq!(thoughts, 111, "녹음의 글이 든 `thinking_delta` 수");
+}
+
+#[test]
+fn 조각을_흘린_세션에서도_조각_없는_synthetic_답이_빠지지_않는다() {
+    let name = "2.1.316/stream-turns";
+    let bench = all_turns(name);
+    let last = bench.next_id - 1;
+
+    let lines = recorded(name);
+    let synthetic = lines.iter().find(|line| line["message"]["model"] == "<synthetic>").expect("내장 명령의 답");
+    let answer = synthetic["message"]["content"][0]["text"].as_str().unwrap();
+    assert!(answer.starts_with("You are currently using your subscription"), "{answer}");
+    assert!(
+        !lines.iter().any(|line| line["type"] == "stream_event" && line["api_message_id"] == synthetic["message"]["id"]),
+        "이 답에는 조각이 없다"
+    );
+    assert_eq!(answers_of(&bench.turn_updates(last)), [answer]);
+}
+
+/// 대화의 답 조각 한 줄.
+fn text_piece(message: &str, text: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}},
+        "parent_tool_use_id": null,
+        "api_message_id": message,
+    })
+}
+
+/// 대화의 완성 답 한 줄.
+fn finished_text(message: &str, text: &str) -> Value {
+    json!({
+        "type": "assistant",
+        "message": {"id": message, "model": "claude-opus-5-5", "content": [{"type": "text", "text": text}]},
+        "parent_tool_use_id": null,
+    })
+}
+
+#[test]
+fn 부모가_붙은_stream_event는_줄을_만들지_않는다() {
+    let name = "2.1.316/stream-turns";
+    let mut bench = all_turns(name);
+    let (agent, _) = tool_lines(&bench.updates(), "Agent");
+    let before = bench.acp().len();
+
+    // 진짜 claude 2.1.316의 서브에이전트 턴에는 부모가 붙은 조각이 없었다. 녹음의 조각에 그 서브에이전트를 달아 넣는다. 아는
+    // 도구의 줄이라 조각이 아니면 도구 줄의 `_meta`로 실렸을 꼴이다.
+    for mut line in recorded(name).into_iter().filter(|line| line["type"] == "stream_event") {
+        line["parent_tool_use_id"] = agent["toolCallId"].clone();
+        bench.claude_says(line);
+    }
+    assert_eq!(bench.acp().len(), before, "낸 줄이 없다: {:?}", &bench.acp()[before..]);
+
+    // 버린 조각은 낸 조각이 아니다 — 같은 메시지 id의 대화 줄을 지우지 않는다.
+    let mut relayed = text_piece("msg_from_subagent", "서브에이전트의 글");
+    relayed["parent_tool_use_id"] = agent["toolCallId"].clone();
+    bench.claude_says(relayed);
+    bench.claude_says(finished_text("msg_from_subagent", "대화의 글"));
+    assert_eq!(answers_of(&bench.updates()).last().map(String::as_str), Some("대화의 글"));
+}
+
+// ── 앱 서버의 연결 실패(restart 01b-8) ──────────────────────────────────────────────────
+
+/// 앱이 넘긴 서버가 든 녹음 — 사용자 플러그인 서버 둘이 `failed`이고 앱의 `atelier-thread`는 `connected`다.
+const WITH_APP_SERVER: &str = "2.1.309/thread-rename-host";
+const APP_SERVER: &str = "atelier-thread";
+
+/// 앱이 `atelier-thread`를 넘겨 연 세션 — 앱의 Thread 도구 서버와 같은 이름이다.
+fn app_server_session() -> Bench {
+    let server = json!([{"name": APP_SERVER, "command": "atelier", "args": [], "env": []}]);
+    Bench::open_with(Claude::replaying(WITH_APP_SERVER), server)
+}
+
+/// 녹음의 `system/init`에서 앱 서버의 상태만 바꾼 줄.
+fn init_with_app_server(status: &str) -> Value {
+    let mut init = recorded(WITH_APP_SERVER).into_iter().find(|line| line["subtype"] == "init").expect("init 줄");
+    let servers = init["mcp_servers"].as_array_mut().expect("mcp_servers");
+    let app = servers.iter_mut().find(|server| server["name"] == APP_SERVER).expect("앱 서버");
+    app["status"] = json!(status);
+    init
+}
+
+#[test]
+fn 앱이_넘긴_서버가_failed면_앱_기능_도구_경고를_적는다() {
+    let mut bench = app_server_session();
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr(), ["앱 기능 도구에 연결하지 못했어요"]);
+}
+
+#[test]
+fn 사용자가_둔_서버의_실패로는_경고하지_않는다() {
+    let init = init_with_app_server("connected");
+    let failed = init["mcp_servers"].as_array().unwrap().iter().filter(|server| server["status"] == "failed").count();
+    assert_eq!(failed, 2, "녹음에 사용자 플러그인 서버의 실패가 있어야 이 시험이 뜻이 있다");
+
+    let mut bench = app_server_session();
+    bench.prompt("이름을 바꿔 줘");
+    assert!(bench.updates().iter().any(|update| update["sessionUpdate"] == "session_info_update"), "녹음의 init이 지나갔다");
+    assert_eq!(bench.stderr(), Vec::<String>::new());
+}
+
+#[test]
+fn 앱_서버의_needs_auth와_pending은_읽지_않는다() {
+    for status in ["needs-auth", "pending"] {
+        let mut bench = app_server_session();
+        bench.claude_says(init_with_app_server(status));
+        assert_eq!(bench.stderr(), Vec::<String>::new(), "{status}");
+    }
+}
+
+#[test]
+fn 앱이_넘기지_않은_서버는_이름이_앱_서버와_같아_보여도_읽지_않는다() {
+    let mut bench = Bench::open(Claude::replaying(WITH_APP_SERVER));
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr(), Vec::<String>::new(), "이 세션에는 앱이 서버를 넘기지 않았다");
+}
+
+#[test]
+fn 턴마다_다시_오는_init에도_경고는_한_번이다() {
+    let mut bench = app_server_session();
+    bench.claude_says(init_with_app_server("failed"));
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr().len(), 1);
+}
+
+#[test]
+fn 첫_init에서_기다리던_앱_서버가_뒤_init에서_실패해도_경고한다() {
+    let mut bench = app_server_session();
+    bench.claude_says(init_with_app_server("pending"));
+    bench.claude_says(init_with_app_server("failed"));
+    assert_eq!(bench.stderr(), ["앱 기능 도구에 연결하지 못했어요"]);
+}
+
+#[test]
+fn 조각의_합이_완성_글과_다르면_경고_줄을_남기고_글은_다시_내지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = answers_of(&bench.updates()).len();
+
+    bench.claude_says(text_piece("msg_short", "안녕"));
+    bench.claude_says(finished_text("msg_short", "안녕하세요"));
+
+    assert_eq!(answers_of(&bench.updates())[before..], ["안녕"]);
+    assert_eq!(bench.stderr(), ["받은 답 조각을 합친 글(2자)이 완성 글(5자)과 다릅니다 — 메시지 msg_short"]);
+}
+
+#[test]
+fn 한_메시지의_같은_종류_블록이_둘이어도_조각을_낸_블록의_글만_건너뛴다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+
+    bench.claude_says(text_piece("msg_two", "앞 블록"));
+    bench.claude_says(finished_text("msg_two", "앞 블록"));
+    bench.claude_says(text_piece("msg_two", "둘째 "));
+    bench.claude_says(text_piece("msg_two", "블록"));
+    bench.claude_says(finished_text("msg_two", "둘째 블록"));
+    // 조각 없이 완성 글만 온 셋째 블록은 그대로 낸다.
+    bench.claude_says(finished_text("msg_two", "셋째 블록"));
+
+    assert_eq!(answers_of(&bench.updates()), ["앞 블록", "둘째 ", "블록", "셋째 블록"]);
+    assert!(bench.stderr().is_empty(), "{:?}", bench.stderr());
+}
+
+#[test]
+fn 조각을_낸_메시지라도_조각이_없던_종류의_블록은_완성_글을_낸다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+
+    bench.claude_says(text_piece("msg_mixed", "답"));
+    let mut thought = finished_text("msg_mixed", "");
+    thought["message"]["content"] = json!([{"type": "thinking", "thinking": "생각"}]);
+    bench.claude_says(thought);
+    bench.claude_says(finished_text("msg_mixed", "답"));
+
+    let said: Vec<(String, String)> = chunks_of(&bench.updates()).into_iter().map(|(kind, _, text)| (kind, text)).collect();
+    assert_eq!(
+        said,
+        [("agent_message_chunk".to_owned(), "답".to_owned()), ("agent_thought_chunk".to_owned(), "생각".to_owned())]
+    );
+    assert!(bench.stderr().is_empty(), "{:?}", bench.stderr());
+}
+
+#[test]
+fn 글이_빈_생각_조각은_줄을_만들지_않고_완성_줄만_지금처럼_나간다() {
+    // 앱의 인자(`thinking_display: updates`)로는 생각 조각의 글이 비어 온다.
+    let name = "2.1.316/stream-turns";
+    let lines = recorded(name);
+    let empty_pieces = lines.iter().filter(|line| line["event"]["delta"]["type"] == "thinking_delta").count();
+    let blocks: usize = lines
+        .iter()
+        .filter(|line| line["type"] == "assistant")
+        .map(|line| line["message"]["content"].as_array().unwrap().iter().filter(|block| block["type"] == "thinking").count())
+        .sum();
+    assert!(empty_pieces > blocks, "조각 {empty_pieces}, 블록 {blocks}");
+
+    let chunks = chunks_of(&all_turns(name).updates());
+    let thoughts: Vec<&String> = chunks.iter().filter(|(kind, _, _)| kind == "agent_thought_chunk").map(|(_, _, text)| text).collect();
+    assert_eq!(thoughts.len(), blocks, "{thoughts:?}");
+    assert!(thoughts.iter().all(|text| text.is_empty()), "{thoughts:?}");
+}
+
+#[test]
+fn 승인이_걸린_턴도_조각이_도구_줄과_권한_요청보다_앞서고_거부하면_턴이_이어진다() {
+    let name = "2.1.316/stream-permission";
+    let mut bench = Bench::open(Claude::replaying(name));
+
+    bench.prompt("허락할 턴");
+    let allowed = bench.permission_requests()[0]["id"].as_u64().unwrap();
+    bench.answer(allowed, "allow_once");
+
+    let second = bench.prompt("거부할 턴");
+    let asked = bench.permission_requests()[1].clone();
+    assert_eq!(asked["params"]["toolCall"]["_meta"]["claudeCode"]["toolName"], "Write");
+
+    // 말이 다 흐른 뒤에 도구 줄이, 그 뒤에 권한 요청이 선다.
+    let (_, message, _) = finished_blocks(name).into_iter().find(|(_, _, text)| text.contains("기록하겠습니다")).expect("거부할 턴의 말");
+    let said = bench
+        .seen
+        .iter()
+        .rposition(|seen| matches!(seen, Seen::Acp(line) if line["params"]["update"]["messageId"] == message.as_str()))
+        .expect("그 말의 조각");
+    let called = bench.at(|seen| {
+        matches!(seen, Seen::Acp(line) if line["params"]["update"]["sessionUpdate"] == "tool_call"
+            && line["params"]["update"]["toolCallId"] == asked["params"]["toolCall"]["toolCallId"])
+    });
+    let requested = bench.at(|seen| matches!(seen, Seen::Acp(line) if line["method"] == "session/request_permission" && line["id"] == asked["id"]));
+    assert!(said < called && called < requested, "{said} {called} {requested}");
+
+    bench.answer(asked["id"].as_u64().unwrap(), "reject");
+    assert_eq!(bench.result(second)["stopReason"], "end_turn");
+    let updates = bench.turn_updates(second);
+    let (_, after) = tool_lines(&updates, "Write");
+    assert_eq!(after[0]["status"], "failed");
+    assert_eq!(answers_of(&updates).last().map(String::as_str), Some("stopped"), "거부 뒤의 답도 조각으로 온다");
+}
+
+#[test]
+fn 답이_흐르는_도중에_멈춘_턴은_받은_글이_한_번만_찍히고_경고가_없다() {
+    let name = "2.1.316/stream-interrupt";
+    let mut bench = Bench::open(Claude::replaying(name));
+
+    let stopped = bench.prompt("숫자를 세어 줘");
+    assert_eq!(chunks_of(&bench.updates()).len(), 12, "녹음은 12번째 조각에서 interrupt를 넣었다");
+    bench.cancel();
+    assert_eq!(bench.result(stopped)["stopReason"], "cancelled");
+
+    // 멈춘 턴의 완성 줄은 그때까지 낸 글을 다시 싣는다.
+    let chunks = chunks_of(&bench.turn_updates(stopped));
+    let (kind, message, text) = finished_blocks(name).remove(0);
+    assert_eq!(joined(&chunks, &kind, &message), text);
+    assert!(bench.stderr().is_empty(), "{:?}", bench.stderr());
+
+    let next = bench.prompt("이어서");
+    assert_eq!(answers_of(&bench.turn_updates(next)), ["resumed"]);
+}
+
+// ── 다시 부른 메시지(restart 01b-10) ─────────────────────────────────────────────────
+
+/// `stream-retry`가 다시 받은 답 — 끊긴 메시지는 이 글의 앞 두 문장까지 흘렀다.
+const RETRIED: &str = "첫째 문장이 흐른다. 둘째 문장이 흐른다. 셋째 문장이 온전히 끝난다.";
+
+/// 낸 답 조각과 버리라는 표지 — (무엇, 메시지 id), 낸 차례대로. 같은 메시지의 잇단 조각은 하나로 센다.
+fn retry_steps(updates: &[Value]) -> Vec<(&'static str, String)> {
+    let mut steps: Vec<(&'static str, String)> = Vec::new();
+    for update in updates {
+        let step = match (update["sessionUpdate"].as_str(), update["_meta"]["atelier"]["discardMessage"].as_str()) {
+            (Some("session_info_update"), Some(message)) => ("버림", message.to_owned()),
+            (Some("agent_message_chunk"), _) => ("조각", update["messageId"].as_str().unwrap().to_owned()),
+            _ => continue,
+        };
+        if steps.last() != Some(&step) {
+            steps.push(step);
+        }
+    }
+    steps
+}
+
+#[test]
+fn 끊긴_메시지를_claude가_다시_받으면_그_메시지를_버리라는_표지가_다시_받은_글보다_먼저_나간다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-retry"));
+
+    let dropped = bench.prompt("DROP stream");
+    let overloaded = bench.prompt("OVERLOAD stream");
+    let ok = bench.prompt("Reply with one word: ok");
+
+    let step = |what, message: &str| (what, message.to_owned());
+    assert_eq!(
+        retry_steps(&bench.turn_updates(dropped)),
+        [step("조각", "msg_stub_1"), step("버림", "msg_stub_1"), step("조각", "msg_stub_2")],
+        "`api_retry` 뒤에 새 메시지를 처음부터 다시 흘렸다"
+    );
+    assert_eq!(
+        retry_steps(&bench.turn_updates(overloaded)),
+        [step("조각", "msg_stub_3"), step("버림", "msg_stub_3"), step("조각", "msg_stub_4")],
+        "`api_retry` 없이 스트리밍하지 않고 다시 받았다"
+    );
+    assert_eq!(answers_of(&bench.turn_updates(overloaded)).last().map(String::as_str), Some(RETRIED), "조각 없이 온 글은 완성 글 그대로다");
+    assert_eq!(retry_steps(&bench.turn_updates(ok)), [step("조각", "msg_stub_5")], "끝난 메시지는 버리지 않는다");
+    assert!(bench.stderr().is_empty(), "다시 받은 글의 합은 완성 글과 같다: {:?}", bench.stderr());
+}
+
+/// `stream-retry-failed`의 API 오류 — 다시 부른 호출이 받은 500이다.
+const RETRY_FAILED: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8125).";
+
+#[test]
+fn 끊긴_메시지를_다시_부른_뒤_끝내_실패하면_그_메시지를_버리고_턴은_실패로_끝난다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-retry-failed"));
+
+    let failed = bench.prompt("RETRYFAIL stream");
+
+    let step = |what, message: &str| (what, message.to_owned());
+    assert_eq!(retry_steps(&bench.turn_updates(failed)), [step("조각", "msg_stub_1"), step("버림", "msg_stub_1")]);
+    let error = bench.error(failed);
+    assert_eq!((error["code"].clone(), error["message"].as_str()), (json!(-32603), Some(RETRY_FAILED)));
+    let next = bench.prompt("EARLY500 stream");
+    assert_eq!(bench.result(next)["stopReason"], "end_turn", "끝내 실패한 턴 뒤에도 claude는 살아 있다");
+}
+
+#[test]
+fn 조각이_없던_첫_호출을_다시_부르면_아무것도_버리지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-retry-failed"));
+    bench.prompt("RETRYFAIL stream");
+
+    // 녹음의 둘째 턴은 `api_retry`가 조각보다 먼저 온다 — 첫 호출이 조각 없이 500을 받았다.
+    let retried = bench.prompt("EARLY500 stream");
+
+    assert_eq!(retry_steps(&bench.turn_updates(retried)), [("조각", "msg_stub_4".to_owned())]);
+    assert_eq!(answers_of(&bench.turn_updates(retried)).concat(), RETRIED);
+}
+
+/// 메시지를 끝내는 `message_delta` — 진짜 claude는 완성 줄 뒤에 낸다.
+fn message_ended(message: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}},
+        "parent_tool_use_id": null,
+        "api_message_id": message,
+    })
+}
+
+/// claude가 API를 다시 부른다는 줄 — 녹음(`stream-retry`)의 꼴이다.
+fn api_retry() -> Value {
+    json!({"type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10, "retry_delay_ms": 600, "error_status": null, "error": "unknown"})
+}
+
+/// 내장 명령이 내는 조각 없는 `<synthetic>` 답.
+fn synthetic_text(message: &str, text: &str) -> Value {
+    json!({
+        "type": "assistant",
+        "message": {"id": message, "model": "<synthetic>", "content": [{"type": "text", "text": text}]},
+        "parent_tool_use_id": null,
+    })
+}
+
+#[test]
+fn 끝난_메시지_뒤의_api_retry나_조각_없는_완성_줄은_아무것도_버리지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = bench.updates().len();
+
+    bench.claude_says(text_piece("msg_done", "끝난 답"));
+    bench.claude_says(finished_text("msg_done", "끝난 답"));
+    bench.claude_says(message_ended("msg_done"));
+    // 끝난 메시지 뒤의 호출을 다시 부른다 — 도구 결과를 보낸 다음 호출 같은 것이다.
+    bench.claude_says(api_retry());
+    bench.claude_says(finished_text("msg_next", "조각 없이 온 다음 메시지"));
+    bench.claude_says(synthetic_text("synthetic_1", "내장 명령의 답"));
+
+    let updates = &bench.updates()[before..];
+    assert_eq!(
+        retry_steps(updates),
+        [("조각", "msg_done".to_owned()), ("조각", "msg_next".to_owned()), ("조각", "synthetic_1".to_owned())]
+    );
+    assert_eq!(answers_of(updates), ["끝난 답", "조각 없이 온 다음 메시지", "내장 명령의 답"]);
+}
+
+#[test]
+fn 끝나지_않은_메시지_뒤의_synthetic_답은_그_메시지를_버리지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = bench.updates().len();
+
+    bench.claude_says(text_piece("msg_open", "흐르던 답"));
+    bench.claude_says(synthetic_text("synthetic_1", "내장 명령의 답"));
+    bench.claude_says(text_piece("msg_open", " 이어서"));
+
+    let steps = retry_steps(&bench.updates()[before..]);
+    assert_eq!(steps, [("조각", "msg_open".to_owned()), ("조각", "synthetic_1".to_owned()), ("조각", "msg_open".to_owned())]);
+}
+
+#[test]
+fn 끝나지_않은_메시지를_두고_다른_id의_완성_줄이_오면_그_메시지를_버린다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-turns"));
+    let before = bench.updates().len();
+
+    bench.claude_says(text_piece("msg_cut", "끊긴 "));
+    bench.claude_says(finished_text("msg_again", "다시 받은 답"));
+
+    let step = |what, message: &str| (what, message.to_owned());
+    assert_eq!(retry_steps(&bench.updates()[before..]), [step("조각", "msg_cut"), step("버림", "msg_cut"), step("조각", "msg_again")]);
+}
+
+/// 글에서 계정 정보처럼 보이는 것들.
+fn account_traces(text: &str) -> Vec<String> {
+    let mut traces = Vec::new();
+    let around = |at: usize| text[at.saturating_sub(24)..].chars().take(64).collect::<String>();
+    // 이메일 — `@` 뒤가 점 있는 도메인이다. 플러그인 이름(`hookify@claude-plugins-official`)과 패키지(`@anthropic-ai`)는 걸리지 않는다.
+    for (at, _) in text.match_indices('@') {
+        let local = text[..at].chars().next_back().is_some_and(|c| c.is_ascii_alphanumeric() || "._%+-".contains(c));
+        let domain: String = text[at + 1..].chars().take_while(|c| c.is_ascii_alphanumeric() || ".-".contains(*c)).collect();
+        let ends_like_a_host = domain.rsplit_once('.').is_some_and(|(_, top)| top.len() >= 2 && top.chars().all(char::is_alphabetic));
+        if local && ends_like_a_host {
+            traces.push(around(at));
+        }
+    }
+    // 홈 경로와 그것을 줄표로 적은 Claude 프로젝트 폴더 이름.
+    for (at, _) in text.match_indices("/Users/").chain(text.match_indices("-Users-")) {
+        if !text[at + 7..].starts_with("USER") {
+            traces.push(around(at));
+        }
+    }
+    // 계정이 실리는 `initialize` 답과, 계정에 묶인 생각 서명.
+    for key in ["\"account\":", "\"accountUuid\"", "\"organizationUuid\""] {
+        traces.extend(text.match_indices(key).map(|(at, _)| around(at)));
+    }
+    for (at, key) in text.match_indices("\"signature\": \"") {
+        if !text[at + key.len()..].starts_with('"') && !text[at + key.len()..].starts_with("<signature>") {
+            traces.push(around(at));
+        }
+    }
+    traces
+}
+
+/// 원문의 조각을 블록마다 이어 붙인 글 — 조각은 경로를 토막 낸다.
+fn joined_pieces(text: &str) -> String {
+    let mut blocks: Vec<(Value, String)> = Vec::new();
+    for line in claude_replay::json_lines(text).filter(|line| line["type"] == "stream_event") {
+        let delta = &line["event"]["delta"];
+        let Some(piece) = ["text", "thinking", "partial_json"].iter().find_map(|key| delta[*key].as_str()) else { continue };
+        let block = json!([line["api_message_id"], line["event"]["index"], delta["type"]]);
+        match blocks.iter_mut().find(|(seen, _)| *seen == block) {
+            Some((_, joined)) => joined.push_str(piece),
+            None => blocks.push((block, piece.to_owned())),
+        }
+    }
+    blocks.into_iter().map(|(_, joined)| joined).collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn 계정_흔적을_찾는_손이_토막_난_것까지_잡는다() {
+    let split = |one: &str, two: &str| {
+        let piece = |partial: &str| {
+            json!({"type": "stream_event", "api_message_id": "msg", "event": {"index": 0,
+                   "delta": {"type": "input_json_delta", "partial_json": partial}}})
+        };
+        format!("{}\n{}\n", piece(one), piece(two))
+    };
+    assert!(account_traces(&split("/Use", "rs/dana/notes")).is_empty(), "토막 나면 줄 단위로는 보이지 않는다");
+    assert!(!account_traces(&joined_pieces(&split("/Use", "rs/dana/notes"))).is_empty());
+    assert!(!account_traces(&joined_pieces(&split("dana@exam", "ple.com"))).is_empty());
+    assert!(!account_traces("cwd -Users-dana--atelier").is_empty());
+    assert!(!account_traces(r#"{"signature": "CAQS4QYK"}"#).is_empty());
+    assert!(!account_traces(r#"{"account": {"email": "<email>"}}"#).is_empty());
+    for clean in ["/Users/USER/.claude", "hookify@claude-plugins-official", "@anthropic-ai/sdk", r#"{"signature": ""}"#] {
+        assert!(account_traces(clean).is_empty(), "{clean}");
+    }
+}
+
+#[test]
+fn 새_시험_자료에_계정_정보가_없다() {
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/claude-2.1.316");
+    let mut files = 0;
+    for entry in std::fs::read_dir(&folder).expect("2.1.316 자료 폴더") {
+        let path = entry.expect("파일").path();
+        let text = std::fs::read_to_string(&path).expect("글");
+        files += 1;
+        assert_eq!(account_traces(&text), Vec::<String>::new(), "{path:?}");
+        assert_eq!(account_traces(&joined_pieces(&text)), Vec::<String>::new(), "{path:?}의 이은 조각");
+    }
+    assert!(files >= 12, "되감는 여섯 원문과 넣은 줄 여섯: {files}");
+}
+
+// ── 대화 정리(restart 01b-4) ────────────────────────────────────────────────────────
+
+/// 첫 정리 줄의 `update`들 — 도구 줄과 그 줄의 끝을 낸 차례대로.
+fn compact_lines(updates: &[Value]) -> Vec<Value> {
+    let id = updates.iter().find(|update| update["title"] == "Compact conversation").map(|call| call["toolCallId"].clone());
+    updates.iter().filter(|update| Some(&update["toolCallId"]) == id.as_ref()).cloned().collect()
+}
+
+/// 첫 정리 줄의 꼴 — (`sessionUpdate`, `status`), 낸 차례대로.
+fn compact_shape(updates: &[Value]) -> Vec<(String, String)> {
+    let shape = |line: &Value| (line["sessionUpdate"].as_str().unwrap().to_owned(), line["status"].as_str().unwrap().to_owned());
+    compact_lines(updates).iter().map(shape).collect()
+}
+
+fn started() -> (String, String) {
+    ("tool_call".to_owned(), "in_progress".to_owned())
+}
+
+fn ended(status: &str) -> (String, String) {
+    ("tool_call_update".to_owned(), status.to_owned())
+}
+
+/// 정리가 도는 세션 — 첫 턴을 마친 뒤 `status: "compacting"`까지 받았다.
+fn compacting_bench() -> Bench {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-compact"));
+    bench.prompt("Remember the word lantern. Reply with one word: ok");
+    bench.prompt("Say one short sentence about lanterns.");
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "compacting", "uuid": "c1"}));
+    bench
+}
+
+#[test]
+fn compact_턴은_codex와_같은_모양의_도구_줄로_옮겨지고_끝_신호가_둘이어도_한_번_닫힌다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-compact"));
+    bench.prompt("Remember the word lantern. Reply with one word: ok");
+    bench.prompt("Say one short sentence about lanterns.");
+
+    let compact = bench.prompt("/compact");
+
+    let updates = bench.turn_updates(compact);
+    assert_eq!(updates.len(), 2, "정리의 턴에는 도구 줄과 그 끝만 선다: {updates:#?}");
+    let id = updates[0]["toolCallId"].clone();
+    assert_eq!(
+        updates[0],
+        json!({"sessionUpdate": "tool_call", "toolCallId": id, "title": "Compact conversation", "kind": "think", "status": "in_progress"})
+    );
+    assert_eq!(updates[1], json!({"sessionUpdate": "tool_call_update", "toolCallId": id, "status": "completed"}));
+
+    assert_eq!(bench.result(compact)["stopReason"], "end_turn");
+    let next = bench.prompt("Which word did I ask you to remember? Reply with that one word.");
+    assert_eq!(answers_of(&bench.turn_updates(next)).concat(), "lantern", "정리한 뒤에도 대화가 이어진다");
+}
+
+#[test]
+fn 압축이_만든_user_줄은_대화가_되지_않는다() {
+    let name = "2.1.316/stream-compact";
+    let lines = recorded(name);
+    let made = |flag: &str| lines.iter().find(|line| line["type"] == "user" && line[flag] == true).expect("녹음의 압축이 만든 줄");
+    let summary = made("isSynthetic")["message"]["content"].as_str().unwrap();
+    let echo = made("isReplay")["message"]["content"].as_str().unwrap();
+    assert!(summary.contains("Summary:"), "요약문 줄이다: {summary}");
+    assert!(echo.contains("local-command-stdout"), "내장 명령의 메아리 줄이다: {echo}");
+
+    let mut bench = Bench::open(Claude::replaying(name));
+    bench.prompt("Remember the word lantern. Reply with one word: ok");
+    bench.prompt("Say one short sentence about lanterns.");
+    let compact = bench.prompt("/compact");
+
+    assert_eq!(answers_of(&bench.turn_updates(compact)), Vec::<String>::new(), "요약문도 메아리도 답이 아니다");
+    assert!(bench.replied(compact), "그 턴은 끝났다");
+    let text = bench.text();
+    assert!(!text.contains("Primary Request"), "요약문이 나가지 않았다");
+    assert!(!text.contains("local-command-stdout"), "메아리가 나가지 않았다");
+}
+
+#[test]
+fn 정리가_실패하면_줄이_failed로_닫히고_까닭은_답으로_선다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-compact-empty"));
+
+    let compact = bench.prompt("/compact");
+
+    let updates = bench.turn_updates(compact);
+    assert_eq!(compact_shape(&updates), [started(), ended("failed")], "{updates:#?}");
+    assert_eq!(answers_of(&updates), ["Not enough messages to compact."], "<synthetic> 답이 까닭을 말한다");
+
+    let next = bench.prompt("Reply with one word: ok");
+    assert_eq!(answers_of(&bench.turn_updates(next)), ["ok"]);
+}
+
+#[test]
+fn 정리의_끝은_compact_boundary만_와도_닫힌다() {
+    let mut bench = compacting_bench();
+
+    bench.claude_says(json!({"type": "system", "subtype": "compact_boundary", "compact_metadata": {"trigger": "auto"}}));
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": null, "compact_result": "success"}));
+
+    assert_eq!(compact_shape(&bench.updates()), [started(), ended("completed")], "경계가 끝이고 뒤따른 신호는 줄을 내지 않는다");
+}
+
+#[test]
+fn 모드_메아리의_status_null은_정리를_끝내지_않는다() {
+    let mut bench = compacting_bench();
+
+    // `set_permission_mode` 뒤의 `system/status`도 `status: null`이다(실측 A7).
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": null, "permissionMode": "plan"}));
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "requesting"}));
+
+    assert_eq!(compact_shape(&bench.updates()), [started()], "정리는 아직 돈다");
+}
+
+#[test]
+fn 정리가_도는_동안_compacting이_다시_와도_줄은_하나다() {
+    let mut bench = compacting_bench();
+
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "compacting", "uuid": "c2"}));
+
+    assert_eq!(compact_shape(&bench.updates()), [started()]);
+}
+
+#[test]
+fn 끝_신호_없이_턴이_끝나면_다음_정리는_새_줄이다() {
+    let mut bench = compacting_bench();
+
+    bench.claude_says(json!({"type": "result", "subtype": "success", "result": ""}));
+    bench.claude_says(json!({"type": "system", "subtype": "status", "status": "compacting", "uuid": "c2"}));
+
+    let calls: Vec<Value> = bench
+        .updates()
+        .into_iter()
+        .filter(|update| update["title"] == "Compact conversation")
+        .map(|call| call["toolCallId"].clone())
+        .collect();
+    assert_eq!(calls.len(), 2, "끝나지 않은 줄을 쥐고 있지 않는다: {calls:?}");
+    assert_ne!(calls[0], calls[1], "줄마다 id가 다르다");
 }
 
 // ── 턴 ──────────────────────────────────────────────────────────────────────────────
@@ -957,6 +1643,110 @@ fn noauth_authentication_failed가_온_턴은_session_prompt에_minus_32000으�
     assert!(answers_of(&bench.turn_updates(id)).is_empty(), "미로그인 오류의 <synthetic> 글은 답으로 옮기지 않는다(실측 함정 33)");
 }
 
+// ── 실패한 턴(restart 01b-5) ─────────────────────────────────────────────────────────
+
+/// `stream-failed`의 API 오류 — 진짜 claude가 `result.result`에 낸 글. 까닭은 이 글 그대로 호스트로 간다.
+const API_ERROR: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8123).";
+
+/// `stream-failed`에서 끊기기 전까지 받은 글.
+const RECEIVED: [&str; 4] = ["The first part of ", "the answer arrives, ", "and then the API ", "fails in the middle"];
+
+#[test]
+fn 답이_흐르는_도중에_api_오류가_오면_session_prompt에_오류로_답하고_받은_글은_남고_오류_글은_답이_되지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-failed"));
+
+    let failed = bench.prompt("FAIL-STREAM");
+
+    let error = bench.error(failed);
+    assert_eq!((error["code"].clone(), error["message"].as_str()), (json!(-32603), Some(API_ERROR)));
+    let result = &error["data"]["claudeCode"]["result"];
+    assert_eq!(
+        (result["subtype"].as_str(), result["is_error"].as_bool(), result["api_error_status"].as_u64()),
+        (Some("success"), Some(true), Some(500)),
+        "그 턴의 result 원문이 실린다 — 평가의 재료다"
+    );
+    assert_eq!(answers_of(&bench.turn_updates(failed)), RECEIVED, "받은 글만 답이다 — `<synthetic>` 오류 글은 까닭으로만 간다");
+    assert_eq!(bench.stderr(), Vec::<String>::new(), "완성 줄이 오지 않으면 합을 잴 것이 없다");
+
+    let next = bench.prompt("START-BG");
+    assert_eq!(bench.result(next)["stopReason"], "end_turn", "실패한 턴 뒤에도 claude는 살아 있다");
+    assert_eq!(bench.launches().len(), 1);
+}
+
+#[test]
+fn 스스로_이어_간_턴의_api_오류는_턴_밖_끝_표지의_error로_나간다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-failed"));
+    bench.prompt("FAIL-STREAM");
+    let started = bench.prompt("START-BG");
+
+    let answered = bench.at(|seen| matches!(seen, Seen::Acp(line) if is_reply_to(line, started)));
+    let own = bodies(&bench.acp_in(answered + 1..bench.seen.len()));
+
+    let marks = out_of_turn_marks(&own);
+    assert_eq!(marks.len(), 2, "{marks:?}");
+    let ended = &marks[1];
+    assert_eq!(ended["state"], "ended");
+    assert_eq!((ended["error"]["code"].clone(), ended["error"]["message"].as_str()), (json!(-32603), Some(API_ERROR)));
+    assert_eq!(ended["error"]["data"]["claudeCode"]["result"]["origin"]["kind"], "task-notification");
+    assert!(ended.get("response").is_none(), "실패한 끝에는 끝 까닭이 없다 — `session/prompt` 오류와 같다: {ended}");
+    assert_eq!(answers_of(&own), RECEIVED);
+    let next = bench.prompt("Reply with one word: ok");
+    assert_eq!(bench.result(next)["stopReason"], "end_turn");
+}
+
+#[test]
+fn 우리가_끊지_않은_error_during_execution은_실패이고_까닭은_errors다() {
+    // 원문의 셋째 턴은 SIGINT로 끝났다 — interrupt를 보내지 않은 `result/error_during_execution`이다.
+    let mut bench = Bench::open(Claude::replaying("2.1.309/interrupt-sigint"));
+    let first = bench.prompt("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+    bench.cancel();
+    assert_eq!(bench.result(first)["stopReason"], "cancelled", "우리가 끊은 턴은 실패가 아니다");
+    bench.prompt("방금 무엇을 돌리려 했고 끝났는지 한 문장으로");
+
+    let failed = bench.prompt("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+
+    let error = bench.error(failed);
+    assert_eq!(error["code"], -32603);
+    assert_eq!(error["message"], "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use");
+    assert_eq!(error["data"]["claudeCode"]["result"]["subtype"], "error_during_execution");
+}
+
+#[test]
+fn 우리가_interrupt를_보낸_턴은_api_오류로_끝나도_실패가_아니다() {
+    // 멈추기와 API 오류가 엇갈린 꼴 — 녹음에 없어 그 `result`를 손으로 넣는다. 되감기는 interrupt를 기다리며 멈춰 있다.
+    let mut bench = Bench::open(Claude::replaying("2.1.309/interrupt-sigint"));
+    let id = bench.prompt("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+    let session = bench.session_id.clone();
+    bench.machine.step(Input::Acp(json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session}})));
+
+    let result = json!({"type": "result", "subtype": "success", "is_error": true, "stop_reason": "stop_sequence", "result": "API Error: 500"});
+    let outputs = bench.machine.step(Input::Claude(result));
+
+    let answer = outputs.iter().find_map(|output| if let Output::Acp(line) = output { is_reply_to(line, id).then_some(line) } else { None });
+    let answer = answer.expect("그 말에 답한다");
+    assert!(answer.get("error").is_none(), "사람이 멈춘 턴에 실패 안내가 서지 않는다: {answer}");
+}
+
+#[test]
+fn 거절과_길이_제한과_턴_한도는_is_error여도_그_stop_reason으로_끝나고_오류_글은_답이_되지_않는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.316/stream-limits"));
+
+    let refused = bench.prompt("REFUSE");
+    assert_eq!(bench.result(refused)["stopReason"], "refusal");
+    assert_eq!(bench.result(refused)["_meta"]["claudeCode"]["result"]["is_error"], true, "진짜 claude는 거절도 is_error로 끝낸다");
+    assert_eq!(answers_of(&bench.turn_updates(refused)).join(""), "I can't help with that.I can't help with that.");
+
+    // 진짜 claude의 길이 제한은 `result.stop_reason`이 `stop_sequence`이고 끝 까닭은 `api_error` 칸에 있다.
+    let limited = bench.prompt("MAXTOKENS");
+    let response = bench.result(limited);
+    assert_eq!(response["stopReason"], "max_tokens");
+    assert_eq!(response["_meta"]["claudeCode"]["result"]["stop_reason"], "stop_sequence");
+    assert!(answers_of(&bench.turn_updates(limited)).iter().all(|answer| !answer.starts_with("API Error")));
+
+    let used_up = bench.prompt("USE-TOOL");
+    assert_eq!(bench.result(used_up)["stopReason"], "max_turn_requests");
+}
+
 // ── 멈추기 · 권한 · 바꾸기 ───────────────────────────────────────────────────────────
 
 #[test]
@@ -1138,7 +1928,7 @@ fn 거부하면_claude는_deny와_거부의_글을_받고_그_도구_호출만_�
 fn 엔진이_거부의_답에_글을_실으면_claude는_고정_문구_대신_그_글을_deny로_받는다() {
     let mut bench = Bench::open(Claude::replaying("2.1.309/permission-stdio"));
     let first = bench.prompt("outside/allowed.txt를 Write로 만들어");
-    let busy = "「장바구니」 Thread의 @host가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+    let busy = "「장바구니」 채팅이 이 작업공간을 고치는 중이에요 — 끝난 뒤 다시 하세요";
 
     // 쓰기 자리(v1 티켓 18) — 엔진이 사람에게 묻지 않고 거부하며 Agent에게 돌려줄 글을 `_meta.atelier.message`에 싣는다.
     bench.send(json!({"jsonrpc": "2.0", "id": 0, "result": {
@@ -1540,7 +2330,7 @@ fn 되살릴_세션을_claude가_모르면_그_까닭으로_답하고_같은_세
 
     let resume = bench.request("session/resume", revive.clone());
 
-    let reason = "claude가 세션을 되살리지 못했습니다: No conversation found with session ID: yesterday";
+    let reason = "claude가 세션을 되살리지 못했어요: No conversation found with session ID: yesterday";
     assert_eq!(bench.error(resume), json!({"code": -32603, "message": reason}));
     let launches = bench.launches();
     assert_eq!((launches.len(), flag(&launches[0].args, "--resume").as_deref()), (1, Some("yesterday")));
@@ -1571,7 +2361,7 @@ fn claude가_initialize에_답하지_않고_끝나면_열기를_오류로_답하
 
     assert_eq!(
         bench.error(first),
-        json!({"code": -32603, "message": "claude가 initialize에 답하지 않고 끝났습니다 (exit status: 1)"})
+        json!({"code": -32603, "message": "claude가 initialize에 답하지 않고 끝났어요 (exit status: 1)"})
     );
     assert!(bench.exits().is_empty(), "열리기 전의 claude가 끝나도 변환기는 남아 다음 열기를 받는다");
     bench.claude.silent = false;
@@ -1586,7 +2376,7 @@ fn claude가_initialize에_답하지_않고_끝나면_열기를_오류로_답하
 fn 세션이_열린_뒤_claude가_끝나면_변환기도_끝나고_claude가_0으로_끝나도_죽음이다() {
     let mut bench = Bench::open(Claude::replaying("2.1.309/twoturn-tools"));
     bench.claude_exits(3);
-    assert_eq!(bench.stderr(), ["변환기: claude가 끝났습니다 (exit status: 3)"]);
+    assert_eq!(bench.stderr(), ["Claude Code가 끝났어요 (exit status: 3)"]);
     assert_eq!(bench.exits(), [3], "호스트가 수신 EOF로 프로세스 죽음을 안다");
 
     let mut bench = Bench::open(Claude::replaying("2.1.309/twoturn-tools"));
@@ -1625,7 +2415,7 @@ fn claude를_띄우지_못하거나_cwd가_없으면_열기를_까닭으로_답�
     );
     assert_eq!(
         bench.error(nowhere),
-        json!({"code": -32603, "message": "claude를 실행할 수 없습니다: /nowhere/claude — No such file or directory (os error 2)"})
+        json!({"code": -32603, "message": "claude를 실행하지 못했어요: /nowhere/claude — No such file or directory (os error 2)"})
     );
     let no_cwd = bench.request("session/new", json!({"mcpServers": []}));
     assert_eq!(bench.error(no_cwd), json!({"code": -32603, "message": "세션을 여는 요청에 cwd가 없습니다"}));

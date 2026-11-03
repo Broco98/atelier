@@ -8,7 +8,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  사람메뉴로간다,
+  가는곳으로간다,
   openShell,
   ownerlessText,
   processesTitle,
@@ -18,11 +18,10 @@ import {
   toastsNow,
   typeIntoShell,
   unknownIpcCalls,
-  화면머리,
   셸셋을띄운다,
   시계를세운다,
 } from "./harness";
-import { eventLabel } from "@/features/processes/cleanup-log";
+import { loggedAt } from "@/features/processes/cleanup-log";
 import { poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot } from "@/features/processes/types";
 
@@ -41,6 +40,13 @@ const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, ex
 const 셸트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
 const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
 const 버튼 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
+/**
+ * 몸의 머리 — 화면 이름(h1) · 잰 시각 · [조용한 셸 모두 닫기](restart 03-11 · 시안 Processes `.pr-head`). 한때 [조용한 셸 모두 닫기]는 틀의 머리
+ * 줄(`화면머리`)의 할 일이었다 — 지금 틀의 머리 줄에는 이름만 선다. 그 줄은 h1의 부모다 — `<header>`가 아니다(창의 머리는 머리 줄 하나 —
+ * ui-refresh 결정 5, restart 02a-15b. 한때 몸 머리가 `<header>`라 그것으로 집었다).
+ */
+const 몸머리 = (page: Page) =>
+  page.getByRole("main", { name: "Processes", exact: true }).getByRole("heading", { name: "Processes", level: 1 }).locator("..");
 
 /** 한 묶음의 줄들 — 깊이와 접근성 이름. 화면에 선 차례 그대로다. */
 async function 줄들(scope: Locator): Promise<Array<{ level: string | null; name: string | null }>> {
@@ -94,13 +100,13 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
   // 주인이 있는 셸 하나(`Terminal`, pty 3) — 셸 트리의 앵커다.
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(ownerless).toBeVisible();
@@ -139,7 +145,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await 버튼(ownerless, "모두 닫기").click();
   await expect(dialog).toBeVisible();
   await 버튼(dialog, "모두 닫기").click();
-  // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 `●`가 선다(S41).
+  // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 정리 기록이 까닭을 거짓으로 적는다.
   const owner = plainWork.slug;
   await expect
     .poll(() => kills(page))
@@ -176,7 +182,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
   const 토스트 = (n: number) => toastOf(page, ownerlessText(n));
   await expect(토스트(3)).toBeVisible();
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(셸줄(ownerless, 1)).toBeVisible();
@@ -305,14 +311,14 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await archiveByMcp(page, WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
   // `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
 
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(셸줄(셸트리(page), 3)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
@@ -333,7 +339,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(셸줄(offscreen, 99)).toBeVisible();
 
   // ── [조용한 셸 모두 닫기] ── 살아 있는 셸 1 · 3 중 조용한 3만 닫는다.
-  await 버튼(화면머리(page), "조용한 셸 모두 닫기").click();
+  await 버튼(몸머리(page), "조용한 셸 모두 닫기").click();
   const quiet = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(quiet).toBeVisible();
   await 버튼(quiet, "모두 닫기").click();
@@ -413,69 +419,51 @@ const 기록: CleanupEvent[] = [
   },
 ];
 
-test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, 펼치면 대상의 이름 · 결과 · 명령줄이 선다", async ({ page }) => {
+// 정리 기록의 줄은 **대상마다 한 줄**이다(restart 03-15d · 시안 Processes `.pr-logrow`) — 때 · 까닭 · 대상 · 결과(못 끝냄은 경고 잉크)의 칸이고,
+// 기록은 사건 단위로 와서 화면이 편다. 줄은 누르지 않는다 — 셰브론도 펼침도 없다(한때 사건마다 한 줄이고 펼치면 대상과 명령줄이 섰다).
+// 구획 머리의 수는 줄의 수 「N건」이다(시안이 줄을 센다).
+test("정리 기록이 최근 것부터 대상마다 한 줄로 때 · 까닭 · 대상 · 결과를 세우고, 줄은 누르지 않는다", async ({ page }) => {
   await installFixtureBackend(page, { processes_cleanup_log: 기록 });
   await page.goto("/processes");
   const log = 묶음(page, "정리 기록");
   await expect(log).toBeVisible();
-  await expect(log.getByText("기록 3건", { exact: true })).toBeVisible();
-  // 구획은 접혀 연다 — 참고용이다(ui-refresh 결정 28). 머리와 수는 서고 사건 줄은 안 그려진다. 머리를 눌러 편다.
+  // 사건 셋 · 대상 넷 — 줄의 수다.
+  await expect(log.getByText("4건", { exact: true })).toBeVisible();
+  // 구획은 접혀 연다 — 참고용이다(ui-refresh 결정 28). 머리와 수는 서고 줄은 안 그려진다. 머리를 눌러 편다.
   const 머리 = 버튼(log, "정리 기록");
   await expect(머리).toHaveAttribute("aria-expanded", "false");
-  await expect(log.getByRole("list", { name: "정리 기록", exact: true })).toHaveCount(0);
+  const 목록 = log.getByRole("list", { name: "정리 기록", exact: true });
+  await expect(목록).toHaveCount(0);
   await 머리.click();
   await expect(머리).toHaveAttribute("aria-expanded", "true");
 
-  const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
-  // 차례가 기록의 차례다 — 새것부터. 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다. 사건마다 목록의 한 항목이다.
-  await expect(사건들).toHaveText([/^셸 스스로 끝남/, /^시작 정리/, /^셸 닫기/]);
-  await expect(log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("listitem")).toHaveCount(3);
-  expect(await 사건들.evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")))).toEqual(
-    기록.map(eventLabel),
-  );
-  expect(기록.map(eventLabel)[1]).toMatch(/^시작 정리, 프로세스 2개, /);
-
-  // 펼친다 — 누른 사건의 대상만 선다.
-  const 시작정리 = 사건들.nth(1);
-  await expect(시작정리).toHaveAttribute("aria-expanded", "false");
-  await expect(log.getByText("ruby server.rb --port 4000", { exact: true })).toHaveCount(0);
-  await 시작정리.click();
-  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
-  const 대상 = log.getByRole("list", { name: "시작 정리의 대상", exact: true }).getByRole("listitem");
-  expect(await 대상.evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")))).toEqual([
-    "python3, 강제로 끝남",
-    "ruby, 못 끝냄",
+  // 차례가 기록의 차례다 — 사건은 새것부터, 사건 안은 대상의 차례. 두 대상의 시작 정리는 같은 때 · 까닭의 두 줄이다.
+  const 줄들 = 목록.getByRole("listitem");
+  await expect(줄들).toHaveText([
+    `${loggedAt(기록[0].at)}셸 스스로 끝남node끝남`,
+    `${loggedAt(기록[1].at)}시작 정리python3강제로 끝남`,
+    `${loggedAt(기록[1].at)}시작 정리ruby못 끝냄`,
+    `${loggedAt(기록[2].at)}셸 닫기esbuild이미 없음`,
   ]);
-  await expect(대상.nth(1).getByText("ruby server.rb --port 4000", { exact: true })).toBeVisible();
-  // 다른 사건은 접힌 채다 — 앵커: 누른 사건의 명령줄은 섰다.
-  await expect(log.getByText("node vite --port 5173", { exact: true })).toHaveCount(0);
-  // 키보드로도 여닫는다 — 줄이 버튼이다.
-  await 시작정리.focus();
-  await page.keyboard.press("Enter");
-  await expect(시작정리).toHaveAttribute("aria-expanded", "false");
-  await page.keyboard.press("Space");
-  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
-
-  // 다시 누르면 접힌다.
-  await 시작정리.click();
-  await expect(시작정리).toHaveAttribute("aria-expanded", "false");
+  // 못 끝냄은 그 대상의 줄만 경고 잉크다. 앵커: 같은 사건의 다른 대상(python3)은 그 잉크가 아니다.
+  await expect(줄들.nth(2).locator('[data-outcome="bad"]')).toHaveText("못 끝냄");
+  await expect(log.locator('[data-outcome="bad"]')).toHaveCount(1);
+  // 줄은 누르지 않는다 — 목록 안에 버튼 · 셰브론이 없고, 명령줄은 화면에 서지 않는다(기록에는 남는다). 앵커: 줄은 섰다(위).
+  await expect(목록.getByRole("button")).toHaveCount(0);
+  await expect(목록.locator("[data-fold-chevron]")).toHaveCount(0);
   await expect(log.getByText("ruby server.rb --port 4000", { exact: true })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **펼침은 사건에 붙는다 — 목록 안 자리가 아니다**(코드 리뷰 스펙 5). 기록은 새 사건을 맨 앞에 넣으므로, 자리로 펼침을 들면 사건을 펼쳐
-// 읽는 중에 자손 행 [끝내기]나 배경 기록 하나가 서기만 해도 다음 스냅샷 박자에 저절로 접힌다.
-test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 사건은 그대로 펼쳐져 있다", async ({ page }) => {
+// 기록은 스냅샷이 올 때마다 다시 읽는다(`useCleanupLog`) — 새 사건의 줄이 맨 위에 서고 옛 줄은 제 차례를 지킨다.
+test("정리 기록을 다시 읽으면 새 사건의 줄이 맨 위에 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_cleanup_log: 기록 });
   await page.goto("/processes");
   const log = 묶음(page, "정리 기록");
   // 구획은 접혀 연다(ui-refresh 결정 28) — 먼저 편다.
   await 버튼(log, "정리 기록").click();
-  const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
-  await expect(사건들).toHaveCount(3);
-  const 시작정리 = 버튼(log, eventLabel(기록[1]));
-  await 시작정리.click();
-  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
+  const 줄들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("listitem");
+  await expect(줄들).toHaveCount(4);
 
   const 새것: CleanupEvent = {
     id: 4,
@@ -486,13 +474,10 @@ test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 
     targets: [{ pid: 800, name: "node", command: "node server.js", outcome: "ended" }],
   };
   await replaceAnswer(page, "processes_cleanup_log", [새것, ...기록]);
-  // 앵커: 새 사건이 맨 위에 섰다 — 기록을 다시 읽은 뒤의 화면이다.
-  await expect(사건들).toHaveCount(4);
-  await expect(사건들.first()).toHaveAttribute("aria-label", eventLabel(새것));
-  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
-  await expect(log.getByText("ruby server.rb --port 4000", { exact: true })).toBeVisible();
-  // 새 사건은 접힌 채로 선다.
-  await expect(사건들.first()).toHaveAttribute("aria-expanded", "false");
+  await expect(줄들).toHaveCount(5);
+  await expect(줄들.first()).toHaveText(`${loggedAt(새것.at)}손으로 끝냄node끝남`);
+  await expect(log.getByText("5건", { exact: true })).toBeVisible();
+  await expect(줄들.nth(3)).toHaveText(`${loggedAt(기록[1].at)}시작 정리ruby못 끝냄`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -505,9 +490,9 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   });
   await 셸셋을띄운다(page);
   await openShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
-  const quietAll = 버튼(화면머리(page), "조용한 셸 모두 닫기");
+  const quietAll = 버튼(몸머리(page), "조용한 셸 모두 닫기");
 
   // ── 취소 ──
   await quietAll.click();
@@ -545,10 +530,10 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await 사람메뉴로간다(page, "Processes");
+  await 가는곳으로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
 
-  await 버튼(화면머리(page), "조용한 셸 모두 닫기").click();
+  await 버튼(몸머리(page), "조용한 셸 모두 닫기").click();
   const toast = toastOf(page, "닫을 조용한 셸이 없어요");
   await expect(toast).toBeVisible();
   // 앵커: 물었다 — 안 물어서 없다고 한 것이 아니다.

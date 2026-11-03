@@ -11,8 +11,8 @@ import type { ToolCard } from "./tool-cards";
  * 1.6(24칸 2.4 — DS `.ic-check`, 13에서 1.3px)이지만 그 굵기(`SMALL_GLYPH_STROKE`)는 DS가 12 이하에만 주고 `icon-stroke` 검사가 그 자리를
  * 지킨다 — 0.08px 차이는 남긴다(02 결정 「코드 리뷰 고침」).
  *
- * Agent의 질문(`ThreadFlow`의 `AnsweredRow`)과 Thread 도구 질문 카드(Space 질문 · Project 추가 — `ToolCards.tsx`)의 접힌 줄이 이 겉이다. 상자는
- * 무슨 카드였나(`data-answered` — `question` · `space` · `project-add`)와 고른 갈래(`data-choice`)를 든다.
+ * Agent의 질문(`ThreadFlow`의 `AnsweredRow`)과 Thread 도구 질문 카드(Service 질문 · Project 추가 — `ToolCards.tsx`)의 접힌 줄이 이 겉이다. 상자는
+ * 무슨 카드였나(`data-answered` — `question` · `service` · `project-add`)와 고른 갈래(`data-choice`)를 든다.
  */
 export function AnsweredCards({
   cards,

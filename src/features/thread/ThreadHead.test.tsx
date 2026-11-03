@@ -4,9 +4,9 @@ import { ContextMenu } from "@/components/ui/context-menu";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { SummaryToggle, ThreadMenu, ThreadMenuItems, WorkCrumb } from "./ThreadHead";
 
-// Thread 화면의 머리 줄(02 구현 스펙 §6 · S13 · S15 · 캔버스 v35 Screen-Live 머리 줄) — 왼쪽에 (이은 Work면 「폴더 · Work 이름 ›」) ·
-// Thread 이름, 오른쪽에 「…」 · 요약 고정 토글이 선다. 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
-// 눌림(`aria-pressed`)과 메뉴의 항목이다. 자리 · 색(14/500 · #898a8b · 켜진 면 #ebebec)은 시안 비교와 L3가 본다.
+// Thread 화면의 머리 줄(02 구현 스펙 §6 · S13 · S15 · 캔버스 v35 Screen-Live 머리 줄) — 왼쪽에 (이은 Work면 「폴더 · 작업공간 이름 ›」) ·
+// Thread 이름과 그 바로 뒤 「…」, 오른쪽 끝에 요약 단추(「요약 카드」)가 선다(restart 02a-7 — 자리는 `ThreadScreen.test.tsx`). 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 역할 · 접근성 이름 ·
+// 눌림(`aria-pressed`)과 메뉴의 항목이다. 자리 · 색(14/500 · #898a8b)은 시안 비교와 L3가 본다.
 
 const none = () => {};
 
@@ -29,7 +29,7 @@ const items = (markup: string) =>
   [...markup.matchAll(/<div[^>]*role="menuitem"[^>]*>(.*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
 
 describe("Thread 메뉴(S15)", () => {
-  // 사이드바 Thread 줄에는 지금 대상 메뉴가 없고, Thread에 할 수 있는 일은 이름 바꾸기 하나다(결정 「06 · Thread 대상 메뉴」). 정의는
+  // 사이드바 Thread 줄에는 지금 대상 메뉴가 없고, Thread에 할 수 있는 일은 이름 바꾸기 하나다(결정 「06 · 채팅 대상 메뉴」). 정의는
   // 한 곳이라 ⋯ 카드와 우클릭 카드가 같은 줄을 편다 — 다음 판에 줄에 달면 항목이 저절로 같다.
   it("항목은 「이름 바꾸기」(F2) 하나이고, ⋯ 메뉴와 우클릭 메뉴에서 같은 줄이다", () => {
     const markup = inDropdown(none);
@@ -38,10 +38,10 @@ describe("Thread 메뉴(S15)", () => {
     expect(withoutIds(inContext(none))).toBe(withoutIds(markup));
   });
 
-  // 머리 줄 오른쪽 「…」(28 · #898a8b)가 이 메뉴를 연다 — 글리프뿐인 단추라 이름은 툴팁 글자다.
-  it("머리 줄의 「…」는 메뉴를 여는 「Thread 메뉴」 단추다", () => {
+  // 머리 줄 이름 뒤 「…」(28 · #898a8b)가 이 메뉴를 연다 — 글리프뿐인 단추라 이름은 툴팁 글자다.
+  it("머리 줄의 「…」는 메뉴를 여는 「채팅 메뉴」 단추다", () => {
     const markup = renderToStaticMarkup(<ThreadMenu rename={none} />);
-    expect(markup).toMatch(/^<button[^>]*aria-label="Thread 메뉴"/);
+    expect(markup).toMatch(/^<button[^>]*aria-label="채팅 메뉴"/);
     expect(markup).toMatch(/^<button[^>]*aria-haspopup="menu"/);
   });
 
@@ -52,14 +52,24 @@ describe("Thread 메뉴(S15)", () => {
   });
 });
 
-describe("요약 고정 토글", () => {
-  // 시안 Screen-Live의 머리 줄 오른쪽 끝 토글(`aria-label="요약 고정"`). 이름은 할 일이고 켬/끔은 `aria-pressed`가 말한다 — 눌러도 이름이
-  // 바뀌지 않는다. 요약 카드를 여닫고 Work 없는 Thread에도 선다(07).
-  it("이름은 「요약 고정」 하나이고, 열림을 aria-pressed로 말한다", () => {
+describe("요약 단추", () => {
+  // 시안 Main · MainLoose 창 머리 오른쪽의 단추(`aria-label="요약 카드"` — restart 02a-9 · SummarySheet 규격 「「요약 고정」에서 「요약 카드」로」).
+  // 이름은 여닫는 것이고 켬/끔은 `aria-pressed`가 말한다 — 눌러도 이름이 바뀌지 않는다. 요약 카드를 여닫고 Work 없는 Thread에도 선다(07).
+  it("이름은 「요약 카드」 하나이고, 열림을 aria-pressed로 말한다", () => {
     const on = renderToStaticMarkup(<SummaryToggle open onToggle={none} />);
     const off = renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />);
-    expect(on).toMatch(/^<button[^>]*aria-label="요약 고정"[^>]*aria-pressed="true"/);
-    expect(off).toMatch(/^<button[^>]*aria-label="요약 고정"[^>]*aria-pressed="false"/);
+    expect(on).toMatch(/^<button[^>]*aria-label="요약 카드"[^>]*aria-pressed="true"/);
+    expect(off).toMatch(/^<button[^>]*aria-label="요약 카드"[^>]*aria-pressed="false"/);
+  });
+
+  // 켜진 면은 시안 머리 줄 단추의 눌림(`.ra-tbtn[aria-pressed="true"]` — `fill-selected`, 라이트 #eff0f0 · 다크 흰 .08)이다. 한때 02 실측
+  // `fill-toggle-on`(#ebebec)이었는데 다크 값이 없어 다크에서 흰 네모로 떴다(restart 02b-8b).
+  it("켜지면 면이 시안의 고른 면(`fill-selected`)이고 글리프가 `fg`다 — 꺼지면 면이 없다", () => {
+    const on = renderToStaticMarkup(<SummaryToggle open onToggle={none} />);
+    const off = renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />);
+    expect(on).toMatch(/^<button[^>]*class="[^"]*(?<![\w-])bg-fill-selected(?![\w-])[^"]*(?<![\w-])text-fg(?![\w-])/);
+    expect(on).not.toContain("fill-toggle-on");
+    expect(off).not.toMatch(/^<button[^>]*class="[^"]*(?<![\w-])bg-fill-/);
   });
 
   // 02 코드 리뷰 C1 — 맨 버튼이라 Tab 정류장임을 `tabindex`로 명시한다. macOS WebKit(앱의 WKWebView)의 Tab은 `tabindex` 없는 맨 `<button>`에
@@ -70,10 +80,10 @@ describe("요약 고정 토글", () => {
 });
 
 describe("머리 줄의 Work 이름(S13)", () => {
-  // Work에 이은 Thread는 이름 앞에 흐린 「폴더 · Work 이름 ›」이 선다. Work 이름이 누르는 자리이고(누르면 카드가 열린다 — 옛 Work 알약의
+  // Work에 이은 Thread는 이름 앞에 흐린 「폴더 · 작업공간 이름 ›」이 선다. Work 이름이 누르는 자리이고(누르면 카드가 열린다 — 옛 Work 알약의
   // 일), 「›」는 그림이라 이름에 들지 않는다. 이름은 할 일과 Work 이름을 함께 말한다(옛 알약과 같은 이름).
-  it("Work 이름이 「Work 열기: …」 단추로 서고, 그 뒤에 숨은 「›」가 선다", () => {
+  it("Work 이름이 「작업공간 열기: …」 단추로 서고, 그 뒤에 숨은 「›」가 선다", () => {
     const markup = renderToStaticMarkup(<WorkCrumb title="환불 API 버그 수정" onOpen={none} />);
-    expect(markup).toMatch(/^<button[^>]*aria-label="Work 열기: 환불 API 버그 수정"[^>]*>.*환불 API 버그 수정.*<\/button><span aria-hidden="true"[^>]*>›<\/span>$/);
+    expect(markup).toMatch(/^<button[^>]*aria-label="작업공간 열기: 환불 API 버그 수정"[^>]*>.*환불 API 버그 수정.*<\/button><span aria-hidden="true"[^>]*>›<\/span>$/);
   });
 });

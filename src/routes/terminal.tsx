@@ -7,7 +7,7 @@ export const Route = createFileRoute("/terminal")({
   component: TerminalRoute,
 });
 
-// 이 화면은 셸 상태에서 넘겨받을 것이 없다 — 머리 줄의 자리(사이드바를 따라 옮겨 가는 것)는 앱 셸이 든다(02 구현 스펙 §3).
+// 이 화면은 셸 상태에서 넘겨받을 것이 없다 — 머리 줄의 자리(셸 컨트롤 뒤 세로선 다음)는 앱 셸이 든다(02 구현 스펙 §3).
 // 넘길 것이 없어 별도 `-terminal-view.tsx`를 두지 않는다.
 function TerminalRoute() {
   return <TerminalPage />;

@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use atelier_acp::{Agent, ConversationHost, EngineState, HostEvent, QueuedMessage, ShellSource, TranslatorCommand};
+use atelier_acp::{Agent, ConversationHost, EngineState, FlowChunk, HostEvent, QueuedMessage, ShellSource, TranslatorCommand};
 use serde_json::Value;
 
 /// 가짜 로그인 셸의 시나리오.
@@ -211,6 +211,18 @@ impl Sandbox {
         self.data_root().join("works").join(slug)
     }
 
+    /// 커밋 하나가 있는 git 저장소를 세워 Project로 등록한다 — 등록한 Project의 slug는 폴더 이름이다.
+    pub fn register_project(&self, name: &str) -> PathBuf {
+        let folder = self.data_root().parent().unwrap().join("repos").join(name);
+        fs::create_dir_all(&folder).unwrap();
+        for args in [&["init", "-q", "-b", "main"][..], &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]] {
+            let out = Command::new("git").arg("-C").arg(&folder).args(args).output().expect("git");
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        }
+        atelier_core::create_project(&atelier_core::projects_in(&self.data_root()), &folder).expect("Project 등록");
+        folder
+    }
+
     // ── Claude ──────────────────────────────────────────────────────────────────
 
     /// Claude를 띄우는 데 드는 `claude`를 둔 PATH 폴더 — 가짜 claude bin을 가리키는 링크다.
@@ -284,6 +296,15 @@ impl Sandbox {
         json_lines(&self.claude_receipts().join(format!("{session_id}.mcp")))
     }
 
+    /// 그 Session의 claude가 `tools/list`로 받은 도구의 설명 — 앱 기능 도구의 쓰임을 Runtime에게 말하는 자리다. 영수증은 도구를 부른
+    /// 때에 남으므로 턴에서 도구 하나는 불러야 한다.
+    pub fn claude_tool_guide(&self, session_id: &str, tool: &str) -> String {
+        let called = self.claude_mcp(session_id);
+        let tools = called[0]["tools"].as_array().expect("도구 목록");
+        let found = tools.iter().find(|one| one["name"] == tool).unwrap_or_else(|| panic!("도구 목록에 {tool}이 없다"));
+        found["description"].as_str().expect("도구 설명").to_owned()
+    }
+
     /// 가짜 claude가 `-p`로 뜰 때마다 남긴 줄 — `{pid, args}`, 뜬 차례대로. 되살리기가 실패해 곧바로 끝난 claude도 선다
     /// (three-axes 티켓 16).
     pub fn claude_launches(&self) -> Vec<Value> {
@@ -299,16 +320,58 @@ impl Sandbox {
         self.receipts().join("acp")
     }
 
-    // ── Thread(v1 티켓 04) ──────────────────────────────────────────────────────
+    // ── Codex(restart 01c-3) ────────────────────────────────────────────────────
 
-    /// Library에 Agent 정의 파일 하나를 둔다 — `library/agents/<handle>.md`. 있으면 덮는다(사람이 고친 꼴).
-    pub fn library_agent(&self, handle: &str, text: &str) -> PathBuf {
-        let dir = atelier_core::library_agents_in(&self.data_root());
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(format!("{handle}.md"));
-        fs::write(&path, text).unwrap();
-        path
+    /// Codex 채팅의 로그인 셸 — 로그인 검사의 PATH(`codex-acp`는 가짜 ACP 에이전트, `codex`는 가짜 codex, `node`는 찾기만 하는 가짜)에, 가짜 ACP가
+    /// 진짜 codex-acp 2.2.2의 녹음(`codex-acp-2.2.2/<이름>`)을 재생하게 하는 값을 싣는다. 호스트가 띄우는 `codex-acp`까지 닿는 길은 로그인
+    /// env뿐이다.
+    pub fn codex_login_shell(&self, fixture: &str, extra: &[(&str, &str)]) -> ShellSource {
+        let mut env = vec![("FAKE_ACP_FIXTURE", fixture)];
+        env.extend_from_slice(extra);
+        self.login_shell_for_login("replay", NO_BROWSER, &env)
     }
+
+    /// 가짜 ACP 에이전트가 그 세션 id로 `session/new`를 받아 남긴 영수증 — pid · 받은 env · `initialize`와 `session/new`의 인자.
+    pub fn acp_receipt(&self, session_id: &str) -> Value {
+        receipt_at(&self.acp_receipts().join(format!("{session_id}.json")))
+    }
+
+    /// 가짜 ACP 에이전트가 받은 되살리기(`session/resume` · `session/load`)마다 `{pid, method, params, ok}` — 받은 차례대로.
+    pub fn acp_revivals(&self) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join("revivals"))
+    }
+
+    /// 가짜 ACP 에이전트가 뜰 때마다(`initialize`를 받을 때마다) 남긴 `{pid}`.
+    pub fn acp_launches(&self) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join("launches"))
+    }
+
+    /// 가짜 ACP 에이전트가 그 세션에서 받은 `session/prompt`의 인자들.
+    pub fn acp_prompts(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join(format!("{session_id}.prompts")))
+    }
+
+    /// 가짜 ACP 에이전트가 그 세션에서 받은 모드 · 설정 바꾸기(`session/set_mode` · `session/set_config_option`)마다 `{method, params}` —
+    /// 받은 차례대로. 되살린 세션은 옛 세션 id의 파일에 이어 적힌다.
+    pub fn acp_settings(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join(format!("{session_id}.config")))
+    }
+
+    /// 그 세션에서 받은 `session/set_mode`의 모드들 — 받은 차례대로.
+    pub fn acp_modes(&self, session_id: &str) -> Vec<String> {
+        self.acp_settings(session_id)
+            .iter()
+            .filter(|setting| setting["method"] == "session/set_mode")
+            .map(|setting| setting["params"]["modeId"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    }
+
+    /// `replay`가 그 세션에서 녹음 속 MCP를 정말 부른 것들 — `{server, tools, tool, arguments, call}`, 부른 차례대로. 없으면 비었다.
+    pub fn acp_mcp(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.acp_receipts().join(format!("{session_id}.mcp")))
+    }
+
+    // ── Thread(v1 티켓 04) ──────────────────────────────────────────────────────
 
     /// Thread 폴더 `threads/<id>`.
     pub fn thread_dir(&self, thread: &str) -> PathBuf {
@@ -321,20 +384,9 @@ impl Sandbox {
         serde_json::from_str(&fs::read_to_string(&path).unwrap_or_else(|_| panic!("없다: {}", path.display()))).unwrap()
     }
 
-    /// `thread.json`의 그 참여자.
-    pub fn participant(&self, thread: &str, handle: &str) -> Value {
-        self.thread_json(thread)["participants"]
-            .as_array()
-            .expect("participants 배열")
-            .iter()
-            .find(|participant| participant["handle"] == handle)
-            .unwrap_or_else(|| panic!("thread.json에 @{handle} 참여자가 없다"))
-            .clone()
-    }
-
-    /// 그 Thread 참여자의 Session id(`thread.json`).
-    pub fn thread_session_id(&self, thread: &str, handle: &str) -> String {
-        self.participant(thread, handle)["sessionId"].as_str().expect("Session id").to_owned()
+    /// 그 Thread의 Session id(`thread.json`).
+    pub fn thread_session_id(&self, thread: &str) -> String {
+        self.thread_json(thread)["sessionId"].as_str().expect("Session id").to_owned()
     }
 
     /// 그 Thread의 기록 줄들(`events.jsonl`).
@@ -511,10 +563,10 @@ impl Sandbox {
     }
 
     /// 로그인 검사의 로그인 셸. 가짜 ACP 에이전트의 시나리오와 로그인 흉내의 자리(영수증 · 엔진마다의 로그인 파일)를
-    /// 로그인 env에 싣는다 — 호스트가 띄우는 로그인 명령 · 에이전트까지 닿는 길은 로그인 env뿐이다.
+    /// 로그인 env에 싣는다 — 호스트가 도는 로그인 확인 · 에이전트까지 닿는 길은 로그인 env뿐이다.
     ///
     /// `browser`는 `BROWSER`의 값이다. 검사는 `/usr/bin/true`로 진짜 브라우저를 막는다(실측 함정 40). `None`이면
-    /// `BROWSER`를 싣지 않는다 — 그러면 엔진은 PATH의 `open`을 부르고, 그것은 이 샌드박스의 기록용 가짜다.
+    /// `BROWSER`를 싣지 않는다 — 그러면 무엇이 브라우저를 열려 해도 PATH의 `open`을 부르고, 그것은 이 샌드박스의 기록용 가짜다.
     pub fn login_shell_for_login(&self, scenario: &str, browser: Option<&str>, extra: &[(&str, &str)]) -> ShellSource {
         let bin = self.login_bin();
         let acp = self.acp_receipts().display().to_string();
@@ -554,47 +606,14 @@ impl Sandbox {
         let _ = fs::remove_file(self.auth_file(agent));
     }
 
-    /// 그 엔진의 로그인 파일이 있나.
-    pub fn logged_in_file(&self, agent: Agent) -> bool {
-        self.auth_file(agent).exists()
-    }
-
-    /// 기다리는 로그인 명령을 끝낸다 — `ok`면 로그인 파일을 쓰고 exit 0, 아니면 쓰지 않고 exit 1.
-    pub fn finish_login(&self, agent: Agent, ok: bool) {
-        let gate = format!("{}-login.{}", engine_name(agent), if ok { "go" } else { "fail" });
-        fs::write(self.login_receipts().join(gate), "").unwrap();
-    }
-
-    /// 로그인 명령이 띄워질 때마다 남긴 영수증(pid · Unix 세션 · stdin이 TTY인가 · 인자 · 손주 pid).
-    pub fn login_runs(&self, agent: Agent) -> Vec<Value> {
-        json_lines(&self.login_receipts().join(format!("{}-login.runs", engine_name(agent))))
-    }
-
-    /// 로그인 명령이 받은 시그널들(`TERM` · `INT`).
-    pub fn login_signals(&self, agent: Agent) -> Vec<String> {
-        self.login_lines(&format!("{}-login.signals", engine_name(agent)))
-    }
-
     /// 로그인 확인이 불린 인자들 — 부를 때마다 한 줄.
     pub fn status_calls(&self, agent: Agent) -> Vec<String> {
         self.login_lines(&format!("{}-status.calls", engine_name(agent)))
     }
 
-    /// 기록용 가짜 `open`이 받은 것들 — 엔진이 브라우저를 열려고 넘긴 URL.
-    pub fn opened(&self) -> Vec<String> {
-        self.login_lines("open")
-    }
-
     fn login_lines(&self, name: &str) -> Vec<String> {
         text_lines(&self.login_receipts().join(name))
     }
-}
-
-/// 로그인 명령의 프로세스들 — 가짜 자신과 그 손주.
-pub fn login_pids(run: &Value) -> Vec<u32> {
-    let mut pids = vec![run["pid"].as_u64().expect("pid") as u32];
-    pids.extend(run["grandchild"].as_u64().map(|pid| pid as u32));
-    pids
 }
 
 // ── S26 — L1이 남긴 기록을 L3 자료로 ─────────────────────────────────────────────
@@ -649,17 +668,14 @@ pub fn fix_thread_record(record: &[Value], data_root: &Path, thread: &str, sessi
     fixed
 }
 
-/// 명령 목록 줄(`available_commands_update`)마다 그 참여자의 열림 줄 바로 뒤로 옮기고 seq를 다시 센다. 명령 목록은 Session을 연
+/// 명령 목록 줄(`available_commands_update`)을 첫 열림 줄 바로 뒤로 옮기고 seq를 다시 센다. 명령 목록은 Session을 연
 /// 답 뒤에 따로 오는데 새 Thread는 열자마자 첫 말을 보내므로, 그 줄과 `sent`의 차례가 매번 다르다. 축복 자료는 하나의 차례로 둔다.
 pub fn commands_after_opened(record: &[Value]) -> Vec<Value> {
     let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
     let commands: Vec<Value> = record.iter().filter(|line| is_commands(line)).cloned().collect();
     let mut lines: Vec<Value> = record.iter().filter(|line| !is_commands(line)).cloned().collect();
     for command in commands {
-        let opened = lines
-            .iter()
-            .position(|line| line["payload"]["state"] == "opened" && line["who"] == command["who"])
-            .expect("그 참여자의 열림 줄");
+        let opened = lines.iter().position(|line| line["payload"]["state"] == "opened").expect("열림 줄");
         lines.insert(opened + 1, command);
     }
     for (n, line) in lines.iter_mut().enumerate() {
@@ -669,7 +685,7 @@ pub fn commands_after_opened(record: &[Value]) -> Vec<Value> {
 }
 
 /// 명령 목록 줄(`available_commands_update`)마다 그 앞의 가장 가까운 열림 줄 바로 뒤로 옮기고 seq를 다시 센다 — 다시 연 Session도 명령
-/// 목록을 한 번 더 낸다([`commands_after_opened`]는 그 참여자의 첫 열림 뒤로만 옮긴다). 03의 기록 축복(Space · 설정)이 쓴다.
+/// 목록을 한 번 더 낸다([`commands_after_opened`]는 첫 열림 뒤로만 옮긴다). 03의 기록 축복(Service · 설정)이 쓴다.
 pub fn commands_after_each_opened(record: &[Value]) -> Vec<Value> {
     let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
     let mut lines: Vec<Value> = Vec::new();
@@ -896,12 +912,23 @@ impl Events {
         })
     }
 
-    /// 그 Thread의 대기 줄 바뀜 이벤트들 — 이벤트마다 그 참여자와 그때의 대기 줄 전체.
-    pub fn thread_queues(&self, id: &str) -> Vec<(String, Vec<QueuedMessage>)> {
+    /// 그 Thread의 대기 줄 바뀜 이벤트들 — 이벤트마다 그때의 대기 줄 전체.
+    pub fn thread_queues(&self, id: &str) -> Vec<Vec<QueuedMessage>> {
         self.all()
             .into_iter()
             .filter_map(|event| match event {
-                HostEvent::ThreadQueue { thread, who, queue } if thread == id => Some((who, queue)),
+                HostEvent::ThreadQueue { thread, queue } if thread == id => Some(queue),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 그 Thread의 화면 조각 이벤트들 — 온 차례대로.
+    pub fn thread_chunks(&self, id: &str) -> Vec<FlowChunk> {
+        self.all()
+            .into_iter()
+            .filter_map(|event| match event {
+                HostEvent::ThreadChunk { thread, chunk } if thread == id => Some(chunk),
                 _ => None,
             })
             .collect()

@@ -66,8 +66,8 @@ export interface KernelWorkView {
   // 「지금 이게 중요하다」 — 화면 설정이 아니라 그 작업에 대한 사실이라 work.json에 산다
   // (결정 81). 목록에서 고정된 것이 먼저 오는 것도 코어가 정한다 (결정 100).
   pinned: boolean;
-  /** 이 Work가 이은 Space의 slug(`work.json`의 `space`, 03 §9) — 없으면 칸째 빠진다. 이 Work의 Thread가 모두 이 Space를 읽는다. */
-  space?: string;
+  /** 이 Work가 이은 Service의 slug(`work.json`의 `service`, 03 §9) — 없으면 칸째 빠진다. 이 Work의 Thread가 모두 이 Service를 읽는다. */
+  service?: string;
   worktrees: WorktreeView[];
   specDir: string;
   specFiles: string[];
@@ -101,7 +101,7 @@ export type PrChecks =
 
 /**
  * 바뀐 파일 하나의 diff(v1 티켓 33 · 코어 `FileDiff`, `read_work_diff`의 답) — 변경 칸과 같은 기준(base 대비, 커밋한 것과 아직 커밋하지 않은
- * 것을 합침)이다. `patch`는 git이 낸 그 파일의 unified diff 그대로라 넓힌 카드의 diff 보기(`@pierre/diffs`)에 곧장 들어간다(v1 티켓 35).
+ * 것을 합침)이다. `patch`는 git이 낸 그 파일의 unified diff 그대로라 넓힌 카드의 변경 보기가 줄 목록으로 읽는다(`WideDiff` — restart 03-15b).
  */
 export type FileDiff =
   | { kind: "patch"; patch: string }

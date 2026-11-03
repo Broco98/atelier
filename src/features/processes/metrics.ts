@@ -29,12 +29,31 @@ export function formatMemory(bytes: number | null): string {
 }
 
 /**
- * CPU% — 반올림한 정수 %다. 한 코어를 다 쓰면 100이고 여러 코어를 쓰면 넘는다(백엔드가 활성 상태 보기의 「% CPU」와 같은 눈금으로
- * 준다). 두 표본의 차이라 **첫 표본은 없다** — 「—」로 선다(S37).
+ * CPU% — **소수 한 자리 %다**(S37 · restart 03-5). 백엔드가 **맥 전체를 100으로** 준다 — 코어 열 개인 맥에서 한 코어를 다 쓰는 프로세스는
+ * 10이다(활성 상태 보기의 「% CPU」는 이 값 × 코어 수). 줄과 합계가 이 글자다. 두 표본의 차이라 **첫 표본은 없다** — 「—」로 선다.
  */
 export function formatCpu(percent: number | null): string {
   if (percent === null) return NOT_READ;
+  return `${percent.toFixed(1)}%`;
+}
+
+/**
+ * 머리 숫자의 CPU% — **정수로 반올림한다**(restart 03-5 · 시안 ProcessSheet 「합이 맞는다」 — 머리 숫자는 합계를 정수로 반올림한 값).
+ * 눈금은 `formatCpu`와 같다(맥 전체 = 100). 못 쟀으면 「—」다.
+ */
+export function formatHeadCpu(percent: number | null): string {
+  if (percent === null) return NOT_READ;
   return `${Math.round(percent)}%`;
+}
+
+/**
+ * **사이드바 `Processes` 줄 끝의 글자**(restart 03-11 · 스토리 138 · 시안 Main 「13% · 3.3GB」) — 아틀리에 CPU(머리 숫자처럼 정수 — 맥 전체 =
+ * 100)와 아틀리에 메모리 합계. 10초 요약이 읽는다. CPU를 아직 모르면(첫 배경 표본) 「—」다. 메모리 합계를 못 읽었으면(macOS 밖) 없다 — 줄
+ * 끝에 「—」만 세우지 않는다.
+ */
+export function formatNavMeta(cpu: number | null, memory: number | null): string | null {
+  if (memory === null) return null;
+  return `${formatHeadCpu(cpu)} · ${formatMemory(memory)}`;
 }
 
 /** LISTEN 포트 — 받은 차례(백엔드가 오름차순으로 준다)로 「:5173 · :24678」. 없으면 빈 글자다: 포트가 없는 것은 모르는 것이 아니다. */
@@ -42,7 +61,7 @@ export function formatPorts(ports: ReadonlyArray<number>): string {
   return ports.map(formatPort).join(PORT_SEPARATOR);
 }
 
-/** 포트 하나 — 「:5173」. 행의 포트 칩 하나가 이 글자다(칩 사이에 `PORT_SEPARATOR`를 숨겨 두면 칸의 글자가 `formatPorts`와 같다). */
+/** 포트 하나 — 「:5173」. 줄의 포트 칸은 이것을 `PORT_SEPARATOR`로 이은 글자다(`formatPorts`). */
 export function formatPort(port: number): string {
   return `:${port}`;
 }

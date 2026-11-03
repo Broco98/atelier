@@ -37,7 +37,7 @@ function asked(card: Pick<PendingProjectAdd, "look" | "folder" | "root">): strin
   return `${topic} ${folderName(card.root ?? "")} 저장소 안의 폴더예요. 어떻게 할까요?`;
 }
 
-/** 카드의 값. `asker`는 물은 참여자의 화면 이름이다. */
+/** 카드의 값. `asker`는 그 채팅의 Runtime 이름이다. */
 export function describeProjectAddCard(card: PendingProjectAdd, asker: string): ProjectAddCardView {
   const option = (answer: ProjectAddAnswer, note: string | null, recommended = false): ProjectAddOption => ({
     answer,

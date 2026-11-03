@@ -9,8 +9,8 @@ import {
   stubWindowFocus,
   typeIntoShell,
   unknownIpcCalls,
-  사람메뉴로간다,
-  사람줄,
+  가는곳으로간다,
+  설정줄,
   검색어칸,
   검색팔레트를연다,
   띠,
@@ -44,9 +44,9 @@ const 켜짐 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =
 // 바로 잇닿는다(아래 정규식의 `\s*`).
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);
 
-/** 사람 메뉴의 `Settings`로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것. 한때 사이드바 바닥의 줄이었다(v1 티켓 07 · S27). */
+/** 사이드바 맨 아래 「설정」 줄로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것(restart 02a-3 — 한때 사람 메뉴의 `Settings`, 그 앞은 바닥 줄). */
 async function 설정에들어간다(page: Page) {
-  await 사람메뉴로간다(page, "Settings");
+  await 가는곳으로간다(page, "Settings");
   await expect(page).toHaveURL("/settings/terminal");
 }
 
@@ -57,15 +57,15 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   await awaitSpawned(page, 1);
 
   // **없어질 것들이 먼저 서 있는지 센다** — 안 그러면 아래 「없다」가 원래 없던 것으로도 초록이다.
-  // 띠는 부르는 셸이 있어야 선다: spec으로 눈을 떼고 창을 뒤로 보낸 채 셸이 부르게 한다.
-  await page.locator('[data-tab="spec"]').click();
+  // 띠는 부르는 셸이 있어야 선다: ⌘T의 새 채팅 탭으로 눈을 떼고(restart 02a-8 — 한때 spec 칸) 창을 뒤로 보낸 채 셸이 부르게 한다.
+  await page.keyboard.press("Meta+t");
   await expect(page).not.toHaveURL(/tab=terminal/);
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop" });
-  const nav = aside(page).getByRole("button", { name: "새 Thread", exact: true });
+  const nav = aside(page).getByRole("button", { name: "새 채팅", exact: true });
   const 작업행 = aside(page).getByRole("button", { name: pinned.title, exact: true });
-  const 사람 = 사람줄(page);
-  for (const one of [nav, 띠(page), 작업행, 사람]) await expect(one).toHaveCount(1);
+  const 설정 = 설정줄(page);
+  for (const one of [nav, 띠(page), 작업행, 설정]) await expect(one).toHaveCount(1);
 
   await 설정에들어간다(page);
 
@@ -73,7 +73,7 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   for (const name of ["터미널", "알림", "에이전트 훅"] as const) {
     await expect(설정항목(page, name)).toBeVisible();
   }
-  for (const one of [nav, 띠(page), 작업행, 사람]) await expect(one).toHaveCount(0);
+  for (const one of [nav, 띠(page), 작업행, 설정]) await expect(one).toHaveCount(0);
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
@@ -82,23 +82,27 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 19 — **설정 nav 행은 위 줄 행과 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 30 · `radius-lg` · `text-sm`(14/20 400).
-// 면과 글자는 사이드바 줄 한 벌이다(02 티켓 05 · `sidebarRowTone`) — Codex 사이드바 줄은 hover와 고른 면이 같은 투명 `fill-nav-selected`(.053)라,
-// 켜진 항목은 떠나도 남는 그 면과 한 단 짙은 글자(`fg` — 안 켜진 줄은 `fg-sidebar`)로 갈린다. 한때(v1 티켓 46) 켜진 면은 불투명한
-// `fill-selected`, 지나는 면은 `fill-soft`였다. 같은 사이드바 자리에 갈아 서는 nav라 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서
-// 읽어 맞댄다.
-test("설정 nav 행은 30 · radius-lg · 400이고, 켜진 항목은 fill-nav-selected 면에 fg 글자 · 지나는 항목도 같은 면이다", async ({ page }) => {
+// codex-ds 티켓 19 — **설정 nav 행은 위 칸 행과 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 30 · `radius-ctl`(4) · 13/18 400(restart 02a-3 ·
+// 시안 `.ra-sr-row`). 면과 글자는 사이드바 줄 한 벌이다(`sidebarRowTone`) — 켜진 항목은 고른 면 `fill-hover`와 `fg` 글자, 안 켜진 줄은
+// `fg-sidebar` 글자이고 지나면 그보다 옅은 `fill-soft` 면이다(시안 `.ra-sr-row:hover` · `.ra-sr-row.on`). **라이트에서는 `fg-sidebar`가 `fg`와
+// 같아 켜진 항목은 면으로만 갈린다**(02a-1 — 시안 값). 한때(02 티켓 05 – 02a-2) 30 · `radius-lg` · 14였고 hover와 고른 면이 같은 투명
+// `fill-nav-selected`라 글자 색(`fg` · `fg-sidebar`)으로 갈렸다. 같은 사이드바 자리에 갈아 서는 nav라 규격이 갈리면 들어가는 순간 행이 튄다.
+// 값은 토큰에서 읽어 맞댄다.
+test("설정 nav 행은 30 · radius-ctl · 13/400이고, 켜진 항목은 fill-hover 면에 fg 글자 · 지나는 항목은 fill-soft 면이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
 
-  const [줄면, 짙은글자, 줄글자] = [
-    await 토큰색(page, "--fill-nav-selected"),
+  const [고른면, 짙은글자, 줄글자, 지나는면] = [
+    await 토큰색(page, "--fill-hover"),
     await 토큰색(page, "--fg"),
     await 토큰색(page, "--fg-sidebar"),
+    await 토큰색(page, "--fill-soft"),
   ];
-  expect(짙은글자, "fg와 fg-sidebar가 같은 색이다 — 켜진 항목을 가를 것이 없다").not.toBe(줄글자);
+  // 앵커: 고른 면과 지나는 면이 갈린다 — 라이트에서는 글자가 같아 켜진 항목을 가르는 것이 이 면뿐이다.
+  expect(고른면, "fill-hover와 fill-soft가 같은 색이다 — 켜진 항목을 가를 것이 없다").not.toBe(지나는면);
+  const 줄면 = 고른면;
   const 행높이 = await 토큰값(page, "height", "--size-row-nav");
-  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-ctl");
   const 면 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "background-color"))[0];
   const 글자색 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "color"))[0];
 
@@ -107,13 +111,13 @@ test("설정 nav 행은 30 · radius-lg · 400이고, 켜진 항목은 fill-nav-
   expect([await 글자색("터미널"), await 글자색("알림")], "켜진 항목 fg · 안 켜진 항목 fg-sidebar").toEqual([짙은글자, 줄글자]);
   for (const name of ["터미널", "알림"] as const) {
     expect(await 칠한값(켜짐(page, name), "height", "border-top-left-radius"), `${name} 행`).toEqual([행높이, 반경]);
-    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "400"]);
+    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["13px", "400"]);
   }
 
   // 앵커: 쉴 때 안 켜진 항목에는 면이 없다 — 아래 「지나는 면」이 늘 칠해진 면을 잰 것이 아니다.
   expect(await 면("알림"), "쉬는 안 켜진 항목").toBe("rgba(0, 0, 0, 0)");
   await 설정항목(page, "알림").hover();
-  await expect.poll(() => 면("알림")).toBe(줄면);
+  await expect.poll(() => 면("알림")).toBe(지나는면);
   // 켜진 항목은 옆을 지나도 그 면 · 그 글자다.
   expect([await 면("터미널"), await 글자색("터미널")]).toEqual([줄면, 짙은글자]);
 
@@ -213,7 +217,7 @@ test("앱을 켜면 새 Thread이고, 앞 판이 남긴 `last-mode`를 다시 �
   await expect(page).toHaveURL("/");
 
   // 다른 화면을 지나도 그대로다 — 마지막 자리는 세션 기억이다.
-  await 사람메뉴로간다(page, "Terminal");
+  await 가는곳으로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   expect(await page.evaluate(() => localStorage.getItem("last-mode"))).toBe("maison");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -236,7 +240,7 @@ test.describe("앱으로 돌아가기", () => {
     await expect(page).toHaveURL(`/works/${plain.slug}?tab=terminal`);
     // 주소만 보면 화면이 안 서도 초록이다 — 탭 줄과 사이드바가 앱의 것으로 되돌아왔다.
     await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
-    await expect(사람줄(page)).toBeVisible();
+    await expect(설정줄(page)).toBeVisible();
 
     // **push다** — 뒤로가기는 설정의 마지막 항목으로 간다(뒤로가기로 나갔다면 앞 항목에 선다).
     await page.goBack();
@@ -252,7 +256,8 @@ test.describe("앱으로 돌아가기", () => {
     await awaitSpawned(page, 1);
     // 저절로 뜬 셸은 입력 없이 떠나면 닫혀 띠도 함께 내려간다(프로세스 결정 7). 에이전트가 도는 셸은 사람이 친 셸이다.
     await typeIntoShell(page);
-    await page.locator('[data-tab="spec"]').click();
+    // ⌘T의 새 채팅 탭으로 눈을 뗀다(restart 02a-8 — 한때 spec 칸).
+    await page.keyboard.press("Meta+t");
     await expect(page).not.toHaveURL(/tab=terminal/);
     await setWindowFocused(page, false);
     await markAttention(page, { agent: "claude", event: "Stop" });
@@ -263,7 +268,7 @@ test.describe("앱으로 돌아가기", () => {
     await 설정항목(page, "알림").click();
     await 설정항목(page, "앱으로 돌아가기").click();
 
-    await expect(page).toHaveURL(`/works/${plain.slug}`);
+    await expect(page).toHaveURL(`/works/${plain.slug}?tab=chat`);
     await expect(띠(page)).toHaveCount(1);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });

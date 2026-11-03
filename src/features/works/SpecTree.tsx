@@ -12,7 +12,8 @@ import type { SpecTreeItem } from "./types";
 
 // 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 6px · hover
 // `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
-// `selected-row`에 굵기 500이다.
+// `selected-row`의 면만이고 굵기는 그대로 400이다(restart 시안 `.ra-tree-row.on` — 모든 트리가 면으로만 고른다, restart 03-12b). 한때 DS
+// `.at-tree-row.is-on`대로 500이었다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 // 글자색은 여기 없다 — 흐린 행(`DIM`)과 갈리는 자리라 행이 고른다.
@@ -26,10 +27,24 @@ const DIM = "text-(--tree-row-dim)";
 // 줄 사이는 1px 틈이다(DS `.at-tree` — 사이드바 · 목록 칸의 행 사이 2보다 촘촘하다). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-px";
 
-// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
-// 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
-// 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
-export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px(촘촘한 행은 12px — 보드 `.ra-tree-row`의 `8 + 깊이 × 12`, 목록 · 상세 판의
+// 트리는 18px — 아래 `PLACE_ROWS`). 폴더 행 · 파일 행이 함께 읽는다. 같은 식을 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서
+// 시작한다. 인라인 style인 것은 깊이가 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을
+// 읽는다.
+export const treeIndent = (depth: number, dense = false, place = false) => ({
+  paddingLeft: 8 + depth * (place ? 18 : dense ? 12 : 14),
+});
+
+// **촘촘한 행**(restart 02b-8 · 보드 `.ra-tree-row` — SummarySheet 「넓힌 카드 — Project」) — 넓힌 카드의 Project 트리(files 트리)가 쓴다. 24 ·
+// 둥글기 `radius-ctl` 4 · 줄 사이 2 · 폴더 행도 본문 글자색이고, 파일 행 앞은 확장자 꼬리표가 아니라 그 첫 글자(`ExtMark`)다. spec 패널의
+// 트리(시안 Shell 「spec 패널」 — restart 03-12a)와 Archive 상세의 「문서」 트리(03-4)도 이 행이다 — 이제 모든 트리가 촘촘한 행이라 28 · 둥글기
+// 10 · 사이 1의 행(DS `.at-tree-row`)을 부르는 자리가 없다.
+const DENSE_ROW = "h-6 rounded-ctl";
+const DENSE_ROWS = "flex flex-col gap-0.5";
+
+// **목록 · 상세 판의 트리**(restart 03-12b · 보드 Places `.pl-tree`) — Archive 상세의 「문서」 트리. 촘촘한 행 그대로에 줄 사이 3(판 트리의 `gap: 1px`
+// + 행의 `margin-bottom: 2px` — 줄 간격 27)이고, 한 단이 18이라 자식 줄의 글리프가 부모 폴더 이름 아래에 선다(보드 `pad: child ? 26 : 8`).
+const PLACE_ROWS = "flex flex-col gap-0.75";
 
 /**
  * 트리 행이 읽는 항목의 모양 — spec 트리(`SpecTreeItem`)와 files 트리가 같은 행을 쓴다(git-integration 결정 37). `children`은
@@ -50,6 +65,11 @@ export interface RowLook {
   dim?: boolean;
   /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」). */
   note?: string;
+  /**
+   * 이 작업공간에서 바뀐 파일이다 — 이름이 파란 글자이고 행 끝에 파란 점이 선다(보드 `.ra-tree-row[data-changed]` · `.mod`). 넓힌 카드의
+   * Project 트리가 그 Project의 바뀐 파일에 단다 — 누르면 변경을 연다(`treePick`).
+   */
+  changed?: boolean;
 }
 
 interface TreeProps {
@@ -63,6 +83,11 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼과, 그 행의 대상 메뉴(⇧F10 · 메뉴 키 · 우클릭)의 「경로 복사」 (생략 시 둘 다 미표시)
   onCopy?: (path: string) => void;
+  // 촘촘한 행으로 그린다(`TreeRows`의 `dense` — 보드 `.ra-tree-row` 24). Archive 상세의 「문서」 트리(restart 03-4 · 보드 Places `.pl-tree`)와
+  // spec 패널의 트리(restart 03-12a · 시안 Shell 「spec 패널」)가 쓴다.
+  dense?: boolean;
+  // 목록 · 상세 판의 트리로 그린다(`TreeRows`의 `place` — 촘촘한 행에 줄 사이 3 · 한 단 18). Archive 상세의 「문서」 트리다(restart 03-12b).
+  place?: boolean;
 }
 
 // **트리 하나가 Tab 정류장 하나다**(roving — codex-ds 스펙 §9 · S10, `@/lib/roving`). ↑↓는 보이는 행(펼친 폴더의 자식까지)을 화면
@@ -73,12 +98,12 @@ interface TreeProps {
 // 경로 복사 버튼은 **Tab 정류장이 아니다**(행 안 버튼은 빠진다) — 키보드의 길은 그 파일 행의 대상 메뉴(⇧F10 · 메뉴 키)의 「경로
 // 복사」이고 같은 동작이다(구현 노트 Q16). 메뉴는 `onCopy`가 있을 때만 선다 — 없으면 메뉴에 남는 항목이 없다.
 
-function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, dense = false, place = false }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트를 넘어 살지 않는다. **언제
   // 리마운트하는지는 트리를 세우는 패널이 정하고 두 패널이 다르다:**
-  // - 작업 패널은 패널을 접을 때 트리를 새로 세운다(`WorkPanel`의 `treeGeneration`). 작업 전환은
-  //   리마운트가 아니다 — 결정 49가 패널을 화면으로 올리며 `key`를 떼서, 작업을 옮겨도 이 기억이
-  //   유지된다(그 결정이 감수한 것이다).
+  // - spec 패널은 트리를 새로 세우지 않는다 — 패널을 여닫아도 접어 둔 폴더가 그대로다(restart 02a-14 · 스토리 83). 한때
+  //   패널을 접을 때마다 새로 세웠다(`treeGeneration`). 작업 전환도 리마운트가 아니다 — 결정 49가 패널을 화면으로 올리며
+  //   `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다). 작업공간을 떠나면 화면과 함께 내려간다.
   // - spec 목록 패널은 아카이브마다 새로 세운다(`ArchivePage`의 `key`). 패널을 접었다 펴도 그대로다.
   //
   // 손으로 바꾼 것만 기억하고 기본값은 매번 받은 트리의 파일·폴더에서 낸다. 판이 새로 생겼을 때
@@ -95,7 +120,7 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
 
   const tree = (menu?: TargetRegion) => (
     <div
-      className={cn(ROWS, "shrink-0")}
+      className={cn(place ? PLACE_ROWS : dense ? DENSE_ROWS : ROWS, "shrink-0")}
       onContextMenu={menu?.onContextMenu}
       onFocus={roving.box.onFocus}
       onKeyDown={(event) => {
@@ -114,6 +139,8 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
         onSelect={onSelect}
         onCopy={onCopy}
         lookOf={specLook}
+        dense={dense || place}
+        place={place}
       />
     </div>
   );
@@ -204,7 +231,7 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
   current: string | null;
   /**
    * 트리의 Tab 정류장 행(경로) — 그 행만 `tabIndex={0}`이고 나머지는 `-1`이다(roving, SpecTree 머리말). 안 받으면(files 트리) 행은
-   * roving에 들지 않는다 — `tabIndex` · `data-roving`을 달지 않는다.
+   * roving에 들지 않는다 — `data-roving`을 달지 않고 행마다 `tabIndex={0}`이다(맨 단추면 WebKit Tab이 지나친다, restart 03-13c).
    */
   stop?: string | null;
   /** 폴더가 펼쳐져 있는가 — 「처음에 펼쳐 둘 폴더」의 규칙도 여기 든다(spec: 최신 판만, files: 아무것도). */
@@ -222,11 +249,16 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
    * 안 읽은 폴더(gitignore에 걸린 폴더)가 펼칠 때 한 겹 읽어 그 자리에 「읽는 중」 · 행 · 까닭을 세운다(git-integration 티켓 02).
    */
   folderBody?: (item: T, depth: number) => ReactNode;
+  /** 촘촘한 행으로 그린다(위 `DENSE_ROW` — 넓힌 카드의 Project 트리). 안 받으면 spec 패널의 행이다. */
+  dense?: boolean;
+  /** 목록 · 상세 판의 트리로 그린다(위 `PLACE_ROWS` — 줄 사이 3 · 한 단 18). `dense`와 함께 받는다. */
+  place?: boolean;
 }
 
-// roving에 든 트리면 정류장 행만 Tab이 앉는다(SpecTree 머리말). `stop`을 안 받은 트리는 행에 아무것도 달지 않는다.
+// roving에 든 트리면 정류장 행만 Tab이 앉는다(SpecTree 머리말). `stop`을 안 받은 트리는 행마다 Tab이 앉는다 — `tabIndex`를 적지 않으면
+// WebKit의 Tab이 맨 `<button>`을 지나친다(`button-tab-guard.test.ts`, restart 03-13c — 한때 아무것도 달지 않았다).
 const rovingOf = (path: string, stop: string | null | undefined) =>
-  stop === undefined ? {} : { tabIndex: path === stop ? 0 : -1, [ROVING]: path };
+  stop === undefined ? { tabIndex: 0 } : { tabIndex: path === stop ? 0 : -1, [ROVING]: path };
 
 // 폴더는 Collapsible이다(판 4, 스토리 114). 행이 트리거라 `aria-expanded`를 스스로 달고, 자식 줄은 패널이다.
 // 기본 변형이라 움직임 없이 **바로** 접히고 닫히면 언마운트된다 — 지금까지의 조건부 렌더와 같다.
@@ -245,7 +277,10 @@ export function TreeRows<T extends TreeRowItem<T>>({
   onCopy,
   lookOf,
   folderBody,
+  dense = false,
+  place = false,
 }: TreeRowsProps<T>) {
+  const rows = place ? PLACE_ROWS : dense ? DENSE_ROWS : ROWS;
   return (
     <>
       {items.map((item) => {
@@ -259,11 +294,11 @@ export function TreeRows<T extends TreeRowItem<T>>({
               key={item.path}
               open={expanded}
               onOpenChange={(open) => onOpenChange(item.path, open)}
-              className={ROWS}
+              className={rows}
             >
               <CollapsibleTrigger
-                className={cn(COLLAPSE_ROW, look.dim ? DIM : "text-fg-secondary")}
-                style={treeIndent(depth)}
+                className={cn(COLLAPSE_ROW, dense && DENSE_ROW, look.dim ? DIM : dense ? "text-fg" : "text-fg-secondary")}
+                style={treeIndent(depth, dense, place)}
                 aria-description={look.note}
                 {...rovingOf(item.path, stop)}
               >
@@ -283,7 +318,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                     디스크의 이름과 어긋나면 안 된다. 판 폴더 이름은 길어서 자른다 */}
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </CollapsibleTrigger>
-              <CollapsibleContent className={ROWS}>
+              <CollapsibleContent className={rows}>
                 {body !== undefined ? (
                   body
                 ) : (
@@ -298,6 +333,8 @@ export function TreeRows<T extends TreeRowItem<T>>({
                     onCopy={onCopy}
                     lookOf={lookOf}
                     folderBody={folderBody}
+                    dense={dense}
+                    place={place}
                   />
                 )}
               </CollapsibleContent>
@@ -312,7 +349,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
         //
         // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
         // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-fill-soft를 붙인다.
-        // 글자색은 고르든 안 고르든 본문 색이다 — 고른 행은 면과 굵기가 말한다(DS `.at-tree-row.is-on`).
+        // 글자색 · 굵기는 고르든 안 고르든 같다 — 고른 행은 면이 말한다(restart 시안 `.ra-tree-row.on`).
         // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
         // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
         // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
@@ -326,7 +363,8 @@ export function TreeRows<T extends TreeRowItem<T>>({
             <div
               className={cn(
                 "group flex h-7 items-center rounded-lg pr-1 text-chat-meta transition-colors",
-                item.path === current ? "selected-row font-medium" : "hover:bg-fill-soft",
+                dense && DENSE_ROW,
+                item.path === current ? "selected-row" : "hover:bg-fill-soft",
               )}
             >
               {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
@@ -343,17 +381,22 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 }}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
+                  dense && "rounded-ctl pr-2",
                   onCopy && "pr-1.5",
                   look.dim && DIM,
                 )}
-                style={treeIndent(depth)}
+                style={treeIndent(depth, dense, place)}
                 aria-description={look.note}
-                // 고른 행은 면과 굵기로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
+                // 고른 행은 면으로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
                 // 선 파일 탭의 파일이다.
                 aria-current={item.path === current ? "page" : undefined}
+                data-changed={look.changed ? "" : undefined}
               >
-                <FileGlyph name={item.name} glyph={look.glyph} />
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {dense && !look.glyph ? <ExtMark name={item.name} /> : <FileGlyph name={item.name} glyph={look.glyph} />}
+                <span className={cn("min-w-0 flex-1 truncate", look.changed && "text-(--tree-row-changed)")}>{item.name}</span>
+                {look.changed && (
+                  <span aria-hidden data-changed-dot="" className="size-1.5 shrink-0 rounded-full bg-(--tree-row-changed-dot)" />
+                )}
               </button>
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
@@ -386,6 +429,50 @@ const GLYPH = "size-3.5 shrink-0 text-fg-tertiary";
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
 function FolderGlyph({ glyph: Glyph }: { glyph: LucideIcon | null }) {
   return Glyph && <Glyph className={GLYPH} />;
+}
+
+/**
+ * 촘촘한 행의 확장자 표(보드 `.ra-ext` — 14 칸 · 고정폭 9 · 600). 그 확장자의 첫 글자가 문법 색으로 선다(`md` 이름 · `ts` 강조 · `rs`
+ * 리터럴 · `json` 속성 · `yaml` 변수, 그 밖은 `fg-tertiary`). 같은 말을 하는 확장자는 한 칸으로 읽는다(`tsx` · `js` → `ts` …). 확장자가 없으면
+ * 아무것도 그리지 않는다. 글자는 그림이라 행의 이름에 들지 않는다(`aria-hidden`).
+ */
+const EXT_KIND: Record<string, string> = {
+  md: "md",
+  mdx: "md",
+  ts: "ts",
+  tsx: "ts",
+  js: "ts",
+  jsx: "ts",
+  mjs: "ts",
+  cjs: "ts",
+  rs: "rs",
+  json: "json",
+  toml: "toml",
+  yaml: "yaml",
+  yml: "yaml",
+};
+const EXT_COLOR: Record<string, string> = {
+  md: "text-syntax-name",
+  ts: "text-accent",
+  rs: "text-syntax-literal",
+  json: "text-syntax-attribute",
+  yaml: "text-syntax-variable",
+};
+
+function ExtMark({ name }: { name: string }) {
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (!ext) return null;
+  const kind = EXT_KIND[ext] ?? ext;
+  return (
+    <span
+      aria-hidden
+      data-ext={kind}
+      className={cn("ext-mark", EXT_COLOR[kind] ?? "text-fg-tertiary")}
+    >
+      {ext[0].toUpperCase()}
+    </span>
+  );
 }
 
 // 파일 행의 글리프. 행의 겉이 글리프를 줬으면(spec: 항목이 준 아이콘) **확장자 라벨 대신** 그것이다. 라벨은 글자라 이름

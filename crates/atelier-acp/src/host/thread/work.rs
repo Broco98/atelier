@@ -4,12 +4,12 @@
 //!   `question` 줄(`card: work`)로 세우고, 사람이 고를 때까지 그 도구 호출(연결마다의 스레드)이 기다린다. 카드에는 등록된 Project가
 //!   모두 선다 — Host가 추천한 것이 먼저 그 까닭과 함께, 나머지는 사람이 넣을 수 있게(스토리 90). 저장소의 브랜치들도 싣는다 — 카드의
 //!   브랜치 칸이 그것으로 「api-server의 fix/... 규칙을 따름」을 말한다.
-//! - **「Work 만들기」**([`ConversationHost::answer_work`]) — core가 worktree 없이 Work를 만든다(S21 · v1 티켓 29). 그리고 이 Thread의
+//! - **「작업공간 만들기」**([`ConversationHost::answer_work`]) — core가 worktree 없이 Work를 만든다(S21 · v1 티켓 29). 그리고 이 Thread의
 //!   `work`를 적고(연결은 `thread.json`의 `work` 한 곳이다 — §19) `work` 줄 「Work … 을 만들고 이 Thread에 연결함」을 남긴다. 그
 //!   Thread의 떠 있는 Session들은 곧바로 그 Work의 판정 · 쓰기 자리를 쓴다 — 턴 가운데라도 Host가 spec 폴더에 설계 문서를 쓸 수 있게.
 //!   만들지 못하면(브랜치가 저장소에 이미 있다 · 사라진 Project) 아무것도 적지 않고 그 까닭으로 실패한다 — 카드는 그대로 서 있고 사람이
 //!   고쳐 다시 고른다.
-//! - **「Work 없이 계속」**은 도구의 결과로 그렇게 돌려준다. 아무것도 만들지 않는다.
+//! - **「작업공간 없이 계속」**은 도구의 결과로 그렇게 돌려준다. 아무것도 만들지 않는다.
 //! - 사람이 Thread를 멈추면 서 있는 카드를 거둔다(`withdrawn` — 도구는 「사람이 멈춤」). 그 Session을 표에서 꺼내면(죽음 · 다시 띄우기 ·
 //!   끄기) 카드도 닫힌다.
 //! - **카드를 세우고 기다리는 길은 하나다**([`ConversationHost::ask_card`]) — Work 밖 Project 카드(v1 티켓 32, [`super::project`])도 같은
@@ -18,15 +18,17 @@
 //!   이어 연다(v1 티켓 32, [`ConversationHost::move_if_needed`]).
 
 use std::collections::HashMap;
-use std::sync::{mpsc, Mutex, MutexGuard};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
-use atelier_core::{PolicyPlace, ProjectView, RecordKind};
+use atelier_core::{PolicyPlace, ProjectView, RecordKind, Runtime};
 use serde_json::{json, Value};
 
 use super::project::Outside;
 use super::setting::ProjectAddCard;
-use super::space::SpaceCard;
-use super::{ConversationHost, SessionKey};
+use super::service::ServiceCard;
+use super::ConversationHost;
 use crate::host::WorkAt;
 use crate::thread_tools::{self, Proposal};
 use crate::HostError;
@@ -34,20 +36,20 @@ use crate::HostError;
 /// Work 만들기 카드에서 사람이 고른 것.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkChoice {
-    /// 「Work 만들기」 — 카드에서 고친 Project들과 브랜치(Project가 없으면 없어도 된다).
+    /// 「작업공간 만들기」 — 카드에서 고친 Project들과 브랜치(Project가 없으면 없어도 된다).
     Create { projects: Vec<String>, branch: Option<String> },
-    /// 「Work 없이 계속」.
+    /// 「작업공간 없이 계속」.
     Continue,
 }
 
-/// 서 있는 카드들 — 요청 id → 카드. 호스트에 하나다. 잠금은 짧게만 쥔다. Work 만들기 카드와 Work 밖 Project 카드(v1 티켓 32) · Space 질문
+/// 서 있는 카드들 — 요청 id → 카드. 호스트에 하나다. 잠금은 짧게만 쥔다. Work 만들기 카드와 Work 밖 Project 카드(v1 티켓 32) · Service 질문
 /// 카드(03 티켓 08) · Project 추가 카드(03 티켓 12)가 함께 선다.
 #[derive(Default)]
 pub(super) struct Proposals(Mutex<HashMap<String, Asked>>);
 
-/// 서 있는 카드 하나 — 물은 Session과 카드의 값, 그리고 기다리는 도구 호출.
+/// 서 있는 카드 하나 — 물은 Thread와 카드의 값, 그리고 기다리는 도구 호출.
 pub(super) struct Asked {
-    pub(super) key: SessionKey,
+    pub(super) thread: String,
     pub(super) card: Card,
     settled: mpsc::Sender<Settled>,
 }
@@ -58,8 +60,8 @@ pub(super) enum Card {
     Work(Proposal),
     /// Work 밖 Project(v1 티켓 32) — 고치려는 Project와 이은 Work.
     Project(Outside),
-    /// 어느 Space에서 할까(03 티켓 08) — 고를 수 있는 Space.
-    Space(SpaceCard),
+    /// 어느 Service에서 할까(03 티켓 08) — 고를 수 있는 Service.
+    Service(ServiceCard),
     /// git이 아닌 폴더 · 저장소의 하위 폴더를 어떻게 추가할까(03 티켓 12) — 물은 폴더와 그 뿌리.
     ProjectAdd(ProjectAddCard),
 }
@@ -70,7 +72,7 @@ impl Card {
         match self {
             Card::Work(_) => "work",
             Card::Project(_) => "project",
-            Card::Space(_) => "space",
+            Card::Service(_) => "service",
             Card::ProjectAdd(_) => "project-add",
         }
     }
@@ -80,7 +82,7 @@ impl Card {
         match self {
             Card::Work(_) => "Work 만들기 카드",
             Card::Project(_) => "Work 밖 Project 카드",
-            Card::Space(_) => "Space 질문 카드",
+            Card::Service(_) => "Service 질문 카드",
             Card::ProjectAdd(_) => "Project 추가 카드",
         }
     }
@@ -94,8 +96,21 @@ pub(super) enum Settled {
     Stopped,
 }
 
-/// 「Work 없이 계속」의 도구 결과(S13 표 「사용자가 Work 없이 계속하기로 함」).
+/// 「작업공간 없이 계속」의 도구 결과(S13 표 「사용자가 Work 없이 계속하기로 함」).
 const CONTINUED: &str = "사용자가 Work 없이 계속하기로 함 — Work를 만들지 않고 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.";
+
+/// 한도가 찬 뒤 사람의 답이 카드를 쥐고 있으면 다시 꺼내 보기까지의 틈 — 답이 실패해 카드가 다시 서면 그때 닫는다.
+const CARD_RECHECK: Duration = Duration::from_millis(50);
+
+/// 카드를 기다린 끝.
+enum Waited {
+    /// 카드가 닫혔다 — 사람이 골랐거나 Thread를 멈췄다.
+    Settled(Settled),
+    /// 사람이 답하기 전에 그 Session이 끝났다.
+    Closed,
+    /// 한도가 차 앱이 카드를 꺼내 닫았다(Codex 채팅).
+    Unanswered,
+}
 
 impl Asked {
     /// 기다리던 도구 호출에 닫힘을 건넨다 — 이미 떠났으면(그 Session이 끝났다) 받을 이가 없다.
@@ -112,7 +127,7 @@ impl Proposals {
     /// 그 Thread의 그 종류 카드를 꺼낸다 — 꺼낸 뒤로는 다른 답이 닿지 않는다. 다른 Thread · 다른 종류의 카드면 꺼내지 않는다.
     pub(super) fn take(&self, thread: &str, request: &str, kind: &str) -> Option<Asked> {
         let mut asked = self.lock();
-        asked.get(request).filter(|one| one.key.thread == thread && one.card.kind() == kind)?;
+        asked.get(request).filter(|one| one.thread == thread && one.card.kind() == kind)?;
         asked.remove(request)
     }
 
@@ -122,8 +137,8 @@ impl Proposals {
     }
 
     /// 그 Session의 카드를 닫는다 — 기다리던 도구 호출은 받을 것 없이 풀린다(Session을 표에서 꺼냈다).
-    pub(super) fn close_for(&self, key: &SessionKey) {
-        self.lock().retain(|_, one| &one.key != key);
+    pub(super) fn close_for(&self, thread: &str) {
+        self.lock().retain(|_, one| one.thread != thread);
     }
 
     /// 카드를 모두 닫는다 — 호스트 끄기.
@@ -134,13 +149,13 @@ impl Proposals {
     /// 그 Thread의 카드를 모두 꺼낸다 — 사람이 Thread를 멈췄다.
     fn take_thread(&self, thread: &str) -> Vec<Asked> {
         let mut asked = self.lock();
-        let ids: Vec<String> = asked.iter().filter(|(_, one)| one.key.thread == thread).map(|(id, _)| id.clone()).collect();
+        let ids: Vec<String> = asked.iter().filter(|(_, one)| one.thread == thread).map(|(id, _)| id.clone()).collect();
         ids.iter().filter_map(|id| asked.remove(id)).collect()
     }
 }
 
 impl ConversationHost {
-    /// Work 만들기 카드의 답(v1 티켓 30 · §11) — 사람이 고른 것으로 그 카드를 닫는다. 「Work 만들기」는 core로 Work를 만들고 이 Thread를
+    /// Work 만들기 카드의 답(v1 티켓 30 · §11) — 사람이 고른 것으로 그 카드를 닫는다. 「작업공간 만들기」는 core로 Work를 만들고 이 Thread를
     /// 잇는다 — 만들지 못하면 아무것도 적지 않고 그 까닭으로 실패하며 카드는 그대로 서 있다. 이미 닫힌 카드면
     /// [`HostError::QuestionClosed`]다. 기다리지 않는다 — 도구의 결과와 Host의 다음 말은 기록 줄로 온다.
     pub fn answer_work(&self, thread: &str, request: &str, choice: WorkChoice) -> Result<(), HostError> {
@@ -152,7 +167,7 @@ impl ConversationHost {
         let text = match choice {
             WorkChoice::Continue => {
                 let line = json!({"state": "answered", "requestId": request, "card": "work", "choice": "continue"});
-                self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), line).map_err(HostError::Record)?;
+                self.thread_log(thread)?.write(RecordKind::Question, line).map_err(HostError::Record)?;
                 CONTINUED.to_owned()
             }
             WorkChoice::Create { projects, branch } => match self.create_work(request, &asked, &projects, branch.as_deref()) {
@@ -168,19 +183,19 @@ impl ConversationHost {
         Ok(())
     }
 
-    /// 「Work 만들기」 — Work를 worktree 없이 만들고 이 Thread를 잇는다. Agent에게 돌려줄 글을 돌려준다.
+    /// 「작업공간 만들기」 — Work를 worktree 없이 만들고 이 Thread를 잇는다. Agent에게 돌려줄 글을 돌려준다.
     fn create_work(&self, request: &str, asked: &Asked, projects: &[String], branch: Option<&str>) -> Result<String, HostError> {
-        let thread = &asked.key.thread;
+        let thread = &asked.thread;
         let not_created = |why: String| HostError::WorkNotCreated(why);
         let file = self.read_thread_file(thread)?;
         if let Some(work) = &file.work {
-            return Err(not_created(format!("이 Thread는 이미 Work `{work}`에 이어져 있어요")));
+            return Err(not_created(format!("이 채팅은 이미 작업공간 `{work}`에 이어져 있어요")));
         }
         let Card::Work(proposal) = &asked.card else { unreachable!("Work 만들기 카드만 꺼냈다") };
         // 같은 slug의 Work가 그사이 섰으면 core는 그 Work를 「다시 연다」 — 새 Work가 아니다.
         let works = atelier_core::works_in(&self.data_root);
         if atelier_core::read_work(&works, &proposal.slug).is_ok() {
-            return Err(not_created(format!("Work `{}`가 이미 있어요 — Host에게 다른 slug로 다시 제안해 달라고 해 주세요", proposal.slug)));
+            return Err(not_created(format!("작업공간 `{}`가 이미 있어요 — 다른 slug로 다시 제안해 달라고 해 주세요", proposal.slug)));
         }
         let branch = if projects.is_empty() { None } else { branch.map(str::trim).filter(|branch| !branch.is_empty()) };
         atelier_core::start_work_deferred(
@@ -203,33 +218,34 @@ impl ConversationHost {
                 eprintln!("물어보는 정도를 Work로 옮기지 못했습니다: {error}");
             }
         }
-        // Thread의 Space를 Work로 옮기고 Thread의 칸은 비운다(03 §9) — 이은 뒤로는 Work의 Space를 따르므로(§7 규칙 1) 범위가 그대로다.
-        // 옮기지 못했으면 칸은 남긴다 — 읽히지는 않지만(규칙 1) 사람이 고른 것을 잃지 않게.
-        let moved = file.space.as_deref().is_none_or(|space| match atelier_core::update_work_space(&works, &slug, Some(space)) {
+        // Thread의 Service를 Work로 옮기고 Thread의 칸은 비운다(03 §9) — 이은 뒤로는 Work의 Service를 따르므로(§7 규칙 1) 범위가 그대로다.
+        // 옮기지 못했으면 칸은 남긴다 — 읽히지는 않지만(규칙 1) 사람이 고른 것을 잃지 않게. Project 범위는 Work 밖 Thread의 값이라 지운다.
+        let moved = file.service.as_deref().is_none_or(|service| match atelier_core::update_work_service(&works, &slug, Some(service)) {
             Ok(_) => true,
             Err(error) => {
-                eprintln!("Space를 Work로 옮기지 못했습니다: {error}");
+                eprintln!("Service를 Work로 옮기지 못했습니다: {error}");
                 false
             }
         });
         self.change_thread(thread, |file| {
             file.work = Some(slug.clone());
+            file.project = None;
             if moved {
-                file.space = None;
+                file.service = None;
             }
         })?;
-        self.threads.link_sessions(thread, &slug);
+        self.threads.link_session(thread, &slug);
         let work_at = self.open_work(&slug)?;
         let log = self.thread_log(thread)?;
         let answered = json!({
             "state": "answered", "requestId": request, "card": "work", "choice": "create",
             "work": slug, "projects": projects, "branch": work_at.meta.branch,
         });
-        log.write(RecordKind::Question, Some(&asked.key.handle), answered).map_err(HostError::Record)?;
+        log.write(RecordKind::Question, answered).map_err(HostError::Record)?;
         let created = json!({
             "state": "created", "slug": slug, "title": work_at.meta.title, "branch": work_at.meta.branch, "projects": projects,
         });
-        log.write(RecordKind::Work, None, created).map_err(HostError::Record)?;
+        log.write(RecordKind::Work, created).map_err(HostError::Record)?;
         Ok(format!(
             "사람이 Work를 만들었다 — 이 Thread가 그 Work에 이어졌다. 사람이 카드에서 Project와 브랜치를 고쳤을 수 있다: 아래가 \
              정본이다.\n\n{}",
@@ -251,14 +267,14 @@ impl ConversationHost {
     }
 
     /// 「Work 읽기」 — 이 Thread가 이은 Work. 읽기만 한다.
-    pub(super) fn get_work_tool(&self, key: &SessionKey) -> Value {
-        let file = match self.read_thread_file(&key.thread) {
+    pub(super) fn get_work_tool(&self, thread: &str) -> Value {
+        let file = match self.read_thread_file(thread) {
             Ok(file) => file,
             Err(error) => return thread_tools::said(&error.to_string(), true),
         };
         let Some(slug) = file.work else {
             return thread_tools::said(
-                "이 Thread는 아직 Work에 이어지지 않았다 — Thread 폴더에서 일한다. 일이 커지면 propose_work로 Work를 제안한다.",
+                "이 Thread는 아직 Work에 이어지지 않았다 — Thread 폴더의 `work/`에서 일한다. 일이 커지면 propose_work로 Work를 제안한다.",
                 false,
             );
         };
@@ -270,41 +286,78 @@ impl ConversationHost {
 
     /// 「Work 만들기 제안」(§11) — 카드를 세우고 사람이 고를 때까지 기다린다. **막히는 호출이다**(연결마다의 스레드에서 불린다).
     /// 이미 Work에 이은 Thread · 등록되지 않은 Project · 이미 쓰인 slug면 카드를 세우지 않고 그 까닭을 도구의 실패로 돌려준다.
-    pub(super) fn propose_work(&self, key: &SessionKey, proposal: Proposal) -> Value {
-        match self.work_card(key, &proposal) {
-            Ok(fields) => self.ask_card(key, Card::Work(proposal), fields),
+    pub(super) fn propose_work(&self, thread: &str, proposal: Proposal) -> Value {
+        match self.work_card(thread, &proposal) {
+            Ok(fields) => self.ask_card(thread, Card::Work(proposal), fields),
             Err(why) => thread_tools::said(&why, true),
         }
     }
 
     /// 카드를 세우고 사람이 고를 때까지 기다린다 — 카드의 값(`fields`)을 `question` 줄(`asked`)로 적고, 답 · 멈춤 · 닫힘 가운데 먼저
-    /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Space 질문(03 티켓 08) ·
+    /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Service 질문(03 티켓 08) ·
     /// Project 추가(03 티켓 12)가 이 길 하나를 쓴다.
-    pub(super) fn ask_card(&self, key: &SessionKey, card: Card, fields: Value) -> Value {
+    pub(super) fn ask_card(&self, thread: &str, card: Card, fields: Value) -> Value {
         let request = uuid::Uuid::new_v4().to_string();
         let (kind, label) = (card.kind(), card.label());
         let (settled, waiting) = mpsc::channel();
-        self.threads.proposals.lock().insert(request.clone(), Asked { key: key.clone(), card, settled });
+        self.threads.proposals.lock().insert(request.clone(), Asked { thread: thread.to_owned(), card, settled });
         let mut asked = json!({"state": "asked", "requestId": request, "card": kind});
         asked.as_object_mut().expect("객체").extend(fields.as_object().expect("객체").clone());
-        let written = self.thread_log(&key.thread).map_err(|error| error.to_string()).and_then(|log| {
-            log.write(RecordKind::Question, Some(&key.handle), asked).map(drop)
+        let written = self.thread_log(thread).map_err(|error| error.to_string()).and_then(|log| {
+            log.write(RecordKind::Question, asked).map(drop)
         });
         if let Err(why) = written {
-            self.threads.proposals.take(&key.thread, &request, kind);
+            self.threads.proposals.take(thread, &request, kind);
             return thread_tools::said(&format!("{label}를 세우지 못했다 — {why}"), true);
         }
-        match waiting.recv() {
-            Ok(Settled::Said { text, refused }) => thread_tools::said(&text, refused),
-            Ok(Settled::Stopped) => {
-                self.withdraw_card(key, &request, kind, "stopped");
+        match self.wait_card(thread, &request, kind, &waiting) {
+            Waited::Settled(Settled::Said { text, refused }) => thread_tools::said(&text, refused),
+            Waited::Settled(Settled::Stopped) => {
+                self.withdraw_card(thread, &request, kind, "stopped");
                 thread_tools::said(&format!("사람이 멈춤 — 사람이 이 Thread를 멈춰 {label}를 거뒀다"), true)
             }
-            Err(_) => {
-                self.withdraw_card(key, &request, kind, "closed");
+            Waited::Closed => {
+                self.withdraw_card(thread, &request, kind, "closed");
                 thread_tools::said(&format!("{label}가 닫혔다 — 사람이 답하기 전에 이 Session이 끝났다"), true)
             }
+            Waited::Unanswered => {
+                self.withdraw_card(thread, &request, kind, "timeout");
+                thread_tools::said(
+                    &format!(
+                        "사람이 답하지 않았다 — Codex가 도구를 5분까지만 기다려서 그 전에 {label}를 닫았다. 아무것도 바뀌지 않았다. 사람이 \
+                         자리에 없을 수 있으니 같은 것을 다시 묻지 않는다 — 카드 없이 할 수 있는 일을 이어 가고, 정할 것은 답에 적어 사람이 \
+                         돌아와 말로 답하게 한다."
+                    ),
+                    true,
+                )
+            }
         }
+    }
+
+    /// 카드가 닫히기를 기다린다. Codex 채팅이면 한도가 찬 때 카드를 꺼낼 수 있으면 꺼내 닫는다. 꺼낼 수 없으면 사람의 답이 카드를 쥐고
+    /// Work나 worktree를 만드는 중이다 — 그 답이 끝나기를 기다린다. 그러지 않으면 작업공간이 생겼는데 Runtime은 답이 없다고 받는다. 답이
+    /// 실패해 카드가 다시 서면 그때 꺼내 닫는다. Claude 채팅은 한도 없이 기다린다 — Claude Code는 도구를 끊지 않는다.
+    fn wait_card(&self, thread: &str, request: &str, kind: &str, waiting: &mpsc::Receiver<Settled>) -> Waited {
+        let Some(mut wait) = self.card_limit_of(thread) else {
+            return waiting.recv().map_or(Waited::Closed, Waited::Settled);
+        };
+        loop {
+            match waiting.recv_timeout(wait) {
+                Ok(settled) => return Waited::Settled(settled),
+                Err(RecvTimeoutError::Disconnected) => return Waited::Closed,
+                Err(RecvTimeoutError::Timeout) => {
+                    if self.threads.proposals.take(thread, request, kind).is_some() {
+                        return Waited::Unanswered;
+                    }
+                    wait = CARD_RECHECK;
+                }
+            }
+        }
+    }
+
+    /// 그 채팅에서 카드를 기다리는 한도 — Codex 채팅에만 있다(스펙 「01c — Codex」 「도구 제한 시간」).
+    fn card_limit_of(&self, thread: &str) -> Option<Duration> {
+        (self.thread_runtime(thread) == Runtime::Codex).then_some(self.card_limit)
     }
 
     /// 사람이 Thread를 멈췄다 — 그 Thread에 서 있는 카드를 거둔다(기다리던 도구 호출이 `withdrawn` 줄을 적는다).
@@ -314,10 +367,10 @@ impl ConversationHost {
         }
     }
 
-    fn withdraw_card(&self, key: &SessionKey, request: &str, kind: &str, reason: &str) {
+    fn withdraw_card(&self, thread: &str, request: &str, kind: &str, reason: &str) {
         let line = json!({"state": "withdrawn", "requestId": request, "card": kind, "reason": reason});
-        let written = self.thread_log(&key.thread).map_err(|error| error.to_string()).and_then(|log| {
-            log.write(RecordKind::Question, Some(&key.handle), line).map(drop)
+        let written = self.thread_log(thread).map_err(|error| error.to_string()).and_then(|log| {
+            log.write(RecordKind::Question, line).map(drop)
         });
         if let Err(error) = written {
             eprintln!("{error}");
@@ -326,8 +379,8 @@ impl ConversationHost {
 
     /// 카드의 값 — 제목 · slug · 까닭 · 브랜치와 등록된 Project 모두(Host 추천이 먼저, 그 까닭과 함께). 세울 수 없으면 그 까닭(Agent가
     /// 읽고 고쳐 부를 글)이다.
-    fn work_card(&self, key: &SessionKey, proposal: &Proposal) -> Result<Value, String> {
-        let file = self.read_thread_file(&key.thread).map_err(|error| error.to_string())?;
+    fn work_card(&self, thread: &str, proposal: &Proposal) -> Result<Value, String> {
+        let file = self.read_thread_file(thread).map_err(|error| error.to_string())?;
         if let Some(work) = &file.work {
             return Err(format!("이 Thread는 이미 Work `{work}`에 이어져 있다 — get_work로 그 Work를 읽는다."));
         }
@@ -381,29 +434,27 @@ impl ConversationHost {
             "branch": proposal.branch,
             "projects": projects,
         });
-        // 붙을 Space(03 §9) — 받아들이면 이 Thread의 Space가 새 Work로 옮겨 간다. 카드에서 바꾸지 않는다(S8). 파일이 없는 Space는 Space가
+        // 붙을 Service(03 §9) — 받아들이면 이 Thread의 Service가 새 Work로 옮겨 간다. 카드에서 바꾸지 않는다(S8). 파일이 없는 Service는 Service가
         // 없는 것이다(§7 규칙 1) — 줄이 서지 않는다.
-        if let Some(space) = self.scope_of(&file, None).space {
-            card["space"] = json!({"slug": space.slug, "name": space.name});
+        if let Some(service) = self.scope_of(&file, None).service {
+            card["service"] = json!({"slug": service.slug, "name": service.name});
         }
         Ok(card)
     }
 
-    /// Work를 Agent에게 보이는 글 — 머리말의 Work 칸(S10)과 같은 줄에 브랜치와, spec 폴더 안 문서의 배치(spec 레이아웃 — MCP
-    /// `atelier_start_work`가 싣는 것과 같다)를 더한다.
+    /// Work를 Agent에게 보이는 글 — 머리말의 Work 칸(S10)과 같은 줄에 spec 폴더 안 문서의 배치를 더한다.
     fn work_text(&self, slug: &str, work_at: &WorkAt) -> String {
-        let mut text = work_lines(slug, work_at);
-        if let Some(branch) = &work_at.meta.branch {
-            text.push_str(&format!("  - 브랜치: `{branch}` — Project마다 이 브랜치로 worktree가 선다\n"));
-        }
+        format!("{}\n{}", work_lines(slug, work_at), self.spec_layout())
+    }
+
+    /// spec 폴더 안 문서의 배치 — spec 레이아웃을 render한 글이다(MCP `atelier_start_work`가 싣는 것과 같다). 부를 때마다 새로 읽는다.
+    pub(super) fn spec_layout(&self) -> String {
         let resolved = atelier_core::resolve_layout(&self.data_root);
-        let layout =
-            atelier_core::render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref()).text;
-        format!("{text}\n{layout}")
+        atelier_core::render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref()).text
     }
 }
 
-/// 이은 Work의 줄들 — slug · 제목 · spec 폴더, Project마다 worktree 또는 「읽기만」(머리말 S10과 Thread 도구가 함께 쓴다).
+/// 이은 Work의 줄들 — slug · 제목 · spec 폴더, Project마다 worktree 또는 「읽기만」, 브랜치(머리말 S10과 Thread 도구가 함께 쓴다).
 pub(super) fn work_lines(slug: &str, work_at: &WorkAt) -> String {
     let mut text = format!("- Work: `{slug}` — {}\n  - spec 폴더(specDir): `{}`\n", work_at.meta.title, work_at.places.spec.display());
     for (project, tree) in work_at.meta.projects.iter().zip(&work_at.places.worktrees) {
@@ -412,6 +463,9 @@ pub(super) fn work_lines(slug: &str, work_at: &WorkAt) -> String {
         } else {
             text.push_str(&format!("  - Project `{project}`: 읽기만 — worktree가 아직 없다\n"));
         }
+    }
+    if let Some(branch) = &work_at.meta.branch {
+        text.push_str(&format!("  - 브랜치: `{branch}` — Project마다 이 브랜치로 worktree가 선다\n"));
     }
     text
 }

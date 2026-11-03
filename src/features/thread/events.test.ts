@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
+  THREAD_CHUNK_EVENT,
   THREAD_ENGINE_EVENT,
   THREAD_LIST_EVENT,
   THREAD_QUEUE_EVENT,
@@ -19,8 +20,9 @@ describe("Thread 엔진 이벤트", () => {
     return found[1];
   };
 
-  it("Rust가 쏘는 이름과 프런트가 듣는 이름이 같다 — 기록 줄 · 대기 줄 바뀜 · 목록 요약 · 엔진 상태 · 문서 쓰는 중", () => {
+  it("Rust가 쏘는 이름과 프런트가 듣는 이름이 같다 — 기록 줄 · 흐르는 글 · 대기 줄 바뀜 · 목록 요약 · 엔진 상태 · 문서 쓰는 중", () => {
     expect(declared("RECORD_EVENT")).toBe(THREAD_RECORD_EVENT);
+    expect(declared("CHUNK_EVENT")).toBe(THREAD_CHUNK_EVENT);
     expect(declared("QUEUE_EVENT")).toBe(THREAD_QUEUE_EVENT);
     expect(declared("LIST_EVENT")).toBe(THREAD_LIST_EVENT);
     expect(declared("ENGINE_EVENT")).toBe(THREAD_ENGINE_EVENT);

@@ -35,9 +35,9 @@ import { fillToCap, MAX_SHELLS } from "./tab-row";
 const [pinnedWork, plainWork, multiWork] = WORKS;
 
 /**
- * 머리 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
+ * 머리 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업공간 메뉴」). 이름 전체로 집는다.
  */
-const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
+const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업공간 메뉴", exact: true });
 
 /** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — work 메뉴 절과 토스트 절이 함께 쓴다. */
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
@@ -45,13 +45,14 @@ const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", 
 // ── 떠 있는 것의 움직임 (결정 7 → 02 티켓 12) ──
 // 메뉴는 움직이지 않는다 — Codex 메뉴는 한 프레임에 서고 곧바로 걷힌다(02 구현 스펙 §12 · 티켓 12, `dropdown-menu.tsx` 머리말). 한때
 // 페이드와 확대(`duration-dropdown` · 30ms 지연 · 0.98 → 1)로 떴다. 열릴 때 움직이는 메뉴는 Thread 입력창의 모델 피커 하나이고 그것과
-// 동작 줄이기의 전역 규칙은 Thread 화면의 움직임 spec이 잰다. 대표는 셸 열기 `+`다 — 판 3이 처음 들인 떠 있는 부품이다.
+// 동작 줄이기의 전역 규칙은 Thread 화면의 움직임 spec이 잰다. 대표는 탭 줄의 `+`다 — 판 3이 처음 들인 떠 있는 부품이다. 작업공간 화면의
+// `+`는 「새 탭」 메뉴를 연다(restart 02a-8 — 한때 이름이 「셸 열기」였고 메뉴도 그 이름이었다).
 
 test("메뉴는 애니메이션 없이 한 프레임에 선다 — 움직임을 꺼도 같다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
-  const plus = page.getByRole("button", { name: "셸 열기" });
-  const menu = page.getByRole("menu", { name: "셸 열기" });
+  const plus = page.getByRole("button", { name: "새 탭", exact: true });
+  const menu = page.getByRole("menu");
   /** 메뉴 카드와 그 안에 걸린 움직임 — 키프레임도 전이도 없어야 한다. */
   const 움직임 = () =>
     menu.evaluate((el) => ({
@@ -289,7 +290,7 @@ test("Finder가 폴더를 못 열면 그 오류 문장이 「메시지」에 선
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 작업 패널 머리의 「spec 폴더 열기」(codex-ds 스펙 §6 「작업 패널」 — 머리는 「spec」과 spec 폴더 열기다). work 메뉴의 Finder ▸ spec 폴더와
+// 작업 패널 머리의 「spec 폴더 열기」(codex-ds 스펙 §6 「작업공간 패널」 — 머리는 「spec」과 spec 폴더 열기다). work 메뉴의 Finder ▸ spec 폴더와
 // 같은 명령을 slug 하나로 부르고(경로는 백엔드가 푼다 — 스펙 S6), 못 열면 같은 문장이 「메시지」에 선다.
 test("작업 패널 머리에 「spec」과 spec 폴더 열기가 서고, 누르면 그 work의 spec 폴더를 연다 — 못 열면 Finder ▸와 같은 문장이 선다", async ({
   page,
@@ -297,7 +298,7 @@ test("작업 패널 머리에 「spec」과 spec 폴더 열기가 서고, 누르
   await installFixtureBackend(page);
   await page.clock.install();
   await page.goto(`/works/${multiWork.slug}`);
-  const head = page.getByRole("region", { name: "작업 패널", exact: true }).locator('[data-slot="card-head"]');
+  const head = page.getByRole("region", { name: "작업공간 패널", exact: true }).locator('[data-slot="card-head"]');
   const open = head.getByRole("button", { name: "spec 폴더 열기", exact: true });
   await expect(head).toHaveText("spec");
   await expect(open).toBeVisible();
@@ -707,7 +708,7 @@ test("다이어그램의 「코드」는 켬/끔을 말하고, 누르면 그림�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 띄우고 그 말을 설명으로 말하며, Space로 켜고 끈다", async ({
+test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 띄우고 그 말을 설명으로 말하며, Service로 켜고 끈다", async ({
   page,
 }) => {
   await installFixtureBackend(page);

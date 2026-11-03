@@ -18,18 +18,14 @@ use atelier_acp::{AskLevel, ConversationHost, HostError, QuitCounts, StartPicks,
 use common::{assert_all_gone, of_kind, payloads_of, sent_texts, write_script, Sandbox};
 use serde_json::{json, Value};
 
-/// 시험의 Library `host.md` — 모델 · 생각 깊이를 적지 않았다(엔진 기본값).
-const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
-
 /// 그 원문(`FAKE_CLAUDE_FIXTURE`)을 되감는 가짜 claude로 새 Thread를 세운다 — 첫 말이 곧 첫 턴이다. `extra`는 가짜 claude에게
 /// 가는 env다. 호스트 · Thread id · Host의 Session id를 돌려준다.
 fn thread_on(sandbox: &Sandbox, fixture: &str, extra: &[(&str, &str)], first: &str) -> (ConversationHost, String, String) {
-    sandbox.library_agent("host", HOST_MD);
     let mut env = vec![("FAKE_CLAUDE_FIXTURE", fixture)];
     env.extend_from_slice(extra);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &env));
     let thread = host.start_thread(first, ThreadLink::NoWork).expect("새 Thread의 첫 말");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     (host, thread, session)
 }
 
@@ -53,13 +49,12 @@ fn settled(sandbox: &Sandbox, record: &[Value], thread: &str, session: &str) -> 
 #[test]
 fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-stop-host")]));
-    // 녹음(v1 티켓 44 끝 점검)은 「알아서」 Thread다 — 판정이 묻지 않고 허락한 명령이 도는 동안 사람이 멈췄다.
+    // 녹음(v1 티켓 44 끝 점검)은 「묻지 않음」 Thread다 — 판정이 묻지 않고 허락한 명령이 도는 동안 사람이 멈췄다.
     let picks = StartPicks { mode: Some(AskLevel::Auto), ..StartPicks::default() };
     let first = "멈춤 확인 — Bash로 `python3 -c 'import time; time.sleep(40)'`를 앞에서 돌리고 끝나면 FINISHED라고 해";
     let thread = host.start_thread_picking(first, &[], ThreadLink::NoWork, picks).expect("새 Thread의 첫 말");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     // 원문은 판정이 허락한 그 명령이 도는 동안 interrupt를 보냈다 — 허락의 판정 줄이 선 뒤에 멈춘다.
     sandbox.wait_thread_record(&thread, |record| {
         of_kind(record, "permission").iter().any(|line| line["payload"]["state"] == "decided")
@@ -99,7 +94,6 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
 
     let record = sandbox.wait_thread_kind(&thread, "permission", 1);
     let line = of_kind(&record, "permission")[0];
-    assert_eq!(line["who"], "host", "권한 줄은 물은 참여자의 것이다(S8)");
     let asked = &line["payload"];
     assert_eq!((asked["state"].clone(), asked["requestId"].clone()), (json!("asked"), json!("0")));
     assert_eq!(
@@ -118,7 +112,7 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
         "답하지 않은 승인도 끌 때 센다 — 앱을 끄면 그 턴을 잃는다(S40)"
     );
 
-    host.answer_thread_permission(&thread, "host", "0", "allow_once").expect("한 번 허락");
+    host.answer_thread_permission(&thread, "0", "allow_once").expect("한 번 허락");
 
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     assert_eq!(payloads_of(&record, "permission")[1], json!({"requestId": "0", "state": "answered", "optionId": "allow_once"}));
@@ -130,7 +124,7 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
     assert_eq!(answers[0]["response"]["request_id"], "45001ea8-89cb-4f55-b62e-03bd27dbd536", "claude가 물은 그 요청의 답이다");
     assert_eq!(answers[0]["response"]["response"]["behavior"], "allow");
     assert_eq!(
-        host.answer_thread_permission(&thread, "host", "0", "allow_once"),
+        host.answer_thread_permission(&thread, "0", "allow_once"),
         Err(HostError::PermissionClosed { thread: thread.clone(), request: "0".into() }),
         "이미 답한 요청에는 다시 답할 수 없다"
     );
@@ -171,6 +165,15 @@ fn background_thread(sandbox: &Sandbox, extra: &[(&str, &str)], second: &str) ->
     (host, thread, session)
 }
 
+/// 스스로 이어 간 턴이 서고 그 턴의 도구가 끝날 때까지 기다린다. 가짜는 그 턴의 답까지 내고 `result` 앞에서 멈춰 있고, 답 글은 쌓여 있어 턴
+/// 끝 전에는 기록에 없다.
+fn wait_self_turn(sandbox: &Sandbox, thread: &str) {
+    let started = |line: &Value| line["payload"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "started";
+    sandbox.wait_thread_record(thread, |record| {
+        record.iter().skip_while(|line| !started(line)).any(|line| line["payload"]["update"]["status"] == "completed")
+    });
+}
+
 #[test]
 fn 백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴은_턴_밖_update와_턴_밖_끝으로_적힌다() {
     let sandbox = Sandbox::new();
@@ -202,7 +205,6 @@ fn 백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴
     );
     let between = &record[second_end + 1..turn_end_at(&record, 2)];
     assert!(between.iter().all(|line| line["kind"] != "sent"), "보낸 말 없이 온 턴이다");
-    assert!(between.iter().all(|line| line["who"] == "host"), "스스로 이어 간 턴도 Host의 줄이다(S8)");
     assert_eq!(answers_after(between, 0), [SELF_ANSWER], "스스로 이어 간 턴의 답이 턴 밖 update로 적힌다");
     assert!(
         between.iter().any(|line| line["payload"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "started"),
@@ -216,18 +218,67 @@ fn 백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴
     common::assert_record("thread-self-turn", &settled(&sandbox, &record, &thread, &session));
 }
 
+/// 서브에이전트의 안쪽 줄은 대화의 줄이 아니라 그 `Agent` 도구 줄의 update로 적힌다 — 화면의 접기(`fold.ts`)가 이 기록에서 안쪽 도구를 모두
+/// 쥔다(스토리 63). 흐르는 시험(L2)이 엔진이 실제로 쓴 줄을 재도록 축복해 둔다.
+#[test]
+fn 서브에이전트의_안쪽_줄이_그_도구_줄의_update로_기록되고_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.309/edit-subagent", &[], "note.md를 고쳐");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "서브에이전트로 셋째 줄을 읽어 와").expect("둘째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+
+    let relayed: Vec<&Value> = record
+        .iter()
+        .filter(|line| !line["payload"]["update"]["_meta"]["claudeCode"]["event"]["parent_tool_use_id"].is_null())
+        .collect();
+    assert_eq!(relayed.len(), 3, "서브에이전트의 안쪽 줄(말 · 도구 호출 · 도구 결과)이 모두 적힌다:\n{}", common::lines_text(&record));
+
+    host.shut_down();
+    common::assert_record("thread-subagent", &settled(&sandbox, &record, &thread, &session));
+}
+
+/// `/compact`의 턴은 정리 줄 하나로 적히고 요약문은 기록에 없다 — 화면의 접기(`fold.ts`)가 이 기록에서 「대화를 정리하는 중」을 짓는다. 흐르는
+/// 시험(L2)이 엔진이 실제로 쓴 줄을 재도록 축복해 둔다.
+#[test]
+fn 대화_정리는_도구_줄로_기록되고_요약문은_기록되지_않고_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.316/stream-compact", &[], "Remember the word lantern. Reply with one word: ok");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "Say one short sentence about lanterns.").expect("둘째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.send_to_thread(&thread, "/compact").expect("정리");
+    sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    host.send_to_thread(&thread, "Which word did I ask you to remember? Reply with that one word.").expect("넷째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 4);
+
+    let compact = &record[turn_end_at(&record, 1) + 1..turn_end_at(&record, 2)];
+    let updates: Vec<&Value> = compact.iter().filter(|line| line["kind"] == "update").map(|line| &line["payload"]["update"]).collect();
+    assert_eq!(updates.len(), 2, "정리의 턴은 도구 줄과 그 끝이다:\n{}", common::lines_text(compact));
+    assert_eq!((&updates[0]["title"], &updates[0]["kind"]), (&json!("Compact conversation"), &json!("think")));
+    assert_eq!(
+        (&updates[1]["toolCallId"], &updates[1]["status"]),
+        (&updates[0]["toolCallId"], &json!("completed")),
+        "같은 줄이 닫힌다"
+    );
+    let text = common::lines_text(&record);
+    assert!(!text.contains("Primary Request"), "요약문은 기록에 없다:\n{text}");
+
+    host.shut_down();
+    common::assert_record("thread-compact", &settled(&sandbox, &record, &thread, &session));
+}
+
 #[test]
 fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기다렸다가_간다() {
     let sandbox = Sandbox::new();
     let (host, thread, session) =
         background_thread(&sandbox, &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")], "백그라운드로 걸어");
-    // 가짜는 스스로 이어 간 턴의 답까지 내고 그 턴의 result 앞에서 멈춰 있다.
-    sandbox.wait_thread_record(&thread, |record| answers_after(record, 0).iter().any(|text| text == SELF_ANSWER));
+    wait_self_turn(&sandbox, &thread);
 
     host.send_to_thread(&thread, "그동안 보낸 말").expect("스스로 이어 간 턴 동안의 말은 대기 줄에 든다");
 
     let queue: Vec<String> =
-        host.thread(&thread).expect("Thread의 지금").queues["host"].iter().map(|queued| queued.text.clone()).collect();
+        host.thread(&thread).expect("Thread의 지금").queue.iter().map(|queued| queued.text.clone()).collect();
     assert_eq!(queue, ["그동안 보낸 말"], "스스로 이어 간 턴이 도는 동안은 대기 줄을 보내지 않는다");
     std::thread::sleep(Duration::from_millis(200));
     assert_eq!(user_lines(&sandbox, &session), 2, "claude에는 아직 가지 않았다 — 도는 턴에 합쳐지지 않게(three-axes 결정 20)");
@@ -246,7 +297,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     assert!(self_end < sent_at, "턴 밖 끝이 적힌 뒤에 대기 줄의 맨 앞이 간다:\n{}", common::lines_text(&record));
     assert_eq!(sent_texts(&record), ["15초 명령을 앞에서 돌리고 TURN-A-END라고 해", "백그라운드로 걸어", "그동안 보낸 말"]);
     common::wait_for("대기 줄의 말이 claude에 가지 않았다", || user_lines(&sandbox, &session) >= 3);
-    assert!(host.thread(&thread).unwrap().queues.is_empty());
+    assert!(host.thread(&thread).unwrap().queue.is_empty());
 
     host.shut_down();
 }
@@ -256,7 +307,7 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
     let sandbox = Sandbox::new();
     let (host, thread, session) =
         background_thread(&sandbox, &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")], "백그라운드로 걸어");
-    sandbox.wait_thread_record(&thread, |record| answers_after(record, 0).iter().any(|text| text == SELF_ANSWER));
+    wait_self_turn(&sandbox, &thread);
 
     host.stop_thread(&thread).expect("스스로 이어 간 턴도 멈춘다");
 
@@ -275,10 +326,100 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
     host.shut_down();
 }
 
+/// 녹음의 `system/init`에서 앱의 서버 상태를 `failed`로 바꿔 내는 가짜 claude의 글 바꾸기(`FAKE_CLAUDE_REROOT`).
+const APP_SERVER_FAILS: &str = r#""name":"atelier-thread","status":"connected"="name":"atelier-thread","status":"failed""#;
+
+#[test]
+fn 앱_서버에_연결하지_못하면_기록에_경고_줄이_서고_턴은_그대로_끝난다() {
+    let sandbox = Sandbox::new();
+    let (_host, thread, _session) =
+        thread_on(&sandbox, "2.1.309/thread-rename-host", &[("FAKE_CLAUDE_REROOT", APP_SERVER_FAILS)], "이름을 바꿔 줘");
+
+    // stderr와 stdout은 다른 파이프라 턴 끝 줄보다 늦을 수 있다.
+    let record = sandbox.wait_thread_record(&thread, |record| !of_kind(record, "stderr").is_empty() && !of_kind(record, "turn-end").is_empty());
+    assert_eq!(payloads_of(&record, "stderr"), [json!({"line": "앱 기능 도구에 연결하지 못했어요"})], "{}", common::lines_text(&record));
+    assert!(payloads_of(&record, "turn-end")[0]["error"].is_null(), "경고가 턴을 실패시키지 않는다");
+}
+
+/// `stream-failed`의 API 오류 글 — 턴 끝 줄의 `error`에 그대로 적힌다.
+const API_ERROR: &str = "API Error: 500 Internal server error. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:8123).";
+
+/// `stream-failed`에서 API가 끊기기 전까지 받은 글.
+const RECEIVED: &str = "The first part of the answer arrives, and then the API fails in the middle";
+
+#[test]
+fn 실패한_턴은_받은_글을_남기고_턴_끝의_error에_적히고_스스로_이어_간_턴도_같은_줄을_쓴다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.316/stream-failed", &[], "FAIL-STREAM");
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let failed = &payloads_of(&record, "turn-end")[0];
+    assert_eq!(
+        (failed["stopReason"].clone(), failed["error"]["code"].clone(), failed["error"]["message"].as_str()),
+        (Value::Null, json!(-32603), Some(API_ERROR)),
+        "{}",
+        common::lines_text(&record)
+    );
+    assert_eq!(failed["error"]["data"]["claudeCode"]["result"]["subtype"], "success", "그 턴의 result 원문이 실린다");
+    assert_eq!(answers_after(&record, 0), [RECEIVED], "받은 글은 턴 끝보다 앞에 한 줄로 남고 오류 글은 답이 아니다");
+
+    host.send_to_thread(&thread, "START-BG").expect("실패한 뒤에도 말을 보낼 수 있다");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    let ends = payloads_of(&record, "turn-end");
+    assert_eq!(ends[1]["stopReason"], "end_turn");
+    let own = &ends[2];
+    assert_eq!(
+        (own["stopReason"].clone(), own["outOfTurn"].clone(), own["error"]["message"].as_str()),
+        (Value::Null, json!(true), Some(API_ERROR)),
+        "{}",
+        common::lines_text(&record)
+    );
+    assert_eq!(own["error"]["data"]["claudeCode"]["result"]["origin"]["kind"], "task-notification");
+    assert!(own.get("response").is_none(), "{own}");
+    let between = &record[turn_end_at(&record, 1) + 1..turn_end_at(&record, 2)];
+    assert_eq!(answers_after(between, 0), [RECEIVED]);
+
+    host.send_to_thread(&thread, "Reply with one word: ok").expect("턴 밖 턴이 실패해도 대기 줄이 풀린다");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 4);
+    assert_eq!(payloads_of(&record, "turn-end")[3]["stopReason"], "end_turn");
+
+    host.shut_down();
+    // 화면의 접기와 사이드바(L2)가 이 기록으로 실패를 읽는다.
+    common::assert_record("thread-failed", &settled(&sandbox, &record, &thread, &session));
+}
+
+#[test]
+fn 거절과_길이_제한과_턴_한도는_실패가_아니라_그_끝_까닭으로_적힌다() {
+    let sandbox = Sandbox::new();
+    let (host, thread, session) = thread_on(&sandbox, "2.1.316/stream-limits", &[], "REFUSE");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.send_to_thread(&thread, "MAXTOKENS").expect("둘째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.send_to_thread(&thread, "USE-TOOL").expect("셋째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+
+    let ends = payloads_of(&record, "turn-end");
+    let reasons: Vec<&Value> = ends.iter().map(|end| &end["stopReason"]).collect();
+    assert_eq!(reasons, ["refusal", "max_tokens", "max_turn_requests"], "{}", common::lines_text(&record));
+    assert!(ends.iter().all(|end| end.get("error").is_none()), "{ends:?}");
+
+    host.shut_down();
+    // 화면의 안내 줄(L2)이 이 기록으로 끝 까닭을 읽는다.
+    common::assert_record("thread-limits", &settled(&sandbox, &record, &thread, &session));
+}
+
+#[test]
+fn 사용자_서버만_실패한_턴은_기록에_경고_줄이_없다() {
+    let sandbox = Sandbox::new();
+    let (_host, thread, _session) = thread_on(&sandbox, "2.1.309/thread-rename-host", &[], "이름을 바꿔 줘");
+
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    assert_eq!(payloads_of(&record, "stderr"), Vec::<Value>::new(), "{}", common::lines_text(&record));
+}
+
 #[test]
 fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남고_남은_프로세스가_없다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     // 판이 다른 변환기 — 가짜 ACP 에이전트가 `initialize`에 다른 판을 싣는다. 띄운 pid는 감싼 스크립트가 적는다.
     let pids = sandbox.claude_receipts().join("translator-pids");
     let wrapper = sandbox.bin("old-translator").join("acp-claude");
@@ -303,7 +444,7 @@ fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남�
     assert!(sandbox.all_claude_receipts().is_empty(), "판을 본 뒤에는 session/new를 보내지 않는다 — claude가 뜨지 않는다");
     let record = sandbox.thread_record(thread);
     assert!(
-        record.iter().any(|line| line["who"] == "host" && line["payload"]["state"] == "died" && line["payload"]["reason"] == json!(reason)),
+        record.iter().any(|line| line["payload"]["state"] == "died" && line["payload"]["reason"] == json!(reason)),
         "Thread는 남고 기록에 까닭이 선다 — 다음 말에서 다시 띄운다:\n{}",
         common::lines_text(&record)
     );
@@ -314,15 +455,20 @@ fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남�
 #[test]
 fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_남은_프로세스가_없다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
-    let (builder, _events) = sandbox.host_builder_with_events(sandbox.claude_login_shell("silent-initialize", &[]));
+    let (builder, events) = sandbox.host_builder_with_events(sandbox.claude_login_shell("silent-initialize", &[]));
     let host = builder.open_limit(Duration::from_millis(800)).build();
 
     let started = Instant::now();
     let failed = host.start_thread("첫 말", ThreadLink::NoWork).expect_err("답하지 않으면 열지 않는다");
 
     assert!(started.elapsed() < Duration::from_secs(5), "한도에서 끊는다: {:?}", started.elapsed());
-    assert!(matches!(&failed, HostError::Open { reason, .. } if reason.contains("안에 세션을 열지 않았습니다")), "{failed:?}");
+    assert!(matches!(&failed, HostError::Open { reason, .. } if reason.contains("안에 세션이 열리지 않았어요")), "{failed:?}");
+    let HostError::Open { thread, .. } = &failed else { unreachable!() };
+    assert_eq!(
+        events.thread_lists().first().map(|summary| summary.id.clone()).as_ref(),
+        Some(thread),
+        "세션이 열리지 못해도 Thread는 남으므로 목록 요약이 나간다"
+    );
     let receipts = sandbox.all_claude_receipts();
     assert_eq!(receipts.len(), 1, "claude는 떴다");
     let claude = receipts[0]["pid"].as_u64().unwrap() as u32;
@@ -343,10 +489,9 @@ fn claude가_initialize에_답하지_않으면_한도_뒤_열기_실패이고_�
 #[test]
 fn claude는_변환기의_프로세스_그룹_안에_있고_호스트를_끄면_후손이_0개다() {
     let sandbox = Sandbox::new();
-    sandbox.library_agent("host", HOST_MD);
     let host = sandbox.host(sandbox.claude_login_shell("mcp-child", &[]));
     let thread = host.start_thread("첫 말", ThreadLink::NoWork).expect("새 Thread");
-    let session = sandbox.thread_session_id(&thread, "host");
+    let session = sandbox.thread_session_id(&thread);
     let receipt = sandbox.claude_receipt(&session);
     let (claude, translator) = (receipt["pid"].as_u64().unwrap() as u32, receipt["ppid"].as_u64().unwrap() as u32);
     let mcp_child = receipt["descendants"][0].as_u64().unwrap() as u32;

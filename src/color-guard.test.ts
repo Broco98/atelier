@@ -258,8 +258,8 @@ describe("빨강", () => {
   // 캔버스 Components 「사이드바 줄」) — 빨강을 보면 정말 실패한 것이다. Thread 화면의 오류 · 끊김은 색 대신 문장이다(캔버스 Messages 보드
   // 「오류와 중단」의 `fg2` 글). 빨강 토큰은 `danger` · `danger-solid`(오류 글 · 지우는 버튼)와 diff 토큰(`diff-deleted*` · `dot-deleted`)이다.
   // diff 토큰은 이름이 diff를 그리는 자리만 부르므로 두고, `danger` 계열을 Thread 화면(`src/features/thread/`)과 사이드바(`SIDEBAR`)에서
-  // 막는다 — 자리는 사이드바 줄의 상태 표시 「실패」 하나다(`status-mark.tsx` — Thread 줄 · Work 줄이 함께 부른다, 02 티켓 05). 앱의
-  // 다른 화면(확인 창 · 설정의 오류 글)은 이 판에서 그대로다.
+  // 막는다. 한때(02 티켓 05 – 02a-2) 사이드바 줄의 상태 표시 「실패」(`status-mark.tsx`)가 그 하나의 자리였다 — restart 02a-3이 시안 Shell
+  // 「사이드바 상태」대로 주황(`warning`)으로 옮겨 이제 사이드바에 빨강이 없다. 앱의 다른 화면(확인 창 · 설정의 오류 글)은 이 판에서 그대로다.
   const RED = [utilities(["danger", "danger-solid"]), variables(["danger", "danger-solid", "color-danger", "color-danger-solid"])];
   const reds = (sources: Source[]) => RED.flatMap((pattern) => offenders(pattern, sources));
   /** 사이드바를 그리는 파일 — Thread 묶음(`SidebarThreads`)은 `src/features/thread/` 쪽으로 함께 든다. 없어진 이름은 아래에서 빨개진다. */
@@ -275,13 +275,11 @@ describe("빨강", () => {
     "src/features/works/WorkSectionList.tsx",
     "src/features/works/WorkPeek.tsx",
   ];
-  /** 빨강이 서는 자리 — 파일과 그 글자. 쓰이지 않는 자리는 다음 빨강의 뒷문이 되므로 함께 센다. */
-  const RED_PLACES: { file: string; literal: string; why: string }[] = [
-    { file: "src/components/shell/status-mark.tsx", literal: "text-danger", why: "사이드바 줄의 「실패」 — 빨강을 쓰는 단 하나의 상태" },
-  ];
+  /** 빨강이 서는 자리 — 파일과 그 글자. 쓰이지 않는 자리는 다음 빨강의 뒷문이 되므로 함께 센다. 지금은 없다(위 머리말). */
+  const RED_PLACES: { file: string; literal: string; why: string }[] = [];
   const placed = (place: string) => RED_PLACES.some((one) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`));
 
-  it("Thread 화면과 사이드바는 줄의 「실패」 말고는 danger 빨강을 쓰지 않는다", () => {
+  it("Thread 화면과 사이드바는 danger 빨강을 쓰지 않는다", () => {
     // 앵커: 변형 · 알파 · 변수 꼴을 잡고, diff 토큰은 잡지 않는다.
     expect(
       reds([{ file: "예", text: "text-danger hover:bg-danger-solid/90 text-diff-deleted bg-diff-deleted-line var(--danger) bg-(--color-danger)" }]),
@@ -296,13 +294,13 @@ describe("빨강", () => {
     expect(RED_PLACES.filter((one) => !found.some((place) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`)))).toEqual([]);
   });
 
-  // **문제 빨강**(03 구현 스펙 Testing 「빨강은 문제 글 · 문제 알약에만」 · 티켓 04) — Space 파일 고치기 화면이 문제 줄의 끝 글 · 줄 번호 ·
-  // 값 밑 물결 · 문제 줄의 면 · 「⚠ 문제 N개」 알약에 쓰는 시안 빨강(`fg-problem` #b4302a · `problem-soft`)이다. 같은 Space의 문제는 목록의
-  // 「문제 있음」 · 상세의 문제 줄에서도 같은 빨강이다(03 코드 리뷰 P11). 다른 화면이 이 이름을 빌리면 문제가 아닌 것이 문제처럼 보이고, 이
-  // 빨강을 보고 「저장이 왜 꺼졌나」를 읽는 길이 흐려진다.
-  it("문제 빨강은 Space의 문제(고치기 화면 · 목록의 「문제 있음」 · 상세의 문제 줄)에만 선다", () => {
+  // **문제 빨강**(03 구현 스펙 Testing 「빨강은 문제 글 · 문제 알약에만」 · 티켓 04) — Service 파일 고치기 화면이 문제 줄의 끝 글 · 줄 번호 ·
+  // 값 밑 물결 · 문제 줄의 면 · 「⚠ 문제 N개」 알약에 쓰는 시안 빨강(`fg-problem` #b4302a · `problem-soft`)이다. 다른 화면이 이 이름을 빌리면
+  // 문제가 아닌 것이 문제처럼 보이고, 이 빨강을 보고 「저장이 왜 꺼졌나」를 읽는 길이 흐려진다. 한때(03 코드 리뷰 P11) 목록의 「문제 있음」 ·
+  // 상세의 문제 줄도 이 빨강이었다 — restart 03-3이 목록 꼬리표를 걷고 상세를 보드의 경고(`PlaceWarn` — `wait-soft` 면 · `warning` 글리프)로 바꿨다.
+  it("문제 빨강은 Service 파일 고치기 화면의 문제에만 선다", () => {
     const PROBLEM = [utilities(["fg-problem", "problem-soft"]), variables(["fg-problem", "problem-soft"])];
-    const PLACES = ["src/features/spaces/SpaceEditor.tsx", "src/features/spaces/SpaceList.tsx", "src/features/spaces/SpaceDetail.tsx"];
+    const PLACES = ["src/features/services/ServiceEditor.tsx"];
     // 앵커: 변형(`decoration-`)까지 잡는다.
     expect(PROBLEM.flatMap((pattern) => offenders(pattern, [{ file: "예", text: "decoration-fg-problem bg-problem-soft/50" }]))).toEqual([
       "예:1: decoration-fg-problem",
@@ -314,13 +312,13 @@ describe("빨강", () => {
     expect(PLACES.filter((file) => !found.some((place) => place.startsWith(`${file}:`)))).toEqual([]);
   });
 
-  // 같은 규칙의 다른 쪽(03 코드 리뷰 P11) — 03의 Projects · Space 화면은 danger 빨강을 위험 단추(DS의 `destructive` 갈래 — 이 글자를 쓰지 않는다)와
-  // 실패 글에만 쓴다. Space의 문제는 위의 문제 빨강이다 — 같은 「문제 있음」이 화면마다 다른 빨강이 아니게.
+  // 같은 규칙의 다른 쪽(03 코드 리뷰 P11) — 03의 Projects · Service 화면은 danger 빨강을 위험 단추(DS의 `destructive` 갈래 — 이 글자를 쓰지 않는다)와
+  // 실패 글에만 쓴다. Service의 문제는 위의 문제 빨강이다 — 같은 「문제 있음」이 화면마다 다른 빨강이 아니게.
   const PLACE_REDS: { file: string; literal: string; why: string }[] = [
     { file: "src/features/projects/ProjectAddDialog.tsx", literal: "text-danger", why: "추가 창의 실패 글(「추가하지 못했어요 — …」)" },
   ];
-  it("Projects · Space 화면은 실패 글 말고는 danger 빨강을 쓰지 않는다", () => {
-    const places = scripts.filter(({ file }) => file.startsWith("src/features/projects/") || file.startsWith("src/features/spaces/"));
+  it("Projects · Service 화면은 실패 글 말고는 danger 빨강을 쓰지 않는다", () => {
+    const places = scripts.filter(({ file }) => file.startsWith("src/features/projects/") || file.startsWith("src/features/services/"));
     expect(places.length).toBeGreaterThan(10);
     const found = reds(places);
     const listed = (place: string) => PLACE_REDS.some((one) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`));

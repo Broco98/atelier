@@ -1,12 +1,11 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_COMMANDS, FIXTURE_THREAD, WORKS, worktreeFile, worktreeFolder } from "./fixtures";
-import { callCount, fireEvent, fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
+import { answerByArg, FIXTURE_THREAD, WORKS, worktreeFile, worktreeFolder } from "./fixtures";
+import { fireEvent, fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
 import { atHome, lineOf, record, sentPayloads, specWrites, summaryOf, titleThrough, workView } from "./thread-records";
 import { WORK_WRITING_EVENT } from "@/features/thread/events";
 import type { ThreadView, WorkWritingEvent } from "@/features/thread/types";
 import type { FileDiff, ProjectChanges } from "@/features/works/types";
-import type { Settings } from "@/features/settings/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **요약 카드의 줄이나 대화 속 문서 카드를 누르면 카드가 넓어져 문서 · diff · 트리를 보고, 대화는 왼쪽
 // 480에 남는다**(v1 티켓 34 · 35 · 43 · 구현 스펙 §15 배치 1 · S41 · 스토리 102 · 115–118). 문서는 쓰는 중 · 바뀐 줄 칠함 · 인용으로
@@ -85,7 +84,7 @@ const CHANGES: ProjectChanges[] = [
 ];
 
 // 작은 카드가 열린 동안 대화 열이 카드를 비켜날 자리가 있는 창(시안 1440) — 좁은 창에서는 열이 판 왼쪽에서 멈추고 카드가 덮는다(그 갈래는
-// 흐름 「Thread 화면」이 잰다).
+// 흐름 「채팅 화면」이 잰다).
 test.use({ viewport: { width: 1440, height: 900 } });
 
 const 흐름 = (page: Page) => page.getByRole("main");
@@ -105,9 +104,11 @@ const 카드앞틈 = async (page: Page) => {
   return Math.round(card - composer);
 };
 /** 대화 칸의 오른쪽 끝 — 본문의 왼쪽 끝에서 잰다(넓힌 카드의 480). 폭은 패널 박자로 옮겨 가므로(v1 티켓 43) 되풀이해 읽는다. */
+// 작업공간의 채팅 탭에서는 본문 카드(`main`)의 첫 자식이 탭 줄이라(restart 02a-4) 대화 칸을 차례로 못 집는다 — 넓은 동안 대화 칸은 그 폭
+// (`--size-thread-beside`)을 제 스타일로 든다(`ThreadScreen`의 `CardRoom`).
 const 대화끝 = (page: Page) =>
   흐름(page).evaluate((main) => {
-    const column = main.firstElementChild?.firstElementChild;
+    const column = main.querySelector('[style*="--size-thread-beside"]');
     if (!(column instanceof HTMLElement)) throw new Error("대화 칸이 없다");
     return Math.round(column.getBoundingClientRect().right - main.getBoundingClientRect().left);
   });
@@ -116,8 +117,6 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   page,
 }) => {
   await installFixtureBackend(page, {
-    // 「결정은 내가 합니다」는 이은 뒤 처음 한 번이다(흐름 「Work 만들기」가 잰다) — 이미 봤다.
-    read_settings: { ...(FIXTURE_COMMANDS.read_settings as Settings), seen: { decisions: true } } satisfies Settings,
     list_works: [...WORKS, workView(MADE, { docs: Object.keys(WRITTEN), trees: [PROJECT] })],
     thread_list: [summaryOf(view)],
     thread_get: answerByArg("thread", { [view.id]: view }),
@@ -139,11 +138,17 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
     }),
   });
   await page.goto(`/threads/${view.id}`);
+  // 작업공간에 이은 Thread는 그 작업공간 화면의 채팅 탭에 선다(restart 02a-4) — 탭 칸 이름도 그 채팅 이름(첫 말)이라 흐름의 글은 뒤쪽을 집는다.
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
-  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page).toHaveURL(`/works/${MADE.slug}?tab=chat&thread=${view.id}`, { timeout: 20_000 });
+  await expect(흐름(page).getByText(sentPayloads(lines)[0].text, { exact: true }).last()).toBeVisible({ timeout: 20_000 });
   const 사이드바 = page.locator("aside[data-sidebar]");
+  // 사이드바의 그려진 폭 — 접히면 틈 8로 남는다(restart 02a-1 — 한때 0이라 숨었다).
+  const 사이드바폭 = () => 사이드바.evaluate((el) => Math.round(el.getBoundingClientRect().width));
   await expect(사이드바).toBeVisible();
   await expect(입력칸(page)).toBeVisible();
+  // 오른쪽 자리는 처음엔 spec 패널이다(restart 02a-9) — 창 머리의 「요약 카드」로 작은 카드를 세운다.
+  await page.getByRole("button", { name: "요약 카드", exact: true }).click();
 
   // 작은 카드 — 「변경 사항」 한 줄(Work의 바뀐 줄 합), 소스의 문서 · Project. 파일마다의 줄은 아직 없다. 대화 열 · 입력창은 카드 왼쪽
   // 16 앞에서 멈추도록 비켜 준다.
@@ -160,23 +165,26 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await expect(보기(page, "doc").getByRole("heading", { level: 1 })).toHaveText(WRITTEN[OVERVIEW].split("\n")[0].replace(/^# /, ""));
   await expect(보기(page, "doc").getByRole("navigation", { name: "위치", exact: true })).toContainText(OVERVIEW);
   await expect.poll(() => 대화끝(page)).toBe(480);
-  await expect(사이드바).toBeHidden();
+  await expect.poll(사이드바폭).toBe(8);
 
-  // Host가 그 문서를 쓰는 중이다 — 보기의 머리와 카드의 줄에 「Host가 쓰는 중」이 선다. 다시 읽은 글은 바뀐 블록만 칠한다.
+  // Runtime이 그 문서를 쓰는 중이다 — 카드의 그 줄에 「쓰는 중」이 서고 그 줄이 소스 맨 위로 온다(restart 02b-8 — 보기 머리 끝의 「쓰는 중」은
+  // 걷었다). 다시 읽은 글은 바뀐 블록만 칠한다. PLAN을 쓰는 중으로 두면 그 줄이 OVERVIEW 앞으로 올라온다.
   const writing: WorkWritingEvent = {
     work: MADE.slug,
-    writing: [{ path: OVERVIEW, who: "host", name: "Host", thread: view.id }],
+    writing: [{ path: PLAN, thread: view.id }],
   };
   await fireEvent(page, WORK_WRITING_EVENT, writing);
-  await expect(보기(page, "doc").locator('[data-writer="host"]')).toHaveText("Host가 쓰는 중");
-  await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).toContainText("Host가 쓰는 중");
+  await expect(카드(page).locator("[data-doc]")).toHaveText([new RegExp(`^${PLAN}\\s*쓰는 중$`), OVERVIEW]);
+  await expect(보기(page, "doc").locator("[data-writer]")).toHaveCount(0);
+  await fireEvent(page, WORK_WRITING_EVENT, { ...writing, writing: [{ path: OVERVIEW, thread: view.id }] });
+  await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).toContainText("쓰는 중");
   const rewritten = `${WRITTEN[OVERVIEW]}\n## 정한 것\n\n거절한다.\n`;
   await replaceAnswer(page, "read_spec_file", answerByArg("path", { ...WRITTEN, [OVERVIEW]: rewritten }));
   await fireEventToAll(page, "works:changed", null);
   await expect(보기(page, "doc").getByRole("heading", { name: "정한 것", exact: true })).toBeVisible();
   await expect(보기(page, "doc").locator("[data-doc-flash]").first()).toBeVisible();
   await fireEvent(page, WORK_WRITING_EVENT, { ...writing, writing: [] });
-  await expect(보기(page, "doc").locator("[data-writer]")).toHaveCount(0);
+  await expect(카드(page).locator(`[data-doc="${OVERVIEW}"]`)).not.toContainText("쓰는 중");
 
   // 글을 골라 그 자리를 두고 말한다 — 입력창에 인용이 붙고, 보내면 인용이 말과 함께 간다(S41).
   const 문단 = 보기(page, "doc").locator("[data-src-start]").filter({ has: page.locator("p") }).first();
@@ -198,24 +206,31 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
       },
     ]);
 
-  // 넓힌 카드의 목록에는 「변경 사항」 아래 바뀐 파일마다 줄이 선다. 파일 줄 — 그 파일의 diff다. 숨긴 위 줄은 펴면 worktree의 지금
-  // 파일을 읽어 잇는다.
+  // 넓힌 카드의 목록에는 「변경 사항」 아래 바뀐 파일마다 줄이 선다. 파일 줄 — 그 파일의 diff다(시안 Summary `.ra-vwdiff` — restart 03-15b). 줄 목록은
+  // 문법색 없이 왼쪽 막대 · 줄번호 · 글이고 더한 줄은 `<ins>`, 지운 줄은 `<del>`이다. worktree의 지금 파일을 함께 읽어 「숨긴 줄 N개」가 펼 줄을
+  // 든다 — 마지막 덩어리 아래 숨긴 줄의 수도 거기서 온다(이 파일은 덩어리가 끝 줄까지라 아래 숨긴 줄이 없다).
   await expect(카드(page).locator("[data-change]")).toHaveText([/^service\.py\s*\+6\s*−3$/, /^test_refund\.py\s*\+12$/]);
   await 카드(page).locator(`[data-change="${SERVICE}"]`).click();
   await expect(카드(page).locator(`[data-change="${SERVICE}"]`)).toHaveAttribute("aria-current", "true");
-  const diff = 보기(page, "change").locator("[data-code-view]");
+  const diff = 보기(page, "change").locator("[data-diff]");
   await expect(diff.getByText('raise RefundError("환불할 수 없는 금액이에요")')).toBeVisible();
   await expect(보기(page, "change")).toContainText("+6");
-  expect(await callCount(page, "read_worktree_file")).toBe(0);
-  // 숨긴 줄의 글은 한국어다(「변경 없는 9줄」 — v1 티켓 46). 라이브러리가 영어로 그린 뒤 갈아 끼우므로 `getByText`의 기다림이 그 틈을 덮는다.
-  await diff.getByText(/변경 없는 9줄/).first().click();
+  await expect(diff.locator("ins")).toHaveCount(6);
+  await expect(diff.locator("del")).toHaveCount(3);
+  await expect(diff.locator("ins").first()).toHaveText(/^13\s+if amount is None:$/);
+  await expect.poll(async () => (await ipcCallArgs(page, "read_worktree_file", "path")).map(({ args }) => args.path)).toEqual([SERVICE]);
+  await expect(diff.getByRole("button", { name: /^숨긴 줄 \d+개$/ })).toHaveText(["숨긴 줄 9개"]);
+  await diff.getByRole("button", { name: "숨긴 줄 9개", exact: true }).click();
   await expect(diff.getByText("환불 서비스 — 주문의 남은 금액 안에서 돌려준다.", { exact: false })).toBeVisible();
-  expect((await ipcCallArgs(page, "read_worktree_file", "path")).map(({ args }) => args.path)).toEqual([SERVICE]);
+  await expect(diff.getByRole("button", { name: /^숨긴 줄/ })).toHaveCount(0);
 
-  // Project 줄 — 그 worktree의 트리다. 바뀐 파일을 누르면 그 diff가 열린다.
+  // Project 줄 — 그 worktree의 트리다(머리 「… · worktree …」 없이 — restart 02b-8). 바뀐 파일 위 폴더는 처음부터 펼쳐 있고 바뀐 파일은 표시가
+  // 선다. 그 파일을 누르면 그 diff가 열린다.
   await 카드(page).locator(`[data-project="${PROJECT}"]`).click();
-  await expect(보기(page, "project")).toContainText(`${PROJECT} · worktree ${MADE.branch}`);
-  await 보기(page, "project").getByRole("button", { name: "refund", exact: true }).click();
+  await expect(보기(page, "project")).not.toContainText(`worktree ${MADE.branch}`);
+  await expect(보기(page, "project").getByRole("button", { name: "refund", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(보기(page, "project").getByRole("button", { name: "tests", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(보기(page, "project").getByRole("button", { name: /service\.py$/ })).toHaveAttribute("data-changed", "");
   await 보기(page, "project").getByRole("button", { name: /service\.py$/ }).click();
   await expect(보기(page, "change")).toBeVisible();
   await expect(카드(page).locator(`[data-change="${SERVICE}"]`)).toHaveAttribute("aria-current", "true");
@@ -224,7 +239,7 @@ test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 �
   await 보기(page, "change").getByRole("button", { name: "카드로 접기", exact: true }).click();
   await expect(넓힌카드(page)).toHaveCount(0);
   await expect(카드(page)).toBeVisible();
-  await expect(사이드바).toBeVisible();
+  await expect.poll(사이드바폭).toBeGreaterThan(8);
   await expect.poll(() => 카드앞틈(page)).toBeGreaterThanOrEqual(16);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

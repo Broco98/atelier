@@ -10,6 +10,8 @@ export interface ArchiveEntry {
   // 손으로 옮겨 둔 폴더에는 없다. 없는 것을 지어내지 않는다.
   archivedAt: string | null;
   projects: string[];
+  /** 그 work의 브랜치 — 상세의 위 카드 「브랜치」(restart 03-4). 브랜치가 미정이던 work는 `null`이다. */
+  branch: string | null;
 }
 
 /**

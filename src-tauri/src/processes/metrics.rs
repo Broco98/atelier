@@ -6,7 +6,8 @@
 //! - **메모리는 `phys_footprint`다.** 활성 상태 보기의 「메모리」 열이 보이는 값이 이것이다 — 상주 크기(RSS, `ri_resident_size`)는
 //!   읽기만 한 파일 쪽이나 공유 라이브러리처럼 되돌려 쓸 수 있는 깨끗한 쪽까지 세고 압축된 메모리는 빼서, 그 열과 어긋난다.
 //! - **CPU는 누적 CPU 시간(사용자 + 시스템)이다.** 커널은 mach 시각 단위(tick)로 준다 — 타임베이스로 ns로 바꾼다(`ticks_to_ns`).
-//!   백분율은 두 표본의 차이를 벽시계 차이로 나눈 것이라 한 표본으로는 못 짓는다(`CpuMeter`). 첫 표본은 없다(화면의 「—」).
+//!   백분율은 두 표본의 차이를 벽시계 차이 × 코어 수로 나눈 것이라(**맥 전체 = 100** — restart 03-5) 한 표본으로는 못 짓는다
+//!   (`CpuMeter`). 첫 표본은 없다(화면의 「—」). 맥 전체 CPU(`machine`)도 같은 미터가 같은 앞 표본과 견준다.
 //! - **포트는 TCP LISTEN 소켓의 로컬 포트다.** 프로세스의 fd를 훑어 소켓만 커널에 묻는다. `lsof`를 띄우지 않는다 — 2초마다 바깥
 //!   프로세스를 띄우는 것이 된다.
 //!
@@ -22,7 +23,10 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use super::Identity;
+use serde::Serialize;
+
+use super::machine::{self, CpuTicks, Machine};
+use super::{clock, Identity};
 
 /// 프로세스 하나를 한 번 읽은 것 — 커널이 준 그대로다(CPU는 누적 시간).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,10 +43,39 @@ pub struct Reading {
 #[derive(Debug, Default)]
 pub struct Readings {
     pub by_id: HashMap<Identity, Reading>,
-    /// 받은 신원 가운데 못 읽은 수 — 그사이 끝난 것, 좀비, 남의 uid, pid가 남에게 넘어간 것. macOS의 읽기만 센다(실물 검사가 읽는다)
-    /// — 다른 OS는 아무것도 안 읽어 늘 0이다.
+    /// 받은 신원 가운데 못 읽은 수 — 까닭마다(restart 03-9).
+    pub unread: Unread,
+}
+
+/// **못 읽은 것의 수 — 까닭마다**(restart 03-9 · 스토리 133 · 시안 Processes 「3개를 읽지 못했어요 · 권한 없음 2, 그사이 끝남 1」). 받은 신원
+/// 가운데 지표를 못 읽은 것이다. 그 몫은 맥 전체에서 읽은 합을 뺀 「시스템 · 못 읽음」에 든다(`breakdown`). macOS의 읽기만 센다 — 다른 OS는
+/// 아무것도 안 읽어 늘 0이다. 화면 스냅샷이 그대로 싣는다(`screen::ScreenSnapshot::unread`) — 프런트의 `Unread`와 칸 이름으로 잇는다.
+#[derive(Serialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unread {
+    /// 커널이 읽기를 거절했다(`EPERM` — 남의 uid, `sudo` 밑의 것).
+    pub denied: u32,
+    /// 그사이 끝났다 — 없는 pid(`ESRCH`), 좀비, pid가 남에게 넘어간 것.
+    pub gone: u32,
+    /// 그 밖의 까닭 — 커널이 다른 오류를 줬다.
+    pub other: u32,
+}
+
+impl Unread {
+    /// 커널이 읽기를 거절한 오류 번호를 까닭으로 센다.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    pub skipped: u32,
+    fn count(&mut self, errno: Option<i32>) {
+        match errno {
+            Some(libc::EPERM | libc::EACCES) => self.denied += 1,
+            Some(libc::ESRCH) => self.gone += 1,
+            _ => self.other += 1,
+        }
+    }
+
+    fn add(&mut self, other: Unread) {
+        self.denied += other.denied;
+        self.gone += other.gone;
+        self.other += other.other;
+    }
 }
 
 impl Readings {
@@ -50,14 +83,29 @@ impl Readings {
     pub fn cpu_ns(&self) -> HashMap<Identity, u64> {
         self.by_id.iter().map(|(id, reading)| (*id, reading.cpu_ns)).collect()
     }
+
+    /// 다른 읽기를 이 표본에 합친다 — 화면 스냅샷이 우리 트리(`read`)와 다른 앱(`read_usage`)을 한 미터에 넣는다(restart 03-6). 못 읽은
+    /// 수는 까닭마다 더한다.
+    pub fn absorb(&mut self, other: Readings) {
+        self.by_id.extend(other.by_id);
+        self.unread.add(other.unread);
+    }
 }
 
-/// 이번 표본의 지표 — 커널에서 읽은 것(`read`)과 앞 표본으로 잰 CPU%(`CpuMeter`). 신원으로 찾는다. 화면 스냅샷과 요약이 이 한 값을
-/// 받는다(`screen::ScreenSnapshot::of` · `summary::Summary::of`) — 두 칸은 늘 한 표본의 것이라 따로 다니지 않는다.
+/// 이번 표본의 지표 — 커널에서 읽은 것(`read`), 앞 표본으로 잰 CPU%(`CpuMeter`), 맥 전체(`machine`). 신원으로 찾는다. 화면 스냅샷과
+/// 요약이 이 한 값을 받는다(`screen::ScreenSnapshot::of` · `summary::Summary::of`) — 칸들은 늘 한 표본의 것이라 따로 다니지 않는다
+/// (restart 03-5 「한 표본」). 짓는 자리는 미터 하나다(`CpuMeter::measure`).
 #[derive(Debug, Default)]
 pub struct Measured {
     pub readings: HashMap<Identity, Reading>,
+    /// 프로세스마다의 CPU% — **맥 전체 = 100**(S37 · restart 03-5).
     pub cpu: HashMap<Identity, f64>,
+    /// 맥 전체 — 프로세스의 지표와 같은 순간에 읽었다. macOS 밖이면 없다(「측정 안 됨」).
+    pub machine: Option<Machine>,
+    /// 잰 시각(에포크 ms) — 화면 머리의 「…에 잰 값」(restart 03-5). 읽기를 마친 때다.
+    pub measured_at: u64,
+    /// 이 표본에서 못 읽은 것 — 까닭마다(restart 03-9). 읽기가 센 그대로다.
+    pub unread: Unread,
 }
 
 /// 받은 신원의 지표를 읽는다. 실패하지 않는다 — 못 읽은 것은 건너뛰고 센다.
@@ -65,25 +113,49 @@ pub struct Measured {
 /// **읽은 뒤에 신원을 다시 본다.** 판정과 이 읽기 사이에 그 pid가 끝나 남에게 넘어갔으면 읽은 것은 남의 숫자다 — 시작 시각까지
 /// 같아야 그 프로세스다(프로세스 결정 3). 읽기 전에 보면 보고 읽는 사이의 재사용을 못 거른다. 좀비도 여기서 빠진다
 /// (`identity_of`가 좀비를 안 준다).
+///
+/// **못 읽은 것은 까닭마다 센다**(restart 03-9 — `Unread`). 커널이 거절한 것은 그 오류 번호로(권한 없음 · 없는 pid · 그 밖), 읽었는데
+/// 신원이 달라진 것(좀비 · 재사용)은 그사이 끝남으로 센다.
 #[cfg(target_os = "macos")]
 pub fn read(ids: impl IntoIterator<Item = Identity>) -> Readings {
+    read_with(ids, true)
+}
+
+/// **다른 앱**(restart 03-6)의 지표를 읽는다 — 메모리 · CPU만이다. 포트는 프로세스마다 fd를 훑는 일이라 우리 트리만 한다(S38 · 시안
+/// ProcessSheet 「값이 오는 곳」) — 이 맥의 같은 uid 프로세스 전부를 2초마다 훑지 않는다. 실패하지 않는 것과 신원을 다시 보는 것은
+/// `read`와 같다.
+#[cfg(target_os = "macos")]
+pub fn read_usage(ids: impl IntoIterator<Item = Identity>) -> Readings {
+    read_with(ids, false)
+}
+
+/// `read` · `read_usage`의 몸통 — 포트를 읽을지만 다르다.
+#[cfg(target_os = "macos")]
+fn read_with(ids: impl IntoIterator<Item = Identity>, ports: bool) -> Readings {
     let (numer, denom) = mac::timebase();
     let mut readings = Readings::default();
     for id in ids {
-        let reading = std::os::raw::c_int::try_from(id.pid).ok().and_then(|pid| {
-            let usage = mac::usage(pid)?;
-            // 포트는 메모리 · CPU를 읽은 것만 훑는다 — 없는 프로세스의 fd를 묻지 않는다.
-            Some(Reading {
-                memory: usage.ri_phys_footprint,
-                cpu_ns: ticks_to_ns(usage.ri_user_time.saturating_add(usage.ri_system_time), numer, denom),
-                ports: mac::listening_ports(pid),
-            })
-        });
-        match reading {
-            Some(reading) if super::snapshot::identity_of(id.pid) == Some(id) => {
-                readings.by_id.insert(id, reading);
+        let Ok(pid) = std::os::raw::c_int::try_from(id.pid) else {
+            readings.unread.other += 1;
+            continue;
+        };
+        let usage = match mac::usage(pid) {
+            Ok(usage) => usage,
+            Err(errno) => {
+                readings.unread.count(errno);
+                continue;
             }
-            _ => readings.skipped += 1,
+        };
+        // 포트는 메모리 · CPU를 읽은 것만 훑는다 — 없는 프로세스의 fd를 묻지 않는다.
+        let reading = Reading {
+            memory: usage.ri_phys_footprint,
+            cpu_ns: ticks_to_ns(usage.ri_user_time.saturating_add(usage.ri_system_time), numer, denom),
+            ports: if ports { mac::listening_ports(pid) } else { Vec::new() },
+        };
+        if super::snapshot::identity_of(id.pid) == Some(id) {
+            readings.by_id.insert(id, reading);
+        } else {
+            readings.unread.gone += 1;
         }
     }
     readings
@@ -92,6 +164,12 @@ pub fn read(ids: impl IntoIterator<Item = Identity>) -> Readings {
 /// 다른 OS는 아무것도 안 읽는다. 화면은 숫자 칸에 「—」를 세운다.
 #[cfg(not(target_os = "macos"))]
 pub fn read(_ids: impl IntoIterator<Item = Identity>) -> Readings {
+    Readings::default()
+}
+
+/// 다른 OS는 다른 앱도 안 읽는다.
+#[cfg(not(target_os = "macos"))]
+pub fn read_usage(_ids: impl IntoIterator<Item = Identity>) -> Readings {
     Readings::default()
 }
 
@@ -107,62 +185,89 @@ pub fn ticks_to_ns(ticks: u64, numer: u32, denom: u32) -> u64 {
     u64::try_from(ns).unwrap_or(u64::MAX)
 }
 
-/// CPU% 한 칸 — 두 누적 CPU 시간(ns)의 차이를 벽시계 차이로 나눈다. **한 코어를 다 쓰면 100이다** — 활성 상태 보기의 「% CPU」와
-/// 같은 눈금이라 여러 코어를 쓰는 프로세스는 100을 넘는다. 벽시계가 안 흘렀거나 CPU 시간이 줄었으면(같은 프로세스가 아니다) 없다.
-pub fn percent(before_ns: u64, now_ns: u64, wall: Duration) -> Option<f64> {
-    let wall = wall.as_nanos();
-    if wall == 0 || now_ns < before_ns {
+/// CPU% 한 칸 — 두 누적 CPU 시간(ns)의 차이를 벽시계 차이 × 코어 수로 나눈다. **맥 전체가 100이다**(S37 · restart 03-5) — 코어 열 개인
+/// 맥에서 한 코어를 다 쓰면 10이다. 줄을 더한 것이 맥 전체 CPU(`machine::cpu_percent`)와 같은 눈금이어야 해서다. 활성 상태 보기의
+/// 「% CPU」(한 코어 = 100)는 이 값 × 코어 수다. 벽시계가 안 흘렀거나 CPU 시간이 줄었으면(같은 프로세스가 아니다) 없다.
+pub fn percent(before_ns: u64, now_ns: u64, wall: Duration, cores: u32) -> Option<f64> {
+    let span = wall.as_nanos() * u128::from(cores.max(1));
+    if span == 0 || now_ns < before_ns {
         return None;
     }
-    Some((now_ns - before_ns) as f64 / wall as f64 * 100.0)
+    Some((now_ns - before_ns) as f64 / span as f64 * 100.0)
 }
 
 /// 앞 표본을 버리는 나이 — 화면 박자(2초)의 다섯 배. 이보다 오래된 앞 표본은 창이 가려져 박자가 쉬었거나 화면을 떠났다 돌아온
 /// 것이라, 그 사이의 평균을 지금 값처럼 세우지 않는다(`CpuMeter`).
 pub const STALE: Duration = Duration::from_secs(10);
 
-/// 두 표본 사이의 CPU%(S37). 부르는 쪽이 이것을 쥐고 부를 때마다 새 표본을 넣는다 — 화면 스냅샷은 프로세스 서비스에 하나를 쥔다
-/// (`service::ProcessService::screen`).
-/// 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU, 티켓 30)는 제 것을 따로 쥔다(`summary::Background`): 한 앞 표본을 나눠 쓰면 두 박자가
-/// 섞여 차이의 벽시계가 뒤엉킨다. 배경 표본의 박자는 `STALE`과 같은 10초라(잠 10초 + 모으는 시간이라 늘 조금 넘는다) 그 자리는 버리는
-/// 나이를 따로 정해 미터를 세운다(`aged`).
+/// 두 표본 사이의 CPU%(S37) — 프로세스마다와 **맥 전체를 같은 앞 표본과** 견준다(restart 03-5 「한 표본」). 부르는 쪽이 이것을 쥐고
+/// 부를 때마다 새 표본을 넣는다 — 화면 스냅샷은 프로세스 서비스에 하나를 쥔다(`service::ProcessService::screen`).
+/// 박자가 다른 읽기(배경 표본 — 요약 · 추이)는 제 것을 따로 쥔다(`summary::Background`): 한 앞 표본을 나눠 쓰면 두 박자가 섞여 차이의
+/// 벽시계가 뒤엉킨다. 그래서 버리는 나이를 박자마다 정해 세운다(`new`).
 ///
-/// 앞 표본이 없는 신원은 CPU%가 없다(화면의 「—」) — 첫 표본, 그사이 새로 뜬 프로세스, pid가 재사용된 남. 앞 표본이 버리는 나이보다
-/// 오래됐으면 모두 없다. **쥐는 것은 바로 앞 표본 하나다** — 끝난 프로세스의 누적 시간이 쌓이지 않는다.
+/// 앞 표본이 없는 신원은 CPU%가 없다(화면의 「—」) — 첫 표본, 그사이 새로 뜬 프로세스, pid가 재사용된 남. 맥 전체도 같다 — 첫 표본,
+/// tick을 못 읽은 표본과 그 다음 표본. 앞 표본이 버리는 나이보다 오래됐으면 모두 없다. **쥐는 것은 바로 앞 표본 하나다** — 끝난
+/// 프로세스의 누적 시간이 쌓이지 않는다.
 #[derive(Debug)]
 pub struct CpuMeter {
-    last: Option<(Instant, HashMap<Identity, u64>)>,
+    last: Option<Sample>,
     /// 앞 표본을 버리는 나이. 화면의 미터는 `STALE`이다.
     stale: Duration,
+    /// 이 맥의 코어 수 — 프로세스의 CPU%를 맥 전체 눈금으로 옮기는 분모(`machine::cores`, 앱 시작 때 한 번 읽는다).
+    cores: u32,
 }
 
-/// 화면의 미터 — 버리는 나이가 `STALE`(화면 박자의 다섯 배)이다.
-impl Default for CpuMeter {
-    fn default() -> Self {
-        CpuMeter::aged(STALE)
-    }
+/// 미터가 쥔 앞 표본 — 읽은 때, 신원마다 누적 CPU 시간(ns), 맥 전체 누적 tick.
+#[derive(Debug)]
+struct Sample {
+    at: Instant,
+    procs: HashMap<Identity, u64>,
+    machine: Option<CpuTicks>,
+}
+
+/// 미터가 한 표본에서 지은 CPU% — 프로세스마다와 맥 전체. 둘 다 맥 전체 = 100이다.
+#[derive(Debug, Default, PartialEq)]
+pub struct Cpu {
+    pub procs: HashMap<Identity, f64>,
+    pub machine: Option<f64>,
 }
 
 impl CpuMeter {
-    /// 앞 표본을 `stale`까지 쥐는 미터. 박자가 화면(2초)과 다른 읽기가 제 박자에 맞춰 세운다.
-    pub fn aged(stale: Duration) -> Self {
-        CpuMeter { last: None, stale }
+    /// 앞 표본을 `stale`까지 쥐고, 프로세스의 CPU%를 `cores`로 나누는 미터. 박자가 화면(2초)과 다른 읽기가 제 박자에 맞춰 세운다.
+    pub fn new(stale: Duration, cores: u32) -> Self {
+        CpuMeter { last: None, stale, cores }
     }
 
-    /// 새 표본(신원 → 누적 CPU 시간 ns, 읽은 때)을 받아 신원마다 CPU%를 돌려주고, 그 표본을 다음 번의 앞 표본으로 쥔다.
-    pub fn sample(&mut self, at: Instant, cpu_ns: HashMap<Identity, u64>) -> HashMap<Identity, f64> {
-        let percents = match &self.last {
-            Some((then, before)) if at.saturating_duration_since(*then) <= self.stale => {
-                let wall = at.saturating_duration_since(*then);
-                cpu_ns
-                    .iter()
-                    .filter_map(|(id, now)| Some((*id, percent(*before.get(id)?, *now, wall)?)))
-                    .collect()
+    /// 새 표본(신원 → 누적 CPU 시간 ns, 맥 전체 tick, 읽은 때)을 받아 CPU%를 돌려주고, 그 표본을 다음 번의 앞 표본으로 쥔다.
+    pub fn sample(&mut self, at: Instant, procs: HashMap<Identity, u64>, machine: Option<CpuTicks>) -> Cpu {
+        let cpu = match &self.last {
+            Some(before) if at.saturating_duration_since(before.at) <= self.stale => {
+                let wall = at.saturating_duration_since(before.at);
+                Cpu {
+                    procs: procs
+                        .iter()
+                        .filter_map(|(id, now)| Some((*id, percent(*before.procs.get(id)?, *now, wall, self.cores)?)))
+                        .collect(),
+                    machine: before.machine.zip(machine).and_then(|(then, now)| machine::cpu_percent(then, now)),
+                }
             }
-            _ => HashMap::new(),
+            _ => Cpu::default(),
         };
-        self.last = Some((at, cpu_ns));
-        percents
+        self.last = Some(Sample { at, procs, machine });
+        cpu
+    }
+
+    /// **한 표본의 지표를 짓는다** — 프로세스마다 읽은 것(`read`)과 맥 전체를 읽은 것(`machine::read`)을 같은 때(`at`)의 표본으로 넣어
+    /// CPU%를 짓고, 메모리와 함께 한 값으로 묶는다. 화면 스냅샷과 배경 표본이 이 자리 하나로 지표를 짓는다.
+    pub fn measure(&mut self, at: Instant, readings: Readings, machine: Option<machine::Reading>) -> Measured {
+        let cpu = self.sample(at, readings.cpu_ns(), machine.and_then(|machine| machine.ticks));
+        Measured {
+            readings: readings.by_id,
+            cpu: cpu.procs,
+            machine: machine.map(|read| Machine { cpu: cpu.machine, memory: read.memory, cores: self.cores }),
+            measured_at: clock::now_ms(),
+            unread: readings.unread,
+        }
     }
 }
 
@@ -188,15 +293,20 @@ mod mac {
         })
     }
 
-    /// 한 pid의 자원 사용(`proc_pid_rusage`, 판 0). 못 읽으면 `None` — 그사이 끝났거나 남의 uid다. **좀비는 읽힌다**(0이 온다 —
-    /// `a_zombie_leaves_only_its_own_metrics_empty`의 실측). 좀비의 칸을 비우는 것은 읽은 뒤 신원을 다시 보는 `read`다.
+    /// 한 pid의 자원 사용(`proc_pid_rusage`, 판 0). 못 읽으면 커널의 오류 번호다 — 그사이 끝났으면 `ESRCH`, 남의 uid면 `EPERM`(못 꺼내면
+    /// `None`). **좀비는 읽힌다**(0이 온다 — `a_zombie_leaves_only_its_own_metrics_empty`의 실측). 좀비의 칸을 비우는 것은 읽은 뒤 신원을
+    /// 다시 보는 `read`다.
     ///
     /// 판 0을 고른 것은 쓰는 칸(`ri_phys_footprint` · `ri_user_time` · `ri_system_time`)이 모두 거기 있고 가장 작아서다. 뒤 판은 같은
     /// 칸 뒤에 다른 것을 더할 뿐이다.
-    pub(super) fn usage(pid: c_int) -> Option<libc::rusage_info_v0> {
+    pub(super) fn usage(pid: c_int) -> Result<libc::rusage_info_v0, Option<i32>> {
         let mut info: libc::rusage_info_v0 = unsafe { std::mem::zeroed() };
         let status = unsafe { libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V0, (&raw mut info).cast()) };
-        (status == 0).then_some(info)
+        if status == 0 {
+            Ok(info)
+        } else {
+            Err(std::io::Error::last_os_error().raw_os_error())
+        }
     }
 
     /// 소켓 fd 정보를 묻는 판(`<sys/proc_info.h>`의 `PROC_PIDFDSOCKETINFO`). libc에 없다.
@@ -288,6 +398,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{percent, ticks_to_ns, CpuMeter, STALE};
+    use crate::processes::machine::CpuTicks;
     use crate::processes::Identity;
 
     const SEC: u64 = 1_000_000_000;
@@ -312,17 +423,54 @@ mod tests {
         assert_eq!(ticks_to_ns(SEC, 0, 0), SEC);
     }
 
-    /// **CPU%는 두 누적 CPU 시간의 차이를 벽시계 차이로 나눈 것이다**(S37). 한 코어를 다 쓰면 100이고, 여러 코어를 쓰면 100을
-    /// 넘는다 — 활성 상태 보기의 「% CPU」와 같은 눈금이다. 벽시계가 안 흘렀거나 CPU 시간이 거꾸로 갔으면(같은 프로세스가
+    /// **CPU%는 두 누적 CPU 시간의 차이를 벽시계 차이 × 코어 수로 나눈 것이다**(S37 · restart 03-5). **맥 전체가 100이다** — 코어 열
+    /// 개인 맥에서 한 코어를 다 쓰면 10, 열을 다 쓰면 100이다. 그래야 줄을 더한 것이 맥 전체 CPU와 같은 눈금이다. 활성 상태 보기의
+    /// 「% CPU」(한 코어 = 100)는 이 값에 코어 수를 곱한 것이다. 벽시계가 안 흘렀거나 CPU 시간이 거꾸로 갔으면(같은 프로세스가
     /// 아니다) 없다.
     #[test]
-    fn cpu_percent_is_the_cpu_time_over_the_wall_time() {
+    fn cpu_percent_is_the_cpu_time_over_the_wall_time_of_the_whole_mac() {
         let two = Duration::from_secs(2);
-        assert_eq!(percent(0, SEC, two), Some(50.0));
-        assert_eq!(percent(SEC, SEC, two), Some(0.0), "안 쓴 프로세스는 0이다 — 없음이 아니다");
-        assert_eq!(percent(0, 4 * SEC, two), Some(200.0), "두 코어를 다 쓰면 200이다");
-        assert_eq!(percent(0, SEC, Duration::ZERO), None, "벽시계가 안 흘렀는데 값을 지었다");
-        assert_eq!(percent(2 * SEC, SEC, two), None, "CPU 시간이 줄었는데 값을 지었다");
+        assert_eq!(percent(0, SEC, two, 1), Some(50.0), "코어 하나인 맥의 절반이 50이 아니다");
+        assert_eq!(percent(0, 2 * SEC, two, 10), Some(10.0), "코어 열 개 중 하나를 다 쓰면 10이다");
+        assert_eq!(percent(0, 20 * SEC, two, 10), Some(100.0), "코어 열 개를 다 쓰면 100이다");
+        assert_eq!(percent(SEC, SEC, two, 10), Some(0.0), "안 쓴 프로세스는 0이다 — 없음이 아니다");
+        assert_eq!(percent(0, SEC, Duration::ZERO, 10), None, "벽시계가 안 흘렀는데 값을 지었다");
+        assert_eq!(percent(2 * SEC, SEC, two, 10), None, "CPU 시간이 줄었는데 값을 지었다");
+    }
+
+    /// **두 읽기를 한 표본으로 합친다**(restart 03-6 — 우리 트리의 읽기와 다른 앱의 읽기). 읽은 것은 모두 남고 못 읽은 수는 까닭마다
+    /// 더한다(restart 03-9).
+    #[test]
+    fn two_reads_join_into_one_sample() {
+        use super::{Reading, Readings, Unread};
+
+        let reading = |memory: u64| Reading { memory, cpu_ns: memory, ports: vec![] };
+        let mut ours =
+            Readings { by_id: HashMap::from([(id(10, 1), reading(1))]), unread: Unread { denied: 2, gone: 0, other: 1 } };
+        ours.absorb(Readings { by_id: HashMap::from([(id(20, 2), reading(5))]), unread: Unread { denied: 1, gone: 3, other: 0 } });
+        assert_eq!(ours.by_id, HashMap::from([(id(10, 1), reading(1)), (id(20, 2), reading(5))]));
+        assert_eq!(ours.unread, Unread { denied: 3, gone: 3, other: 1 });
+    }
+
+    /// **한 표본의 지표가 못 읽은 수를 싣는다**(restart 03-9 · 스펙 「믿을 수 있는 표시」 — 스냅샷에 못 읽은 수를 싣는다). 읽기가 센 것이
+    /// 그대로 표본에 간다 — 화면 스냅샷이 이것을 와이어에 싣는다.
+    #[test]
+    fn a_sample_carries_what_it_could_not_read() {
+        use super::{Readings, Unread};
+
+        let unread = Unread { denied: 2, gone: 1, other: 0 };
+        let measured = one_core().measure(Instant::now(), Readings { by_id: HashMap::new(), unread }, None);
+        assert_eq!(measured.unread, unread);
+    }
+
+    /// 화면 박자의 미터 — 코어 하나인 맥이라 프로세스의 CPU%가 「한 코어 = 100」과 같은 숫자다(눈금은 위 검사가 잰다).
+    fn one_core() -> CpuMeter {
+        CpuMeter::new(STALE, 1)
+    }
+
+    /// 프로세스마다의 CPU 시간만 넣은 표본 — 맥 전체 tick은 못 읽었다.
+    fn procs(meter: &mut CpuMeter, at: Instant, cpu_ns: &[(Identity, u64)]) -> HashMap<Identity, f64> {
+        meter.sample(at, cpu_ns.iter().copied().collect(), None).procs
     }
 
     /// **첫 표본에는 CPU%가 없다**(S37 — 화면의 「—」). 두 번째 표본부터 앞 표본과의 차이로 선다. 그사이 새로 뜬 프로세스는 그
@@ -331,13 +479,46 @@ mod tests {
     fn the_first_sample_has_no_cpu() {
         let (a, b) = (id(10, 1), id(11, 2));
         let t0 = Instant::now();
-        let mut meter = CpuMeter::default();
+        let mut meter = one_core();
 
-        assert_eq!(meter.sample(t0, HashMap::from([(a, SEC)])), HashMap::new(), "첫 표본에 CPU%가 섰다");
-        let second = meter.sample(t0 + Duration::from_secs(2), HashMap::from([(a, 2 * SEC), (b, SEC)]));
+        assert_eq!(procs(&mut meter, t0, &[(a, SEC)]), HashMap::new(), "첫 표본에 CPU%가 섰다");
+        let second = procs(&mut meter, t0 + Duration::from_secs(2), &[(a, 2 * SEC), (b, SEC)]);
         assert_eq!(second, HashMap::from([(a, 50.0)]), "둘째 표본이 앞 표본과의 차이가 아니다 — 새로 뜬 b도 없어야 한다");
-        let third = meter.sample(t0 + Duration::from_secs(4), HashMap::from([(a, 2 * SEC), (b, 3 * SEC)]));
+        let third = procs(&mut meter, t0 + Duration::from_secs(4), &[(a, 2 * SEC), (b, 3 * SEC)]);
         assert_eq!(third, HashMap::from([(a, 0.0), (b, 100.0)]), "앞 표본이 바로 앞의 것으로 바뀌지 않았다");
+    }
+
+    /// **프로세스의 CPU%는 맥 전체 눈금이다**(restart 03-5) — 미터가 받은 코어 수로 나눈다. 코어 열 개인 맥에서 2초 동안 한 코어를
+    /// 다 쓴 프로세스는 10이다.
+    #[test]
+    fn the_meter_puts_each_process_on_the_whole_mac() {
+        let a = id(10, 1);
+        let t0 = Instant::now();
+        let mut meter = CpuMeter::new(STALE, 10);
+        procs(&mut meter, t0, &[(a, 0)]);
+        assert_eq!(procs(&mut meter, t0 + Duration::from_secs(2), &[(a, 2 * SEC)]), HashMap::from([(a, 10.0)]));
+    }
+
+    /// **맥 전체 CPU도 같은 미터가 같은 앞 표본과 견준다**(restart 03-5 「한 표본」). 프로세스의 CPU%와 맥 전체 CPU%가 같은 두 순간
+    /// 사이의 값이라 줄을 더한 것과 맥 전체를 견줄 수 있다. 첫 표본 · tick을 못 읽은 표본 · 앞 표본이 오래된 표본은 없다(「—」).
+    #[test]
+    fn the_mac_cpu_is_measured_between_the_same_two_samples() {
+        let a = id(10, 1);
+        let t0 = Instant::now();
+        let ticks = |busy: u32, idle: u32| Some(CpuTicks { user: busy, system: 0, idle, nice: 0 });
+        let mut meter = CpuMeter::new(STALE, 10);
+
+        let first = meter.sample(t0, HashMap::from([(a, 0)]), ticks(100, 900));
+        assert_eq!(first.machine, None, "첫 표본에 맥 전체 CPU가 섰다");
+        let second = meter.sample(t0 + Duration::from_secs(2), HashMap::from([(a, 2 * SEC)]), ticks(400, 1_600));
+        assert_eq!((second.machine, second.procs.get(&a).copied()), (Some(30.0), Some(10.0)), "두 값이 같은 두 표본 사이의 것이 아니다");
+        let unread = meter.sample(t0 + Duration::from_secs(4), HashMap::from([(a, 2 * SEC)]), None);
+        assert_eq!(unread.machine, None, "tick을 못 읽었는데 맥 전체 CPU가 섰다");
+        let after_unread = meter.sample(t0 + Duration::from_secs(6), HashMap::from([(a, 2 * SEC)]), ticks(500, 1_700));
+        assert_eq!(after_unread.machine, None, "못 읽은 표본을 건너 그 앞 표본과 이었다 — 4초 평균을 2초 값처럼 세운다");
+
+        let late = t0 + Duration::from_secs(6) + STALE + Duration::from_millis(1);
+        assert_eq!(meter.sample(late, HashMap::new(), ticks(900, 1_800)).machine, None, "오래된 앞 표본과 이었다");
     }
 
     /// **pid가 재사용되면 새 프로세스다** — 신원이 시작 시각까지 본다(프로세스 결정 3). 옛 프로세스의 누적 시간과 빼면 남의
@@ -346,9 +527,9 @@ mod tests {
     fn a_reused_pid_starts_over() {
         let steady = id(20, 1);
         let t0 = Instant::now();
-        let mut meter = CpuMeter::default();
-        meter.sample(t0, HashMap::from([(id(10, 1), 5 * SEC), (steady, 0)]));
-        let after = meter.sample(t0 + Duration::from_secs(2), HashMap::from([(id(10, 9), 6 * SEC), (steady, SEC)]));
+        let mut meter = one_core();
+        procs(&mut meter, t0, &[(id(10, 1), 5 * SEC), (steady, 0)]);
+        let after = procs(&mut meter, t0 + Duration::from_secs(2), &[(id(10, 9), 6 * SEC), (steady, SEC)]);
         assert_eq!(after, HashMap::from([(steady, 50.0)]), "같은 pid의 다른 프로세스를 앞 표본과 이었다");
     }
 
@@ -358,17 +539,17 @@ mod tests {
     fn a_stale_sample_starts_over() {
         let a = id(10, 1);
         let t0 = Instant::now();
-        let mut meter = CpuMeter::default();
-        meter.sample(t0, HashMap::from([(a, 0)]));
+        let mut meter = one_core();
+        procs(&mut meter, t0, &[(a, 0)]);
 
         let late = t0 + STALE + Duration::from_millis(1);
-        assert_eq!(meter.sample(late, HashMap::from([(a, SEC)])), HashMap::new(), "오래된 앞 표본과 이었다");
-        let next = meter.sample(late + Duration::from_secs(2), HashMap::from([(a, 2 * SEC)]));
+        assert_eq!(procs(&mut meter, late, &[(a, SEC)]), HashMap::new(), "오래된 앞 표본과 이었다");
+        let next = procs(&mut meter, late + Duration::from_secs(2), &[(a, 2 * SEC)]);
         assert_eq!(next, HashMap::from([(a, 50.0)]), "오래된 표본을 버린 뒤 다음 박자에 다시 서지 않았다");
 
         // 경계 — 딱 그 나이까지는 앞 표본이다.
         let edge = late + Duration::from_secs(2) + STALE;
-        assert_eq!(meter.sample(edge, HashMap::from([(a, 2 * SEC)])), HashMap::from([(a, 0.0)]));
+        assert_eq!(procs(&mut meter, edge, &[(a, 2 * SEC)]), HashMap::from([(a, 0.0)]));
     }
 
     /// **박자가 느린 읽기는 버리는 나이를 제 것으로 정한다**(티켓 30). 배경 표본은 10초 잠 + 모으는 시간마다 부르므로 표본 사이가
@@ -380,18 +561,18 @@ mod tests {
         let t0 = Instant::now();
         let beat = Duration::from_millis(10_050);
 
-        let mut screen = CpuMeter::default();
-        screen.sample(t0, HashMap::from([(a, 0)]));
-        assert_eq!(screen.sample(t0 + beat, HashMap::from([(a, SEC)])), HashMap::new(), "화면의 미터가 10초 넘은 앞 표본과 이었다");
+        let mut screen = one_core();
+        procs(&mut screen, t0, &[(a, 0)]);
+        assert_eq!(procs(&mut screen, t0 + beat, &[(a, SEC)]), HashMap::new(), "화면의 미터가 10초 넘은 앞 표본과 이었다");
 
-        let mut background = CpuMeter::aged(Duration::from_secs(30));
-        background.sample(t0, HashMap::from([(a, 0)]));
-        let next = background.sample(t0 + beat, HashMap::from([(a, SEC)]));
+        let mut background = CpuMeter::new(Duration::from_secs(30), 1);
+        procs(&mut background, t0, &[(a, 0)]);
+        let next = procs(&mut background, t0 + beat, &[(a, SEC)]);
         let percent = next.get(&a).copied().expect("배경의 미터가 10초 조금 넘은 앞 표본을 버렸다 — 요약의 CPU가 늘 없다");
         assert!((percent - 100.0 / 10.05).abs() < 1e-9, "배경의 CPU%가 차이 / 벽시계가 아니다 — {percent}");
 
         let late = t0 + beat + Duration::from_secs(30) + Duration::from_millis(1);
-        assert_eq!(background.sample(late, HashMap::from([(a, 2 * SEC)])), HashMap::new(), "제 나이를 넘은 앞 표본과 이었다");
+        assert_eq!(procs(&mut background, late, &[(a, 2 * SEC)]), HashMap::new(), "제 나이를 넘은 앞 표본과 이었다");
     }
 }
 
@@ -463,6 +644,25 @@ mod real {
         assert!(ports.windows(2).all(|pair| pair[0] < pair[1]), "포트가 오름차순 · 겹침 없음이 아니다: {ports:?}");
     }
 
+    /// **다른 앱은 메모리 · CPU만 읽는다**(restart 03-6 · 시안 ProcessSheet 「포트를 찾는 fd 훑기는 지금처럼 우리 트리만 한다」). LISTEN을
+    /// 연 이 검사 자신을 그 읽기로 읽으면 메모리는 서고 포트는 없다. 앵커는 같은 소켓을 우리 트리의 읽기(`read`)로 본 것이다 — 포트가 선다.
+    #[test]
+    fn other_apps_are_read_without_their_ports() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("LISTEN 소켓을 연다");
+        let port = listener.local_addr().expect("LISTEN 주소").port();
+        let me = me();
+        let usage = super::read_usage([me]);
+        let ours = read([me]);
+
+        // **거두는 것이 단언보다 먼저다.**
+        drop(listener);
+
+        let usage = usage.by_id.get(&me).expect("이 검사 자신을 못 읽었다");
+        assert!(usage.memory > 0, "다른 앱의 읽기가 메모리를 안 읽었다");
+        assert_eq!(usage.ports, Vec::<u16>::new(), "다른 앱의 읽기가 fd를 훑어 포트를 읽었다");
+        assert!(ours.by_id.get(&me).is_some_and(|reading| reading.ports.contains(&port)), "앵커 — 우리 트리의 읽기는 그 포트를 본다");
+    }
+
     /// **메모리(`phys_footprint`)를 읽는다.** 이 검사 자신의 값이 0보다 크다.
     #[test]
     fn the_footprint_of_this_process_is_read() {
@@ -482,7 +682,7 @@ mod real {
         let kid = Kid::spawn("map", &key(42));
         let settled = kid.settle();
         let memory = settled.and_then(|id| read([id]).by_id.get(&id).map(|reading| reading.memory));
-        let resident = settled.and_then(|id| super::mac::usage(id.pid as i32)).map(|usage| usage.ri_resident_size);
+        let resident = settled.and_then(|id| super::mac::usage(id.pid as i32).ok()).map(|usage| usage.ri_resident_size);
 
         // **거두는 것이 단언보다 먼저다.**
         drop(kid);
@@ -542,7 +742,29 @@ mod real {
         let readings = readings.expect("위에서 읽었다");
         assert!(readings.by_id.get(&me).is_some_and(|reading| reading.memory > 0), "좀비 하나에 이 검사 자신의 지표까지 잃었다");
         assert!(!readings.by_id.contains_key(&zombie), "좀비의 지표가 섰다");
-        assert!(readings.skipped >= 1, "좀비를 건너뛰고도 세지 않았다");
+        assert_eq!(readings.unread.gone, 1, "좀비를 건너뛰고도 「그사이 끝남」으로 세지 않았다");
+    }
+
+    /// **못 읽은 것은 까닭마다 센다**(restart 03-9 · 스토리 133 · 시안 Processes 「권한 없음 2, 그사이 끝남 1」). 남의 uid의 프로세스는 커널이
+    /// 읽기를 거절해 「권한 없음」이다 — pid 1은 루트가 띄운다. 끝나고 거둔 자식은 없는 pid라 「그사이 끝남」이다. 앵커는 같이 읽은 이 검사
+    /// 자신이다 — 읽혀 어느 까닭에도 안 든다.
+    #[test]
+    fn what_could_not_be_read_is_counted_by_why() {
+        use super::Unread;
+
+        assert_ne!(unsafe { libc::geteuid() }, 0, "루트로 돌면 남의 uid가 없다 — 이 검사가 재는 것이 없다");
+        let kid = Kid::spawn("sleep", &key(43));
+        let ended = kid.settle();
+        // **거두는 것이 단언보다 먼저다.** 거둔 뒤에 읽어야 없는 pid다.
+        drop(kid);
+
+        let ended = ended.expect("자식이 5초 안에 제 세션을 열지 못했다");
+        let root = Identity { pid: 1, started_us: 0 };
+        let me = me();
+        let readings = read([root, ended, me]);
+
+        assert!(readings.by_id.contains_key(&me), "앵커 — 이 검사 자신을 못 읽었다");
+        assert_eq!(readings.unread, Unread { denied: 1, gone: 1, other: 0 }, "못 읽은 것을 까닭마다 세지 않았다");
     }
 }
 

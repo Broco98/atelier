@@ -8,18 +8,41 @@ import { describeTool, lineDiff, splitLines } from "./tool-view";
 
 /**
  * 넓힌 카드가 연 것 — 문서(spec 기준 경로) · 변경(Project · worktree 기준 경로 — `read_work_diff`의 인자 그대로, v1 티켓 33) · Project(그
- * 파일 트리와, 트리에서 연 파일 — 아직 고르지 않았으면 `null`).
+ * 파일 트리). 트리에서 연 파일은 넓힌 카드 안에 서지 않는다(restart 02a-12 — 바뀐 파일은 변경, 그 밖의 파일은 파일 탭 — `treePick`). 한때 Project가
+ * 트리에서 연 파일을 들고 카드 안에 강조된 코드를 세웠다.
  */
 export type Opened =
   | { kind: "doc"; path: string }
   | { kind: "change"; project: string; path: string }
-  | { kind: "project"; project: string; file: string | null };
-
-/** 카드의 줄 하나가 가리키는 것 — Project 줄은 그 Project 하나다(트리에서 어느 파일을 열었든 같은 줄이다). */
-export type RowTarget =
-  | { kind: "doc"; path: string }
-  | { kind: "change"; project: string; path: string }
   | { kind: "project"; project: string };
+
+/** 카드의 줄 하나가 가리키는 것 — 넓힌 카드가 연 것과 같은 모양이다. */
+export type RowTarget = Opened;
+
+/**
+ * **Project 트리에서 누른 파일이 가는 곳**(restart 02a-12 · 스토리 102 · SummarySheet 「넓힌 카드」 표의 Project 줄) — 바뀐 파일(`changed` — 그 Project의
+ * 바뀐 파일 경로)은 넓힌 카드의 변경 보기, 그 밖의 파일은 **파일 탭**이다. 파일 탭이 켜지면 카드가 닫힌다(탭 줄 규칙 — `followTab`).
+ */
+export type TreePick = { kind: "change"; project: string; path: string } | { kind: "file"; project: string; path: string };
+
+export function treePick(project: string, path: string, changed: readonly string[]): TreePick {
+  return { kind: changed.includes(path) ? "change" : "file", project, path };
+}
+
+/**
+ * **바뀐 파일 알약의 「검토」가 넓힌 카드에서 여는 것**(SummarySheet 표 넷째 줄 — 문서 카드 · PR의 「변경 사항 보기」 · 알약의 「검토」 · spec 패널의 문서
+ * 줄은 카드를 넓힌다) — 그 턴이 바꾼 파일(`files` — Runtime이 준 절대 경로) 중 이 작업공간의 worktree(`worktrees` — 절대 경로의 뿌리) 안에 든 첫
+ * 파일을 그 Project의 변경으로 연다. worktree 밖의 파일은 변경 보기가 없어 건너뛴다. 열 파일이 없으면 `null`이다 — 작은 카드만 연다.
+ */
+export function reviewOf(files: readonly string[], worktrees: readonly { project: string; root: string }[]): Opened | null {
+  for (const file of files) {
+    for (const tree of worktrees) {
+      const root = tree.root.replace(/\/+$/, "");
+      if (file.startsWith(`${root}/`)) return { kind: "change", project: tree.project, path: file.slice(root.length + 1) };
+    }
+  }
+  return null;
+}
 
 /** 그 줄이 지금 넓힌 카드가 연 것인가 — 그 줄이 고른 면(`selected-row`)으로 선다(보드 `.wr.on`). */
 export function isOpened(opened: Opened | null, row: RowTarget): boolean {
@@ -35,8 +58,8 @@ export function isOpened(opened: Opened | null, row: RowTarget): boolean {
 }
 
 /**
- * 보기의 경로 줄(`PathBar`의 조각) — 보드 `.vh .path`의 앞머리를 따른다: 문서는 「문서 / design.md」, 변경은 「api-server / src/refunds /
- * refund.service.ts」, Project는 「Project / api-server」이고 트리에서 파일을 열면 그 파일의 경로다.
+ * 넓힌 카드 보기 머리의 경로(`ViewerHead`의 조각 — SummarySheet 보드 `.ra-vwhead`): 문서는 「문서 / 01-실패-신호 / 재시도-규칙.md」, 변경은
+ * 「atelier / src-tauri / src / watcher.rs」, Project는 「Project / atelier」다.
  */
 export function viewerPath(opened: Opened): string[] {
   switch (opened.kind) {
@@ -45,7 +68,7 @@ export function viewerPath(opened: Opened): string[] {
     case "change":
       return [opened.project, ...opened.path.split("/")];
     case "project":
-      return opened.file === null ? ["Project", opened.project] : [opened.project, ...opened.file.split("/")];
+      return ["Project", opened.project];
   }
 }
 
@@ -66,11 +89,10 @@ export function freshLines(before: string | undefined, after: string): number[] 
   return fresh;
 }
 
-/** 대화 속 문서 카드 하나 — spec 기준 경로 · 줄 수 · 쓴 Agent. */
+/** 대화 속 문서 카드 하나 — spec 기준 경로 · 줄 수. */
 export interface CreatedDoc {
   path: string;
   lines: number;
-  who: string | null;
 }
 
 /**
@@ -79,7 +101,7 @@ export interface CreatedDoc {
  * `written`). 옛 글이 있는 고치기는 카드가 아니다 — 바뀐 파일 알약 · 요약 카드의 「변경 사항」이 든다. 같은 문서를 두 번 쓰면 한 장이고 줄 수는
  * 마지막 글의 것이다. spec 폴더를 모르면(Work 없는 Thread) 카드가 없다.
  */
-export function createdDocs(turn: Pick<Turn, "entries" | "who">, specRoot: string | null): CreatedDoc[] {
+export function createdDocs(turn: Pick<Turn, "entries">, specRoot: string | null): CreatedDoc[] {
   if (specRoot === null) return [];
   const root = `${specRoot.replace(/\/+$/, "")}/`;
   const byPath = new Map<string, CreatedDoc>();
@@ -89,7 +111,7 @@ export function createdDocs(turn: Pick<Turn, "entries" | "who">, specRoot: strin
       if (!piece.written || !piece.path.startsWith(root) || piece.path.length === root.length) continue;
       const path = piece.path.slice(root.length);
       byPath.delete(path);
-      byPath.set(path, { path, lines: piece.added, who: turn.who });
+      byPath.set(path, { path, lines: piece.added });
     }
   }
   return [...byPath.values()];

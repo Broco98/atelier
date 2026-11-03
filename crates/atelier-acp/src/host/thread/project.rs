@@ -9,7 +9,7 @@
 //!   - 붙이고 고치기: Project를 Work에 붙이고(`work` 줄 `attached`) worktree를 만든다. 붙이지 못하면(core가 거절) 아무것도 적지 않고
 //!     카드가 그대로 선다.
 //!   - 읽기만 하기: `thread.json`의 `readOnlyProjects`에 적는다 — 다음 턴부터 그 Project 폴더를 함께 연다(S11). 고칠 수 있는 자리가 아니므로
-//!     고치기는 판정이 계속 거절한다(§9 2번 칸).
+//!     고치기는 판정이 계속 거절한다(앱 경계).
 //!   - 아니요: 거절 글을 도구의 실패로 돌려준다.
 //! - **Work 없는 Thread · 등록되지 않은 Project**면 카드를 세우지 않고 그 까닭을 도구의 실패로 돌려준다 — 붙일 Work가 없다.
 //! - worktree를 짓는 일은 호스트에서 하나씩이다 — 두 Agent가 같은 Project를 함께 시작해도 git worktree를 두 번 짓지 않는다.
@@ -18,11 +18,11 @@
 
 use std::path::PathBuf;
 
-use atelier_core::RecordKind;
+use atelier_core::{RecordKind, Runtime};
 use serde_json::{json, Value};
 
 use super::work::Card;
-use super::{ConversationHost, SessionKey};
+use super::ConversationHost;
 use crate::thread_tools;
 use crate::HostError;
 
@@ -84,7 +84,7 @@ impl ConversationHost {
         let (text, refused) = match choice {
             ProjectChoice::Attach => match self.plant(&outside.work, &outside.project) {
                 Ok(planted) => {
-                    self.note(thread, Some(&asked.key.handle), answered)?;
+                    self.note(thread, answered)?;
                     self.stop_reading_only(thread, &outside.project)?;
                     self.note_planted(thread, &outside.project, &planted)?;
                     self.planted_text(thread, &outside.project, &planted)
@@ -101,19 +101,26 @@ impl ConversationHost {
                         file.read_only_projects.push(project.clone());
                     }
                 })?;
-                self.note(thread, Some(&asked.key.handle), answered)?;
+                self.note(thread, answered)?;
                 let folder = atelier_core::project_folders(&self.data_root)
                     .into_iter()
                     .find(|(slug, _)| slug == &outside.project)
                     .map_or_else(String::new, |(_, folder)| format!(" `{}`", folder.display()));
-                let text = format!(
-                    "사람이 `{project}`을 읽기만 하기로 했다 — 고치지 않는다. 다음 턴부터 그 Project 폴더{folder}를 함께 열어 읽을 수 \
-                     있다(이번 턴에 그 폴더를 읽으면 사람에게 묻는다). 고쳐야 하면 사람에게 말로 묻는다."
-                );
+                // Codex에는 그 폴더를 함께 열지 않는다 — 읽기에는 필요 없고, Codex는 읽을 때 묻지 않는다(01c-6).
+                let text = match self.thread_runtime(thread) {
+                    Runtime::ClaudeCode => format!(
+                        "사람이 `{project}`을 읽기만 하기로 했다 — 고치지 않는다. 다음 턴부터 그 Project 폴더{folder}를 함께 열어 읽을 수 \
+                         있다(이번 턴에 그 폴더를 읽으면 사람에게 묻는다). 고쳐야 하면 사람에게 말로 묻는다."
+                    ),
+                    Runtime::Codex => format!(
+                        "사람이 `{project}`을 읽기만 하기로 했다 — 고치지 않는다. 그 Project 폴더{folder}는 읽기만 한다. 고쳐야 하면 사람에게 \
+                         말로 묻는다."
+                    ),
+                };
                 (text, false)
             }
             ProjectChoice::Decline => {
-                self.note(thread, Some(&asked.key.handle), answered)?;
+                self.note(thread, answered)?;
                 let only = if outside.work_projects.is_empty() {
                     "이 Work의 spec 폴더에서만 고친다".to_owned()
                 } else {
@@ -128,8 +135,8 @@ impl ConversationHost {
 
     /// 「Project 고치기 시작」(S13) — Work에 있는 Project면 worktree를 세워(이미 있으면 그대로) 그 경로를 돌려주고, 없는 Project면 Work 밖
     /// Project 카드를 세우고 사람이 고를 때까지 기다린다. **막히는 호출일 수 있다**(연결마다의 스레드에서 불린다).
-    pub(super) fn start_editing(&self, key: &SessionKey, project: &str, reason: Option<&str>) -> Value {
-        let file = match self.read_thread_file(&key.thread) {
+    pub(super) fn start_editing(&self, thread: &str, project: &str, reason: Option<&str>) -> Value {
+        let file = match self.read_thread_file(thread) {
             Ok(file) => file,
             Err(error) => return thread_tools::said(&error.to_string(), true),
         };
@@ -156,11 +163,11 @@ impl ConversationHost {
         if work_at.meta.projects.iter().any(|one| one == project) {
             return match self.plant(&slug, project) {
                 Ok(planted) => match self
-                    .stop_reading_only(&key.thread, project)
-                    .and_then(|()| self.note_planted(&key.thread, project, &planted))
+                    .stop_reading_only(thread, project)
+                    .and_then(|()| self.note_planted(thread, project, &planted))
                 {
                     Ok(()) => {
-                        let (text, refused) = self.planted_text(&key.thread, project, &planted);
+                        let (text, refused) = self.planted_text(thread, project, &planted);
                         thread_tools::said(&text, refused)
                     }
                     Err(error) => thread_tools::said(&error.to_string(), true),
@@ -176,7 +183,7 @@ impl ConversationHost {
             "workProjects": work_at.meta.projects,
         });
         let outside = Outside { project: project.to_owned(), work: slug, work_projects: work_at.meta.projects.clone() };
-        self.ask_card(key, Card::Project(outside), fields)
+        self.ask_card(thread, Card::Project(outside), fields)
     }
 
     /// 그 Project에 worktree를 세운다 — core의 Project 붙이기로, Work에 없으면 붙이고 Work의 브랜치로 짓는다. 이미 있으면 그대로다.
@@ -206,7 +213,7 @@ impl ConversationHost {
         self.change_thread(thread, |file| file.read_only_projects.retain(|one| one != project)).map(drop)
     }
 
-    /// 세운 것을 `work` 줄로 남긴다 — 붙임(`attached`)과 worktree(`worktree`). 사람이나 시스템의 일이라 `who`가 없다(S8).
+    /// 세운 것을 `work` 줄로 남긴다 — 붙임(`attached`)과 worktree(`worktree`).
     fn note_planted(&self, thread: &str, project: &str, planted: &Planted) -> Result<(), HostError> {
         if planted.attached {
             self.note_work(thread, json!({"state": "attached", "project": project}))?;
@@ -229,20 +236,31 @@ impl ConversationHost {
             (false, true) => format!("`{project}`에 worktree를 만들었다: `{}`{branch}", planted.path.display()),
             (false, false) => format!("`{project}` worktree가 이미 있다: `{}`{branch}", planted.path.display()),
         };
-        let next = self
-            .read_thread_file(thread)
-            .ok()
-            .and_then(|file| self.thread_place(thread, &file).ok())
+        let file = self.read_thread_file(thread).ok();
+        let next = file
+            .as_ref()
+            .and_then(|file| self.thread_place(thread, file).ok())
             .map_or_else(String::new, |place| format!(" 다음 턴부터 작업 폴더가 `{}`로 바뀐다.", place.cwd.display()));
-        (format!("{head}\n\n이 Project는 이 worktree 안에서만 고친다 — 이번 턴에는 이 절대 경로로 고친다.{next}"), false)
+        let when = match self.thread_runtime(thread) {
+            Runtime::ClaudeCode => format!("이번 턴에는 이 절대 경로로 고친다.{next}"),
+            // Codex의 쓸 수 있는 자리는 세션을 열 때 정해진다 — 그때 연 작업 폴더 안의 worktree만 이번 턴에 고칠 수 있다.
+            Runtime::Codex if file.and_then(|file| file.cwd).is_some_and(|cwd| planted.path.starts_with(cwd)) => {
+                "지금 작업 폴더 안이라 이번 턴에도 이 자리에서 고친다.".to_owned()
+            }
+            Runtime::Codex => format!(
+                "이번 턴에는 고치지 않는다 — 쓸 수 있는 자리는 세션을 열 때 정해져 이 worktree는 그 밖이다. 이번 턴을 마치면 다음 턴부터 \
+                 거기서 고친다.{next}"
+            ),
+        };
+        (format!("{head}\n\n이 Project는 이 worktree 안에서만 고친다 — {when}"), false)
     }
 
     /// 사람의 결정 줄(`question`) 하나를 적는다.
-    fn note(&self, thread: &str, who: Option<&str>, payload: Value) -> Result<(), HostError> {
-        self.thread_log(thread)?.write(RecordKind::Question, who, payload).map(drop).map_err(HostError::Record)
+    fn note(&self, thread: &str, payload: Value) -> Result<(), HostError> {
+        self.thread_log(thread)?.write(RecordKind::Question, payload).map(drop).map_err(HostError::Record)
     }
 
     fn note_work(&self, thread: &str, payload: Value) -> Result<(), HostError> {
-        self.thread_log(thread)?.write(RecordKind::Work, None, payload).map(drop).map_err(HostError::Record)
+        self.thread_log(thread)?.write(RecordKind::Work, payload).map(drop).map_err(HostError::Record)
     }
 }

@@ -2,40 +2,40 @@
 //! · 구현 스펙 §9).
 //!
 //! - **요청을 받은 그때 읽는다** — 물어보는 정도와 「다시 묻지 않기」 허락(S18: Work에 이은 Thread면 Work 폴더의 점 파일, 아니면
-//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 선 worktree · spec 폴더 · Thread 폴더 — Atelier만 쓰는
-//!   Thread 파일은 빼고, 코드 리뷰 1차 A2), 등록된 Project,
+//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일 — Claude 채팅만 읽는다, restart 스펙 「01c — Codex」 권한 판정), 고칠 수 있는
+//!   자리(Work의 선 worktree · spec 폴더 · Thread 폴더의 `work/` — Atelier만 쓰는 Thread 파일은 그 밖이다, 코드 리뷰 1차 A2 · restart
+//!   스펙 「01c — Codex」 작업 폴더), 등록된 Project,
 //!   쓰기 자리 주인(§10). 칩이 바꾼 정도 · 카드가 준 허락 · 「Project 고치기 시작」이 세운 worktree(v1 티켓 32)가 다음 요청부터 든다.
 //!   자리 · Project는 편집일 때만 읽는다. Atelier만 쓰는 Thread 파일은 명령일 때도 읽는다 — 명령 글에 나오면 묻는다(코드 리뷰 2차 A3).
 //! - **아직 서지 않은 worktree의 자리는 고칠 수 있는 자리가 아니다**(S21 · v1 티켓 32) — 그 자리에 먼저 쓰면 git worktree가 아닌 폴더가
 //!   서고, 뒤의 「Project 고치기 시작」이 그것을 worktree로 알고 짓지 않는다. 그 자리는 그 Project의 자리로 쳐서 거절 글이 도구를
 //!   가리킨다.
-//! - **Session을 열 때 읽는다** — 그 Agent의 Policy · `tools.cli`(정의 스냅숏, §19)와 작업 폴더(상대 경로를 푸는 자리).
+//! - **Session을 열 때 읽는다** — 작업 폴더(상대 경로를 푸는 자리).
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
 //!   `..`는 링크를 푼 뒤에 접는다(코드 리뷰 2차 A2) — 링크 뒤의 `..`가 고칠 수 있는 자리 · Thread 기록 판정을 비켜 가지 않게.
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
-//!   **거절**은 거부 선택지로 닫고 글을 Agent에게 준다. **물음**은 카드 종류 · Policy 이름 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
+//!   **거절**은 거부 선택지로 닫고 글을 Runtime에게 준다 — 그 글을 쓰기 자리 손에도 적어 두어, Codex가 읽지 않고 턴을 `cancelled`로
+//!   끝내면 그 끝 줄에 까닭으로 선다(restart 01c-7). **물음**은 카드 종류 · 왜 묻는지 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
 //!   달고, 선택지와 함께 적어 둔다(사람이 편집을 허락하면 쥐고, 다시 묻지 않기를 고르면 그 허락을 적는다 — v1 티켓 24). 고를 선택지가
 //!   없는 요청은 사람에게 묻는다.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use atelier_core::{Policy, PolicyPlace};
+use atelier_core::{PolicyPlace, Runtime};
 
 use super::seat::{allowing, options_of, rejecting, Writer};
-use crate::policy::{self, Act, AskLevel, Card, Case, Verdict};
+use crate::policy::{self, Act, AppRefusal, AskLevel, Card, Case, Rules, Verdict};
 use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 
 /// Session 하나의 판정 문 — Session을 열 때마다 짓는다.
 pub(super) struct Gate {
     pub(super) data_root: PathBuf,
     pub(super) thread: String,
+    /// 이 채팅의 Runtime — 판정의 갈래가 Runtime마다 다르다(restart 스펙 「01c — Codex」 권한 판정).
+    pub(super) runtime: Runtime,
     /// 이 Session의 작업 폴더 — 상대 경로를 여기서 푼다.
     pub(super) cwd: PathBuf,
-    /// 그 Agent의 Policy(정의 스냅숏).
-    pub(super) policy: Policy,
-    /// 그 Agent의 `tools.cli`(정의 스냅숏).
-    pub(super) cli: Vec<String>,
     pub(super) writer: Arc<Writer>,
 }
 
@@ -47,20 +47,30 @@ impl Gate {
     }
 
     fn rule(&self, asked: &PermissionAsked) -> Judgement {
-        // Agent의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「알아서」
+        // Runtime의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「묻지 않음」
         // 여도). Runtime이 물음들을 `_meta.atelier.questions`에 실었다(Claude 변환기 — `AskUserQuestion`).
         if asked.request["_meta"]["atelier"]["questions"].is_array() {
             let question = Asking { card: Card::Question, policy: String::new(), grant: Vec::new() };
             return self.ask(asked, &Act::Other, options_of(&asked.request), question);
         }
-        let act = match Act::of(&asked.tool_call) {
+        let read = match self.runtime {
+            Runtime::ClaudeCode => Act::of(&asked.tool_call),
+            Runtime::Codex => Act::of_codex(&asked.tool_call),
+        };
+        let act = match read {
             Act::Edit(paths) => Act::Edit(paths.iter().map(|path| resolve(path, &self.cwd)).collect()),
             act => act,
         };
         let editing = matches!(act, Act::Edit(_));
         // 이은 Work는 쓰기 자리 손이 든다 — Work 만들기 카드로 턴 가운데 이어져도 다음 요청부터 그 Work다(v1 티켓 30).
         let work = self.writer.work();
-        let (level, grants) = asking(&self.data_root, &self.thread, work.as_deref());
+        // 물어보는 정도와 「다시 묻지 않기」 허락은 Claude 채팅만 읽는다 — 작업공간의 채팅이 함께 쓰는 값이라, Codex 채팅이 읽으면 Claude 채팅이
+        // 고른 「묻지 않음」이 Codex의 요청을 저절로 넘긴다(스펙 「01c — Codex」 권한 판정).
+        let claude = (self.runtime == Runtime::ClaudeCode).then(|| asking(&self.data_root, &self.thread, work.as_deref()));
+        let rules = match &claude {
+            Some((level, grants)) => Rules::Claude { level: *level, grants },
+            None => Rules::Codex,
+        };
         let roots = if editing { self.roots(work.as_deref()) } else { Vec::new() };
         let kept = if matches!(act, Act::Edit(_) | Act::Command(_)) { self.kept() } else { Vec::new() };
         let cwd = resolve(&self.cwd, &self.cwd);
@@ -74,20 +84,18 @@ impl Gate {
         let seat = if editing { self.writer.blocker() } else { None };
         let verdict = policy::judge(&Case {
             act: &act,
-            policy: &self.policy,
-            cli: &self.cli,
-            level,
-            grants: &grants,
+            rules,
             in_work: work.is_some(),
             roots: &roots,
             kept: &kept,
             cwd: &cwd,
             projects: &projects,
-            seat: seat.as_deref(),
+            seat: seat.as_ref(),
         });
         let options = options_of(&asked.request);
         // 판정의 답으로 닫지 못해 묻는 것(고를 선택지가 없다) — 판정이 넘기지 않을 일이라 「다시 묻지 않기」를 주지 않는다.
-        let unsure = Asking { card: act.card(), policy: level.name().to_owned(), grant: Vec::new() };
+        let policy = claude.as_ref().map_or_else(String::new, |(level, _)| level.name().to_owned());
+        let unsure = Asking { card: act.card(), policy, grant: Vec::new() };
         match verdict {
             Verdict::Allow { reason } => {
                 let Some(option_id) = allowing(&options) else { return self.ask(asked, &act, options, unsure) };
@@ -98,15 +106,19 @@ impl Gate {
                 }
                 Judgement::Decide(Ruling { option_id, reason })
             }
-            Verdict::Refuse { message } => self.refuse(asked, &act, options, message, unsure),
+            Verdict::Refuse { refusal } => self.refuse(asked, &act, options, refusal, unsure),
             Verdict::Ask { card, policy, grant } => self.ask(asked, &act, options, Asking { card, policy, grant }),
         }
     }
 
-    /// 거부 선택지로 닫는다 — 없으면 묻는다.
-    fn refuse(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, message: String, unsure: Asking) -> Judgement {
+    /// 거부 선택지로 닫는다 — 없으면 묻는다. 닫으면 그 거절을 쓰기 자리 손에 적어 둔다 — Codex는 그 글을 읽지 않고 턴을 `cancelled`로
+    /// 끝내므로, 그 끝 줄에 까닭을 단다(restart 01c-7, [`super::seat::Writer::refused`]). Runtime에게는 글이 간다.
+    fn refuse(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, refusal: AppRefusal, unsure: Asking) -> Judgement {
         match rejecting(&options) {
-            Some(option_id) => Judgement::Decide(Ruling { option_id, reason: message }),
+            Some(option_id) => {
+                self.writer.refused(&refusal);
+                Judgement::Decide(Ruling { option_id, reason: refusal.message })
+            }
             None => self.ask(asked, act, options, unsure),
         }
     }
@@ -118,9 +130,10 @@ impl Gate {
         Judgement::Ask(asking)
     }
 
-    /// 고칠 수 있는 자리 — Thread 폴더, 그리고 이은 Work의 spec 폴더와 선 worktree들. Work를 읽지 못하면(사라졌다) Thread 폴더뿐이다.
+    /// 고칠 수 있는 자리 — Thread 폴더의 `work/`, 그리고 이은 Work의 spec 폴더와 선 worktree들. Work를 읽지 못하면(사라졌다) `work/`
+    /// 뿐이다. Thread 폴더의 나머지는 고칠 수 없다(restart 스펙 「01c — Codex」 작업 폴더).
     fn roots(&self, work: Option<&str>) -> Vec<PathBuf> {
-        let mut roots: Vec<PathBuf> = atelier_core::thread_dir(&self.data_root, &self.thread).into_iter().collect();
+        let mut roots: Vec<PathBuf> = atelier_core::thread_work_dir(&self.data_root, &self.thread).into_iter().collect();
         if let Some(slug) = work {
             let works = atelier_core::works_in(&self.data_root);
             if let Ok(meta) = atelier_core::read_work(&works, slug) {
@@ -132,7 +145,7 @@ impl Gate {
         roots.iter().map(|root| resolve(root, &self.cwd)).collect()
     }
 
-    /// 고칠 수 있는 자리 안이어도 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더(코드 리뷰 1차 A2).
+    /// 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더(코드 리뷰 1차 A2). 편집은 기록이라고 거절하고 명령 글에 나오면 묻는다.
     fn kept(&self) -> Vec<PathBuf> {
         let dir = atelier_core::thread_dir(&self.data_root, &self.thread).into_iter();
         dir.flat_map(|dir| atelier_core::thread_kept(&dir)).map(|path| resolve(&path, &self.cwd)).collect()

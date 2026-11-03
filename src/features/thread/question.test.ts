@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AskedQuestion, QuestionEntry } from "./fold";
-import { answeredCards, answersOf, NO_PICK, pickOption, questionKey, typeAnswer } from "./question";
+import { answeredCards, answersAtOnce, answersOf, NO_PICK, pickOption, questionKey, typeAnswer } from "./question";
 
 // 질문 카드(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — 물음마다 고른 것 · 직접 쓴 말을 답으로, 키 하나를 고르기로, 답한 것을
 // 흐름의 답한 카드(02 §10)로 옮긴다. seam은 `question.ts`의 순수 함수들이고, 그리는 쪽(`QuestionCard.tsx`)은 여기 나온 값만 그린다. 문구의
@@ -56,6 +56,19 @@ describe("고르고 쓴 것이 답이 된다", () => {
       { question: FEE.question, answer: "비율대로 돌려준다" },
       { question: SCREEN.question, answer: "환불 내역" },
     ]);
+  });
+});
+
+// Cards 보드 「질문」(restart 02b-5) — 물음 하나에 하나만 고르면 선택지 알약을 누르는 것이 곧 답이다(보드에 「답하기」가 없다). 여럿 고르거나 물음이
+// 여럿이면 고른 뒤 「답하기」로 보낸다.
+describe("고르면 곧 답인가", () => {
+  it("물음 하나 · 하나만 고르기면 고르는 것이 답이다", () => {
+    expect(answersAtOnce([FEE])).toBe(true);
+  });
+
+  it("여럿 고르는 물음이나 물음이 여럿이면 「답하기」로 보낸다", () => {
+    expect(answersAtOnce([SCREEN])).toBe(false);
+    expect(answersAtOnce([FEE, FEE])).toBe(false);
   });
 });
 

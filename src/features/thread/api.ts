@@ -1,21 +1,32 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Quote } from "@/features/works/QuotePick";
+import type { ScopeOf } from "@/features/services/scope";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT, WORK_WRITING_EVENT } from "./events";
+import type { MentionPlace } from "./mentions";
+import {
+  THREAD_CHUNK_EVENT,
+  THREAD_ENGINE_EVENT,
+  THREAD_LIST_EVENT,
+  THREAD_QUEUE_EVENT,
+  THREAD_RECORD_EVENT,
+  WORK_WRITING_EVENT,
+} from "./events";
 import type {
-  AgentRoster,
   AskLevel,
   Attachment,
+  ChipValues,
+  CodexModeValue,
   EngineCheck,
   EngineState,
-  Participant,
   ProjectAddAnswer,
   ProjectAnswer,
   QuestionAnswer,
   QuitCounts,
   RecordLine,
-  SpaceAnswer,
+  Runtime,
+  ServiceAnswer,
   StartPicks,
+  ThreadChunkEvent,
   ThreadLink,
   ThreadQueueEvent,
   ThreadRecordEvent,
@@ -31,10 +42,19 @@ import type {
 // **인자 객체가 평평해야 한다** — 객체 인자는 IPC 검사가 칸을 못 잰다. 이어 갈 곳(`link`)처럼 객체를 싣는 날에는 먼저 짓고 이름으로
 // 넘긴다. 이 명령들은 L4 다리로 탈 수 없다(엔진이 앱 프로세스의 상태다) — 다리는 거절한다.
 export const threadApi = {
-  /** Claude Code를 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 확인」이다(로그인 환경을 새로 읽는다). */
-  checkEngine: (reread: boolean) => invoke<EngineCheck>("thread_check_engine", { reread }),
-  startLogin: () => invoke<void>("thread_start_login"),
-  cancelLogin: () => invoke<void>("thread_cancel_login"),
+  /**
+   * 「@」 언급이 찾는 자리와 파일(restart 02b-3) — 작업 폴더 · spec 폴더 · 읽는 범위의 Project. 채팅이면 그 채팅의 자리, 새 채팅이면 입력창이 쥔
+   * Work · Service · Project의 자리다(읽는 범위와 같은 인자). 경로를 넘기지 않는다 — core가 slug로 푼다. 엔진을 지나지 않는 읽기다.
+   */
+  mentionFiles: ({ thread, work, service, project }: ScopeOf) =>
+    invoke<MentionPlace[]>("mention_files", { thread: thread ?? null, work: work ?? null, service: service ?? null, project: project ?? null }),
+  /** 그 Runtime을 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 찾기」 · 「다시 확인」이다(로그인 환경을 새로 읽는다). */
+  checkEngine: (runtime: Runtime, reread: boolean) => invoke<EngineCheck>("thread_check_engine", { runtime, reread }),
+  /**
+   * 그 Runtime의 로그인 명령 한 줄(restart 01c-10) — 로그인 셸의 PATH에서 찾은 실행 파일과 로그인 인자다. 「터미널에서 로그인」이 Terminal에 연
+   * 새 셸에 친다(`terminal-login.ts`). 못 찾으면 거절되고 그 Runtime의 「못 찾음」이 엔진 상태 이벤트로 온다.
+   */
+  loginCommand: (runtime: Runtime) => invoke<string>("thread_login_command", { runtime }),
   /** 앱 종료 확인 창의 셈 — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 메모리만 읽는다. */
   quitCounts: () => invoke<QuitCounts>("thread_quit_counts"),
   /** 모든 Thread의 요약 — 새것이 먼저다. 깨진 Thread도 줄이 선다. */
@@ -44,16 +64,17 @@ export const threadApi = {
   /** 기록에서 `after` 다음 seq의 줄들. 처음 그릴 때는 `0`이다. */
   readRecord: (thread: string, after: number) => invoke<RecordLine[]>("thread_read_record", { thread, after }),
   /**
-   * 새 Thread — 첫 말과 함께 세운다. Host의 Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
-   * 이어 갈 곳(`link`)은 Work 칩에서 고른 것이다(v1 티켓 31 · 03 §5 — 새 Work · Work 없이 대화 · 최근 Work). 첨부는 경로만 간다(v1 티켓
+   * 새 Thread — 첫 말과 함께 세운다. Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
+   * 이어 갈 곳(`link`)은 주소 씨앗이 정한 것이다(새 Work · Work 없이 대화 · 그 Work). 첨부는 경로만 간다(v1 티켓
    * 06 · S30). 나머지는 입력창 칩에서 첫 말 전에 고른 것이고 고르지 않은 칸은 `null`이다 — 물어보는 정도(v1 티켓 23 — 이은 Work면
-   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 받는 Agent 정의의 값), 트레이 Space 칩의
-   * Space(03 §5 — 이은 Work면 그 Work의 Space가 된다, S4).
+   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 Runtime의 기본값), 트레이 범위 칩의
+   * Service(03 §5 — 이은 Work면 그 Work의 Service가 된다, S4)나 Project. 인용(`quote` — 작업공간의 새 채팅 탭이 넓힌 카드의 문서에서 고른 글,
+   * restart 02a-11)은 엔진이 이은 Work의 spec 폴더를 가리키는 인용 블록으로 첫 말 본문 앞에 둔다 — 틀리면 채팅을 세우지 않고 거절한다.
    */
-  start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks) => {
+  start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks, quote: Quote | null = null) => {
     const attachments = pathsOf(attached);
-    const { mode, model, effort, space } = picks;
-    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort, space });
+    const { runtime, mode, model, effort, service, project } = picks;
+    return invoke<string>("thread_start", { text, attachments, link, runtime, mode, model, effort, service, project, quote });
   },
   /**
    * 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. 인용(v1 티켓 35 ·
@@ -73,23 +94,28 @@ export const threadApi = {
   /** 지금 보내기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. */
   sendNow: (thread: string, queued: string) => invoke<void>("thread_send_now", { thread, queued }),
   /**
-   * 권한 답 — 그 참여자(`who`)가 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 「… 늘 허용」이면 `remember`, 「아니요,
+   * 다시 잇기(01b-6) — 말을 보내지 않고 재개 차례로 Session만 연다. 세션이 열릴 때까지 기다린다. 끊긴 턴은 다시 보내지 않고, 대기 줄은 맨 앞부터 간다.
+   * 로그인이 필요하면 실패가 아니라 기록의 로그인 필요 줄로 온다.
+   */
+  reconnect: (thread: string) => invoke<void>("thread_reconnect", { thread }),
+  /**
+   * 권한 답 — 세션이 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 허락 문구면 `remember`, 「아니요,
    * 다르게」의 입력칸에 쓴 말이 있으면 `words`다.
    */
-  answerPermission: (thread: string, who: string, request: string, option: string, remember = false, words: string | null = null) =>
-    invoke<void>("thread_answer_permission", { thread, who, request, option, remember, words }),
+  answerPermission: (thread: string, request: string, option: string, remember = false, words: string | null = null) =>
+    invoke<void>("thread_answer_permission", { thread, request, option, remember, words }),
   /**
-   * Work 만들기 카드의 답(v1 티켓 30) — 「Work 만들기」면 `create`와 고른 Project · 고친 브랜치(Project가 없으면 null), 「Work 없이 계속」이면
+   * Work 만들기 카드의 답(v1 티켓 30) — 「작업공간 만들기」면 `create`와 고른 Project · 고친 브랜치(Project가 없으면 null), 「작업공간 없이 계속」이면
    * `create: false`다. 만들지 못하면 실패로 오고 카드는 그대로 선다(다시 고를 수 있다). 고른 것은 기록의 답 줄로 온다.
    */
   answerWork: (thread: string, request: string, create: boolean, projects: string[] = [], branch: string | null = null) =>
     invoke<void>("thread_answer_work", { thread, request, create, projects, branch }),
   /**
-   * 질문 답(v1 티켓 26) — 그 참여자(`who`)가 낸 질문(`question` 줄의 요청 id)에 물음마다의 답으로 답한다. 질문 카드의 「나중에」면
+   * 질문 답(v1 티켓 26) — 세션이 낸 질문(`question` 줄의 요청 id)에 물음마다의 답으로 답한다. 질문 카드의 「나중에」면
    * `answers`를 비우고 `later`다.
    */
-  answerQuestion: (thread: string, who: string, request: string, answers: readonly QuestionAnswer[], later = false) =>
-    invoke<void>("thread_answer_question", { thread, who, request, answers, later }),
+  answerQuestion: (thread: string, request: string, answers: readonly QuestionAnswer[], later = false) =>
+    invoke<void>("thread_answer_question", { thread, request, answers, later }),
   /**
    * Work 밖 Project 카드의 답(v1 티켓 32 · S22) — 「붙이고 고치기」(`attach`) · 「읽기만 하기」(`read`) · 「아니요」(`decline`). 붙이지
    * 못하면 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 온다.
@@ -97,15 +123,15 @@ export const threadApi = {
   answerProject: (thread: string, request: string, choice: ProjectAnswer) =>
     invoke<void>("thread_answer_project", { thread, request, choice }),
   /**
-   * Space 질문 카드의 답(03 티켓 08 · S12) — 고른 Space(`space`)의 slug · 「Space 없이」(`none`) · 「나중에」(`later`, esc). 붙이지 못하면
-   * 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 오고, 붙이거나 뺀 것은 그 뒤의 범위로 든다(Work에 이었으면 그 Work의 Space다).
+   * Service 질문 카드의 답(03 티켓 08 · S12) — 고른 Service(`service`)의 slug · 「Service 없이」(`none`) · 「나중에」(`later`, esc). 붙이지 못하면
+   * 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 오고, 붙이거나 뺀 것은 그 뒤의 범위로 든다(Work에 이었으면 그 Work의 Service다).
    */
-  answerSpace: (thread: string, request: string, answer: SpaceAnswer) =>
-    invoke<void>("thread_answer_space", {
+  answerService: (thread: string, request: string, answer: ServiceAnswer) =>
+    invoke<void>("thread_answer_service", {
       thread,
       request,
       choice: answer.kind,
-      space: answer.kind === "space" ? answer.slug : null,
+      service: answer.kind === "service" ? answer.slug : null,
     }),
   /**
    * Project 추가 카드의 답(03 티켓 12 · §12) — 「git init 하고 추가」(`init`) · 「뿌리 폴더로 추가」(`root`) · 「그대로 추가」(`as-is`) · 「추가하지
@@ -113,32 +139,28 @@ export const threadApi = {
    */
   answerProjectAdd: (thread: string, request: string, choice: ProjectAddAnswer) =>
     invoke<void>("thread_answer_project_add", { thread, request, choice }),
-  /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
-  setModel: (thread: string, who: string, model: string) =>
-    invoke<Participant>("thread_set_model", { thread, who, model }),
+  /** 모델 바꾸기 — 그 채팅의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 채팅의 값이다. */
+  setModel: (thread: string, model: string) => invoke<ChipValues>("thread_set_model", { thread, model }),
   /** 생각 깊이 바꾸기(스토리 33) — 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터 든다. 턴이 도는 동안은 거절된다. */
-  setEffort: (thread: string, who: string, effort: string) =>
-    invoke<Participant>("thread_set_effort", { thread, who, effort }),
+  setEffort: (thread: string, effort: string) => invoke<ChipValues>("thread_set_effort", { thread, effort }),
   /**
-   * 물어보는 정도 바꾸기(v1 티켓 23 · S18) — Work에 이은 Thread면 그 Work의 정도다. 다음 권한 요청부터 들고, 「계획만」으로 들고 나면
+   * 물어보는 정도 바꾸기(v1 티켓 23 · S18) — Work에 이은 Thread면 그 Work의 정도다. 다음 권한 요청부터 들고, 「계획」으로 들고 나면
    * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
    */
   setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),
-  /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. */
+  /**
+   * Codex 모드 바꾸기(restart 01c-5) — Codex 채팅의 모드 칩이 Codex가 보낸 모드 id 하나를 고른다. 채팅마다의 값이다. 떠 있으면 곧바로 들고(Codex가
+   * 받지 않으면 실패로 온다), 아니면 열 때 든다. 답은 바뀐 채팅의 값이다.
+   */
+  setCodexMode: (thread: string, mode: string) => invoke<CodexModeValue>("thread_set_codex_mode", { thread, mode }),
+  /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — `?work=`로 연 새 채팅의 물어보는 정도 칩이 이것을 보인다. */
   workMode: (work: string) => invoke<AskLevel>("thread_work_mode", { work }),
   /**
-   * Thread의 Space 붙이기 · 바꾸기 · 빼기(`null`, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Space가 바뀐다. 떠 있는 Session은 다음 말부터 새
-   * 범위로 이어 연다. 바꾼 것은 기록의 Space 줄(`space`)로 온다. 없는 Space는 그 까닭으로 거절된다.
+   * Thread의 Service 붙이기 · 바꾸기 · 빼기(`null`, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Service가 바뀐다. 떠 있는 Session은 다음 말부터 새
+   * 범위로 이어 연다. 바꾼 것은 기록의 Service 줄(`service`)로 온다. 없는 Service는 그 까닭으로 거절된다.
    */
-  setSpace: (thread: string, space: string | null) => invoke<void>("thread_set_space", { thread, space }),
-  /** Work의 Space 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Space 메뉴. 그 Work의 Thread마다 Space 줄이 선다(S9). */
-  setWorkSpace: (work: string, space: string | null) => invoke<void>("thread_set_work_space", { work, space }),
-  /**
-   * 다시 맡기기(v1 티켓 17) — 호출 줄에서 `from`의 부르기를 같은 글로 `to`에게 다시 한다. 기다리지 않는다: 부르기와 그 결과(부른
-   * Agent의 다음 말)는 기록 줄 이벤트로 온다. 부를 수 없으면 그 까닭으로 거절된다.
-   */
-  callAgain: (thread: string, from: string, to: string, text: string) =>
-    invoke<void>("thread_call_again", { thread, from, to, text }),
+  /** Work의 Service 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Service 메뉴. 그 Work의 Thread마다 Service 줄이 선다(S9). */
+  setWorkService: (work: string, service: string | null) => invoke<void>("thread_set_work_service", { work, service }),
   /** 이름 바꾸기 — 위 막대에서 고친 이름. 같거나 빈 이름이면 아무것도 적지 않는다. 답은 바뀐 목록 요약이다. */
   rename: (thread: string, title: string) => invoke<ThreadSummary>("thread_rename", { thread, title }),
   /**
@@ -146,11 +168,6 @@ export const threadApi = {
    * 바뀌었으면 요약 이벤트도 온다.
    */
   markRead: (thread: string, seq: number) => invoke<ThreadSummary>("thread_mark_read", { thread, seq }),
-  /**
-   * 부를 수 있는 Agent와 깨진 파일 — `work`가 없으면 Library만, 있으면 그 Work의 Project 안까지다(v1 티켓 11). @ 메뉴 · 얼굴이
-   * 읽고(14), 빈 Thread의 칩이 받는 Agent 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33).
-   */
-  agents: (work: string | null) => invoke<AgentRoster>("list_agents", { work }),
 };
 
 /** 엔진에 가는 첨부 — 절대 경로만. 크기는 엔진이 보낼 때 다시 잰다. */
@@ -161,12 +178,17 @@ export function onThreadRecord(listener: (event: ThreadRecordEvent) => void): Pr
   return listen<ThreadRecordEvent>(THREAD_RECORD_EVENT, (event) => listener(event.payload));
 }
 
-/** 대기 줄이 바뀔 때마다 온다 — 그 참여자 Session의 대기 줄 전체다. */
+/** 흐르는 글이 33ms마다 온다 — 어느 Thread든. 앱 층(`useThreadFeeds`) 하나가 듣는다. */
+export function onThreadChunk(listener: (event: ThreadChunkEvent) => void): Promise<UnlistenFn> {
+  return listen<ThreadChunkEvent>(THREAD_CHUNK_EVENT, (event) => listener(event.payload));
+}
+
+/** 대기 줄이 바뀔 때마다 온다 — 그 Session의 대기 줄 전체다. */
 export function onThreadQueue(listener: (event: ThreadQueueEvent) => void): Promise<UnlistenFn> {
   return listen<ThreadQueueEvent>(THREAD_QUEUE_EVENT, (event) => listener(event.payload));
 }
 
-/** Thread 하나의 요약이 바뀔 때마다 온다(새 Thread · 이름 바꿈 · 참여자가 늘었다). */
+/** Thread 하나의 요약이 바뀔 때마다 온다(새 Thread · 이름 바꿈 · 읽은 자리). */
 export function onThreadList(listener: (summary: ThreadSummary) => void): Promise<UnlistenFn> {
   return listen<ThreadSummary>(THREAD_LIST_EVENT, (event) => listener(event.payload));
 }

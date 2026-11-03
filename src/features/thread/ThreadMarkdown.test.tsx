@@ -42,3 +42,65 @@ describe("흐르는 답", () => {
     expect(markup).not.toContain("stream-tail");
   });
 });
+
+// 긴 답은 덩어리로 나눠 그린다(01b-9). 나눠 그려도 통째로 푼 것과 같아야 한다 — 링크 정의가 든 글은 나누지 않으므로(`markdownBlocks`) 쓰지 않는 정의 하나를
+// 붙인 글이 통째로 푼 값이다.
+describe("덩어리로 나눠 그린 답", () => {
+  const whole = (text: string) => render(`${text}\n\n[쓰지-않는-정의]: https://example.com\n`, false);
+  const tight = (markup: string) => markup.replace(/>\s+</g, "><").trim();
+
+  it.each([
+    ["문단", "첫 문단이다.\n\n둘째 문단이다."],
+    ["제목과 목록", "## 제목\n\n문단이다.\n\n- 하나\n- 둘\n\n### 다음\n\n1. 첫째\n2. 둘째\n"],
+    ["느슨한 목록", "- 하나\n\n- 둘\n\n  둘째의 둘째 문단\n\n- 셋\n\n밖\n"],
+    ["코드", "앞\n\n```rust\nlet a = 1;\n\nlet b = 2;\n```\n\n뒤\n"],
+    ["표와 인용", "| 값 | 뜻 |\n|---|---|\n| 1 | 2 |\n\n> 인용\n\n---\n\n끝\n"],
+    ["들여 쓴 코드", "앞\n\n    코드\n\n    코드\n\n뒤\n"],
+  ])("%s", (_, text) => {
+    expect(tight(render(text, false))).toBe(tight(whole(text)));
+  });
+
+  it("덩어리가 아주 많은 답도 차례대로 다 선다", () => {
+    const text = Array.from({ length: 200 }, (_, at) => `문단 ${at}번이다.`).join("\n\n");
+    const markup = render(text, false);
+    const order = [...markup.matchAll(/문단 (\d+)번이다\./g)].map((found) => Number(found[1]));
+
+    expect(order).toEqual(Array.from({ length: 200 }, (_, at) => at));
+    expect(tight(markup).replace(/<div class="flex min-w-0 flex-col gap-3">|<\/div>/g, "")).toBe(
+      tight(whole(text)).replace(/<\/div>/g, ""),
+    );
+  });
+
+  it("흐르는 동안에도 끝이 옅은 글덩이는 하나다", () => {
+    const markup = render("## 제목\n\n첫 문단이다.\n\n둘째 문단이다.\n\n셋째가 흐르는", true);
+    expect(markup.match(/stream-tail/g)).toHaveLength(1);
+    expect(markup).toMatch(/<span class="stream-tail">.*흐르는.*<\/span><\/p>\s*<\/div>$/);
+    expect(markup).toContain('class="word-in">첫');
+  });
+});
+
+// Cards 보드 「코드 블록」(restart 02b-6 · DS `.at-code`) — 둥근 20 · `surface-code` 면에 안쪽 1 `border-light` 링. 머리는 안쪽 12 12 4 16 · 13 / 18에 언어와
+// 오른쪽 복사(26 · 글리프 14 · `fg-tertiary` — `CopyButton`), 본문은 안쪽 6 16 16 · 고정폭 13 / 20이다. 한때 머리 34 · 12 `fg-tertiary` 언어 · 링 없음 ·
+// 본문 위 0 · 아래 14였다.
+describe("코드 블록", () => {
+  const markup = render("```rust\nconst DELAYS: [u64; 3] = [1, 2, 4];\n```", false);
+  const classes = (pattern: RegExp) => pattern.exec(markup)?.[1].split(" ") ?? [];
+
+  it("면은 둥근 20 · `surface-code` · 안쪽 1 `border-light` 링이다", () => {
+    expect(classes(/<figure class="([^"]*)"/)).toEqual(
+      expect.arrayContaining(["rounded-3xl", "bg-surface-code", "inset-ring", "inset-ring-border-light"]),
+    );
+  });
+
+  it("머리는 언어와 오른쪽 「코드 복사」이고, 복사 단추는 대화의 복사와 같다", () => {
+    expect(classes(/<figcaption class="([^"]*)"/)).toEqual(expect.arrayContaining(["pt-3", "pr-3", "pb-1", "pl-4", "gap-2", "text-chat-meta"]));
+    expect(markup).toMatch(/<figcaption[^>]*><span[^>]*>rust<\/span>/);
+    expect(classes(/<button[^>]*aria-label="코드 복사"[^>]*class="([^"]*)"/)).toEqual(
+      expect.arrayContaining(["icon-button-sm", "text-fg-tertiary"]),
+    );
+  });
+
+  it("본문은 안쪽 6 16 16의 고정폭 13 / 20이다", () => {
+    expect(classes(/<pre class="([^"]*)"/)).toEqual(expect.arrayContaining(["pt-1.5", "px-4", "pb-4", "font-mono", "text-code"]));
+  });
+});

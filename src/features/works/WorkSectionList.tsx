@@ -3,9 +3,11 @@ import { ChevronDown, ChevronRight, Folder, Pin, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_AFTER_SECTION,
+  SIDEBAR_GLYPH_GAP,
   SIDEBAR_HEADING,
-  SIDEBAR_ROW_SHAPE,
   SIDEBAR_ROWS,
+  SIDEBAR_ROW_SHAPE,
+  SIDEBAR_ROW_TEXT,
   sidebarRowTone,
 } from "@/components/shell/sidebar-look";
 import type { CallingNote, ShellSignal } from "@/components/shell/shell-signal";
@@ -128,7 +130,7 @@ export function WorkSectionList({
   /** 행이 그 Work의 Thread에서 받는 값(`WorkRowThreads`, v1 티켓 37). */
   threads: WorkRowThreads;
   onToggleSection: (section: keyof SectionsOpen) => void;
-  /** Work 묶음 머리의 +를 눌렀다 — 「새 Work」 칩을 단 새 Thread를 연다(02 S5). 어디로 가는지는 위의 일이다. */
+  /** Work 묶음 머리의 +를 눌렀다 — 「새 작업공간」 칩을 단 새 Thread를 연다(02 S5). 어디로 가는지는 위의 일이다. */
   onNewWork: () => void;
   /** 행을 눌렀다 — 그 work로 간다. `pointer`는 포인터로 눌렀는가다(`WorkRow`의 같은 이름). */
   onOpen: (slug: string, pointer: boolean) => void;
@@ -178,7 +180,7 @@ export function WorkSectionList({
     ) : null;
   // 두 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 둘이 된다.
   //
-  // **펼친 Work 아래에 그 Work의 Thread 줄이 선다**(v1 티켓 37 · 캔버스 「Thread 목록과 아바타」 보드 `.nest`) — 행 상자 밖, 바로 뒤의 형제다.
+  // **펼친 Work 아래에 그 Work의 Thread 줄이 선다**(v1 티켓 37 · 캔버스 「채팅 목록과 아바타」 보드 `.nest`) — 행 상자 밖, 바로 뒤의 형제다.
   // 행 상자 안에 두면 행의 누름(그 Work로 가기) · 끌기 · 호버 카드 · 우클릭 대상이 Thread 줄까지 덮는다. 들여쓰기는 상자가 아니라 줄의 속이
   // 든다 — 고른 줄의 면은 목록 폭 그대로이고 얼굴이 Work 제목과 한 세로줄에 선다(Codex 프로젝트 아래 줄 — v1 티켓 46, `ThreadRow`의 `compact`).
   // 접힌 Work의 줄은 그리지 않는다 — 구획 접기와 달리 움직임이 없어(보드) DOM에 남겨 둘 까닭이 없다.
@@ -207,8 +209,9 @@ export function WorkSectionList({
       onRename={onRename}
       onRenameCommit={onRenameCommit}
       onRenameEnd={onRenameEnd}
-      // **오른쪽 끝의 표시 하나**(02 S8) — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호다. 고르는 것은 순수 함수 하나다.
-      mark={workMark(threads.marks[work.slug] ?? [], shells.signals[work.slug] ?? null)}
+      // **오른쪽 끝의 표시 하나**(02 S8) — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호다. 고르는 것은 순수 함수 하나다. 펼치면
+      // Thread의 표시는 그 아래 제 줄이 말하고 Work 줄에는 셸 신호만 남는다(Main 보드 — 펼친 줄의 끝이 빈다, restart 02b-9b).
+      mark={workMark(expanded ? [] : (threads.marks[work.slug] ?? []), shells.signals[work.slug] ?? null)}
       note={shells.notes[work.slug] ?? null}
       onOpen={onOpen}
       onHover={onHover}
@@ -254,10 +257,10 @@ export function WorkSectionList({
 
       {/* 상주 목록의 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다.
           라벨은 어휘 표가 든다(US 17). 형제인 `고정`은 상태의 이름이다. */}
-      {/* **머리 끝의 +는 「새 Work」다**(02 구현 스펙 §4 · S5 · 캔버스 F2-Work `.sec .ib`) — 새 Thread를 열고 Work 칩을 「새 Work」로 둔다.
+      {/* **머리 끝의 +는 「작업공간 만들기」다**(02 구현 스펙 §4 · S5 · 캔버스 F2-Work `.sec .ib`) — 「새 작업공간」 칩을 세워 새 Thread를 연다.
           머리는 그 자체가 접기 단추라 + 를 그 안에 두면 단추 안의 단추가 된다 — 머리와 같은 상자 안 **형제로** 머리 줄 오른쪽 끝에
-          겹쳐 선다(뒤에 그려져 위에 선다). 목록의 Tab 정류장이 아니다(핀과 같다 — 목록은 Tab 한 번이다). 키보드의 길은 ⌘N 뒤 입력창의
-          Work 칩 「새 Work」다(03 S2 — 처음 쓰는 사람에겐 기본값이고, 그 뒤는 마지막에 고른 스위치 쪽이다). */}
+          겹쳐 선다(뒤에 그려져 위에 선다). 목록의 Tab 정류장이 아니다(핀과 같다 — 목록은 Tab 한 번이다). 키보드만 쓰면 ⌘N 뒤 대화에서 작업공간
+          제안을 받는다(`propose_work`). */}
       <div className={cn("relative flex shrink-0 flex-col", pinned.length > 0 ? SIDEBAR_AFTER_SECTION : "mt-3")}>
         <SectionHeader
           section="works"
@@ -267,15 +270,17 @@ export function WorkSectionList({
           count={main.length}
           onToggle={() => onToggleSection("works")}
         />
-        <span className="absolute top-0 right-1 flex h-7.5 items-center">
+        {/* 시안 Main의 작업공간 묶음 머리(`.ra-sr-label` 끝의 `.ra-tbtn` 20 — restart 02a-3) — 20 · 둥글기 4 · `fg-secondary`, 지나면
+            `fill-hover` 면에 `fg`(조용한 hover — `quiet-hover`), + 글리프 12. 머리 줄 안쪽 8에 끝이 선다. */}
+        <span className="absolute top-0 right-2 flex h-7.5 items-center">
           <button
             type="button"
-            aria-label="새 Work"
+            aria-label="작업공간 만들기"
             tabIndex={-1}
             onClick={onNewWork}
-            className="icon-button-quiet icon-button-xs text-fg-tertiary focus-ring"
+            className="flex size-5 shrink-0 items-center justify-center rounded-ctl text-fg-secondary transition-colors quiet-hover focus-ring"
           >
-            <Plus className="size-3.5" />
+            <Plus className="size-3" />
           </button>
         </span>
       </div>
@@ -394,7 +399,7 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
 // 계속 보인다**: 그것이 "비어 있는 게 아니라 접힌 것"을 알리는 유일한 표시다.
 //
 // **개수는 눈에서 걷었다**(v1 티켓 46 — Codex의 소제목에는 수가 없다). 이름에는 남는다(`sr-only`) — 머리의 접근성 이름(「고정 3」 ·
-// 「Work 7」)이 그대로다. 행의 수는 행을 세면 보이고, 「몇 개가 접혀 있나」는 접힌 머리를 펴면 보인다.
+// 「작업공간 7」)이 그대로다. 행의 수는 행을 세면 보이고, 「몇 개가 접혀 있나」는 접힌 머리를 펴면 보인다.
 function SectionHeader({
   section,
   label,
@@ -433,12 +438,13 @@ function SectionHeader({
         // 훑고 지나갈 때마다 칠해졌다 지워져 사이드바가 들썩였다. 누를 수 있다는 말은 글자가
         // 진해지는 것과 화살표가 뜨는 것(아래 둘)이 계속 한다. 행과 nav는 배경을 **남긴다** —
         // 그쪽은 누르면 가는 목적지라 긴 목록에서 지금 무엇을 가리키는지가 보여야 한다.
-        "group w-full gap-1 rounded-lg text-left focus-ring",
+        "group w-full gap-1 text-left focus-ring",
         SIDEBAR_HEADING,
+        SIDEBAR_ROW_SHAPE,
         className,
       )}
     >
-      <span className="shrink-0 text-sm text-fg-tertiary transition-colors group-hover:text-fg-secondary">{label}</span>
+      <span className="shrink-0 transition-colors group-hover:text-fg-secondary">{label}</span>
       {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
           트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
           독립 rotate 속성을 쓰고, transform만 걸면 화살표만 뚝 끊긴다. */}
@@ -513,7 +519,7 @@ function WorkRow({
   onRenameCommit: (slug: string, title: string) => void;
   onRenameEnd: () => void;
   /**
-   * 행을 눌렀다 — 그 work로 간다. **`pointer`는 포인터로 눌렀는가다** — 키(Enter · Space)로 켠 클릭은 `detail`이 0이다. 누른 행에
+   * 행을 눌렀다 — 그 work로 간다. **`pointer`는 포인터로 눌렀는가다** — 키(Enter · Service)로 켠 클릭은 `detail`이 0이다. 누른 행에
    * 카드를 잠재우는 것은 포인터로 누른 것뿐이다(`SidebarWorkList`의 `quiet` — 포인터가 떠나야 깨는데, 키로 누른 행에는 떠날 포인터가 없다).
    */
   onOpen: (slug: string, pointer: boolean) => void;
@@ -544,10 +550,11 @@ function WorkRow({
   // 행마다 제목 상자는 하나이고, 찾는 때도 hover 진입·이탈 두 순간뿐이다.
   const titleBoxOf = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-title]");
   // 이름 칸의 자리 — 이름 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다(높이 · 레인과 제목 사이 · 안쪽은 버튼 주석).
-  // **레인이 Codex의 폴더 자리다**(v1 티켓 46) — 행 안쪽 8에 16 칸이 서서 창 끝 + 16, 제목은 그 뒤 8에 서서 창 끝 + 40이다(nav 줄의 아이콘 ·
-  // 글자와 같은 세로줄). 한때 맨 앞에 펼침 단추 칸(22)이 늘 서 있어 제목이 + 59에서 시작했다 — 사용자가 짚은 「줄 글이 왼쪽 끝에서 멀다」다.
-  const nameCell = cn("col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center gap-2 pl-2", SIDEBAR_ROW_SHAPE);
-  // **레인** — 행 왼쪽의 16px 한 칸이고 **늘 폴더다**(02 구현 스펙 §4 · S7 · 시안 Components 「Work — …」 줄의 폴더 16 `fg-icon`). 한때 화면값이
+  // **레인이 폴더 자리다**(v1 티켓 46) — 행 안쪽 8에 15 칸이 서서 창 끝 + 16, 제목은 그 뒤 9에 서서 창 끝 + 40이다(nav 줄의 글리프 · 글자와
+  // 같은 세로줄 — restart 02a-3 · 시안 `.ra-sr-row`). 한때 맨 앞에 펼침 단추 칸(22)이 늘 서 있어 제목이 + 59에서 시작했다 — 사용자가 짚은
+  // 「줄 글이 왼쪽 끝에서 멀다」다.
+  const nameCell = cn("col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center pl-2", SIDEBAR_GLYPH_GAP, SIDEBAR_ROW_SHAPE);
+  // **레인** — 행 왼쪽의 15px 한 칸이고 **늘 폴더다**(02 구현 스펙 §4 · S7 — 크기 · 색은 위 칸 글리프 15 `fg-secondary`와 같다, restart 02a-3). 한때 화면값이
   // 있으면 셸의 점 · 스피너, 없으면 work 상태 아이콘(draft · active · review · done)이 섰다 — 줄의 상태가 왼쪽과 오른쪽 두 자리에 흩어져
   // 있었다. 이제 상태는 오른쪽 표시 하나이고, Work 상태는 호버 카드와 Work 화면이 말한다. 표식(`data-lane`)은 검사가 이 칸을 집는
   // 이름이다(마크업 seam · hover · 폭 드래그).
@@ -557,9 +564,9 @@ function WorkRow({
   const lane = (
     <span
       data-lane=""
-      className={cn("flex size-4 shrink-0 items-center justify-center text-fg-icon", hasThreads && "group-hover:opacity-0")}
+      className={cn("flex size-3.75 shrink-0 items-center justify-center text-fg-secondary", hasThreads && "group-hover:opacity-0")}
     >
-      <Folder className="size-4" />
+      <Folder className="size-3.75" />
     </span>
   );
   return (
@@ -669,13 +676,13 @@ function WorkRow({
           {lane}
           <InlineRename
             value={work.title}
-            label="작업 이름"
+            label="작업공간 이름"
             emptyMeans="revert"
             fit="fill"
             onCommit={(title) => onRenameCommit(work.slug, title)}
             onDone={onRenameEnd}
             returnFocus={() => document.querySelector<HTMLElement>(`[data-work-row="${work.slug}"] > button`)}
-            className="-ml-1 h-6 px-1 text-sm text-fg"
+            className={cn("-ml-1 h-6 px-1 text-fg", SIDEBAR_ROW_TEXT)}
           />
         </div>
       ) : (
@@ -764,7 +771,8 @@ function WorkRow({
             data-title=""
             className={cn(
               // 굵기는 400이다 — nav 항목도 400이다(Codex 사이드바는 줄마다 보통 굵기이고 고른 줄은 면으로만 드러난다 — v1 티켓 46).
-              "min-w-0 flex-1 text-sm",
+              "min-w-0 flex-1",
+              SIDEBAR_ROW_TEXT,
               work.status === "done" && "text-fg-tertiary",
             )}
           >
@@ -775,13 +783,14 @@ function WorkRow({
       {/* **펼침 단추 — 이은 Thread가 있는 Work에만 선다**(v1 티켓 37 · 02 S10). ▸ 14 `fg-subtle`(시안 `.row .chev` #8e8f90), 펴면 ⌄로 돈다(구획
           머리의 ⌄와 같은 시간 · 곡선). 누르면 펼침만 뒤집는다 — 행의 누름(그 Work로 가기)으로 올라가지 않는다. Tab 정류장이 아니다(핀과
           같다) — 키보드는 이름 버튼의 → ←다.
-          **폴더 위에 겹쳐 서고, 행을 가리킬 때만 보인다**(02 구현 스펙 §4 「호버 때 폴더 글리프 자리에 꺾쇠가 선다」). 단추는 행 왼쪽 32(행
-          안쪽 8 + 폴더 16 + 사이 8)를 덮고 ▸가 폴더 가운데에 선다 — 가리키면 폴더가 비키고 ▸가 선다. 펼친 것은 아래에 선 Thread 줄이 말한다. */}
+          **폴더 위에 겹쳐 서고, 행을 가리킬 때만 보인다**(02 구현 스펙 §4 「호버 때 폴더 글리프 자리에 꺾쇠가 선다」). 단추는 행 왼쪽 31(행
+          안쪽 8 + 폴더 15 + 같은 8)을 덮고 ▸가 폴더 가운데에 선다 — 가리키면 폴더가 비키고 ▸가 선다. 폭은 폴더 가운데(8 + 7.5)의 두 배다 — 02a-3이
+          폴더를 16 → 15로 줄일 때 단추가 32로 남아 ▸가 0.5 비켜났다(02a-15). 펼친 것은 아래에 선 Thread 줄이 말한다. */}
       {hasThreads && (
         <button
           type="button"
           data-expander={work.slug}
-          aria-label={`${work.title}의 Thread ${expanded ? "접기" : "펼치기"}`}
+          aria-label={`${work.title}의 채팅 ${expanded ? "접기" : "펼치기"}`}
           aria-expanded={expanded}
           tabIndex={-1}
           onPointerDown={(event) => event.stopPropagation()}
@@ -790,7 +799,7 @@ function WorkRow({
             onToggleThreads(work.slug);
           }}
           className={cn(
-            "absolute inset-y-0 left-0 flex w-8 items-center justify-center text-fg-subtle opacity-0 outline-none transition-colors group-hover:opacity-100 hover:text-fg-secondary focus-ring",
+            "absolute inset-y-0 left-0 flex w-7.75 items-center justify-center text-fg-subtle opacity-0 outline-none transition-colors group-hover:opacity-100 hover:text-fg-secondary focus-ring",
             SIDEBAR_ROW_SHAPE,
           )}
         >
@@ -853,7 +862,7 @@ function WorkRow({
           fill={work.pinned ? "currentColor" : "none"}
         />
       </button>
-      {/* **상태 표시 — 줄 오른쪽 끝의 표시 하나**(02 구현 스펙 §4 · S8 · 시안 Components 「Work — 내 차례 · 도는 중 · 새 결과」). 고르는 것은
+      {/* **상태 표시 — 줄 오른쪽 끝의 표시 하나**(02 구현 스펙 §4 · S8 · 시안 Components 「작업공간 — 내 차례 · 도는 중 · 새 결과」). 고르는 것은
           `workMark`다(목록이 행마다 부른다) — 그 Work의 Thread들 가운데 가장 센 상태, 조용하면 셸 신호. 표시가 없으면 칸도 없다(「없음」은
           표시로 말하지 않는다 — 칸이 서면 제목만 까닭 없이 짧아진다).
 

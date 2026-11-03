@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { ARCHIVE, ARCHIVED_DOCS } from "./fixtures";
+import { ARCHIVE, ARCHIVED_DOCS, ARCHIVED_FILE_BODIES, answerByArg } from "./fixtures";
 import {
   clipboardWrites,
   installFixtureBackend,
@@ -9,19 +9,40 @@ import {
   recordClipboard,
   replaceAnswer,
   unknownIpcCalls,
+  몸줄,
+  검색팔레트를연다,
   화면머리,
   시계를세운다,
-  토큰색,
-  흰판안,
 } from "./harness";
+import type { ArchiveEntry } from "@/features/archive/types";
+import type { SearchResults } from "@/features/search/types";
 
 const [shipped, bare] = ARCHIVE;
 const [RECORD, IMAGE, HTML, TICKET] = ARCHIVED_DOCS[shipped.slug].docs;
 
-/** 문서 | 목록 카드의 오른쪽 칸 — 목록 머리 · 찾기 칸 · 날짜 소제목 · 두 줄 행. */
-const 목록 = (page: Page) => page.getByRole("region", { name: "아카이브 목록", exact: true });
-/** 오른쪽 spec 목록 패널의 카드 — 고른 아카이브의 문서 트리가 선다(둘째 `aside` 안). */
-const 패널 = (page: Page) => page.getByRole("region", { name: "spec 목록", exact: true });
+// **Archive는 목록과 상세 두 화면이다**(restart 03-4 · 스펙 「03 — 목록과 상세」 · 보드 MainArchive · MainArchiveDetail · PlaceSheet) — 공용 목록 틀의
+// 표(이름 · 보관한 날)와, 상세 판의 위 카드 · 문서(왼쪽 글 | 오른쪽 「문서」 트리). 한때(codex-ds 결정 28 · 32) 문서 | 목록 한 카드와 오른쪽 spec
+// 목록 패널(⌘Enter · 머리 줄 토글)이었고, 목록은 두 줄 행 · 날짜 소제목 · 정렬 · 거르기 아이콘 메뉴였으며 머리에 경로 줄이 섰다.
+//
+// 같은 것을 두 번 재지 않는다 — 다른 spec이 재는 것:
+//   목록 ↔ 상세의 돌아옴(찾는 글 · 정렬 · 스크롤) · 창의 뒤로 · 앞으로 · ⌘F · 「← Archive」   `places.spec.ts`
+//   문서 글의 우클릭 메뉴(복사 · 원문으로 보기 · 경로 복사) · 트리 파일 행의 메뉴             `target-menus.spec.ts`
+
+/** 목록 표 — 상세에 가 있는 동안은 숨은 채 `main` 안에 남는다(`PlaceStage`). */
+const 목록 = (page: Page) => page.getByRole("table", { name: "Archive 목록", exact: true });
+const 줄 = (page: Page, entry: ArchiveEntry) => 몸줄(목록(page)).filter({ has: page.getByRole("link", { name: entry.title, exact: true }) });
+/** 상세의 판 — 숨은 목록도 `main` 안이라 글로 찾으면 두 곳에 걸린다. 상세 판(`article`)으로 좁힌다. */
+const 상세판 = (page: Page) => page.getByRole("main", { name: "Archive 상세", exact: true }).locator("article").first();
+/** 상세의 「문서」 트리 — 판 안의 `nav`다(한때 둘째 `aside`의 spec 목록 패널). */
+const 트리 = (page: Page) => 상세판(page).getByRole("navigation", { name: "문서", exact: true });
+/** 트리의 그 파일 행 — 촘촘한 트리라 이름 앞의 확장자 글자는 이름에 들지 않는다(restart 03-12a — 한때 「MD record.md」). */
+const 트리줄 = (page: Page, name: string) => 트리(page).getByRole("button", { name, exact: true });
+/** 고른 트리 행의 경로 — 고름은 `aria-current`로 읽힌다. */
+const 고른문서 = (page: Page) => 트리(page).locator('[aria-current="page"]').evaluateAll((rows) => rows.map((row) => row.closest("[data-spec-file]")?.getAttribute("data-spec-file")));
+/** 위 카드 넷 — 칸마다 이름과 값(`title`을 단 값)이다. */
+const 위카드 = (page: Page) => 상세판(page).locator("div:has(> span[title])");
+/** 상세 판의 구르는 상자. */
+const 판상자 = (page: Page) => 상세판(page).locator("xpath=..");
 
 // 아카이브 화면이 문서를 그리는 규칙은 **Works와 같은 표**다(결정 11) — `doc-refs`의 그것.
 // 여기까지 그물이 없어서 그 표의 세 갈래가 아카이브에서만 갈렸다: 판 02가 표를 옮겨 올 때
@@ -35,17 +56,18 @@ test("아카이브도 같은 표로 본문을 세운다 — 그림은 자리표�
   await page.goto(`/archive/${shipped.slug}`);
 
   // 기본 문서는 목록의 첫 항목이다 — 기록이 있으면 코어가 그것을 맨 앞에 얹는다.
-  await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  await expect(상세판(page).getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  expect(await 고른문서(page)).toEqual([RECORD]);
 
   // 그림 — **뜨지는 않고** 자리표시가 선다. 아카이브 목록이 경량이라 문서 위치를 안 담기
   // 때문이고(`ImageDoc path={null}`), 자리표시가 드는 이름은 경로 그대로다.
-  await page.getByRole("button", { name: "PNG 샷.png", exact: true }).click();
+  await 트리줄(page, "샷.png").click();
   await expect(page.locator("main img")).toHaveCount(0);
-  await expect(page.getByText(IMAGE, { exact: true })).toBeVisible();
+  await expect(상세판(page).getByText(IMAGE, { exact: true })).toBeVisible();
 
   // `.html` — Works와 **같은 `HtmlDoc`**이 선다(결정 18). 프레임 안까지 들어가 보는 것은
   // 껍데기가 아카이브 쪽 내용으로 정말 섰는지가 밖에서는 안 보이기 때문이다.
-  await page.getByRole("button", { name: "HTML 조각.html", exact: true }).click();
+  await 트리줄(page, "조각.html").click();
   const frameEl = page.locator(`iframe[title="${HTML}"]`);
   await expect(frameEl).toBeVisible();
   await expect(frameEl).toHaveAttribute("sandbox", "allow-scripts");
@@ -58,52 +80,50 @@ test("아카이브도 같은 표로 본문을 세운다 — 그림은 자리표�
   // **읽을지 말지도 그 표가 정한다**(결정 15). 그림을 읽으면 읽기 바닥이 `read_to_string`이라
   // 고를 때마다 UTF-8 실패가 재시도까지 달고 나간다 — 화면에는 아무 자국도 안 남는 실패다.
   // (픽스처에 그 경로의 답이 없어서 아래 화이트리스트 검사도 함께 빨개진다.)
-  const reads = ((await readIpcRecord(page))?.calls ?? []).filter((call) =>
-    call.startsWith("read_archived_file"),
-  );
+  const reads = ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("read_archived_file"));
   expect(reads.filter((call) => call.includes(IMAGE))).toEqual([]);
   expect(reads.some((call) => call.includes(HTML))).toBe(true);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 잠김은 두 사람이 나눠 든다: **파일 종류로 갈리는 것은 표가**, **누를 것이 있느냐는 화면이**
-// (`doc-refs`의 표 머리말 — 「잠그는 것은 화면의 사정이다」). 그 둘째 항이 아카이브에서
-// 빠져 있었고, 두 칸이 멀쩡히 눌리는데 본문은 그대로였다(결정 21이 없애려던 그 어긋남).
-test("`[소스]` 잠김 — 파일 종류가 잠그고, 남은 문서가 없어도 잠긴다", async ({ page }) => {
+// 잠김은 두 사람이 나눠 든다: **파일 종류로 갈리는 것은 표가**, **누를 것이 있느냐는 화면이**(`doc-refs`의 표 머리말 — 「잠그는 것은 화면의
+// 사정이다」). 보기 머리(경로 줄의 「문서로 보기 · 원문 보기」)가 없어진 뒤(restart 03-4) 원문 보기는 문서 글의 우클릭 메뉴 하나다 — 그림에서는
+// 그 줄이 서지 않고(경로 복사만), 남은 문서가 없으면 글 상자 자체가 없다.
+test("원문 보기는 문서 글의 우클릭 메뉴다 — 파일 종류가 잠그면 그 줄이 없고, 남은 문서가 없으면 글 상자가 없다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}?file=${encodeURIComponent(RECORD)}`);
+  const 글 = 상세판(page).locator("[data-doc-text]");
+  const 메뉴 = page.getByRole("menu");
+  // 예쁜 보기에서만 제목이 선다 — 메뉴 글만 보면 「글자만 뒤집히고 본문은 그대로」가 통과한다.
+  const heading = 상세판(page).getByRole("heading", { name: "기록 — 치운 일" });
 
-  const doc = page.getByRole("button", { name: "문서로 보기" });
-  const source = page.getByRole("button", { name: "원문 보기" });
-  // 예쁜 보기에서만 제목이 선다 — 값만 보면 「칩만 뒤집히고 본문은 그대로」가 통과한다.
-  const heading = page.getByRole("heading", { name: "기록 — 치운 일" });
-
-  // `.md`는 두 칸이 살아 있고 왕복한다
+  // `.md`는 두 갈래를 왕복한다.
   await expect(heading).toHaveCount(1);
-  await source.click();
-  await expect(source).toHaveAttribute("aria-pressed", "true");
+  await 글.click({ button: "right", position: { x: 4, y: 4 } });
+  await expect(메뉴.getByRole("menuitem")).toHaveText(["원문으로 보기", "경로 복사"]);
+  await 메뉴.getByRole("menuitem", { name: "원문으로 보기", exact: true }).click();
   await expect(heading).toHaveCount(0);
-  await doc.click();
+  await 글.click({ button: "right", position: { x: 4, y: 4 } });
+  await expect(메뉴.getByRole("menuitem")).toHaveText(["문서로 보기", "경로 복사"]);
+  await 메뉴.getByRole("menuitem", { name: "문서로 보기", exact: true }).click();
   await expect(heading).toHaveCount(1);
 
-  // 그림에서는 표가 잠근다 — 본문이 토글을 안 따르는 파일이다
-  await page.getByRole("button", { name: "PNG 샷.png", exact: true }).click();
-  await expect(doc).toBeDisabled();
-  await expect(source).toBeDisabled();
+  // 그림에서는 표가 잠근다 — 본문이 보기를 안 따르는 파일이라 그 줄이 서지 않는다.
+  await 트리줄(page, "샷.png").click();
+  await expect(상세판(page).getByText(IMAGE, { exact: true })).toBeVisible();
+  await 글.click({ button: "right", position: { x: 4, y: 4 } });
+  await expect(메뉴.getByRole("menuitem")).toHaveText(["경로 복사"]);
+  await page.keyboard.press("Escape");
 
   // **여기서 한 번 센다** — IPC 기록은 페이지에 사는 값이라 아래 이동이 그것을 비운다.
-  // 마지막 한 줄에만 맡기면 위 두 자리를 아무도 안 본 채로 초록이 된다.
   expect(await unknownIpcCalls(page)).toEqual([]);
 
-  // 남은 문서가 하나도 없는 아카이브. 표는 마크다운으로 떨어지지만 그 기본값은 본문
-  // 분기를 위한 것이라 여기서는 아무것도 안 뜻한다 — 본문이 빈 상태에 고정이므로
-  // 화면이 `current === null`을 얹어 잠근다(Works의 `!currentSpec`과 같은 항).
+  // 남은 문서가 하나도 없는 아카이브 — 글 상자가 없고 「남은 문서가 없어요」 한 줄이다(트리도 없다).
   await page.goto(`/archive/${bare.slug}`);
-  await expect(page.locator("main").getByText("남은 문서가 없어요")).toBeVisible();
-  await expect(doc).toBeDisabled();
-  await expect(source).toBeDisabled();
-
+  await expect(상세판(page).getByText("남은 문서가 없어요", { exact: true })).toBeVisible();
+  await expect(글).toHaveCount(0);
+  await expect(트리(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -114,185 +134,78 @@ test("아카이브의 spec/ 아래는 받은 트리대로 서고, 읽기와 복�
   await installFixtureBackend(page);
   await recordClipboard(page);
   await page.goto(`/archive/${shipped.slug}`);
-  const main = page.locator("main");
-  await expect(main.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  await expect(상세판(page).getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
 
-  // 트리는 spec 목록 패널에, 고른 문서는 문서 칸(`main`)에 선다 — 그 자리로 좁혀 집는다(같은 이름이 다른 자리에 서도 초록이 되지 않게).
+  // 트리는 상세 판의 「문서」 트리에, 고른 문서는 그 왼쪽 글에 선다 — 그 자리로 좁혀 집는다.
   //
   // 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다(허용 차이 4) — 폴더 행에 그려진 그림이
   // 여닫이 화살표 하나뿐이다. 이름으로 알아보던 앱은 여기 `list-checks`를 그렸다.
-  const tickets = 패널(page).getByRole("button", { name: "tickets", exact: true });
+  const tickets = 트리(page).getByRole("button", { name: "tickets", exact: true });
   await expect(tickets).toHaveAttribute("aria-expanded", "true");
   await expect(tickets.locator("svg")).toHaveCount(1);
   await expect(tickets.locator("svg.lucide-chevron-right")).toHaveCount(1);
 
   // 문서 읽기 IPC의 경로에 `spec/`가 붙는다 — 트리의 경로(`tickets/할일.md`) 그대로 나가면 기록과 같은
   // 자리(work 폴더)에서 찾아 없는 파일이 된다.
-  const ticket = 패널(page).getByRole("button", { name: "MD 할일.md", exact: true });
+  const ticket = 트리줄(page, "할일.md");
   await ticket.click();
-  await expect(main.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  await expect(상세판(page).getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
   expect((await ipcCallArgs(page, "read_archived_file", "path")).map(({ args }) => args.path)).toContain(TICKET);
   expect(TICKET).toBe("spec/tickets/할일.md");
 
   // 경로를 복사하면 `spec/`가 붙은 아카이브 참조가 클립보드에 적히고(S35의 기록기), 「메시지」 토스트도 같은
   // 참조를 적는다.
   await ticket.hover();
-  await 패널(page).getByRole("button", { name: "할일.md 경로 복사", exact: true }).click();
-  await expect
-    .poll(() => clipboardWrites(page))
-    .toEqual(["~/.atelier/archive/shipped-work/spec/tickets/할일.md"]);
-  await expect(page.getByRole("region", { name: "메시지", exact: true })).toHaveText(
-    "~/.atelier/archive/shipped-work/spec/tickets/할일.md 복사됨",
-  );
+  await 트리(page).getByRole("button", { name: "할일.md 경로 복사", exact: true }).click();
+  await expect.poll(() => clipboardWrites(page)).toEqual(["~/.atelier/archive/shipped-work/spec/tickets/할일.md"]);
+  await expect(page.getByRole("region", { name: "메시지", exact: true })).toHaveText("~/.atelier/archive/shipped-work/spec/tickets/할일.md 복사됨");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 판 3 · codex-ds 티켓 21 — **정렬 · 프로젝트 거르기는 목록 머리의 아이콘 버튼 하나가 여는 라디오 메뉴다**(codex-ds 스펙 S11 · 스토리 54,
-// 판 3 스토리 46~49 · 51 · 52, S33 · S37). 한때 목록 머리 아래 줄에 정렬 버튼(「치운 날」)과 거르개가 따로 섰다. 버튼의 이름은
-// 「정렬 · 거르기」이고 메뉴는 그 이름을 받는다. 묶음은 둘이다 — 정렬(치운 날의 두 방향)과 프로젝트(「모든 프로젝트」 다음에 프로젝트들).
-// 지금 값은 `menuitemradio`의 `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 부품 기본은 안 닫힘이다). Esc로도 닫히고 포커스가
-// 버튼으로 돌아온다. 거르는 동안 버튼은 켜진 면(`fill-active`)과 본문 글자색이고 hover해도 그대로다 — 거른 값이 글자로 안 보여 목록이
-// 좁혀져 있다는 것을 면이 말한다. 귀에는 버튼의 설명이 지금 값(정렬 · 거르기)을 말한다.
-test("정렬 · 거르기는 목록 머리의 아이콘 버튼 메뉴다 — 지금 값이 선택됨이고, Esc면 버튼으로 돌아오며, 고르면 닫히고 목록이 바뀐다", async ({
+// **목록은 공용 목록 틀의 표다**(restart 03-4 · 보드 MainArchive · PlaceSheet 「세 화면」) — 열 머리 이름 · 보관한 날(정렬 단추 — 처음 보관한 날
+// 내림), 줄은 보관함 글리프 · 이름 링크 · 상태와 Project, 보관한 날, ⋯. 날이 없는 폴더(손으로 옮긴 것)는 「—」이고 어느 방향으로 정렬해도
+// 끝이다. 주 단추는 없다(작업공간을 아카이브하면 쌓인다). 한때 두 줄 행 · 날짜 소제목 · 「정렬 · 거르기」 아이콘 메뉴(Project 거르기)였다.
+test("목록은 이름(상태 · Project) · 보관한 날 표이고, 열 머리를 누르면 그 칸 기준으로 줄이 바뀐다 — 날이 없는 폴더는 어느 방향이든 끝이다", async ({
   page,
 }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/archive/${shipped.slug}`);
-  const head = 목록(page).locator('[data-slot="list-head"]');
-  const trigger = head.getByRole("button", { name: "정렬 · 거르기", exact: true });
-  const menu = page.getByRole("menu", { name: "정렬 · 거르기", exact: true });
-  const sorts = menu.getByRole("group", { name: "정렬", exact: true }).getByRole("menuitemradio");
-  const projects = menu.getByRole("group", { name: "프로젝트", exact: true }).getByRole("menuitemradio");
-  const rows = 목록(page).getByRole("button", { name: new RegExp(`^(${shipped.title}|${bare.title}) `) });
-  const [project] = shipped.projects;
-  // 옛 자리의 조작은 없다 — 정렬 글자 버튼과 따로 선 거르개.
-  await expect(page.getByRole("button", { name: "치운 날", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "프로젝트 거르기", exact: true })).toHaveCount(0);
-
-  await expect(trigger).toHaveAttribute("aria-haspopup", "menu");
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await expect(trigger).toHaveAccessibleDescription("최근에 치운 순 · 모든 프로젝트");
-
-  // 키보드로 열고 Esc로 닫는다.
-  await trigger.focus();
-  await page.keyboard.press("Enter");
-  await expect(menu).toBeVisible();
-  await expect(trigger).toHaveAttribute("aria-expanded", "true");
-  // 지금 값 — 최근에 치운 순(백엔드 차례), 모든 프로젝트.
-  await expect(sorts).toHaveText(["최근에 치운 순", "먼저 치운 순"]);
-  await expect(projects).toHaveText(["모든 프로젝트", project]);
-  await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText(["최근에 치운 순", "모든 프로젝트"]);
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await expect(trigger).toBeFocused();
-  await expect(trigger).toHaveAttribute("aria-expanded", "false");
-
-  // 정렬 — 고르면 닫히고 차례가 뒤집힌다. 날짜가 없는 폴더는 날짜순의 한쪽 끝이다(백엔드와 같다).
-  await expect(rows).toHaveText([new RegExp(`^${shipped.title}`), new RegExp(`^${bare.title}`)]);
-  await trigger.click();
-  await sorts.filter({ hasText: "먼저 치운 순" }).click();
-  await expect(menu).toHaveCount(0);
-  await expect(rows).toHaveText([new RegExp(`^${bare.title}`), new RegExp(`^${shipped.title}`)]);
-
-  // 거르기 — 고르면 닫히고 목록이 좁혀진다. 프로젝트가 없는 아카이브가 빠진다(위에서 서 있던 것이 앵커다).
-  // 버튼의 면과 글자색은 색 전이(`transition-colors`)가 멎은 뒤에 읽는다 — 도는 동안의 값은 어느 쪽도 아니다. 전이는 스타일을 다시
-  // 셀 때 서므로 `getAnimations()`가 그것을 세우고 센다.
-  const 칠 = async () => {
-    await expect.poll(() => trigger.evaluate((el) => el.getAnimations().length)).toBe(0);
-    return trigger.evaluate((el) => ({ 면: getComputedStyle(el).backgroundColor, 글자: getComputedStyle(el).color }));
-  };
-  const 켜짐 = { 면: await 토큰색(page, "--fill-active"), 글자: await 토큰색(page, "--fg") };
-  const 꺼진칠 = await 칠();
-  await trigger.click();
-  await projects.filter({ hasText: project }).click();
-  await expect(menu).toHaveCount(0);
-  await expect(rows).toHaveText([new RegExp(`^${shipped.title}`)]);
-  await page.mouse.move(0, 0);
-  expect(await 칠(), "거르는 동안은 켜진 면 · 본문 글자").toEqual(켜짐);
-  expect(꺼진칠.면).not.toBe(켜짐.면);
-  // 켜진 채 hover해도 켜짐 그대로다 — 버튼 hover(`fill-hover` 8%)가 켜진 면(12%)을 덮으면 포인터 아래에서 꺼진 것으로 읽힌다.
-  await trigger.hover();
-  expect(await 칠(), "켜진 채 hover").toEqual(켜짐);
-  // 스크린리더에는 지금 값이 설명으로 간다 — 켜진 면은 눈에만 보여, 목록이 좁혀져 있다는 것을 귀로는 메뉴를 열어야 안다(S28 · S37).
-  await expect(trigger).toHaveAccessibleDescription(`먼저 치운 순 · ${project}`);
-
-  // 다시 열면 고른 것들이 선택됨이다.
-  await trigger.click();
-  await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText(["먼저 치운 순", project]);
-
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// codex-ds 스펙 S11 — **날짜 소제목이 날짜순 목록을 끊는다**(DS `.at-label` — 「이번 주 · 8월 …」). 오늘이 든 주(월요일부터)는 「이번 주」,
-// 올해의 그 밖은 달 이름, 지난해부터는 해와 달이고, 치운 날이 없는 폴더는 「날짜 없음」으로 모인다. 정렬은 둘 다 치운 날 순이라 두
-// 방향 모두 소제목이 서고, 차례만 뒤집힌다. 「오늘」은 페이지의 시계로 세운다(수요일 2026-08-12).
-test("날짜순 목록에 날짜 소제목(이번 주 · 달 · 해와 달 · 날짜 없음)이 서고, 정렬을 뒤집으면 소제목 차례도 뒤집힌다", async ({ page }) => {
-  const entry = (slug: string, title: string, archivedAt: string | null) => ({
+  const entry = (slug: string, title: string, archivedAt: string | null, status: ArchiveEntry["status"] = "done"): ArchiveEntry => ({
     slug,
     title,
-    status: "done",
+    status,
     archivedAt,
     projects: [],
+    branch: null,
   });
-  // 백엔드 차례(치운 날 내림차순 — 날짜가 없는 것은 맨 뒤)로 답한다.
-  await installFixtureBackend(page, {
-    list_archive: [
-      shipped,
-      entry("early-august", "8월 초에 치운 것", "2026-08-03"),
-      entry("july", "7월에 치운 것", "2026-07-30"),
-      entry("last-year", "지난해 치운 것", "2025-12-20"),
-      bare,
-    ],
-  });
+  const 지난해 = entry("last-year", "가 지난해 치운 것", "2025-12-20T03:04:05Z", "review");
+  // 받은 차례가 정렬과 다르게 — 표가 스스로 센 차례인지 보인다.
+  await installFixtureBackend(page, { list_archive: [bare, 지난해, shipped] });
   await page.clock.setFixedTime(new Date(2026, 7, 12, 12));
-  await page.goto(`/archive/${shipped.slug}`);
-  await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  await page.goto("/archive");
+  const 머리 = 목록(page).getByRole("row").first().getByRole("columnheader");
+  await expect(머리).toHaveText(["이름", "보관한 날"]);
+  await expect(머리.nth(1)).toHaveAttribute("aria-sort", "descending");
+  await expect(page.getByRole("button", { name: "정렬 · 거르기", exact: true })).toHaveCount(0);
 
-  /** 목록 칸에 보이는 소제목과 행 제목을 위에서부터 — 소제목이 그 아래 행들의 머리인지가 차례로 보인다. */
-  const 줄 = async () => {
-    const known = ["이번 주", "8월", "7월", "2025년 12월", "날짜 없음", shipped.title, "8월 초에 치운 것", "7월에 치운 것", "지난해 치운 것", bare.title];
-    return (await 목록(page).innerText()).split("\n").filter((line) => known.includes(line.trim())).map((line) => line.trim());
-  };
-  await expect.poll(줄).toEqual([
-    "이번 주",
-    shipped.title,
-    "8월",
-    "8월 초에 치운 것",
-    "7월",
-    "7월에 치운 것",
-    "2025년 12월",
-    "지난해 치운 것",
-    "날짜 없음",
-    bare.title,
-  ]);
+  // 줄 — 이름 옆에 치운 때의 상태와 Project, 시각 칸에 보관한 날(올해면 「M월 D일」, 지난해면 해까지, 없으면 「—」).
+  const 링크들 = 몸줄(목록(page)).getByRole("link");
+  await expect(링크들).toHaveText([shipped.title, 지난해.title, bare.title]);
+  await expect(줄(page, shipped).getByRole("cell")).toHaveText([`${shipped.title}완료 · billing`, "8월 10일", ""]);
+  await expect(줄(page, 지난해).getByRole("cell")).toHaveText([`${지난해.title}검토`, "2025년 12월 20일", ""]);
+  await expect(줄(page, bare).getByRole("cell")).toHaveText([`${bare.title}진행 중`, "—", ""]);
 
-  // 소제목은 행 글자와 한 세로줄이다(DS 「행 글자 16」 — 칸 + 16).
-  const 글자x = (target: ReturnType<Page["getByText"]>) =>
-    target.evaluate((el) => {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      return range.getBoundingClientRect().x;
-    });
-  expect(await 글자x(목록(page).getByText("이번 주", { exact: true }))).toBe(
-    await 글자x(목록(page).getByText(shipped.title, { exact: true })),
+  // 보관한 날을 다시 누르면 오름 — 날이 없는 폴더는 그대로 끝이다.
+  await 머리.nth(1).getByRole("button").click();
+  await expect(머리.nth(1)).toHaveAttribute("aria-sort", "ascending");
+  await expect(링크들).toHaveText([지난해.title, shipped.title, bare.title]);
+  // 이름을 누르면 이름 차례다.
+  await 머리.first().getByRole("button").click();
+  await expect(머리.first()).toHaveAttribute("aria-sort", /ending$/);
+  await expect(머리.nth(1)).not.toHaveAttribute("aria-sort");
+  const 이름차례 = await 링크들.allInnerTexts();
+  expect([...이름차례].sort((a, b) => a.localeCompare(b, "ko"))).toEqual(
+    (await 머리.first().getAttribute("aria-sort")) === "ascending" ? 이름차례 : [...이름차례].reverse(),
   );
-
-  const trigger = 목록(page).getByRole("button", { name: "정렬 · 거르기", exact: true });
-  await trigger.click();
-  await page.getByRole("menuitemradio", { name: "먼저 치운 순" }).click();
-  await expect.poll(줄).toEqual([
-    "날짜 없음",
-    bare.title,
-    "2025년 12월",
-    "지난해 치운 것",
-    "7월",
-    "7월에 치운 것",
-    "8월",
-    "8월 초에 치운 것",
-    "이번 주",
-    shipped.title,
-  ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -305,23 +218,19 @@ test("날짜순 목록에 날짜 소제목(이번 주 · 달 · 해와 달 · �
 // 곧바로 사라지는 것까지 본다. Base UI는 포인터가 토스트 위에 있거나 창이 포커스를 잃으면 시계를 세우므로(S27),
 // 누른 뒤 포인터를 치운다. 사라지는 전이는 프레임(rAF)을 타서 마지막에는 시계를 다시 흐르게 둔다.
 //
-// **누르기 전에 문서 트리가 선 자리가 가라앉기를 기다린다.** 움직이는 도중에 누르면 Playwright가 잘린 버튼을 보이려고 안쪽
-// 칸(`overflow-hidden`)을 굴리고, 움직임이 끝나면 그 굴림이 0으로 돌아와 버튼이 포인터 밑에서 미끄러진다 — 누름과 뗌이 다른
-// 곳에 떨어져 클릭이 버튼에 안 닿는다. 펼치는 행 안에 트리가 서던 때 부하 아래 가끔 빨갰고, 누름과 뗌 사이를 200ms 벌리면
-// 80번에 5번 빨갰다(실측 2026-10-11). 트리는 이제 행 안이 아니라 둘째 `aside`인 spec 목록 패널에 서므로(codex-ds 티켓 21) 그
-// 패널 안의 전이를 기다린다. 전이는 CSS라 세운 시계와 상관없이 돈다.
+// **누르기 전에 상세 판의 움직임이 멎기를 기다린다.** 움직이는 도중에 누르면 버튼이 포인터 밑에서 미끄러져 누름과 뗌이 다른 곳에 떨어진다
+// (한때 트리가 서던 패널의 전이에서 부하 아래 가끔 빨갰다 — 2026-10-11). 주소로 곧장 연 상세는 움직이지 않지만(restart 03-1 — `PlaceStage`)
+// 그 판단이 바뀌어도 이 검사가 흔들리지 않게 기다린다. 전이는 CSS라 세운 시계와 상관없이 돈다.
 test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서고, 1.6초가 지나면 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
   await page.clock.install();
   await page.goto(`/archive/${shipped.slug}`);
   const messages = page.getByRole("region", { name: "메시지", exact: true });
-  const copy = page.getByRole("button", { name: "샷.png 경로 복사", exact: true });
+  const copy = 트리(page).getByRole("button", { name: "샷.png 경로 복사", exact: true });
   await expect(copy).toBeAttached();
   await expect(messages).toHaveText("");
-  await expect
-    .poll(() => page.locator("aside").nth(1).evaluate((el) => el.getAnimations({ subtree: true }).length))
-    .toBe(0);
+  await expect.poll(() => 상세판(page).evaluate((el) => el.closest("main")!.getAnimations({ subtree: true }).length)).toBe(0);
 
   await 시계를세운다(page);
   await copy.click();
@@ -340,136 +249,144 @@ test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 목록 행 · spec 목록 패널 (codex-ds 티켓 21 — 스펙 §7 「Archive」 · 결정 28 · 32) ──
-// 목록 행은 펼치지 않는 두 줄 행이다(제목 / 치운 날 · 상태) — 누르면 그 아카이브를 고른다. 고른 아카이브의 문서 트리는 행 안이 아니라
-// 오른쪽에 따로 여닫는 spec 목록 패널에 선다. 그 패널은 작업 패널과 같은 자리 · 같은 칸이라 문서의 둘째 `aside`다(스펙 §11).
-
-test("목록 행은 펼치지 않는 두 줄 행이고, 고른 아카이브의 문서 트리는 둘째 aside인 spec 목록 패널에 선다", async ({ page }) => {
+// **상세는 판 하나다**(restart 03-4 · 보드 MainArchiveDetail) — 「← Archive」 · 이름 · 「Finder에서 열기」 · ⋯, 위 카드(상태 · 보관한 날 · Project ·
+// 브랜치 — 빈 값은 「—」), 그 아래 왼쪽 글 | 오른쪽 240 「문서」 트리. 이 화면들에는 패널 · 둘째 `aside`가 없다 — 한때 트리가 둘째 `aside`의 spec 목록
+// 패널에 섰고 ⌘Enter · 머리 줄 「spec 목록 접기」가 여닫았다. 머리 줄은 「Archive / 이름」(앞 칸을 누르면 목록)이고 할 일이 없다.
+test("상세는 위 카드와 왼쪽 글 | 오른쪽 「문서」 트리이고, 패널 · 둘째 aside · 머리 줄의 할 일이 없다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}`);
-  await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  await expect(상세판(page).getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
 
-  // 행 — 첫 줄은 제목, 둘째 줄은 치운 날과 치운 때의 상태다. 날짜가 없는 폴더(손으로 옮긴 것)는 상태만 선다. 펼치지 않는다.
-  const rows = 목록(page).getByRole("button", { name: new RegExp(`^(${shipped.title}|${bare.title}) `) });
-  await expect(rows).toHaveText([`${shipped.title}8월 10일 · done`, `${bare.title}active`]);
-  for (const row of await rows.all()) await expect(row).not.toHaveAttribute("aria-expanded");
-  // 보고 있는 아카이브의 행이 고른 행이다.
-  await expect(rows.first()).toHaveClass(/selected-row/);
-  await expect(rows.last()).not.toHaveClass(/selected-row/);
-  // 목록 칸에는 문서 줄이 없다.
-  await expect(목록(page).getByRole("button", { name: "MD record.md", exact: true })).toHaveCount(0);
+  await expect(화면머리(page)).toHaveText(`Archive/${shipped.title}`);
+  await expect(화면머리(page).getByRole("button")).toHaveText(["Archive"]);
+  // 판의 이름 — 문서 글의 제목(마크다운 h1)도 같은 판 안이라 처음 것이 판의 이름이다.
+  await expect(상세판(page).getByRole("heading", { level: 1 }).first()).toHaveText(shipped.title);
+  await expect(위카드(page)).toHaveText(["상태완료", "보관한 날2026년 8월 10일", "Projectbilling", `브랜치${shipped.branch}`]);
 
-  // 문서 트리는 spec 목록 패널 — 사이드바 다음 둘째 `aside` — 안이다. 머리는 「spec」과 spec 폴더 열기다.
-  await expect(page.locator("aside")).toHaveCount(2);
-  expect(await 패널(page).evaluate((el) => el.closest("aside") === document.querySelectorAll("aside")[1])).toBe(true);
-  const head = 패널(page).locator('[data-slot="card-head"]');
-  await expect(head.getByText("spec", { exact: true })).toBeVisible();
-  await expect(head.getByRole("button", { name: "spec 폴더 열기", exact: true })).toBeVisible();
-  await expect(패널(page).getByRole("button", { name: "MD record.md", exact: true })).toBeVisible();
-  await expect(패널(page).getByRole("button", { name: "spec", exact: true })).toHaveAttribute("aria-expanded", "true");
+  // 트리 — 판 안의 `nav`이고 글의 오른쪽 240이다. 사이드바 다음의 `aside`는 작업공간 도구 기둥의 접힌 상자 하나(폭 0)뿐이다(restart 02a-14).
+  const 글 = await 상세판(page).locator("[data-doc-text]").boundingBox();
+  const 트리상자 = await 트리(page).boundingBox();
+  expect(트리상자!.width).toBe(240);
+  expect(트리상자!.x).toBeGreaterThan(글!.x + 글!.width);
+  await expect(page.getByRole("region", { name: "spec 목록", exact: true })).toHaveCount(0);
+  for (const aside of await page.locator("aside:not([data-sidebar])").all()) expect((await aside.boundingBox())?.width ?? 0).toBe(0);
+  await expect(page.getByRole("button", { name: /^spec 목록/ })).toHaveCount(0);
+  // ⌘Enter는 이 화면에서 아무것도 여닫지 않는다 — 트리는 그대로다.
+  await 상세판(page).locator("[data-doc-text]").click();
+  await page.keyboard.press("Meta+Enter");
+  await expect(트리(page)).toBeVisible();
+  expect((await 트리(page).boundingBox())!.width).toBe(240);
 
-  // 다른 행을 누르면 그 아카이브를 고른다 — 주소가 옮겨 가고, 패널은 그 아카이브의 트리(여기는 비었다)를 든다.
-  await rows.last().click();
-  await expect(page).toHaveURL(new RegExp(`/archive/${bare.slug}$`));
-  await expect(rows.last()).toHaveClass(/selected-row/);
-  await expect(패널(page).getByText("남은 문서가 없어요", { exact: true })).toBeVisible();
-  await expect(패널(page).getByRole("button", { name: "MD record.md", exact: true })).toHaveCount(0);
+  // 날 · Project · 브랜치가 없는 폴더의 위 카드는 「—」다.
+  await page.goto(`/archive/${bare.slug}`);
+  await expect(위카드(page)).toHaveText(["상태진행 중", "보관한 날—", "Project—", "브랜치—"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **보고 있는 아카이브의 행을 다시 누르면 아무 일도 없다.** 행은 그 아카이브로 옮겨 가는 이동이고 이동은 문서를 딸려 보내지 않는다 —
-// 같은 아카이브로도 그렇게 옮기면 보던 문서를 버리고(`?file=`이 빠진다) 그 아카이브의 기본 문서로 떨어지며, 주소가 바뀌어 히스토리가
-// 한 칸 쌓인다(뒤로가기가 같은 아카이브를 한 번 더 지난다).
-test("보고 있는 아카이브의 행을 다시 눌러도 보던 문서가 그대로고 히스토리가 쌓이지 않는다", async ({ page }) => {
+// **「문서」 트리는 보드 Places `.pl-tree`의 줄이다**(restart 03-12b) — 줄 24 · 줄 간격 27(사이 3 — 한때 촘촘한 줄 그대로 26), 한 단 18(자식 줄이
+// 부모보다 18 들어간다 — 한때 12), 고른 줄은 면만 서고 굵기 400이다(시안 `.ra-tree-row.on` — 한때 500. 공용 트리 줄이라 spec 패널도 400).
+test("「문서」 트리는 줄 24 · 간격 27 · 한 단 18이고, 고른 줄은 굵어지지 않는다(400)", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}`);
-  const main = page.locator("main");
-  await expect(main.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
-
-  await 패널(page).getByRole("button", { name: "MD 할일.md", exact: true }).click();
-  await expect(main.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
-  const url = page.url();
-  expect(url).toContain("file=");
-  const depth = await page.evaluate(() => window.history.length);
-
-  const row = 목록(page).getByRole("button", { name: new RegExp(`^${shipped.title} `) });
-  await expect(row).toHaveClass(/selected-row/);
-  await row.click();
-  // 「아무 일도 안 났다」는 곧바로 초록이라, 누름이 부른 이동이 주소와 화면에 닿을 두 프레임을 넘긴 뒤 잰다.
-  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-  expect(page.url()).toBe(url);
-  expect(await page.evaluate(() => window.history.length)).toBe(depth);
-  await expect(main.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  await expect(트리줄(page, "record.md")).toBeVisible();
+  // 뿌리의 기록 · `spec` 폴더 · 그 자식 `tickets` · 손자 `할일.md`가 위에서 차례로 선다.
+  const 줄들 = ["record.md", "spec", "tickets", "할일.md"].map((name) => 트리줄(page, name));
+  const 상자들 = await Promise.all(줄들.map(async (row) => (await row.boundingBox())!));
+  expect(상자들.map(({ height }) => height), "줄 높이").toEqual([24, 24, 24, 24]);
+  expect(상자들.slice(1).map((box, at) => Math.round((box.y - 상자들[at].y) * 10) / 10), "줄 간격").toEqual([27, 27, 27]);
+  // 줄 안 첫 그림(여닫이 화살표 · 확장자 글자 · 아이콘)이 서는 자리 — 뿌리 8, 자식 26, 손자 44(보드 `pad: child ? 26 : 8`과 한 단 18).
+  const 들여 = (row: (typeof 줄들)[number]) =>
+    row.evaluate((el) => {
+      const left = el.getBoundingClientRect().x;
+      const xs = [...el.querySelectorAll("*")].map((one) => one.getBoundingClientRect()).filter((r) => r.width > 0).map((r) => r.x);
+      return Math.round((Math.min(...xs) - left) * 10) / 10;
+    });
+  expect(await Promise.all(줄들.map(들여)), "줄 안 첫 그림 — 뿌리 · 뿌리 · 자식 · 손자").toEqual([8, 8, 26, 44]);
+  // 고른 줄(처음 선 문서 — 기록)은 면만 서고 굵기는 다른 줄과 같다.
+  expect(await 고른문서(page)).toEqual([RECORD]);
+  const 굵기 = (row: (typeof 줄들)[number]) => row.evaluate((el) => getComputedStyle(el).fontWeight);
+  expect([await 굵기(줄들[0]), await 굵기(줄들[3])], "고른 줄 · 쉬는 줄 굵기").toEqual(["400", "400"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **⌘Enter와 머리 줄의 spec 목록 토글이 패널을 여닫는다**(codex-ds 결정 32 — 「⌘Enter는 그 화면의 오른쪽 패널」, 스토리 56 · 57). 토글은
-// 머리 줄 오른쪽 끝, 세로선 너머다(⋯ | spec 목록 토글). 이름이 누르면 일어날 일을 말하고 `aria-expanded` · `aria-controls`가 패널을
-// 가리킨다. 닫힌 패널은 폭이 0으로 접혀(작업 패널과 같은 칸) 문서 | 목록 칸이 흰 판 오른쪽 끝까지 넓어진다(02 티켓 03 — 한때 창 오른쪽
-// 틈 앞까지였다). 찾기 칸에서의 ⌘Enter는 입력칸의 몫이라 패널을 안 건드린다(작업 화면과 한 판정).
-test("⌘Enter와 머리 줄의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 문서 | 목록 칸이 흰 판 오른쪽 끝까지 넓어진다", async ({
-  page,
-}) => {
-  await installFixtureBackend(page);
+// **트리로 고르면 주소만 갈아 쓴다**(훑기 — 히스토리를 만들지 않는다, Works의 트리와 같다). **문서 안 링크는 돌아올 자리를 남긴다**(push) — 창의
+// 뒤로가 앞 문서로 돌아온다. 한때 같은 아카이브의 목록 행을 다시 누르면 보던 문서를 버렸다(그 행은 이제 없다 — 목록과 상세가 갈렸다).
+test("트리로 고르면 주소만 갈아 쓰고 히스토리가 늘지 않으며, 문서 안 링크는 히스토리를 남겨 창의 뒤로가 앞 문서로 돌아온다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    read_archived_file: answerByArg("path", { ...ARCHIVED_FILE_BODIES, [RECORD]: "# 기록 — 치운 일\n\n[할 일 보기](spec/tickets/할일.md)\n" }),
+  });
   await page.goto(`/archive/${shipped.slug}`);
-  const head = 화면머리(page);
-  const card = page.locator('[data-slot="card"]', { has: 목록(page) });
-  const aside = page.locator("aside").nth(1);
-  await expect(패널(page)).toBeVisible();
+  await expect(상세판(page).getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  const 깊이 = () => page.evaluate(() => window.history.length);
+  const 처음 = await 깊이();
 
-  // 토글 — 머리 줄 화면 자리 안, 세로선 너머 맨 끝이다. 열려 있으면 「spec 목록 접기」다.
-  const close = head.getByRole("button", { name: "spec 목록 접기", exact: true });
-  await expect(close).toHaveAttribute("aria-expanded", "true");
-  await expect(close).toHaveAttribute("aria-controls", (await aside.getAttribute("id"))!);
-  await expect(close).toHaveAttribute("aria-keyshortcuts", "Meta+Enter");
-  const line = await head.getByRole("separator").boundingBox();
-  expect((await close.boundingBox())!.x, "토글은 세로선 너머").toBeGreaterThan(line!.x);
+  await 트리줄(page, "할일.md").click();
+  await expect(page).toHaveURL(`/archive/${shipped.slug}?file=${encodeURIComponent(TICKET)}`);
+  await expect(상세판(page).getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  await 트리줄(page, "record.md").click();
+  await expect(page).toHaveURL(`/archive/${shipped.slug}?file=${encodeURIComponent(RECORD)}`);
+  expect(await 깊이()).toBe(처음);
+  expect(await 고른문서(page)).toEqual([RECORD]);
 
-  // 칸이 넓어지는 끝은 흰 판의 안쪽 오른쪽 끝이다(창 끝에서 5.5 — 판의 띄움 5와 테두리 0.5).
-  const 판끝 = (await 흰판안(page)).right;
-  const cardRight = async () => (await card.boundingBox())!.x + (await card.boundingBox())!.width;
-  const asideWidth = async () => (await aside.boundingBox())!.width;
-  expect(await cardRight(), "열린 동안은 패널이 곁에 선다").toBeLessThan(판끝 - 200);
-
-  // ⌘Enter로 접는다.
-  await page.keyboard.press("Meta+Enter");
-  await expect.poll(asideWidth).toBe(0);
-  await expect.poll(cardRight).toBe(판끝);
-  const open = head.getByRole("button", { name: "spec 목록 펼치기", exact: true });
-  await expect(open).toHaveAttribute("aria-expanded", "false");
-
-  // 찾기 칸에 포커스가 있으면 ⌘Enter는 입력칸의 몫이다 — 패널이 그대로 닫혀 있다.
-  await page.getByRole("textbox", { name: "아카이브 검색", exact: true }).focus();
-  await page.keyboard.press("Meta+Enter");
-  await expect(open).toHaveAttribute("aria-expanded", "false");
-  expect(await asideWidth()).toBe(0);
-
-  // 토글로 편다 — 패널이 다시 서고 트리가 그대로다. ⌘Enter로 다시 접힌다.
-  await open.click();
-  await expect(close).toHaveAttribute("aria-expanded", "true");
-  await expect(패널(page).getByRole("button", { name: "MD record.md", exact: true })).toBeVisible();
-  await expect.poll(cardRight).toBeLessThan(판끝 - 200);
-  await page.locator("main").click();
-  await page.keyboard.press("Meta+Enter");
-  await expect(open).toHaveAttribute("aria-expanded", "false");
-  await expect.poll(asideWidth).toBe(0);
-
-  // 거꾸로도 그렇다 — ⌘Enter로 펴고 토글로 접는다. 두 길이 저마다 여닫기를 다 한다(한쪽만 뒤집으면 위 흐름이 그대로 초록이다).
-  await page.keyboard.press("Meta+Enter");
-  await expect(close).toHaveAttribute("aria-expanded", "true");
-  await expect.poll(cardRight).toBeLessThan(판끝 - 200);
-  await close.click();
-  await expect(open).toHaveAttribute("aria-expanded", "false");
-  await expect.poll(asideWidth).toBe(0);
-  await expect.poll(cardRight).toBe(판끝);
+  await 상세판(page).getByRole("link", { name: "할 일 보기", exact: true }).click();
+  await expect(page).toHaveURL(`/archive/${shipped.slug}?file=${encodeURIComponent(TICKET)}`);
+  await expect(상세판(page).getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  expect(await 깊이()).toBe(처음 + 1);
+  expect(await 고른문서(page)).toEqual([TICKET]);
+  await page.goBack();
+  await expect(page).toHaveURL(`/archive/${shipped.slug}?file=${encodeURIComponent(RECORD)}`);
+  await expect(상세판(page).getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **머리 줄의 ⋯는 아카이브 메뉴다**(codex-ds 결정 16 「Archive 목록 행」 · 결정 31). 줄은 Finder에서 열기 · 경로 복사 둘이고 되살리기는
-// 없다 — 지금 앱에 그 동작이 없어 숨긴다. Finder 열기는 work 메뉴와 한 가족인 명령(`open_archived_spec_folder`)을 slug로 부르고(경로는
-// 백엔드가 푼다 — S6), 경로 복사는 그 폴더의 참조를 클립보드에 쓴다. spec 목록 패널 머리의 「spec 폴더 열기」도 같은 명령이다. 못 열면
-// 백엔드의 문장이 「못 한 일」 토스트로 선다(work 메뉴의 Finder 열기와 같은 말).
-test("머리 줄의 ⋯ 아카이브 메뉴는 Finder에서 열기 · 경로 복사뿐이고, 각각 명령 · 클립보드를 부른다 — 패널 머리의 spec 폴더 열기도 같은 명령이다", async ({
+// **트리는 판이 굴러도 위에 붙어 서고**(`sticky`), 긴 글을 굴린 뒤 다른 문서를 고르면 새 글의 첫 줄이 보이게 판이 그 위끝으로 굴러간다 — 그대로면
+// 새 글의 한가운데나 그 아래 빈자리가 선다. 처음 선 문서는 굴리지 않는다.
+test("긴 글을 굴린 뒤 트리로 다른 문서를 고르면 판이 새 글의 첫 줄로 굴러가고, 트리는 판 위에 붙어 선다", async ({ page }) => {
+  const 긴글 = `# 기록 — 치운 일\n\n${Array.from({ length: 120 }, (_, n) => `줄 ${n + 1}.`).join("\n\n")}\n`;
+  await installFixtureBackend(page, { read_archived_file: answerByArg("path", { ...ARCHIVED_FILE_BODIES, [RECORD]: 긴글 }) });
+  await page.goto(`/archive/${shipped.slug}`);
+  await expect(상세판(page).getByText("줄 120.", { exact: true })).toBeAttached();
+  const 판 = 판상자(page);
+  expect(await 판.evaluate((el) => el.scrollTop), "처음 선 문서는 굴리지 않는다").toBe(0);
+
+  await 판.evaluate((el) => el.scrollTo(0, 2000));
+  await expect.poll(() => 판.evaluate((el) => el.scrollTop)).toBe(2000);
+  const 판위 = (await 판.boundingBox())!.y;
+  // 트리는 판 위에 붙어 있다.
+  expect((await 트리(page).boundingBox())!.y).toBeCloseTo(판위, 0);
+
+  // 새 글은 짧아 판이 더 굴러 올라갈 자리가 없다 — 판의 위끝까지 붙지는 않고, 새 글의 제목이 판 안에 들면 된다(`시안-비교/03-4/앱-history.txt`).
+  await 트리줄(page, "할일.md").click();
+  const 제목 = 상세판(page).getByRole("heading", { name: "치운 일의 할 일" });
+  await expect(제목).toBeVisible();
+  const 판아래 = 판위 + (await 판.boundingBox())!.height;
+  await expect.poll(async () => (await 제목.boundingBox())!.y).toBeGreaterThanOrEqual(판위);
+  expect((await 제목.boundingBox())!.y + (await 제목.boundingBox())!.height).toBeLessThanOrEqual(판아래);
+  expect(await 판.evaluate((el) => el.scrollTop)).toBeLessThan(2000);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ⌘K의 아카이브 문서 줄 — 그 아카이브 상세의 `?file=`로 와서 그 문서가 열리고 트리에서 골라진다(`hitTarget` — 이슈 #25).
+test("⌘K의 아카이브 문서 줄을 고르면 그 아카이브 상세에 그 문서가 열리고 트리에서 골라진다", async ({ page }) => {
+  const 답: SearchResults = { hits: [{ kind: "doc", slug: shipped.slug, title: shipped.title, path: TICKET, archived: true }] };
+  await installFixtureBackend(page, { search: 답 });
+  await page.goto("/projects");
+  await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
+  await 검색팔레트를연다(page);
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(`/archive/${shipped.slug}?file=${encodeURIComponent(TICKET)}`);
+  await expect(상세판(page).getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  expect(await 고른문서(page)).toEqual([TICKET]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **상세 머리의 할 일**(restart 03-4 · 보드 MainArchiveDetail) — 「Finder에서 열기」(그 아카이브의 spec 폴더)와 ⋯(Finder에서 열기 · 경로 복사). 되살리기는
+// 앱에 없어 그리지 않는다. Finder 열기는 work 메뉴와 한 가족인 명령(`open_archived_spec_folder`)을 slug로 부르고(경로는 백엔드가 푼다 — S6), 경로 복사는
+// 그 폴더의 참조를 클립보드에 쓴다. 못 열면 백엔드의 문장이 「못 한 일」 토스트로 선다. 한때 이 메뉴는 머리 줄의 「아카이브 메뉴」였고, spec 목록 패널
+// 머리에 「spec 폴더 열기」가 섰다.
+test("상세 머리의 「Finder에서 열기」와 ⋯(Finder에서 열기 · 경로 복사)는 그 아카이브의 spec 폴더를 부르고, 못 열면 그 까닭을 토스트로 말한다", async ({
   page,
 }) => {
   const reason = `~/.atelier/archive/${shipped.slug}/spec 폴더가 없어요`;
@@ -478,11 +395,11 @@ test("머리 줄의 ⋯ 아카이브 메뉴는 Finder에서 열기 · 경로 복
   // 토스트(1.6초)를 느린 기계에서도 놓치지 않게 시계를 건다 — 마지막 누르기 직전에 세운다(위 토스트 절).
   await page.clock.install();
   await page.goto(`/archive/${shipped.slug}`);
-  const trigger = 화면머리(page).getByRole("button", { name: "아카이브 메뉴", exact: true });
+  const trigger = 상세판(page).getByRole("button", { name: `${shipped.title} 메뉴`, exact: true });
+  const finder = 상세판(page).getByRole("button", { name: "Finder에서 열기", exact: true });
   const menu = page.getByRole("menu");
   const messages = page.getByRole("region", { name: "메시지", exact: true });
-  const 부른slug = async () =>
-    (await ipcCallArgs(page, "open_archived_spec_folder", "slug")).map(({ args }) => args.slug);
+  const 부른slug = async () => (await ipcCallArgs(page, "open_archived_spec_folder", "slug")).map(({ args }) => args.slug);
 
   await expect(trigger).toHaveAttribute("aria-haspopup", "menu");
   await trigger.click();
@@ -498,16 +415,15 @@ test("머리 줄의 ⋯ 아카이브 메뉴는 Finder에서 열기 · 경로 복
   await menu.getByRole("menuitem", { name: "경로 복사", exact: true }).click();
   await expect.poll(() => clipboardWrites(page)).toEqual([`~/.atelier/archive/${shipped.slug}/spec/`]);
 
-  // 패널 머리의 「spec 폴더 열기」 — 같은 명령, 같은 slug다.
-  const openFolder = 패널(page).getByRole("button", { name: "spec 폴더 열기", exact: true });
-  await openFolder.click();
+  // 머리 단추 「Finder에서 열기」 — 같은 명령, 같은 slug다.
+  await finder.click();
   await expect.poll(부른slug).toEqual([shipped.slug, shipped.slug]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 
   // 못 열면 — 백엔드의 문장을 「Finder에서 열지 못했어요: 」 뒤에 붙인 토스트가 「메시지」에 선다.
   await replaceAnswer(page, "open_archived_spec_folder", ipcFailure(reason));
   await 시계를세운다(page);
-  await openFolder.click();
+  await finder.click();
   await expect(messages).toHaveText(`Finder에서 열지 못했어요: ${reason}`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

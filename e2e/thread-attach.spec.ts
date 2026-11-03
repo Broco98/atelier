@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD } from "./fixtures";
-import { fireEvent, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { fireEvent, installFixtureBackend, ipcCallArgs, unknownIpcCalls, 칠한값, 토큰색 } from "./harness";
 import { linesAfter, linesThrough, record, sentPayloads, seqOf, streamLines } from "./thread-records";
 import type { ThreadView } from "@/features/thread/types";
 
@@ -10,7 +10,7 @@ import type { ThreadView } from "@/features/thread/types";
 //
 // 경로는 Tauri의 끌어다 놓기 이벤트가 준다(웹뷰의 HTML5 drop은 경로가 없다) — 이 검사가 그 이벤트를 쏜다. 경로를 잰 답(`describe_attachments`)과
 // 말풍선의 칩은 L1이 축복한 「첨부한 첫 말」(`thread-attach.jsonl`)의 `sent` 줄 그대로다 — 파일 하나(`error.log`, 12KB)와 폴더 하나(`재현
-// 화면`)를 붙인 말에 Host가 답한 한 턴이다. 화면이 칩으로 그리는 꼴과 엔진이 적는 꼴이 같은 사실이다(스토리 137).
+// 화면`)를 붙인 말에 Runtime이 답한 한 턴이다. 화면이 칩으로 그리는 꼴과 엔진이 적는 꼴이 같은 사실이다(스토리 137).
 
 const attach = record("thread-attach");
 const [sent] = sentPayloads(attach);
@@ -38,11 +38,24 @@ test("끌어다 놓은 파일 · 폴더가 입력창에 칩으로 서고 뺄 수
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
-  // 끌고 들어오면 입력창 자리에 「놓으면 첨부합니다」가 서고, 놓으면 그 경로를 엔진이 재서 칩이 선다.
+  // 끌고 들어오면 입력창 상자가 그 자리에 남아 포커스 링(accent 1px · 무리 4)을 두르고 빈 칸의 말이 「여기에 놓으면 첨부돼요」가 된다(restart 02b-2 ·
+  // Composer 「끌어다 놓는 중」 — 한때 입력창 자리에 「놓으면 첨부합니다」 판이 섰다). 링과 그림자는 0.15s로 바뀐다. 놓으면 그 경로를 엔진이 재서
+  // 칩이 서고 링이 걷힌다.
+  const 상자 = 입력칸(page).locator("xpath=ancestor::form[1]");
+  const 빈칸말 = await 입력칸(page).getAttribute("placeholder");
   await fireEvent(page, "tauri://drag-enter", { paths, position });
-  await expect(page.getByRole("status").filter({ hasText: "놓으면 첨부합니다" })).toBeVisible();
-  await fireEvent(page, "tauri://drag-drop", { paths, position });
+  await expect(상자).toHaveAttribute("data-drop", "true");
+  await expect(입력칸(page)).toHaveAttribute("placeholder", "여기에 놓으면 첨부돼요");
   await expect(page.getByRole("status").filter({ hasText: "놓으면 첨부합니다" })).toHaveCount(0);
+  expect(await 칠한값(상자, "outline-style", "outline-width", "outline-color", "transition-duration")).toEqual([
+    "solid",
+    "1px",
+    await 토큰색(page, "--accent"),
+    "0.15s",
+  ]);
+  await fireEvent(page, "tauri://drag-drop", { paths, position });
+  await expect(상자).not.toHaveAttribute("data-drop");
+  await expect(입력칸(page)).toHaveAttribute("placeholder", 빈칸말!);
   expect((await ipcCallArgs(page, "describe_attachments", "paths")).map(({ args }) => args)).toEqual([{ paths }]);
   await expect(칩들(page).getByRole("listitem")).toHaveText([new RegExp(`^${logName}`), folderName]);
 
@@ -56,7 +69,7 @@ test("끌어다 놓은 파일 · 폴더가 입력창에 칩으로 서고 뺄 수
   await 입력칸(page).fill(sent.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: sent.text, attachments: paths, link: { kind: "new-work" }, mode: null, model: null, effort: null, space: null },
+    { text: sent.text, attachments: paths, link: { kind: "no-work" }, runtime: "claude-code", mode: "edits", model: null, effort: null, service: null, project: null, quote: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   const 흐름 = page.getByRole("main");
@@ -64,7 +77,7 @@ test("끌어다 놓은 파일 · 폴더가 입력창에 칩으로 서고 뺄 수
   await expect(칩들(page)).toHaveCount(1);
   await expect(칩들(page).getByRole("listitem")).toHaveText([new RegExp(`^${logName}`), folderName]);
 
-  // Host의 답이 그 아래로 흐르고 턴이 끝나도(끝난 답 아래 「답 복사」) 칩은 말풍선 위에 남는다.
+  // Runtime의 답이 그 아래로 흐르고 턴이 끝나도(끝난 답 아래 「답 복사」) 칩은 말풍선 위에 남는다.
   await streamLines(page, started.id, linesAfter(attach, SENT));
   await expect(흐름.getByRole("button", { name: "답 복사", exact: true })).toBeVisible();
   await expect(흐름.getByText("hello from turn", { exact: true })).toBeVisible();

@@ -54,6 +54,15 @@ pub enum Outcome {
     Gone,
 }
 
+/// **손으로 끝내기의 답 한 줄**(restart 03-10 · 스토리 134) — 대상 하나와 그 결과. `processes_end`가 대상마다 돌려주고, 화면이 신원으로
+/// 그 줄을 찾아 결과(끝남 · 강제로 끝냄 · 못 끝냄 · 이미 없음)를 세운다. 와이어는 `{"id": {"pid", "startedUs"}, "outcome": "ended" | …}`다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndResult {
+    pub id: Identity,
+    pub outcome: Outcome,
+}
+
 /// 셸의 프로세스 그룹. 셸은 대상 목록에 없다 — 그룹째 SIGHUP을 받고, 유예 뒤에는 그룹째 SIGKILL을 받는다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Group {
@@ -193,8 +202,9 @@ const JUDGING_LIMIT: Duration = Duration::from_millis(500);
 
 /// **진행 중인 끝내기** — 뒤 스레드로 보낸 끝내기의 목록(프로세스 스펙 S5).
 ///
-/// 셸 닫기 · 새로고침 · 손으로 끝내기는 신호를 보낸 뒤 유예와 SIGKILL을 뒤 스레드에 맡기고 곧바로 돌아온다 — 셸 스스로
-/// 끝남과 시작 정리는 처음부터 제 스레드에서 돈다. 그 스레드들은 앱과 함께 사라진다 — ×를 누르고 2초 안에 ⌘Q를 누르면
+/// 셸 닫기 · 새로고침은 신호를 보낸 뒤 유예와 SIGKILL을 뒤 스레드에 맡기고 곧바로 돌아온다 — 셸 스스로 끝남과 시작 정리는
+/// 처음부터 제 스레드에서 돌고, 손으로 끝내기는 결과를 돌려주려 그 명령의 스레드(blocking 풀)에서 기다린다(restart 03-10). 그
+/// 스레드들은 앱과 함께 사라진다 — ×를 누르고 2초 안에 ⌘Q를 누르면
 /// SIGTERM을 무시한 자손에 SIGKILL이 영영 안 간다. 그래서 뒤로 보내는 끝내기는 모두 여기 오르고, 앱 종료가 목록을 동기로
 /// 마감한다(`close`).
 ///
@@ -942,6 +952,31 @@ mod tests {
         assert!(ours > 1 && group_alive(ours), "이 검사의 그룹 {ours}를 못 봤다 — 위 단언이 아무것도 못 잰다");
     }
 
+    /// **손으로 끝내기의 답은 대상마다 신원과 결과다**(restart 03-10 · 스토리 134) — 화면이 신원으로 줄을 찾아 결과를 세운다. 와이어는
+    /// 화면이 읽는 모양(`src/features/processes/types.ts`의 `EndResult`) 그대로다: 신원은 `{pid, startedUs}`, 결과는 네 글자다.
+    #[test]
+    fn an_end_result_crosses_the_wire_in_the_shape_the_screen_reads() {
+        let answers: Vec<serde_json::Value> = [Outcome::Ended, Outcome::Forced, Outcome::Survived, Outcome::Gone]
+            .into_iter()
+            .enumerate()
+            .map(|(at, outcome)| {
+                let id = Identity { pid: 10 + at as u32, started_us: 1_790_000_000_000_000 };
+                serde_json::to_value(EndResult { id, outcome }).unwrap()
+            })
+            .collect();
+        assert_eq!(
+            answers,
+            ["ended", "forced", "survived", "gone"]
+                .into_iter()
+                .enumerate()
+                .map(|(at, outcome)| serde_json::json!({
+                    "id": { "pid": 10 + at, "startedUs": 1_790_000_000_000_000_u64 },
+                    "outcome": outcome,
+                }))
+                .collect::<Vec<_>>()
+        );
+    }
+
     /// 결과는 받은 대상의 순서 그대로, 신원째 돌아온다 — 부르는 쪽(정리 기록)이 그것으로 행을 찾는다.
     #[test]
     fn outcomes_come_back_in_the_order_the_targets_went_in() {
@@ -1248,7 +1283,7 @@ mod real {
         let ending = [ShellEntry { key: key.to_string(), process: None, first_input_us: None }];
         let verdict = judge(&Inputs {
             snapshot: &snapshot,
-            run: ThisRun { generation: "test", app_pid: std::os::unix::process::parent_id(), inherited_key: None },
+            run: ThisRun { generation: "test", app_pid: std::os::unix::process::parent_id(), inherited_key: None, inherited_runtime: None },
             shells: &[],
             ending: &ending,
             instances: &[],

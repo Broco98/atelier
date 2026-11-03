@@ -45,7 +45,7 @@ const body = (input: SummaryInput, over: Partial<Parameters<typeof SummaryBody>[
   renderToStaticMarkup(
     <SummaryBody
       sections={summarySections(input)}
-      menu={<button type="button" aria-label="Work 메뉴" />}
+      menu={<button type="button" aria-label="작업공간 메뉴" />}
       changes={input.changes}
       fresh={{ keys: NOTHING, flash: 0 }}
       written={{ keys: NOTHING, flash: 0 }}
@@ -61,24 +61,23 @@ const sectionNames = (markup: string) => [...markup.matchAll(/<section aria-labe
 const text = (markup: string) => markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 describe("요약 카드의 몸", () => {
-  it("머리(Work 이름 · 「…」) → 「변경 사항」과 Work 합계 → PR 줄 → 결과물 자리표시 → 소스 차례다(Screen-Live)", () => {
+  it("머리(Work 이름 · 「…」) → 「변경 사항」과 Work 합계 → PR 줄 → 소스 차례다(SummarySheet 「기본」)", () => {
     const markup = body(live);
-    expect(text(markup)).toBe(
-      "환불 API 버그 수정 변경 사항 +18 −6 PR #142 CI 통과 · 승인 1개 결과물 파일 또는 문서 만들기 소스 설계.md web-app 읽기만",
-    );
-    expect(markup).toMatch(/환불 API 버그 수정.*aria-label="Work 메뉴"/);
-    expect(sectionNames(markup)).toEqual(["결과물", "소스"]);
+    expect(text(markup)).toBe("환불 API 버그 수정 변경 사항 +18 −6 PR #142 CI 통과 · 승인 1개 소스 설계.md web-app 읽기만");
+    expect(markup).toMatch(/환불 API 버그 수정.*aria-label="작업공간 메뉴"/);
+    expect(sectionNames(markup)).toEqual(["소스"]);
   });
 
-  it("결과물 · 소스에 「＋」가 없다(S19) — 누를 일이 없는 단추를 두지 않는다", () => {
+  it("결과물 칸과 누를 수 없는 「파일 또는 문서 만들기」 자리표시가 없고, 소스에 「＋」가 없다(SummarySheet 규격 · S19)", () => {
     const markup = body(live);
+    expect(markup).not.toMatch(/결과물|파일 또는 문서 만들기/);
     expect(markup).not.toMatch(/더하기|문서 추가|Project 붙이기/);
     expect(markup).not.toContain("lucide-plus");
   });
 
   it("「변경 사항」은 넓힌 카드의 diff를 여는 단추이고, 합계는 초록 · 빨강 diff 글자이며 0인 쪽은 적지 않는다(S17)", () => {
     const markup = body(live);
-    expect(markup).toMatch(/<button type="button" data-changes=""[^>]*>.*변경 사항.*<\/button>/);
+    expect(markup).toMatch(/<button type="button" tabindex="0" data-changes=""[^>]*>.*변경 사항.*<\/button>/);
     expect(markup).toMatch(/text-diff-added[^>]*>\+18</);
     expect(markup).toMatch(/text-diff-deleted[^>]*>−6</);
     const added = body({
@@ -87,26 +86,27 @@ describe("요약 카드의 몸", () => {
     });
     expect(added).toContain("+3");
     expect(added).not.toContain("−0");
-    expect(text(body({ ...live, changes: null, prs: [] }))).toMatch(/^환불 API 버그 수정 변경 사항 결과물/);
+    expect(text(body({ ...live, changes: null, prs: [] }))).toMatch(/^환불 API 버그 수정 변경 사항 소스/);
   });
 
   it("PR 줄은 「변경 사항」 아래 지금 모양 그대로다 — CI가 실패하면 진한 ⓘ(빨강이 아님)와 그 아래 실패 문장(S18)", () => {
     const failing = body({ ...live, prs: [{ ...pr, icon: "failed", status: "CI 실패", note: "e2e 검사가 실패했어요." }] });
-    expect(failing).toMatch(/변경 사항.*PR #142.*CI 실패.*<p[^>]*>e2e 검사가 실패했어요.<\/p>.*결과물/);
+    expect(failing).toMatch(/변경 사항.*PR #142.*CI 실패.*<p[^>]*>e2e 검사가 실패했어요.<\/p>.*소스/);
     expect(failing).toMatch(/<svg[^>]*text-fg[" ][^>]*data-pr-icon="failed"/);
     expect(failing).not.toMatch(/danger/);
     expect(body({ ...live, prs: [{ ...pr, status: "CI 확인 중", checking: true }] })).toMatch(/chat-shimmer[^>]*>CI 확인 중/);
   });
 
-  it("쓰는 중인 문서 줄에 파란 점과 「Host가 쓰는 중」이, 막 쓴 문서 줄에 빛이 선다", () => {
+  it("쓰는 중인 문서 줄에 파란 점과 이름 없는 「쓰는 중」이, 막 쓴 문서 줄에 빛이 선다(Summary 보드)", () => {
     const writing = body({
       ...live,
       docs: [
         { path: "overview.md", writer: null },
-        { path: "설계.md", writer: { path: "설계.md", who: "host", name: "Host", thread: "a" } },
+        { path: "설계.md", writer: { path: "설계.md", thread: "a" } },
       ],
     });
-    expect(writing).toMatch(/data-doc="설계.md".*writing-pulse.*Host가 쓰는 중/);
+    expect(writing).toMatch(/data-doc="설계.md".*writing-pulse.*>쓰는 중</);
+    expect(writing).not.toContain("Host");
     expect(writing).not.toMatch(/data-doc="overview.md"[^>]*>(?:(?!data-doc).)*쓰는 중/);
     const written = body(live, { written: { keys: new Set(["설계.md"]), flash: 1 } });
     expect(written).toMatch(/data-doc="설계.md"[^>]*class="[^"]*row-flash/);
@@ -147,10 +147,29 @@ describe("요약 카드의 몸", () => {
     expect(body(live)).not.toContain("모두 보기");
   });
 
+  it("「모두 보기」를 누르면 그 줄이 걷히고 나머지 소스가 그 자리에서 아래 4에서 선다 — 넓힌 카드의 목록은 움직이지 않는다(SummarySheet 움직임)", () => {
+    const many: SummaryInput = {
+      ...live,
+      docs: [
+        { path: "overview.md", writer: null },
+        { path: "설계.md", writer: null },
+      ],
+      projects: [
+        { project: "api-server", editing: true },
+        { project: "web-app", editing: false },
+      ],
+    };
+    const unfolded = body(many, { unfolded: true });
+    expect(unfolded).not.toContain("모두 보기");
+    expect(unfolded).toMatch(/<button type="button" tabindex="0" data-project="web-app"[^>]*class="[^"]*row-in/);
+    expect(unfolded).not.toMatch(/data-project="api-server"[^>]*class="[^"]*row-in/);
+    expect(body(many, { expanded: true })).not.toContain("row-in");
+  });
+
   it("문서 · Project 줄은 넓힌 카드를 여는 단추다 — 이름은 줄의 글 그대로다", () => {
     const markup = body(live);
-    expect(markup).toMatch(/<button type="button" data-doc="설계.md"/);
-    expect(markup).toMatch(/<button type="button" data-project="web-app"/);
+    expect(markup).toMatch(/<button type="button" tabindex="0" data-doc="설계.md"/);
+    expect(markup).toMatch(/<button type="button" tabindex="0" data-project="web-app"/);
     expect(markup).not.toContain("aria-current");
   });
 });
@@ -161,23 +180,29 @@ describe("보관된 Work · Work 없는 Thread의 요약 카드", () => {
     changes: null,
     prs: [],
     docs: [{ path: "overview.md", writer: null }],
-    projects: [{ project: "api-server", editing: false }],
+    projects: [{ project: "api-server", editing: null }],
   };
 
-  it("보관된 Work는 머리 Work 이름 뒤에 「보관됨」이 붙고, 「…」 없이 변경 사항 · 소스가 보이기만 한다", () => {
+  it("보관된 Work는 머리 Work 이름 뒤에 「보관됨」이 붙고, 「…」 없이 변경 사항 · 소스가 보이기만 한다 — 그 Project 줄은 끝 말이 없다", () => {
     const markup = body(shelved, { menu: undefined, onChanges: undefined, onOpen: undefined });
-    expect(text(markup)).toBe("결제 웹훅 재시도 보관됨 변경 사항 결과물 파일 또는 문서 만들기 소스 overview.md api-server 읽기만");
+    expect(text(markup)).toBe("결제 웹훅 재시도 보관됨 변경 사항 소스 overview.md api-server");
     expect(markup).not.toContain("<button");
     expect(markup).toMatch(/<div data-doc="overview.md"/);
   });
 
-  it("Work 없는 Thread는 머리 · 변경 사항 없이 결과물 · 소스만이다(S20)", () => {
+  it("Work 없는 Thread는 머리 · 변경 사항 없이 소스(읽는 범위)만이고, 위에 구분선이 없다(SummarySheet 「작업공간 밖 채팅」)", () => {
     const markup = body(
       { work: null, changes: null, prs: [], docs: [], projects: [{ project: "api-server", editing: false }] },
       { menu: undefined, onChanges: undefined, onOpen: undefined },
     );
-    expect(text(markup)).toBe("결과물 파일 또는 문서 만들기 소스 api-server 읽기만");
+    expect(text(markup)).toBe("소스 api-server 읽기만");
     expect(markup).not.toContain("변경 사항");
+    expect(markup).toMatch(/^<section aria-label="소스"/);
+    const empty = body(
+      { work: null, changes: null, prs: [], docs: [], projects: [] },
+      { menu: undefined, onChanges: undefined, onOpen: undefined },
+    );
+    expect(text(empty)).toBe("소스 읽는 Project가 없어요");
   });
 });
 
@@ -189,7 +214,7 @@ describe("넓힌 카드의 목록(v1 티켓 35 — 넓힌 카드는 그대로다
     expect(markup).toContain(">schema.prisma<");
     expect(markup.match(/aria-current="true"/g) ?? []).toHaveLength(1);
     expect(markup).toMatch(/data-change="prisma\/schema.prisma"[^>]*aria-current="true"[^>]*class="[^"]*selected-row/);
-    expect(body(live, { expanded: true, opened: { kind: "project", project: "web-app", file: "package.json" } })).toMatch(
+    expect(body(live, { expanded: true, opened: { kind: "project", project: "web-app" } })).toMatch(
       /data-project="web-app"[^>]*aria-current="true"/,
     );
   });

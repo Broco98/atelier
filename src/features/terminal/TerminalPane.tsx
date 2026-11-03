@@ -24,7 +24,7 @@ import type { WorkView } from "@/features/works/types";
  *
  * 이 컴포넌트가 소유하는 것은 **자리 하나뿐이다.** 셸도 xterm도 terminal-store가 들고 있어
  * 이 화면이 사라져도 그대로 산다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
- * 그 셸이 떠날 때 닫히는 것도 이 칸이 아니라 앱 루트(`ShellReclaim`)가 정한다. 칸은 spec 탭으로 바꿀
+ * 그 셸이 떠날 때 닫히는 것도 이 칸이 아니라 앱 루트(`ShellReclaim`)가 정한다. 칸은 채팅 탭으로 바꿀
  * 때도 내려가 「떠남」을 모른다. 여기서 하는 일은 활성 칸의 집을 자리에 들이고
  * 갈아탈 때·나갈 때 도로 빼는 것이다.
  *
@@ -151,7 +151,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
 
           **그렇다고 빈 채로 두지 않는다.** 여는 법이 본문 밖(탭 줄)에 있으므로 아무 말도
           없는 빈 판은 「아직 없다」가 아니라 **고장**으로 읽힌다. 그래서 남는 것은 조작이
-          아니라 **비었다는 표시와 여는 법** — Works의 「아직 작업이 없어요」와 같은 관용구다.
+          아니라 **비었다는 표시와 여는 법** — Works의 「아직 작업공간이 없어요」와 같은 관용구다.
 
           **여기에 상한 갈래는 없다**(결정 23). 한때 「셸이 0개인데도 상한에 닿아 있을 수
           있다」를 이 자리에서 문장으로 말했는데, 그것은 상한이 앱 전체였을 때의 이야기다.
@@ -177,12 +177,17 @@ function TerminalPane({ work }: { work: WorkView | null }) {
               <EmptyTitle>아직 셸이 없어요</EmptyTitle>
               <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>
             </EmptyHeader>
-            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 글자는 단축키 표의 `newShell`이다. 한때 이 키를 「상한에 닿았으면
+            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 글자는 단축키 표의 `newTab`이다. 한때 이 키를 「상한에 닿았으면
                 안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는 것이 되어서인데, 위 주석대로
-                그 조건이 여기서는 늘 거짓이다. */}
-            <EmptyContent>
-              <Kbd>{HOTKEYS.newShell.glyph}</Kbd>
-            </EmptyContent>
+                그 조건이 여기서는 늘 거짓이다.
+
+                **최상위 터미널에서만 선다**(restart 02a-8) — 작업공간 화면의 ⌘T는 새 채팅 탭을 연다. 거기서 셸을 여는 길은 `+` 메뉴의 셸
+                줄이고 위 문장이 그것을 말한다. */}
+            {work === null && (
+              <EmptyContent>
+                <Kbd>{HOTKEYS.newTab.glyph}</Kbd>
+              </EmptyContent>
+            )}
           </Empty>
         </div>
       )}

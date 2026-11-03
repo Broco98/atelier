@@ -3,7 +3,7 @@ import { cardKey, type CardPress } from "./approval";
 // Thread 도구가 세우는 질문 카드의 값과 키(03 티켓 08 · 구현 스펙 §11 S12 · §12 · 캔버스 F4-WorkAsk · F4-KitChat 「질문 카드」) — Agent의
 // 질문(`QuestionCard`)이 아니라 Thread 도구가 「카드를 세우고 기다리는 길」로 묻는 질문이다. 겉은 질문 카드의 부품이다 — 머리 「Host ·
 // 질문」, 물음과 그 아래 한 줄, 번호 줄(「추천」 표 · 아래 줄), 맨 아래 「↑↓ 고르기 · esc 닫기」와 「고르기 ↵」. 그리는 것은
-// `ToolQuestionCard`이고, 카드 종류마다의 글은 그 종류의 순수 함수가 짓는다 — Space 붙이기(`space-card.ts`) · Project 추가(`project-add-card.ts` —
+// `ToolQuestionCard`이고, 카드 종류마다의 글은 그 종류의 순수 함수가 짓는다 — Service 붙이기(`service-card.ts`) · Project 추가(`project-add-card.ts` —
 // 「git init 하고 추가」 · 「추가하지 않기」, 03 티켓 12).
 
 /** 번호 줄 하나 — 이름, 「추천」 표(추천이 아니면 null), 아래 줄(없으면 null). */

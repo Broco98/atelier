@@ -46,19 +46,20 @@ test("다리의 아카이브 문서 답이 레이아웃으로 spec/ 아래를 �
     { name: "tickets", path: "tickets", icon: null },
   ]);
 
-  // 화면이 그 답을 그린다. 아이콘을 받은 행은 확장자 라벨 대신 아이콘이라 이름이 `plan.md` 그대로고,
-  // 자리를 못 받은 `overview.md`는 라벨이 붙는다.
-  await expect(page.getByRole("button", { name: "plan.md", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "MD overview.md", exact: true })).toBeVisible();
+  // 화면이 그 답을 그린다 — 트리는 상세 판 안의 `nav` 「문서」다(restart 03-4). 아이콘을 받은 행은 확장자 글자 대신 아이콘이고, 자리를 못
+  // 받은 `overview.md`에는 확장자 글자(`data-ext` — 이름에서 빠진다, restart 03-12a. 한때 이름 앞 라벨 「MD 」)가 선다.
+  const 트리 = page.getByRole("main", { name: "Archive 상세", exact: true }).getByRole("navigation", { name: "문서", exact: true });
+  const 줄 = (name: string) => 트리.getByRole("button", { name, exact: true });
+  await expect(줄("plan.md")).toBeVisible();
+  await expect(줄("plan.md").locator("[data-ext]")).toHaveCount(0);
+  await expect(줄("overview.md")).toBeVisible();
+  await expect(줄("overview.md").locator("[data-ext]")).toHaveCount(1);
   // 뿌리의 기록 행과 접히는 `spec/` 행은 지금 그대로다.
-  await expect(page.getByRole("button", { name: "MD record.md", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "spec", exact: true })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
+  await expect(줄("record.md")).toBeVisible();
+  await expect(줄("spec")).toHaveAttribute("aria-expanded", "true");
 
   // 고른 문서는 `spec/`가 다시 붙은 경로로 읽힌다 — 코어의 읽기 창구가 work 폴더 기준이다.
-  await page.getByRole("button", { name: "plan.md", exact: true }).click();
+  await 줄("plan.md").click();
   await expect(page.getByText("계획의 본문이다.")).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);

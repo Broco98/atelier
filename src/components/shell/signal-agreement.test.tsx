@@ -78,14 +78,18 @@ function 셸하나(kind: "waiting" | "done"): ShellsState {
 const 가족낱말: Readonly<Record<"wait" | "new" | "mine" | "success", readonly string[]>> = {
   wait: ["warning", "wait"],
   new: ["new", "accent-solid"],
-  // 사이드바 상태 표시의 「내 차례」 알약(`text-mine` on `bg-mine-soft`) — 행이 기다리는 셸을 말하는 색이다(02 S8).
+  // 한때(02 S8 – 02a-2) 사이드바 상태 표시의 「내 차례」 알약이 쓰던 파랑(`text-mine` on `bg-mine-soft`). restart 02a-3이 알약을 시안 Shell대로
+  // 기다림의 주황(`text-warning` on `bg-wait-soft`)으로 옮겼다 — 행에 이 가족이 다시 서면 옛 색이 남은 것이다.
   mine: ["mine"],
   success: ["success"],
 };
 
-/** 셸의 상태마다 사이드바 행이 서는 상태 표시의 색 가족과 말(02 S8 — `work-mark.ts`의 셸 자리). */
+/**
+ * 셸의 상태마다 사이드바 행이 서는 상태 표시의 색 가족과 말(02 S8 — `work-mark.ts`의 셸 자리). 기다리는 셸의 「내 차례」 알약은 띠 · 탭과 같은
+ * 기다림 가족이다(restart 02a-3 — 시안 Shell 「사이드바 상태」).
+ */
 const 행의말 = {
-  waiting: { family: "mine", label: STATUS_MARK_LABEL.mine },
+  waiting: { family: "wait", label: STATUS_MARK_LABEL.mine },
   done: { family: "new", label: STATUS_MARK_LABEL.new },
 } as const;
 
@@ -168,7 +172,7 @@ function 띠(state: ShellsState): string {
  * 색을 다시 고르기 가장 쉬운 자리다. 한쪽만 그리면 나머지 한쪽이 이 그물 밖에 남는다.
  *
  * `showing`이 거짓이면 그 화면의 셸 칸이 하나도 안 켜진다(`ShellTabs`의 그 prop) —
- * 본문이 문서인 화면이 그 모양이고, 부르는 칸을 탭 줄에서 **찾는** 화면이 바로 그것이다.
+ * 본문이 셸이 아닌 화면이 그 모양이고, 부르는 칸을 탭 줄에서 **찾는** 화면이 바로 그것이다.
  */
 function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
   return renderToStaticMarkup(
@@ -177,8 +181,8 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       owner={소유}
       projects={["atelier"]}
       defaultCwd={null}
-      spec={{ on: !켜짐, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} }}
       showing={켜짐}
+      chat={{ title: () => "", onRename: () => {}, menu: () => null }}
       onSelect={() => {}}
       onClose={() => {}}
       onRename={() => {}}

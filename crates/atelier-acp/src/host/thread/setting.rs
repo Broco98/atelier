@@ -1,24 +1,24 @@
-//! 대화로 하는 설정(03 구현 스펙 §12 · S13 · 티켓 12) — Thread 도구 「Project 추가」 · 「Project 고치기」 · 「Space 만들기」 · 「Space 고치기」.
+//! 대화로 하는 설정(03 구현 스펙 §12 · S13 · 티켓 12) — Thread 도구 「Project 추가」 · 「Project 고치기」 · 「Service 만들기」 · 「Service 고치기」.
 //!
 //! - **화면과 같은 core 함수, 같은 파일이다**(§17) — 추가는 core `add_project`(폴더 살피기 갈래 그대로), 고치기는 `update_project`(기준
-//!   브랜치 검사 포함), Space는 `create_space`(만든 이 `host` — S6) · `update_space`(글 단위 고치기). 화면이 따로 검사하지 않듯 이 도구도
+//!   브랜치 검사 포함), Service는 `create_service`(만든 이 `host` — S6) · `update_service`(글 단위 고치기). 화면이 따로 검사하지 않듯 이 도구도
 //!   따로 검사하지 않는다 — core의 거절을 Agent가 읽을 글로 돌려준다.
 //! - **승인 카드를 세우지 않는다**(S13) — 사람이 대화로 부탁한 Atelier 설정 파일의 일이고 화면에서 모두 고치고 되돌릴 수 있다. git
 //!   물음(git이 아닌 폴더 · 저장소의 하위 폴더)만 질문 카드로 묻는다(`question` · `card: project-add`) — 화면 추가 창과 같은 물음이다. 세우고
 //!   기다리는 길 · 멈춤 · 닫힘은 Work 만들기 카드와 하나다([`ConversationHost::ask_card`]).
 //! - **해낸 설정마다 결과 카드 줄**(`setting`)이 하나 선다 — 무엇을 했나(`action`) · 대상 slug · 이름 · 카드의 첫 줄(`title`) · 둘째 줄
 //!   (`detail`). 글은 여기서 짓는다 — 그때의 값이라 화면이 나중에 다시 지을 수 없다(기록은 덧붙이기만 한다). 바뀐 것이 없으면 줄도 없다.
-//! - **지우는 도구는 없다**(§17) — 머리말이 그 화면을 안내하라고 지시한다.
+//! - **지우는 도구는 없다**(§17) — 도구 설명이 그 화면을 안내하라고 말한다.
 
 use std::path::{Path, PathBuf};
 
-use atelier_core::{AddProject, FolderLook, NewSpace, Project, ProjectPatch, ProjectView, RecordKind, SpacePatch, SpaceProblemKind};
+use atelier_core::{AddProject, FolderLook, NewService, Project, ProjectPatch, ProjectView, RecordKind, ServicePatch, ServiceProblemKind};
 use serde_json::{json, Value};
 
-use super::space::{listed, no_such_space, not_registered, registered_list};
+use super::service::{listed, no_such_service, not_registered, registered_list};
 use super::work::{Card, Settled};
-use super::{ConversationHost, SessionKey};
-use crate::thread_tools::{self, ProjectAdd, ProjectEdit, SpaceEdit, SpaceNew};
+use super::ConversationHost;
+use crate::thread_tools::{self, ProjectAdd, ProjectEdit, ServiceEdit, ServiceNew};
 use crate::HostError;
 
 /// Project 추가 질문 카드에서 사람이 고른 것(03 §12).
@@ -77,8 +77,8 @@ enum Added {
 enum Action {
     ProjectAdded,
     ProjectEdited,
-    SpaceCreated,
-    SpaceEdited,
+    ServiceCreated,
+    ServiceEdited,
 }
 
 impl Action {
@@ -87,22 +87,15 @@ impl Action {
         match self {
             Action::ProjectAdded => "project-added",
             Action::ProjectEdited => "project-edited",
-            Action::SpaceCreated => "space-created",
-            Action::SpaceEdited => "space-edited",
+            Action::ServiceCreated => "service-created",
+            Action::ServiceEdited => "service-edited",
         }
     }
 
-    /// 그 카드의 단추 — Project · 새 Space는 「열기」, Space 고침은 「관계 보기」(§12).
-    fn button(self) -> &'static str {
-        match self {
-            Action::SpaceEdited => "관계 보기",
-            Action::ProjectAdded | Action::ProjectEdited | Action::SpaceCreated => "열기",
-        }
-    }
-
-    /// 해낸 설정의 도구 결과 끝 — 사람이 결과 카드의 단추로 그 화면에서 다시 고친다.
+    /// 해낸 설정의 도구 결과 끝 — 사람이 결과 카드의 단추 「열기」로 그 화면에서 다시 고친다. 넷 모두 같은 단추다(restart 02b-6 · ChatCards
+    /// 「Service 고침」 — 관계 그래프가 없어져 「열기」로 통일한다. 한때 Service 고침은 「관계 보기」였다).
     fn settled(self) -> String {
-        format!("흐름에 결과 카드가 섰다 — 사람이 「{}」로 그 화면에서 다시 고칠 수 있다.", self.button())
+        "흐름에 결과 카드가 섰다 — 사람이 「열기」로 그 화면에서 다시 고칠 수 있다.".to_owned()
     }
 }
 
@@ -118,7 +111,7 @@ struct Setting {
 impl ConversationHost {
     /// Thread 도구 「Project 추가」(§12) — 폴더를 살펴(§15) 저장소의 뿌리면 곧바로 등록하고, git이 아니거나 하위 폴더면 질문 카드를 세우고
     /// 사람이 고를 때까지 기다린다(**막히는 호출일 수 있다**). 이미 등록된 폴더는 바꾸지 않는다. 없는 폴더는 도구의 실패다.
-    pub(super) fn add_project_tool(&self, key: &SessionKey, ask: ProjectAdd) -> Value {
+    pub(super) fn add_project_tool(&self, thread: &str, ask: ProjectAdd) -> Value {
         let registry = atelier_core::projects_in(&self.data_root);
         let card = |folder: &str, root: Option<String>| ProjectAddCard {
             folder: atelier_core::expand_home(folder),
@@ -134,18 +127,18 @@ impl ConversationHost {
             FolderLook::Registered { project, .. } => thread_tools::said(&already_text(&project.project), false),
             FolderLook::Repo { path, .. } => {
                 let added = self.add_folder(&atelier_core::expand_home(&path), false, ask.name.clone(), ask.description.clone());
-                match added.and_then(|added| self.settle_added(key, added)) {
+                match added.and_then(|added| self.settle_added(thread, added)) {
                     Ok(text) => thread_tools::said(&text, false),
                     Err(why) => thread_tools::said(&why, true),
                 }
             }
             FolderLook::NotGit { path } => {
                 let fields = json!({"look": kind, "path": path, "folder": folder_name(&path), "root": null});
-                self.ask_card(key, Card::ProjectAdd(card(&path, None)), fields)
+                self.ask_card(thread, Card::ProjectAdd(card(&path, None)), fields)
             }
             FolderLook::Subfolder { path, root, .. } => {
                 let fields = json!({"look": kind, "path": path, "folder": folder_name(&path), "root": root});
-                self.ask_card(key, Card::ProjectAdd(card(&path, Some(root))), fields)
+                self.ask_card(thread, Card::ProjectAdd(card(&path, Some(root))), fields)
             }
         }
     }
@@ -173,7 +166,7 @@ impl ConversationHost {
             json!({"state": "answered", "requestId": request, "card": "project-add", "choice": choice.as_str(), "project": project})
         };
         let Some(folder) = folder else {
-            self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), answered(None)).map_err(HostError::Record)?;
+            self.thread_log(thread)?.write(RecordKind::Question, answered(None)).map_err(HostError::Record)?;
             let folder = atelier_core::collapse_home(&card.folder);
             let text = format!(
                 "사람이 추가하지 않기로 했다 — `{folder}`{} Project로 등록하지 않았다. 같은 부탁을 곧바로 다시 하지 않는다.",
@@ -193,8 +186,8 @@ impl ConversationHost {
         let slug = match &added {
             Added::New(view) | Added::Already(view) => view.project.slug.clone(),
         };
-        self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), answered(Some(&slug))).map_err(HostError::Record)?;
-        let (text, refused) = match self.settle_added(&asked.key, added) {
+        self.thread_log(thread)?.write(RecordKind::Question, answered(Some(&slug))).map_err(HostError::Record)?;
+        let (text, refused) = match self.settle_added(&asked.thread, added) {
             Ok(text) => (text, false),
             Err(why) => (why, true),
         };
@@ -225,14 +218,14 @@ impl ConversationHost {
 
     /// 등록한 결과를 남기고 Agent에게 돌려줄 글을 짓는다 — 새로 등록했으면 결과 카드 줄 「Project를 추가했어요 — …」, 이미 등록된 폴더면
     /// 줄 없이 그렇다는 글이다.
-    fn settle_added(&self, key: &SessionKey, added: Added) -> Result<String, String> {
+    fn settle_added(&self, thread: &str, added: Added) -> Result<String, String> {
         let view = match added {
             Added::Already(view) => return Ok(already_text(&view.project)),
             Added::New(view) => view,
         };
         let project = &view.project;
         self.note_setting(
-            key,
+            thread,
             Setting {
                 action: Action::ProjectAdded,
                 slug: project.slug.clone(),
@@ -254,7 +247,7 @@ impl ConversationHost {
 
     /// Thread 도구 「Project 고치기」(§12 · §15 「고치기」) — 준 칸만 core 고치기 하나로 바꾼다. 기준 브랜치가 그 저장소에 없으면 아무것도
     /// 쓰지 않고 고를 수 있는 브랜치를 돌려준다(스토리 63). 바뀐 것이 있으면 결과 카드 줄이 선다.
-    pub(super) fn edit_project_tool(&self, key: &SessionKey, edit: ProjectEdit) -> Value {
+    pub(super) fn edit_project_tool(&self, thread: &str, edit: ProjectEdit) -> Value {
         let registry = atelier_core::projects_in(&self.data_root);
         let Ok(before) = atelier_core::get_project(&registry, &edit.project) else {
             return thread_tools::said(&self.unknown_project(&edit.project), true);
@@ -277,7 +270,7 @@ impl ConversationHost {
         };
         let action = Action::ProjectEdited;
         let setting = Setting { action, slug: after.project.slug.clone(), name: after.project.name.clone(), title, detail };
-        match self.note_setting(key, setting) {
+        match self.note_setting(thread, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
                     "Project `{}`{} 고쳤다 — {}. {}",
@@ -292,40 +285,40 @@ impl ConversationHost {
         }
     }
 
-    /// Thread 도구 「Space 만들기」(§12 · §8 「만들기」) — 만든 이는 `host`다(S6). 문제가 있으면 만들지 않고 그 문제를 돌려준다.
-    pub(super) fn create_space_tool(&self, key: &SessionKey, new: SpaceNew) -> Value {
-        let made = atelier_core::create_space(
+    /// Thread 도구 「Service 만들기」(§12 · §8 「만들기」) — 만든 이는 `host`다(S6). 문제가 있으면 만들지 않고 그 문제를 돌려준다.
+    pub(super) fn create_service_tool(&self, thread: &str, new: ServiceNew) -> Value {
+        let made = atelier_core::create_service(
             &self.data_root,
-            NewSpace {
+            NewService {
                 name: new.name,
                 projects: new.projects,
                 description: new.description.unwrap_or_default(),
                 created_by: Some(MADE_BY.to_owned()),
             },
         );
-        let space = match made {
-            Ok(space) => space,
-            Err(error) => return thread_tools::said(&self.space_refusal(error, "만들지 않았다"), true),
+        let service = match made {
+            Ok(service) => service,
+            Err(error) => return thread_tools::said(&self.service_refusal(error, "만들지 않았다"), true),
         };
-        let file = atelier_core::collapse_home(&space.file_in(&self.data_root));
-        let names = self.project_names(&space.projects);
+        let file = atelier_core::collapse_home(&service.file_in(&self.data_root));
+        let names = self.project_names(&service.projects);
         let setting = Setting {
-            action: Action::SpaceCreated,
-            slug: space.slug.clone(),
-            name: space.name.clone(),
-            title: format!("Space를 만들었어요 — {}", space.name),
+            action: Action::ServiceCreated,
+            slug: service.slug.clone(),
+            name: service.name.clone(),
+            title: format!("Service를 만들었어요 — {}", service.name),
             detail: format!("{} · {file}", if names.is_empty() { "Project 없음".to_owned() } else { names.join(" · ") }),
         };
-        let read = listed(space.projects.iter().map(String::as_str));
-        match self.note_setting(key, setting) {
+        let read = listed(service.projects.iter().map(String::as_str));
+        match self.note_setting(thread, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
-                    "Space `{}`({}){} 만들었다 — 파일 `{file}` · Project: {read}. {} 이 Thread를 이 Space에 붙이려면 \
-                     set_space를 부른다.",
-                    space.slug,
-                    space.name,
-                    particle(&space.name, "을", "를"),
-                    Action::SpaceCreated.settled()
+                    "Service `{}`({}){} 만들었다 — 파일 `{file}` · Project: {read}. {} 이 Thread를 이 Service에 붙이려면 \
+                     set_service를 부른다.",
+                    service.slug,
+                    service.name,
+                    particle(&service.name, "을", "를"),
+                    Action::ServiceCreated.settled()
                 ),
                 false,
             ),
@@ -333,27 +326,27 @@ impl ConversationHost {
         }
     }
 
-    /// Thread 도구 「Space 고치기」(§12 · §8 「고치기」) — 준 칸만 글 단위로 고친다(나머지 글은 그대로). 새 문제가 생기면 쓰지 않고 그 문제를
-    /// 돌려준다. 바뀐 것이 있으면 결과 카드 줄(「관계 보기」)이 선다.
-    pub(super) fn edit_space_tool(&self, key: &SessionKey, edit: SpaceEdit) -> Value {
-        let Ok(before) = atelier_core::get_space(&self.data_root, &edit.space) else {
-            return thread_tools::said(&self.unknown_space(&edit.space), true);
+    /// Thread 도구 「Service 고치기」(§12 · §8 「고치기」) — 준 칸만 글 단위로 고친다(나머지 글은 그대로). 새 문제가 생기면 쓰지 않고 그 문제를
+    /// 돌려준다. 바뀐 것이 있으면 결과 카드 줄이 선다.
+    pub(super) fn edit_service_tool(&self, thread: &str, edit: ServiceEdit) -> Value {
+        let Ok(before) = atelier_core::get_service(&self.data_root, &edit.service) else {
+            return thread_tools::said(&self.unknown_service(&edit.service), true);
         };
-        let patch = SpacePatch { name: edit.name, description: edit.description, add: edit.add, before: None, remove: edit.remove };
-        let after = match atelier_core::update_space(&self.data_root, &edit.space, patch) {
+        let patch = ServicePatch { name: edit.name, description: edit.description, add: edit.add, before: None, remove: edit.remove };
+        let after = match atelier_core::update_service(&self.data_root, &edit.service, patch) {
             Ok(after) => after,
-            Err(error) => return thread_tools::said(&self.space_refusal(error, "고치지 않았다"), true),
+            Err(error) => return thread_tools::said(&self.service_refusal(error, "고치지 않았다"), true),
         };
         let added: Vec<String> = after.projects.iter().filter(|slug| !before.projects.contains(slug)).cloned().collect();
         let removed: Vec<String> = before.projects.iter().filter(|slug| !after.projects.contains(slug)).cloned().collect();
         let renamed = before.name != after.name;
         let described = before.description.trim() != after.description.trim();
         if added.is_empty() && removed.is_empty() && !renamed && !described {
-            let unchanged = format!("바뀐 것이 없다 — Space `{}`{} 그대로다.", edit.space, particle(&edit.space, "은", "는"));
+            let unchanged = format!("바뀐 것이 없다 — Service `{}`{} 그대로다.", edit.service, particle(&edit.service, "은", "는"));
             return thread_tools::said(&unchanged, false);
         }
-        let shared = atelier_core::shared_spaces(&self.data_root, &after.slug).map_or(0, |shared| shared.len());
-        let title = space_edited(
+        let shared = atelier_core::shared_services(&self.data_root, &after.slug).map_or(0, |shared| shared.len());
+        let title = service_edited(
             before.shown_name(),
             after.shown_name(),
             &self.project_names(&added),
@@ -361,21 +354,21 @@ impl ConversationHost {
             described,
         );
         let setting = Setting {
-            action: Action::SpaceEdited,
+            action: Action::ServiceEdited,
             slug: after.slug.clone(),
             name: after.name.clone(),
             title,
-            detail: format!("Project {} · 함께 쓰는 Space {shared}", after.projects.len()),
+            detail: format!("Project {} · 함께 쓰는 Service {shared}", after.projects.len()),
         };
         let read = listed(after.projects.iter().map(String::as_str));
-        match self.note_setting(key, setting) {
+        match self.note_setting(thread, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
-                    "Space `{}`({}){} 고쳤다 — Project: {read}. {} 이 Space로 읽는 Thread는 다음 말부터 바뀐 Project를 읽는다.",
+                    "Service `{}`({}){} 고쳤다 — Project: {read}. {} 이 Service로 읽는 Thread는 다음 말부터 바뀐 Project를 읽는다.",
                     after.slug,
                     after.name,
                     particle(&after.name, "을", "를"),
-                    Action::SpaceEdited.settled()
+                    Action::ServiceEdited.settled()
                 ),
                 false,
             ),
@@ -383,13 +376,13 @@ impl ConversationHost {
         }
     }
 
-    /// 결과 카드 줄을 남긴다 — 설정을 한 Agent가 줄의 `who`다.
-    fn note_setting(&self, key: &SessionKey, setting: Setting) -> Result<(), String> {
+    /// 결과 카드 줄을 남긴다.
+    fn note_setting(&self, thread: &str, setting: Setting) -> Result<(), String> {
         let payload = json!({
             "action": setting.action.as_str(), "slug": setting.slug, "name": setting.name, "title": setting.title, "detail": setting.detail,
         });
-        let log = self.thread_log(&key.thread).map_err(|error| error.to_string())?;
-        log.write(RecordKind::Setting, Some(&key.handle), payload)
+        let log = self.thread_log(thread).map_err(|error| error.to_string())?;
+        log.write(RecordKind::Setting, payload)
             .map(drop)
             .map_err(|error| format!("설정은 했지만 Thread에 적지 못했다 — {error}"))
     }
@@ -408,36 +401,36 @@ impl ConversationHost {
         atelier_core::list_projects(&atelier_core::projects_in(&self.data_root)).unwrap_or_default()
     }
 
-    /// 등록되지 않은 Project — 등록된 것을 함께 알린다(`set_space`와 같은 말 — [`not_registered`]).
+    /// 등록되지 않은 Project — 등록된 것을 함께 알린다(`set_service`와 같은 말 — [`not_registered`]).
     fn unknown_project(&self, slug: &str) -> String {
         not_registered(&[slug], &self.registered())
     }
 
-    /// 없는 Space — 있는 것을 함께 알린다(`set_space`와 같은 말 — [`no_such_space`]).
-    fn unknown_space(&self, slug: &str) -> String {
-        no_such_space(slug, &atelier_core::list_spaces(&self.data_root).unwrap_or_default())
+    /// 없는 Service — 있는 것을 함께 알린다(`set_service`와 같은 말 — [`no_such_service`]).
+    fn unknown_service(&self, slug: &str) -> String {
+        no_such_service(slug, &atelier_core::list_services(&self.data_root).unwrap_or_default())
     }
 
-    /// Space 만들기 · 고치기의 거절 — core의 문제 글 그대로(화면 · 저장과 같은 말, §8), 등록되지 않은 Project면 등록된 것을 덧붙인다.
-    fn space_refusal(&self, error: atelier_core::Error, undone: &str) -> String {
+    /// Service 만들기 · 고치기의 거절 — core의 문제 글 그대로(화면 · 저장과 같은 말, §8), 등록되지 않은 Project면 등록된 것을 덧붙인다.
+    fn service_refusal(&self, error: atelier_core::Error, undone: &str) -> String {
         match error {
             atelier_core::Error::EmptyName => format!("name은 비울 수 없다 — {undone}."),
-            atelier_core::Error::SpaceNotFound(slug) => self.unknown_space(&slug),
-            atelier_core::Error::SpaceProblems(problems) => {
-                let unknown = problems.iter().any(|problem| problem.kind == SpaceProblemKind::UnknownProject);
-                let said = atelier_core::Error::SpaceProblems(problems).to_string();
+            atelier_core::Error::ServiceNotFound(slug) => self.unknown_service(&slug),
+            atelier_core::Error::ServiceProblems(problems) => {
+                let unknown = problems.iter().any(|problem| problem.kind == ServiceProblemKind::UnknownProject);
+                let said = atelier_core::Error::ServiceProblems(problems).to_string();
                 if unknown {
                     format!("{said} — {undone}. {}", registered_list(&self.registered()))
                 } else {
                     format!("{said} — {undone}.")
                 }
             }
-            other => format!("Space 파일을 쓰지 못했다 — {other}"),
+            other => format!("Service 파일을 쓰지 못했다 — {other}"),
         }
     }
 }
 
-/// Space를 만든 이 — Host 도구로 만들면 `host`다(S6). 상세의 「만든 사람」이 읽는다.
+/// Service를 만든 이 — Host 도구로 만들면 `host`다(S6). 상세의 「만든 사람」이 읽는다.
 const MADE_BY: &str = "host";
 
 /// 이미 등록된 폴더의 글(스토리 61) — 아무것도 바꾸지 않았다.
@@ -488,12 +481,12 @@ fn project_edited(before: &Project, after: &Project) -> Option<(String, String)>
             Some(_) => format!("{}의 설명을 고쳤어요", after.name),
             None => format!("{}의 설명을 비웠어요", after.name),
         };
-        changed.push(("설명", title, first.map_or_else(|| "Agent가 이 Project를 이해할 때 읽어요".to_owned(), str::to_owned)));
+        changed.push(("설명", title, first.map_or_else(|| "Runtime이 이 Project를 이해할 때 읽어요".to_owned(), str::to_owned)));
     }
     if before.base_branch != after.base_branch {
         let base = &after.base_branch;
         let title = format!("{}의 기준 브랜치를 {base}{} 바꿨어요", after.name, particle(base, "으로", "로"));
-        changed.push(("기준 브랜치", title, format!("새 Work부터 {base}에서 갈라져요")));
+        changed.push(("기준 브랜치", title, format!("새 작업공간부터 {base}에서 갈라져요")));
     }
     match changed.as_slice() {
         [] => None,
@@ -507,9 +500,9 @@ fn project_edited(before: &Project, after: &Project) -> Option<(String, String)>
     }
 }
 
-/// Space 고침의 결과 카드 첫 줄(스토리 65) — 넣고 뺀 Project가 있으면 그것(「결제 서비스에 backoffice를 넣었어요」), 없으면 이름 · 설명.
-/// 이름을 함께 고쳤으면 Space는 새 이름으로 부른다.
-fn space_edited(before: &str, after: &str, added: &[String], removed: &[String], described: bool) -> String {
+/// Service 고침의 결과 카드 첫 줄(스토리 65) — 넣고 뺀 Project가 있으면 그것(「결제 서비스에 backoffice를 넣었어요」), 없으면 이름 · 설명.
+/// 이름을 함께 고쳤으면 Service는 새 이름으로 부른다.
+fn service_edited(before: &str, after: &str, added: &[String], removed: &[String], described: bool) -> String {
     let object = |names: &[String]| {
         let joined = names.join(" · ");
         let particle = particle(&joined, "을", "를");
@@ -520,7 +513,7 @@ fn space_edited(before: &str, after: &str, added: &[String], removed: &[String],
         (false, true) => format!("{after}에 {} 넣었어요", object(added)),
         (true, false) => format!("{after}에서 {} 뺐어요", object(removed)),
         (true, true) if before != after && described => format!("{before}의 이름 · 설명을 바꿨어요"),
-        (true, true) if before != after => format!("{before} Space의 이름을 {after}{} 바꿨어요", particle(after, "으로", "로")),
+        (true, true) if before != after => format!("{before} Service의 이름을 {after}{} 바꿨어요", particle(after, "으로", "로")),
         (true, true) => format!("{after}의 설명을 고쳤어요"),
     }
 }
@@ -560,15 +553,15 @@ mod tests {
     }
 
     #[test]
-    fn space_고침의_첫_줄은_넣고_뺀_project가_먼저다() {
+    fn service_고침의_첫_줄은_넣고_뺀_project가_먼저다() {
         let names = |list: &[&str]| list.iter().map(|one| (*one).to_owned()).collect::<Vec<_>>();
-        assert_eq!(space_edited("결제 서비스", "결제 서비스", &names(&["backoffice"]), &[], false), "결제 서비스에 backoffice를 넣었어요");
-        assert_eq!(space_edited("결제 서비스", "결제 서비스", &[], &names(&["web-app"]), true), "결제 서비스에서 web-app을 뺐어요");
+        assert_eq!(service_edited("결제 서비스", "결제 서비스", &names(&["backoffice"]), &[], false), "결제 서비스에 backoffice를 넣었어요");
+        assert_eq!(service_edited("결제 서비스", "결제 서비스", &[], &names(&["web-app"]), true), "결제 서비스에서 web-app을 뺐어요");
         assert_eq!(
-            space_edited("결제 서비스", "결제", &names(&["backoffice"]), &names(&["web-app"]), false),
+            service_edited("결제 서비스", "결제", &names(&["backoffice"]), &names(&["web-app"]), false),
             "결제에 backoffice를 넣고 web-app을 뺐어요"
         );
-        assert_eq!(space_edited("결제 서비스", "결제", &[], &[], false), "결제 서비스 Space의 이름을 결제로 바꿨어요");
-        assert_eq!(space_edited("결제 서비스", "결제 서비스", &[], &[], true), "결제 서비스의 설명을 고쳤어요");
+        assert_eq!(service_edited("결제 서비스", "결제", &[], &[], false), "결제 서비스 Service의 이름을 결제로 바꿨어요");
+        assert_eq!(service_edited("결제 서비스", "결제 서비스", &[], &[], true), "결제 서비스의 설명을 고쳤어요");
     }
 }

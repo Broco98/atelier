@@ -9,8 +9,8 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // (정적 마크업 seam에는 높이가 없다), 그 상자를 실제로 칠하는 색, 그리고 xterm이 `rows`를
 // 내림으로 재고 남기는 잉여 — 셋 다 진짜 xterm이 떠야 잰다.
 //
-// 픽스처 백엔드가 `pty_spawn`을 답해 xterm이 실제로 뜬다(works-split.spec.ts의 「경계를 끌면
-// 터미널 격자가 따라간다」가 선례다).
+// 픽스처 백엔드가 `pty_spawn`을 답해 xterm이 실제로 뜬다(한때 `works-split.spec.ts`의 「경계를 끌면 터미널 격자가 따라간다」가
+// 선례였다 — restart 02a-13이 분할과 함께 걷었다).
 //
 // 마크업 seam(TerminalPane.test.tsx)이 보는 것은 여기서 다시 보지 않는다 — 죽은 셸의 안내가
 // 흐름에 끼는지, 셸 0개일 때 빈 화면 안내가 서는지는 그쪽이 든다.

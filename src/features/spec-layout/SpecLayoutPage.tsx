@@ -423,6 +423,7 @@ function PageNotice({
           모양은 줄 안의 작은 아이콘 버튼 규격(`icon-button-xs` — 24)이다. */}
       <button
         type="button"
+        tabIndex={0}
         onClick={onClose}
         aria-label="닫기"
         className="icon-button icon-button-xs opacity-75 transition-opacity hover:opacity-100 focus-ring"

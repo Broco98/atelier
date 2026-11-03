@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { blankedSources, type Source } from "@/blank-comments";
 
 // **메뉴 카드의 폭은 쓰는 자리가 `className`으로 덮지 않고 `dropdown-menu.tsx`의 폭 표(`CARD_WIDTH`)에서 고른다**(그 파일 「카드 폭」
-// 머리말 · 03 코드 리뷰 A4). 03 화면 일곱 곳이 `w-44` · `w-70` · `w-77` …로 덮었고, 그 가운데 하나(새 Space 메뉴)는 `width="note"` 뒤에
+// 머리말 · 03 코드 리뷰 A4). 03 화면 일곱 곳이 `w-44` · `w-70` · `w-77` …로 덮었고, 그 가운데 하나(새 Service 메뉴)는 `width="note"` 뒤에
 // `w-77`을 두어 `note`의 뜻(내용 폭 · 300에서)을 지웠다. 빌드도 타입 검사도 조용하고 화면은 「조금 다른 폭」으로만 남아, 같은 뜻의
 // 메뉴가 자리마다 다른 폭으로 갈린다. 그래서 메뉴 카드를 여는 태그의 `className`에 폭 유틸리티가 서면 빨갛다 — 맞는 폭이 없으면 표에
 // 갈래를 더한다.
@@ -16,15 +16,10 @@ const CARDS = ["DropdownMenuContent", "DropdownMenuSubContent", "ContextMenuCont
 const WIDTH = /(?<![\w-])(?:[\w-]+:)*!?(?:w|min-w|max-w|size)-[^\s"'`]+/g;
 
 /**
- * **폭 표 밖의 예외** — 파일과 그 글자, 까닭 한 줄. 쓰이지 않는 예외는 다음 덮기의 뒷문이 되므로 함께 센다.
+ * **폭 표 밖의 예외** — 파일과 그 글자, 까닭 한 줄. 쓰이지 않는 예외는 다음 덮기의 뒷문이 되므로 함께 센다. 지금은 없다 — 하나 있던 바닥 사람
+ * 줄의 사람 메뉴(줄의 폭 `w-(--anchor-width)`)는 restart 02a-3이 걷었다.
  */
-const EXCEPTIONS: { file: string; width: string; why: string }[] = [
-  {
-    file: "src/components/shell/Sidebar.tsx",
-    width: "w-(--anchor-width)",
-    why: "바닥 사람 줄의 사람 메뉴는 그 줄(트리거)의 폭이다(02 구현 스펙 §4) — 표의 고정 폭이 아니라 여는 자리의 폭을 받는다",
-  },
-];
+const EXCEPTIONS: { file: string; width: string; why: string }[] = [];
 
 /** 여는 태그 하나 — `<이름` 뒤부터 중괄호 · 따옴표 밖의 첫 `>`까지(`onKeyDown={(e) => …}`의 `>`에서 멈추지 않는다). */
 function openingTag(text: string, from: number): string {
@@ -87,5 +82,20 @@ describe("메뉴 카드의 폭", () => {
     // 실패하면 그 폭을 `dropdown-menu.tsx`의 `CARD_WIDTH`에서 고른다(`width="act"` …). 맞는 폭이 없으면 표에 뜻의 이름으로 갈래를 더한다.
     expect(found.filter((place) => !excused(place))).toEqual([]);
     expect(EXCEPTIONS.filter((one) => !found.some((place) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.width}`)))).toEqual([]);
+  });
+});
+
+// **메뉴의 줄 사이는 1이다**(restart 03-12a — 시안의 메뉴는 모두 `.ra-menu`의 `gap: 1px`이다: Composer 칩 메뉴 · 목록 ⋯ 메뉴 · 요약 카드 메뉴).
+// 앱 메뉴 부품 한 벌(목록 상자 `menu-list` · 묶음 `GROUP`)이 같은 사이를 든다 — 둘이 갈리면 묶음 안의 줄만 벌어진다. 한때 DS `.at-menu`의 2였다.
+describe("메뉴의 줄 사이", () => {
+  it("목록 상자와 묶음이 모두 1이다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync("src/index.css", "utf8");
+    const list = css.match(/@utility menu-list \{\s*@apply ([^;]*);/)?.[1].split(/\s+/) ?? [];
+    expect(list, "menu-list").toContain("gap-px");
+    expect(list.filter((one) => one.startsWith("gap-")), "menu-list").toEqual(["gap-px"]);
+    const source = readFileSync("src/components/ui/dropdown-menu.tsx", "utf8");
+    const group = source.match(/const GROUP = "([^"]*)"/)?.[1].split(/\s+/) ?? [];
+    expect(group.filter((one) => one.startsWith("gap-")), "GROUP").toEqual(["gap-px"]);
   });
 });

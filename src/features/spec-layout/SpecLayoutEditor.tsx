@@ -23,7 +23,6 @@ import {
   IndentDecrease,
   IndentIncrease,
   Plus,
-  SettingsIcon,
   Trash2,
   TriangleAlert,
   type LucideIcon,
@@ -361,6 +360,7 @@ export function OutsideBanner({
             앱의 버튼 농도(`fill-hover` — `quiet-hover`)다. */}
         <button
           type="button"
+          tabIndex={0}
           onClick={onReload}
           className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-sm font-medium text-fg transition-colors quiet-hover focus-ring"
         >
@@ -368,6 +368,7 @@ export function OutsideBanner({
         </button>
         <button
           type="button"
+          tabIndex={0}
           onClick={onKeep}
           className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/10 focus-ring"
         >
@@ -407,7 +408,7 @@ function EditorFrame({
       // 준다(`Frame`의 `FrameHead`) — 글자가 시스템 글꼴이라 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수를 두지 않는다. 가장 좁은 창
       // (900)에 사이드바를 가장 넓혀(400) 두어도 머리 줄의 화면 자리가 그 둘보다 넓다.
       head={{
-        // 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · `radius-lg` · 글리프 16, Thread 머리 줄의 「…」와 같다 — 02 결정 「머리 줄은 한
+        // 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · 둥글기 4 · 글리프 15, Thread 머리 줄의 「…」와 같다 — 02 결정 「머리 줄은 한
         // 결이다(03 뒤)」). 맨 버튼이라 Tab 정류장임을 `tabIndex`로 명시한다(02 코드 리뷰 C1 — macOS WebKit의 Tab은 `tabindex` 없는 맨
         // 버튼에 서지 않는다, `@/lib/roving` 머리말). 한때의 `Button`(Base UI)은 0을 스스로 달았다.
         lead: (
@@ -415,7 +416,6 @@ function EditorFrame({
             <ArrowLeft aria-hidden className={HEAD_GLYPH} />
           </button>
         ),
-        icon: SettingsIcon,
         name: "Settings",
         sub: [settingsItem("spec-layout").label, name],
         actions,
@@ -567,6 +567,7 @@ export function TreeCard({
           text="spec 폴더 안내"
           announce="description"
           type="button"
+          tabIndex={0}
           onClick={() => onSelect([])}
           aria-pressed={at.length === 0}
           className={cn(
@@ -637,6 +638,7 @@ function TreeTools({
               render={
                 <button
                   type="button"
+                  tabIndex={0}
                   onClick={() => onMove(move)}
                   disabled={!edits[move]}
                   className="icon-button icon-button-sm text-fg-secondary transition-colors quiet-hover focus-ring disabled:pointer-events-none disabled:opacity-35"
@@ -657,6 +659,7 @@ function TreeTools({
           render={
             <button
               type="button"
+              tabIndex={0}
               onClick={onRemove}
               disabled={!edits.remove}
               aria-label="고른 항목 지우기"
@@ -952,6 +955,7 @@ function TreeRow({
   return (
     <button
       type="button"
+      tabIndex={0}
       role="treeitem"
       aria-level={depth}
       aria-selected={selected}
@@ -1338,6 +1342,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                 key={name}
                 text={name}
                 type="button"
+                tabIndex={0}
                 role="radio"
                 aria-checked={checked}
                 aria-label={name}

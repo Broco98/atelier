@@ -1,8 +1,8 @@
-//! 지운 자리(03 구현 스펙 §9 · §15 · S10 · 결정 07 · 11) — Project 제거와 Space 지우기가 함께 타는 차례 하나다. 지운 파일은 그 폴더
-//! (`projects/` · `spaces/`) 아래 `.deleted/<slug>.md`로 옮기고, 곁에 무엇을 고쳤는지(`<slug>.json`)를 적는다. slug마다 마지막
+//! 지운 자리(03 구현 스펙 §9 · §15 · S10 · 결정 07 · 11) — Project 제거와 Service 지우기가 함께 타는 차례 하나다. 지운 파일은 그 폴더
+//! (`projects/` · `services/`) 아래 `.deleted/<slug>.md`로 옮기고, 곁에 무엇을 고쳤는지(`<slug>.json`)를 적는다. slug마다 마지막
 //! 하나다(S10) — 같은 slug를 다시 지우면 앞의 파일 · 기록을 덮는다.
 //!
-//! - **지우기**: 곁 기록을 먼저 적고 → 파일을 옮긴다. 칸 고치기(Space의 줄 · 이은 칸)는 부르는 쪽이 그 뒤에 한다 — 옮기고 고치는 사이
+//! - **지우기**: 곁 기록을 먼저 적고 → 파일을 옮긴다. 칸 고치기(Service의 줄 · 이은 칸)는 부르는 쪽이 그 뒤에 한다 — 옮기고 고치는 사이
 //!   앱이 꺼져도 되돌리기가 고친 자리를 안다. 반대 차례면 칸만 고친 채 파일이 남아 연결이 몰래 사라진다.
 //! - **되돌리기**: 지운 파일이 있어야 하고(없으면 부르는 쪽의 「없다」 오류), 그사이 제자리에 같은 slug가 다시 섰으면 `SlugReused`다 —
 //!   새로 선 것을 덮지 않는다. 파일을 제자리로 돌리고 곁 기록을 읽는다. 다시 적기를 마치면 곁 기록을 걷는다.
@@ -22,7 +22,7 @@ pub(crate) struct Aside {
 }
 
 impl Aside {
-    /// `folder`의 `<slug>.md` 하나 — slug가 뿌리 밖을 가리키지 않는지는 부르는 쪽이 이미 가렸다(`project_path` · `space_path`).
+    /// `folder`의 `<slug>.md` 하나 — slug가 뿌리 밖을 가리키지 않는지는 부르는 쪽이 이미 가렸다(`project_path` · `service_path`).
     pub(crate) fn of(folder: &Path, slug: &str) -> Self {
         Self { slug: slug.to_owned(), file: folder.join(format!("{slug}.md")), deleted: crate::paths::deleted_in(folder) }
     }

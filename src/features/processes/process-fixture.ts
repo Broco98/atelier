@@ -1,4 +1,18 @@
-import type { PoolShell, ProcessGroups, ProcessIdentity, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
+import type {
+  AtelierTotals,
+  BodyRows,
+  Breakdown,
+  MacMeasure,
+  OtherApp,
+  PoolShell,
+  ProcessGroups,
+  ProcessIdentity,
+  ProcessMetrics,
+  ProcessRow,
+  ProcessSnapshot,
+  Share,
+  Unread,
+} from "./types";
 
 // 검사가 짓는 프로세스 자료 — 지표 · 신원 · 스냅샷의 행 · 풀의 셸 · 스냅샷. **이 모양을 리터럴로 짓는 자리를 여기 하나로 모았다**(코드
 // 리뷰 표준 68) — 행이 L2 · L3에 일곱 벌, 스냅샷이 여러 벌, 못 읽은 지표가 네 벌 있어 칸이 하나 늘면 파일마다 제각각 고쳐야 했다.
@@ -71,10 +85,51 @@ export const poolShell = (ptyId: number, shellKey: string, lastOutputMs: number,
   metrics,
 });
 
+/** 아무것도 못 읽은 아틀리에 합계(macOS 밖의 앱과 같다) — 숫자가 모두 비고 웹뷰는 제외다. */
+export const NO_TOTALS: AtelierTotals = { total: null, cpu: null, app: null, webviewExcluded: true };
+
+/** 아무것도 못 읽은 아틀리에 앱의 줄(macOS 밖의 앱과 같다). */
+export const NO_BODY: BodyRows = { rust: NO_METRICS, webview: NO_METRICS, webkit: [] };
+
+/** 못 읽은 것이 없는 장 — 까닭마다 0이다(macOS 밖의 앱과 같다). */
+export const NO_UNREAD: Unread = { denied: 0, gone: 0, other: 0 };
+
+/** 못 잰 몫 — 「—」. */
+export const NO_SHARE: Share = { cpu: null, memory: null };
+
+/**
+ * 맥 전체의 나눔(restart 03-6). 기본은 **맥 전체를 못 잰 장**이다(macOS 밖의 앱과 같다) — 다른 앱이 없고 시스템 · 못 읽음과 합계가 빈다.
+ * 검사는 재는 칸만 덮어쓴다. 백엔드처럼 줄의 합을 지어 주지 않는다 — 합이 맞는지는 Rust(`breakdown`)가 재고, 화면은 받은 값을 보인다.
+ */
+export const breakdownOf = (over: Partial<Breakdown> = {}): Breakdown => ({
+  apps: [],
+  system: NO_SHARE,
+  total: NO_SHARE,
+  over: { cpu: false, memory: false },
+  ...over,
+});
+
+/** 다른 앱 한 줄 — 이름이 `null`이면 번들 밖의 줄이다. CPU를 안 주면 첫 표본이다. */
+export const otherAppOf = (name: string | null, processes: number, memory: number, cpu: number | null = null): OtherApp => ({
+  name,
+  processes,
+  memory,
+  cpu,
+});
+
+/** 맥 전체 한 표본 — CPU를 안 주면 첫 표본(`null`)이다. 코어는 열 개다(시안 ProcessSheet의 예). */
+export const macOf = (cpu: number | null, memory: number | null = null, cores = 10): MacMeasure => ({ cpu, memory, cores });
+
+/** 기본 스냅샷을 잰 시각 — 2026년의 에포크 ms다. */
+export const MEASURED_AT = 1_790_000_000_000;
+
 /** 스냅샷을 덮어쓸 칸. 판정은 칸째 덮어쓴다 — 준 칸만 바뀌고 나머지 묶음은 빈 채다. */
 export type SnapshotOver = Partial<Omit<ProcessSnapshot, "verdict">> & { verdict?: Partial<ProcessGroups> };
 
-/** 스냅샷 한 장. 기본은 **아무 셸도 없고 판정이 가른 것도 없는 앱**이다 — 무엇이 있어야 하는 검사는 그것을 덮어써서 스스로 말한다. */
+/**
+ * 스냅샷 한 장. 기본은 **아무 셸도 없고 판정이 가른 것도 없는 앱**이다 — 무엇이 있어야 하는 검사는 그것을 덮어써서 스스로 말한다. 머리
+ * 값(restart 03-5)도 아무것도 못 잰 장이다 — 맥 전체가 없고(macOS 밖) 아틀리에 합계가 빈다.
+ */
 export function snapshotFixture({ verdict = {}, ...over }: SnapshotOver = {}): ProcessSnapshot {
   return {
     verdict: {
@@ -83,11 +138,18 @@ export function snapshotFixture({ verdict = {}, ...over }: SnapshotOver = {}): P
       helpers: [],
       orphans: { confirmed: {}, unknown: {} },
       otherInstances: {},
+      chats: {},
+      runtimes: [],
       ...verdict,
     },
     pool: [],
     instances: [],
-    recordHead: null,
+    measuredAt: MEASURED_AT,
+    unread: NO_UNREAD,
+    mac: null,
+    atelier: NO_TOTALS,
+    body: NO_BODY,
+    breakdown: breakdownOf(),
     ...over,
   };
 }

@@ -1,233 +1,172 @@
-import type { Avatar } from "./faces";
-import type { AgentProblem, AgentRoster, DefinitionSource } from "./types";
+import { useQuery } from "@tanstack/react-query";
+import type { ScopeOf } from "@/features/services/scope";
+import { threadApi } from "./api";
 
-// @ 메뉴 · 멘션 · 받는 이(v1 티켓 14 · 구현 스펙 §14 · S9 · 캔버스 Composer 보드 「@ · Agent 부르기」)의 **순수 함수**다. 화면은 엔진과
-// 같은 규칙으로 받는 이를 읽는다(v1 티켓 13 노트) — 보내기 전에 입력칸의 멘션 칠 · 모델 칩이 말하는 받는 이와 엔진이 실제로 고르는
-// 받는 이가 갈리면 안 된다. 받는 이를 고르는 칩은 없다(v1 티켓 31 · 사용자 결정) — Agent는 @ 메뉴 하나로 부른다.
-//
-// - **멘션 문법은 엔진의 `first_mention`과 같다**(`crates/atelier-acp/src/host/thread.rs`): `@`가 말의 처음이거나 이름 글자가 아닌
-//   것 뒤에 설 때만, 백틱 밖에서만 멘션이다. 이름 글자는 글자 · 숫자와 `_` `-` `.` `/`이고, 끝의 `.` `-` `/`는 문장 부호로 뗀다.
-// - **받는 이는 멘션 이름의 가장 긴 앞부분 가운데 아는 이름이다** — 「@reviewer가」의 조사를 뗀다. 아는 이름은 이미 앉은 참여자(handle,
-//   Project에서 온 참여자는 `project/handle`도)가 먼저이고, 그다음 범위의 Agent(부르는 이름 · `project/handle`)다.
-// - **메뉴의 차례**(스토리 39): 이 Thread에 있는 Agent → Library → Project(slug마다 한 묶음). 깨진 파일은 그 묶음의 끝에 흐리게,
-//   까닭과 함께 선다(스토리 71). 새 Thread는 앉은 이가 없어 Host가 Library의 맨 앞이다 — 멘션하지 않으면 받는 이가 Host라서다.
-// - 메뉴가 넣는 글은 `@<call> `(뒤에 빈칸)이다 — 조사와 엉키지 않는다(v1 티켓 13 노트).
+// 「@」 언급(restart 02b-3 · 구현 스펙 「02b — 대화창」 · 시안 Composer 「「@」 언급」 · 「첨부 · 언급」). 입력칸의 커서 앞 낱말이 `@`로 시작하면
+// 입력창 위에 「파일」 메뉴가 서서 그 뒤의 글자로 파일을 찾는다. **찾는 자리와 넣을 경로의 모양은 core 하나가 정한다**(`mention_files` — 작업
+// 폴더 · spec 폴더 · 읽는 범위의 Project, 작업 폴더 안은 상대 경로 · 밖은 절대 경로). 여기는 받은 파일을 거르고, 고른 것을 `@경로`로 넣고, 넣은
+// 언급을 칠할 자리를 가른다. 보낼 때는 글 그대로 간다 — 언급을 다른 모양(첨부 · 자원 링크)으로 바꾸지 않는다.
 
-/** 이름 글자 — 엔진의 `is_name_char`와 같다. */
-const NAME_CHAR = /[\p{L}\p{N}_\-./]/u;
-const isNameChar = (char: string | undefined): boolean => char !== undefined && NAME_CHAR.test(char);
-
-const HOST = "host";
-
-/** @ 메뉴의 Agent 하나 — 앉은 참여자이거나 범위에서 찾은(깨진 것도) Agent다. */
-export interface AgentChoice {
-  /** 부르는 이름 — 메뉴가 `@<call> `으로 넣는다. 앉은 참여자는 handle이다. */
-  call: string;
-  handle: string;
-  name: string;
-  description: string;
-  avatar: Avatar | null;
-  from: DefinitionSource | null;
-  /** 메뉴 묶음의 머리 — 「이 Thread에 있음」 · 「Library」 · Project slug. */
-  section: string;
-  /** 이 Thread에 이미 앉았나. */
-  seated: boolean;
-  /** 깨졌으면 그 까닭의 글 — 부를 수 없다. */
-  broken: string | null;
-  /** 정의 파일의 선호 모델 · 생각 깊이 — 아직 앉지 않은 Agent를 받는 이로 고르면 모델 칩이 이 값을 보인다(스토리 33 · 73). */
-  model: { prefer: string | null; effort: string | null } | null;
+/** 찾기 명령(`mention_files`)이 주는 자리 하나 — core `MentionPlace` 그대로다. */
+export interface MentionPlace {
+  /** 작업 폴더 안의 자리면 `null`, 밖이면 Project 이름이나 `spec`. */
+  name: string | null;
+  /** 파일 앞에 붙여 넣는 것 — 작업 폴더 안이면 상대 자리(`""` · `web-app/`), 밖이면 절대 경로와 `/`. */
+  root: string;
+  files: string[];
 }
 
-/** 앉은 참여자 — handle과 온 곳은 `thread.json`, 이름 · 얼굴은 기록의 `joined` 줄이 정본이다(목록에서 사라져도 부른다, 스토리 52). */
-export interface SeatedAgent {
-  handle: string;
-  from: DefinitionSource | null;
-  name: string;
-  avatar: Avatar | null;
-}
-
-/** 말의 첫 멘션 — 그 이름과 `@`의 자리. 없으면 `null`(받는 이는 Host). */
-export function firstMention(text: string): { name: string; start: number } | null {
-  let inCode = false;
-  const chars = [...text];
-  let offset = 0;
-  for (let at = 0; at < chars.length; at += 1) {
-    const char = chars[at];
-    if (char === "`") inCode = !inCode;
-    else if (char === "@" && !inCode && !isNameChar(chars[at - 1])) {
-      let end = at + 1;
-      while (end < chars.length && isNameChar(chars[end])) end += 1;
-      const name = chars
-        .slice(at + 1, end)
-        .join("")
-        .replace(/[.\-/]+$/u, "");
-      if (name !== "") return { name, start: offset };
-    }
-    offset += char.length;
-  }
-  return null;
+/** 메뉴의 파일 한 줄. */
+export interface MentionFile {
+  /** `@` 뒤에 넣는 경로. */
+  path: string;
+  /** 줄에 보이는 경로 — 작업 폴더 안이면 넣는 경로, 밖이면 그 자리 안의 경로. */
+  shown: string;
+  /** 줄 끝의 자리 이름 — 작업 폴더 안이면 없다. */
+  place: string | null;
 }
 
 /**
- * 커서가 선 멘션 — @ 메뉴가 찾는 말(`@`부터 커서까지)과 고르면 갈아 끼울 자리(`@`부터 이름 끝까지). 커서가 멘션 이름 안에 있지
- * 않으면 `null`이다(멘션이 될 수 없는 `@` · 백틱 안 포함).
+ * 찾기 명령의 열쇠 — **`["works"]` 아래에 둔다.** 자리는 Work 파일 · worktree · 등록부에 달려 있어 `works:changed`의 무효화(`invalidateWorks`)와
+ * 범위 쿼리의 무효화가 함께 지운다.
  */
-export function mentionAt(text: string, caret: number): { start: number; end: number; query: string } | null {
-  let start = caret;
-  while (start > 0 && text[start - 1] !== "@" && isNameChar(text[start - 1])) start -= 1;
-  start -= 1;
-  if (start < 0 || text[start] !== "@" || isNameChar(text[start - 1])) return null;
-  if ((text.slice(0, start).match(/`/g)?.length ?? 0) % 2 === 1) return null;
-  let end = caret;
-  while (end < text.length && isNameChar(text[end])) end += 1;
-  return { start, end, query: text.slice(start + 1, caret) };
+export function mentionKey(of: ScopeOf) {
+  return ["works", "mention-files", of.thread ?? null, of.work ?? null, of.service ?? null, of.project ?? null];
 }
 
-/** 고른 Agent를 그 멘션 자리에 넣는다 — `@<call> `, 뒤가 이미 빈칸이면 하나만. 커서는 그 뒤다. */
-export function insertMention(text: string, at: { start: number; end: number }, call: string): { text: string; caret: number } {
-  const rest = text.slice(at.end);
-  const token = /^\s/.test(rest) ? `@${call}` : `@${call} `;
-  return { text: `${text.slice(0, at.start)}${token}${rest}`, caret: at.start + token.length + (/^\s/.test(rest) ? 1 : 0) };
-}
-
-/** 깨진 까닭의 글(「~요」체) — @ 메뉴에서 그 줄의 설명 자리에 선다. */
-export function problemText(problem: AgentProblem): string {
-  switch (problem.kind) {
-    case "unreadable":
-      return `읽지 못했어요 — ${problem.message}`;
-    case "unknownTool":
-      return `모르는 도구가 있어요: ${problem.tool}`;
-    case "runtimeNotAccepted":
-      return "Claude Code를 받지 않아요";
-    case "hostOutsideLibrary":
-      return "host는 Library에만 둘 수 있어요";
-  }
-}
-
-const sectionOf = (from: DefinitionSource): string => (from === "library" ? "Library" : from.project);
-const sameSource = (a: DefinitionSource | null, b: DefinitionSource): boolean =>
-  a === "library" || a === null ? b === "library" : b !== "library" && a.project === b.project;
-
-/** @ 메뉴의 줄들 — 앉은 참여자 → Library → Project 차례(머리말). 범위를 아직 못 읽었으면(`null`) 앉은 이만이다. */
-export function agentChoices(roster: AgentRoster | null, seated: readonly SeatedAgent[]): AgentChoice[] {
-  const here = new Set(seated.map((one) => one.handle));
-  const choices: AgentChoice[] = seated.map((one) => {
-    const found = roster?.agents.find((agent) => agent.definition.handle === one.handle && sameSource(one.from, agent.from));
-    return {
-      call: one.handle,
-      handle: one.handle,
-      name: one.name,
-      description: found?.definition.description ?? "",
-      avatar: one.avatar,
-      from: one.from,
-      section: "이 Thread에 있음",
-      seated: true,
-      broken: null,
-      model: found?.definition.model ?? null,
-    };
+/**
+ * 찾을 자리의 파일 — 메뉴가 열려 있을 때만 읽는다(`enabled`). 파일은 Agent가 일하는 동안에도 늘어 오래 쥐지 않는다 — 5초가 지난 뒤 메뉴를 다시
+ * 열면 새로 읽는다.
+ */
+export function useMentionFiles(of: ScopeOf | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: mentionKey(of ?? {}),
+    queryFn: () => threadApi.mentionFiles(of ?? {}),
+    enabled: enabled && of !== undefined,
+    staleTime: 5_000,
   });
-  if (!roster) return choices;
-  const sections = ["Library"];
-  for (const one of [...roster.agents, ...roster.broken]) {
-    const section = sectionOf(one.from);
-    if (!sections.includes(section)) sections.push(section);
-  }
-  for (const section of sections) {
-    const agents = roster.agents
-      .filter((agent) => sectionOf(agent.from) === section && !here.has(agent.definition.handle))
-      // 앉은 이가 없으면 Host가 맨 앞이다 — 멘션하지 않은 말의 받는 이다.
-      .sort((a, b) => Number(b.call === HOST) - Number(a.call === HOST));
-    for (const agent of agents) {
-      choices.push({
-        call: agent.call,
-        handle: agent.definition.handle,
-        name: agent.definition.name || agent.definition.handle,
-        description: agent.definition.description,
-        avatar: agent.definition.avatar,
-        from: agent.from,
-        section,
-        seated: false,
-        broken: null,
-        model: agent.definition.model,
-      });
-    }
-    for (const broken of roster.broken) {
-      if (sectionOf(broken.from) !== section || here.has(broken.call)) continue;
-      choices.push({
-        call: broken.call,
-        handle: broken.handle,
-        name: broken.handle,
-        description: "",
-        avatar: null,
-        from: broken.from,
-        section,
-        seated: false,
-        broken: problemText(broken.problem),
-        model: null,
-      });
-    }
-  }
-  return choices;
 }
 
-/** 친 글자로 거른다 — 부르는 이름 · handle · 이름 가운데 하나가 그 글자를 품은 줄만, 묶음 차례 안에서 그 글자로 시작하는 것이 먼저다. */
-export function matchAgents(choices: readonly AgentChoice[], query: string): AgentChoice[] {
+/** 자리들을 메뉴의 줄들로 편다 — 받은 차례(작업 폴더 → spec → Project) 그대로다. */
+export function mentionFiles(places: readonly MentionPlace[]): MentionFile[] {
+  return places.flatMap(({ name, root, files }) =>
+    files.map((file) => ({ path: root + file, shown: name === null ? root + file : file, place: name })),
+  );
+}
+
+/** 메뉴가 한 번에 세우는 줄의 상한. */
+const SHOWN = 50;
+
+/**
+ * 친 글자로 파일을 찾는다(대소문자 없이) — 파일 이름이 그 글자로 시작하는 것, 이름이 품은 것, 경로(밖이면 「자리 이름/경로」)가 품은 것, 글자가
+ * 그 차례로 띄엄띄엄 든 것 차례다. 같은 차례면 작업 폴더의 것이 먼저이고 그다음 짧은 경로, 받은 차례다. 빈 말이면 받은 차례 그대로다.
+ */
+export function matchMentions(files: readonly MentionFile[], query: string): MentionFile[] {
   const typed = query.toLowerCase();
-  if (typed === "") return [...choices];
-  const keys = (one: AgentChoice) => [one.call, one.handle, one.name].map((key) => key.toLowerCase());
-  const rank = (one: AgentChoice) => (keys(one).some((key) => key.startsWith(typed)) ? 0 : 1);
-  const order = [...new Set(choices.map((one) => one.section))];
-  return choices
-    .filter((one) => keys(one).some((key) => key.includes(typed)))
-    .map((one, at) => ({ one, at }))
-    .sort((a, b) => order.indexOf(a.one.section) - order.indexOf(b.one.section) || rank(a.one) - rank(b.one) || a.at - b.at)
-    .map(({ one }) => one);
+  if (typed === "") return files.slice(0, SHOWN);
+  const ranked: { file: MentionFile; tier: number; key: string; order: number }[] = [];
+  files.forEach((file, order) => {
+    const key = (file.place === null ? file.shown : `${file.place}/${file.shown}`).toLowerCase();
+    const name = key.slice(key.lastIndexOf("/") + 1);
+    const tier = name.startsWith(typed) ? 0 : name.includes(typed) ? 1 : key.includes(typed) ? 2 : spread(key, typed) ? 3 : null;
+    if (tier !== null) ranked.push({ file, tier, key, order });
+  });
+  ranked.sort(
+    (a, b) =>
+      a.tier - b.tier ||
+      Number(a.file.place !== null) - Number(b.file.place !== null) ||
+      a.key.length - b.key.length ||
+      a.order - b.order,
+  );
+  return ranked.slice(0, SHOWN).map(({ file }) => file);
 }
 
-/** 그 줄을 이 이름으로 부르나 — 부르는 이름 그대로, 또는 Project에서 왔으면 `project/handle`. */
-const answersTo = (one: AgentChoice, call: string): boolean =>
-  one.call === call || (one.from !== null && one.from !== "library" && `${one.from.project}/${one.handle}` === call);
-
-/** 받는 이 — 멘션 이름, 고른 Agent(모르면 `null`), 입력칸에서 그 멘션이 차지한 자리(`@`부터 고른 이름 끝까지). */
-export interface Recipient {
-  mention: string;
-  agent: AgentChoice | null;
-  at: { start: number; end: number };
-}
-
-/**
- * 받는 이 — 멘션이 없으면 `null`(Host). 있으면 그 멘션 이름과, 그 이름의 가장 긴 앞부분 가운데 아는 Agent(앉은 이가 먼저)다.
- * 아는 이름이 없으면 `agent`가 `null`이다 — 보내면 엔진이 거절 글을 준다.
- */
-export function recipientOf(text: string, choices: readonly AgentChoice[]): Recipient | null {
-  const mention = firstMention(text);
-  if (!mention) return null;
-  const chars = [...mention.name];
-  const span = (call: string) => ({ start: mention.start, end: mention.start + 1 + call.length });
-  for (let end = chars.length; end > 0; end -= 1) {
-    const call = chars.slice(0, end).join("");
-    const agent =
-      choices.find((one) => one.seated && answersTo(one, call)) ?? choices.find((one) => !one.seated && answersTo(one, call));
-    if (agent) return { mention: mention.name, agent, at: span(call) };
+/** `typed`의 글자가 `key`에 그 차례로 들어 있나. */
+function spread(key: string, typed: string): boolean {
+  let at = 0;
+  for (const letter of key) {
+    if (letter === typed[at]) at += 1;
+    if (at === typed.length) return true;
   }
-  return { mention: mention.name, agent: null, at: span(mention.name) };
+  return false;
+}
+
+/** 입력칸에서 찾는 중인 언급 — `@`의 자리, 바꿀 끝, `@` 뒤 커서까지의 글자. */
+export interface MentionAt {
+  at: number;
+  end: number;
+  query: string;
+}
+
+const SPACE = /\s/;
+
+/**
+ * 커서 앞 낱말이 언급이면 그 자리 — 낱말은 빈칸 사이의 글자이고, 말의 처음이나 빈칸 바로 뒤의 `@`로 시작해야 한다(메일 주소의 `@`는 아니다).
+ * 찾는 말은 `@` 뒤부터 커서까지이고, 바꿀 자리는 커서 뒤로 낱말 끝까지다.
+ */
+export function mentionQuery(draft: string, caret: number): MentionAt | null {
+  let at = caret;
+  while (at > 0 && !SPACE.test(draft[at - 1])) at -= 1;
+  if (draft[at] !== "@" || at === caret) return null;
+  let end = caret;
+  while (end < draft.length && !SPACE.test(draft[end])) end += 1;
+  return { at, end, query: draft.slice(at + 1, caret) };
+}
+
+/** 글에 넣는 언급 — `@경로`. 빈칸이 든 경로는 따옴표로 감싼다(어디서 끝나는지 글로 남는다). */
+const mentionText = (path: string) => (SPACE.test(path) ? `@"${path}"` : `@${path}`);
+
+/**
+ * 고른 파일을 넣는다 — 찾던 낱말(`@`부터 낱말 끝)이 언급과 빈칸 하나로 바뀐다(뒤에 이미 빈칸이 있으면 더하지 않는다). 커서는 그 빈칸 뒤다 —
+ * 이어 쓰면 메뉴가 닫힌 채다.
+ */
+export function insertMention(draft: string, found: MentionAt, path: string): { draft: string; caret: number; mention: string } {
+  const mention = mentionText(path);
+  const rest = draft.slice(found.end);
+  const gap = SPACE.test(rest[0] ?? "") ? "" : " ";
+  return { draft: draft.slice(0, found.at) + mention + gap + rest, caret: found.at + mention.length + 1, mention };
 }
 
 /**
- * 보낸 말에서 칠할 멘션(Messages 보드 「길게 · 멘션」) — 첫 멘션의 `@`부터, 그 이름의 앞부분 가운데 그 턴에 답한 이(`who`, 또는
- * `project/<who>`)의 끝까지다. 그 턴의 받는 이를 엔진이 그 멘션으로 골랐다는 뜻이라 조사는 칠하지 않는다. 답한 이와 닿지 않는
- * 멘션(엔진이 거절했다면 말이 남지 않으므로, 옛 기록뿐이다)은 칠하지 않는다.
+ * 입력칸의 글자를 누가 그리나 — 언급이 서 있으면 칠 층(입력칸은 caret만), 아니면 입력칸이다. **한글을 조합하는 동안은 입력칸이 그린다** —
+ * 입력기는 조합 중인 글자의 밑줄을 입력칸의 글자색으로 긋는데, 칠 층이 그리는 동안 그 색은 투명이라 밑줄이 사라진다. 그동안 칠 층은 면만
+ * 둔다. 두 층의 글자 자리는 같아 갈아 그려도 흔들리지 않는다.
  */
-export function mentionOf(text: string, who: string): { start: number; end: number } | null {
-  const mention = firstMention(text);
-  if (!mention) return null;
-  const chars = [...mention.name];
-  for (let end = chars.length; end > 0; end -= 1) {
-    const call = chars.slice(0, end).join("");
-    const [project, handle, extra] = call.split("/");
-    if (call === who || (handle === who && project !== "" && extra === undefined)) {
-      return { start: mention.start, end: mention.start + 1 + call.length };
+export const inkOf = (painted: boolean, composing: boolean): "paint" | "field" => (painted && !composing ? "paint" : "field");
+
+/** 입력칸 글의 한 조각 — 언급 칠을 입는가. */
+export interface PaintedPart {
+  text: string;
+  mention: boolean;
+}
+
+/** 그 자리의 글자가 경로를 잇는가 — 그러면 앞의 언급은 다른 경로가 된 것이다. 문장 끝의 마침표 · 조사 · 빈칸은 잇지 않는다. */
+const continues = (draft: string, at: number) =>
+  /[A-Za-z0-9_\-/]/.test(draft[at] ?? "") || (draft[at] === "." && /[A-Za-z0-9]/.test(draft[at + 1] ?? ""));
+
+/**
+ * 입력칸 글을 언급 칠로 가른다 — 메뉴로 넣은 언급(`mentions`)이 말의 처음이나 빈칸 뒤에서 낱말째 나오면 칠한다. 찾는 중인 글자, 고쳐 다른
+ * 경로가 된 언급은 칠하지 않는다. 조각을 이으면 글 그대로다.
+ */
+export function paintMentions(draft: string, mentions: readonly string[]): PaintedPart[] {
+  const known = [...new Set(mentions)].sort((a, b) => b.length - a.length);
+  const parts: PaintedPart[] = [];
+  let plain = 0;
+  let at = 0;
+  while (at < draft.length) {
+    const hit =
+      at === 0 || SPACE.test(draft[at - 1])
+        ? known.find((mention) => draft.startsWith(mention, at) && !continues(draft, at + mention.length))
+        : undefined;
+    if (hit === undefined) {
+      at += 1;
+      continue;
     }
+    if (plain < at) parts.push({ text: draft.slice(plain, at), mention: false });
+    parts.push({ text: hit, mention: true });
+    at += hit.length;
+    plain = at;
   }
-  return null;
+  if (plain < draft.length) parts.push({ text: draft.slice(plain), mention: false });
+  return parts;
 }

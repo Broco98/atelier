@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import { Quote as QuoteGlyph } from "lucide-react";
 
 // 「❝ 이 자리를 두고 말하기」(three-axes 티켓 27 · 스토리 78 · 79 · 83) — 스펙 창에서 글을 고르면 그 자리 곁에 뜨고, 누르면 고른 자리를
 // 인용으로 넘긴다. 렌더 보기와 원문 보기 모두에서 된다.
@@ -8,8 +9,10 @@ import { useEffect, useState, type RefObject } from "react";
 // 글이 하나라도 골라졌다는 뜻이다 — 세 번 눌러 문단을 고르면 고른 범위의 끝이 다음 블록의 첫머리(글 0자)에 닿는데, 그 블록은 들지
 // 않는다.
 //
-// 모양은 프로토타입 D의 `#qfloat`(28 · 좌우 12 · 알약 · 어두운 면 · 흰 12/16 500 · 떠 있는 그림자)이고, 고른 글의 첫 줄 바로 위에
-// 선다(위에 자리가 없으면 아래). 스크롤 상자 안의 내용 층에 놓여 글과 함께 구른다.
+// 모양은 restart SummarySheet 「문서 글을 골랐을 때」의 `.ra-quote`다 — 30 · 왼쪽 10 · 오른쪽 12 · 알약 · 떠 있는 흰 면(`surface-elevated` ·
+// `shadow-lifted` = 0.5 링 + 카드 그림자) · 따옴표 글리프 14와 13/18 `fg` 글자, 사이 6. **고른 글의 끝 줄 아래 10에, 첫 줄의 왼쪽 끝에서**
+// 선다 — 고른 글을 가리지 않는다. 스크롤 상자 안의 내용 층에 놓여 글과 함께 구른다. 한때(three-axes 프로토타입 D `#qfloat`) 28 어두운
+// 알약이 첫 줄 바로 위에 섰다(restart 02b-8이 바꿨다 — 위에 서면 문서 제목을 덮었다).
 //
 // 받는 쪽이 있을 때만 선다(`SpecViewer`의 `onQuote`). three-axes는 고른 자리를 Work 안 대화창의 입력창에 붙였고, 그 연결은 대화창과
 // 함께 v1 티켓 08이 걷었다 — 넓힌 카드의 문서에서 지금 Thread의 입력창으로 다시 잇는 것은 v1 티켓 35다(S41).
@@ -28,11 +31,10 @@ export interface Quote {
   text: string;
 }
 
-/** 단추가 서는 높이와 고른 글과의 틈. */
-const HEIGHT = 28;
-const GAP = 6;
+/** 고른 글의 끝 줄과의 틈(시안 `.ra-quote`의 `margin-top: 10px`). */
+const GAP = 10;
 /** 단추 폭의 어림 — 오른쪽 끝에서 넘치지 않게 왼쪽 자리를 물린다. */
-const WIDTH = 172;
+const WIDTH = 176;
 
 type Mode = "pretty" | "source";
 
@@ -92,6 +94,7 @@ export function QuotePick({ box, layer, file, mode, onQuote }: QuotePickProps) {
   return (
     <button
       type="button"
+      tabIndex={0}
       data-quote-pick
       // 누르는 동안 고른 글이 풀리지 않게 — 풀리면 그 순간 단추가 걷혀 눌림이 닿지 않는다.
       onMouseDown={(event) => event.preventDefault()}
@@ -101,9 +104,10 @@ export function QuotePick({ box, layer, file, mode, onQuote }: QuotePickProps) {
         setPicked(null);
       }}
       style={{ top: picked.top, left: picked.left }}
-      className="absolute z-20 inline-flex h-7 items-center whitespace-nowrap rounded-full bg-fg px-3 text-xs font-medium text-fg-inverse shadow-prominent outline-none focus-ring"
+      className="absolute z-20 inline-flex h-7.5 items-center gap-1.5 rounded-full bg-surface-elevated pr-3 pl-2.5 text-chat-meta whitespace-nowrap text-fg shadow-lifted outline-none focus-ring"
     >
-      ❝ 이 자리를 두고 말하기
+      <QuoteGlyph aria-hidden className="size-3.5" />
+      이 자리를 두고 말하기
     </button>
   );
 }
@@ -116,7 +120,7 @@ function pick(root: HTMLElement, layer: HTMLElement | null, file: string, mode: 
   if (!root.contains(range.commonAncestorContainer)) return null;
   const lines = mode === "source" ? sourceLines(root, range) : prettyLines(root, range, selection.toString());
   if (!lines) return null;
-  return { quote: { file, ...lines }, ...spot(root, layer, range) };
+  return { quote: { file, ...lines }, ...spot(layer, range) };
 }
 
 /** 렌더 보기 — 고른 글이 걸친 최상위 블록들의 원문 줄 범위와, 화면에 고른 그대로의 글. */
@@ -162,12 +166,14 @@ function selectedPart(range: Range, el: Element): string | null {
   return part.toString();
 }
 
-/** 단추 자리 — 고른 글의 첫 줄 바로 위, 그 줄의 왼쪽 끝에서. 스크롤 상자 위쪽에 자리가 없으면 첫 줄 바로 아래다. */
-function spot(root: HTMLElement, layer: HTMLElement, range: Range): { top: number; left: number } {
-  const first = [...range.getClientRects()].find((rect) => rect.width > 0 && rect.height > 0) ?? range.getBoundingClientRect();
+/** 단추 자리 — 고른 글의 끝 줄 아래 10, 첫 줄의 왼쪽 끝에서. 오른쪽 끝에서는 넘치지 않게 물린다. */
+function spot(layer: HTMLElement, range: Range): { top: number; left: number } {
+  const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+  const whole = range.getBoundingClientRect();
+  const first = rects[0] ?? whole;
+  const bottom = rects.length > 0 ? Math.max(...rects.map((rect) => rect.bottom)) : whole.bottom;
   const base = layer.getBoundingClientRect();
-  const roomAbove = first.top - root.getBoundingClientRect().top >= HEIGHT + GAP;
-  const top = roomAbove ? first.top - base.top - HEIGHT - GAP : first.bottom - base.top + GAP;
+  const top = bottom - base.top + GAP;
   const left = Math.max(8, Math.min(first.left - base.left, base.width - WIDTH - 8));
   return { top, left };
 }

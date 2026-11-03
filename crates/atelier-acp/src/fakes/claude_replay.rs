@@ -4,8 +4,11 @@
 //! - 가짜 claude bin(`src/bin/fake-claude.rs`)은 stdin · stdout · 영수증 · 문(`<세션 id>.go`)을 두르고 L1에 선다.
 //! - 변환기 상태 기계의 시험(`src/translator/machine/tests.rs`)은 프로세스 없이 이것을 상대로 놓는다.
 //!
-//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다. 지금 판은 2.1.309다 — v1 티켓 09가 판 02 ·
-//! 워크플로 실측의 몰이를 같은 프롬프트 · 같은 폴더 모양으로 다시 돌려 녹음했다(몰이와 가리기는 v1 스펙 `구현-노트/녹음-2.1.309/`).
+//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다. 판은 둘이다.
+//! - 2.1.309 — `stream_event`가 없다. v1 티켓 09가 판 02 · 워크플로 실측의 몰이를 같은 프롬프트 · 같은 폴더 모양으로 다시 돌려
+//!   녹음했다(몰이와 가리기는 v1 스펙 `구현-노트/녹음-2.1.309/`). 조각 없는 글의 회귀 시험으로 남긴다.
+//! - 2.1.316 — 앱과 같은 인자(`--include-partial-messages`)로 뜬 조각이 든 녹음이다(restart 티켓 01b-1, 몰이와 가리기는 restart
+//!   스펙 `구현-노트/녹음-2.1.316/`).
 //! - 띄우자마자: 첫 `system/init` 앞의 줄들(SessionStart 훅의 `hook_started` · `hook_response`). [`Replay::new`]가 돌려준다.
 //! - stdin `control_request{subtype:"initialize"}` → `initialize.json`의 응답(요청 id만 바꿔 끼운다). 원문에 든
 //!   `control_response`(잰 쪽이 보낸 제어 요청의 답)는 되감지 않는다 — 제어 요청에는 되감기가 스스로 답한다.
@@ -52,10 +55,6 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   스스로 이어 간 턴 — 그 턴이 `Read` · `Write`로 결과를 `bg.md`에 쓴다(판 02 관문 G4).
 /// - `2.1.309/noauth` — 로그인이 안 된 claude의 두 턴: `assistant{error:"authentication_failed"}` → `result{is_error:true}`
 ///   (판 02 실측 A8).
-/// - `2.1.309/thread-call-host` · `2.1.309/thread-call-reviewer` — Thread의 Host가 리뷰어를 부른 한 턴과 불린 리뷰어의 한 턴(v1
-///   티켓 20 끝 점검). Host는 미뤄 실린 Thread 도구를 `ToolSearch`(`select:mcp__atelier-thread__call_agent`)로 들인 뒤
-///   `call_agent`를 부르고 받은 답을 옮긴다. 리뷰어는 `Read`로 `thread.json`을 읽고 답한다. 녹음의 Thread 폴더는
-///   `/tmp/gate/home/threads/20261023-234318`이다.
 /// - `2.1.309/thread-rename-host` — Host가 `ToolSearch`로 들인 `rename_thread`로 Thread 이름을 바꾼 한 턴(v1 티켓 20 끝 점검).
 /// - `2.1.309/thread-question-host` — Host가 `AskUserQuestion`으로 사람에게 묻는 두 턴(v1 티켓 27 끝 점검). 첫 턴은 물음 둘(둘째는
 ///   여럿 고르기)을 한 번에 묻고 답(allow의 `updatedInput.answers`)을 받아 「done」, 둘째 턴은 물음 하나를 「나중에」(deny)로
@@ -68,9 +67,28 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   루트는 `/tmp/gate`(자료 자리 `home` · 저장소 `repos`), Thread 폴더는 `/tmp/gate/home/threads/20261024-013421`이다. 엔진이 Work
 ///   없는 Session에 등록된 Project 폴더를 함께 열기(끝 점검 39(a)) 전의 녹음이라 저장소 읽기가 묻는다 — 되감기는 받은 `--add-dir`을
 ///   보지 않으므로 Work 만들기 카드 · 기록 꼴의 시험 자료로는 그대로다.
-/// - `2.1.309/thread-stop-host` — 「알아서」 Thread의 Host가 40초 도는 `python3` 명령을 앞에서 돌리는 동안 사람이 멈춘 한 턴(v1 티켓
+/// - `2.1.309/thread-stop-host` — 「묻지 않음」 Thread의 Host가 40초 도는 `python3` 명령을 앞에서 돌리는 동안 사람이 멈춘 한 턴(v1 티켓
 ///   44 끝 점검). 그 `Bash`가 `can_use_tool`로 묻고 판정이 허락하면 `task_started`, 도는 동안 interrupt가 오면 `task_notification` →
 ///   거부의 실패 `tool_result` → `result/error_during_execution`이다. 녹음의 Thread 폴더는 `/tmp/gate/home/threads/20261024-110553`이다.
+/// - `2.1.316/stream-turns` — 조각이 든 네 턴: 생각과 답 · 글과 도구가 섞인 메시지 여럿 · 서브에이전트 · 조각 없는 내장 `/cost`의
+///   `<synthetic>` 답. 앱의 인자로는 생각 조각의 글이 비어 온다.
+/// - `2.1.316/stream-thinking` — 생각 조각에 글이 실린 한 턴. 이 녹음만 `--thinking-display summarized`를 더해 떴다.
+/// - `2.1.316/stream-permission` — 조각이 든 승인의 두 턴: 작업 자리 밖 `Write`를 허락한 턴과 거부한 턴.
+/// - `2.1.316/stream-interrupt` — 답이 흐르는 도중에 interrupt로 멈춘 턴과 맥락을 이어 답한 턴. 멈춘 턴의 완성 줄은 그때까지 낸 글이다.
+/// - `2.1.316/stream-compact` — 말 두 턴 · `/compact`의 턴 · 정리한 맥락으로 답한 턴(restart 티켓 01b-4). 정리의 턴은 답이 없다.
+/// - `2.1.316/stream-compact-empty` — 정리할 것이 없는 첫 턴의 `/compact`(`compact_result: "failed"`, 까닭은 `<synthetic>` 답)와 다음 턴.
+/// - `2.1.316/stream-failed` — 답이 흐르는 도중에 API가 끊긴 턴 · 백그라운드를 건 턴 · 스스로 이어 간 턴의 같은 오류 · 뒤이은 턴(restart 티켓
+///   01b-5). claude는 진짜이고 API만 가짜다(몰이의 `stub_api.py`). 끊긴 메시지에는 `assistant` 완성 줄이 없고 `is_api_error_message`인
+///   `<synthetic>` 줄과 `result{subtype: "success", is_error: true}`가 잇는다.
+/// - `2.1.316/stream-limits` — 거절 · 길이 제한 · 턴 한도로 끝난 세 턴(restart 티켓 01b-5). 같은 가짜 API에 앱에 없는 `--max-turns 1`로 떴다.
+///   claude는 거절을 한 번, 길이 제한을 세 번 스스로 다시 묻고 나서 끝낸다.
+/// - `2.1.316/stream-retry` — 답이 흐르는 도중에 끊긴 메시지를 claude가 스스로 다시 받은 두 턴과 뒤이은 턴(restart 티켓 01b-10). 같은 가짜
+///   API(몰이의 `stub_retry.py`)가 한 번씩만 끊는다. 첫 턴은 소켓이 닫혀 `system/api_retry` 뒤에 새 메시지를 처음부터 다시 흘리고, 둘째 턴은
+///   `overloaded_error`를 받고 `api_retry` 없이 스트리밍하지 않는 요청으로 다시 받아 조각 없는 완성 줄 하나가 온다. 끊긴 메시지에는
+///   `message_delta`도 완성 줄도 없다.
+/// - `2.1.316/stream-retry-failed` — 같은 가짜 API에 재시도 수를 1로 줄여(`CLAUDE_CODE_MAX_RETRIES=1`) 뜬 세 턴(restart 티켓 01b-10). 첫 턴은 답이
+///   흐르다 끊겨 `api_retry`로 다시 불렀지만 500을 받아 끝내 실패한다(`is_api_error_message`인 `<synthetic>` 줄과 `result{is_error}`). 둘째 턴은
+///   조각 없이 500을 받은 첫 호출을 다시 불러 온전히 답한다. 셋째 턴은 보통 턴이다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -86,12 +104,20 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     ("2.1.309/g4-background", include_str!("../../tests/fixtures/claude-2.1.309/g4-background.jsonl")),
     ("2.1.309/noauth", include_str!("../../tests/fixtures/claude-2.1.309/noauth.jsonl")),
-    ("2.1.309/thread-call-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-host.jsonl")),
-    ("2.1.309/thread-call-reviewer", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-reviewer.jsonl")),
     ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
     ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
     ("2.1.309/thread-work-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-work-host.jsonl")),
     ("2.1.309/thread-stop-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-stop-host.jsonl")),
+    ("2.1.316/stream-turns", include_str!("../../tests/fixtures/claude-2.1.316/stream-turns.jsonl")),
+    ("2.1.316/stream-thinking", include_str!("../../tests/fixtures/claude-2.1.316/stream-thinking.jsonl")),
+    ("2.1.316/stream-permission", include_str!("../../tests/fixtures/claude-2.1.316/stream-permission.jsonl")),
+    ("2.1.316/stream-interrupt", include_str!("../../tests/fixtures/claude-2.1.316/stream-interrupt.jsonl")),
+    ("2.1.316/stream-compact", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact.jsonl")),
+    ("2.1.316/stream-compact-empty", include_str!("../../tests/fixtures/claude-2.1.316/stream-compact-empty.jsonl")),
+    ("2.1.316/stream-failed", include_str!("../../tests/fixtures/claude-2.1.316/stream-failed.jsonl")),
+    ("2.1.316/stream-limits", include_str!("../../tests/fixtures/claude-2.1.316/stream-limits.jsonl")),
+    ("2.1.316/stream-retry", include_str!("../../tests/fixtures/claude-2.1.316/stream-retry.jsonl")),
+    ("2.1.316/stream-retry-failed", include_str!("../../tests/fixtures/claude-2.1.316/stream-retry-failed.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
@@ -175,9 +201,10 @@ struct Turn {
     spontaneous: bool,
 }
 
-/// 원문을 띄우자마자 낼 줄들과 턴들로 가른다 — 턴은 `system/init`에서 시작해 `result`에서 끝난다. 첫 `init` 앞의 줄은
-/// 띄우자마자 내고, `result`와 다음 `init` 사이의 줄은 앞 턴에 붙인다. 원문의 `control_response`는 뺀다 — 잰 쪽이 보낸
-/// 제어 요청의 답이라, 되감기는 받은 제어 요청에 스스로 답한다. 다만 interrupt의 답(`still_queued`)은 그 자리에 멈춤을 남긴다.
+/// 원문을 띄우자마자 낼 줄들과 턴들로 가른다 — 턴은 `system/init`에서 시작해 `result`에서 끝난다. `/compact`의 턴만
+/// `status: "compacting"`이 `init`보다 앞서므로 그 줄에서 시작한다(2.1.316 실측). 첫 턴 앞의 줄은 띄우자마자 내고, `result`와
+/// 다음 턴 사이의 줄은 앞 턴에 붙인다. 원문의 `control_response`는 뺀다 — 잰 쪽이 보낸 제어 요청의 답이라, 되감기는 받은
+/// 제어 요청에 스스로 답한다. 다만 interrupt의 답(`still_queued`)은 그 자리에 멈춤을 남긴다.
 fn fixture_turns(text: &str) -> (Vec<Step>, Vec<Turn>) {
     let mut startup = Vec::new();
     let mut turns: Vec<Turn> = Vec::new();
@@ -188,8 +215,9 @@ fn fixture_turns(text: &str) -> (Vec<Step>, Vec<Turn>) {
             Some("control_response") => continue,
             _ => Step::Line(value.clone()),
         };
-        let is_init = value["type"] == "system" && value["subtype"] == "init";
-        if is_init && !open {
+        let system = value["type"] == "system";
+        let starts_turn = system && (value["subtype"] == "init" || value["status"] == "compacting");
+        if starts_turn && !open {
             turns.push(Turn::default());
             open = true;
         }
@@ -541,4 +569,78 @@ fn initialize_response(request_id: &Value, email: Option<&str>) -> Value {
         response["response"]["account"]["organization"] = json!(format!("{email}'s Organization"));
     }
     json!({"type": "control_response", "response": response})
+}
+
+/// 부하 턴의 조각 하나의 글자 수 — 2.1.316 녹음의 `text_delta` 평균이 8자다.
+const LOAD_PIECE_CHARS: usize = 8;
+/// 부하 턴의 첫 `system/init`과 끝 `result`를 빌릴 원문.
+const LOAD_TURN: &str = "2.1.316/stream-turns";
+
+/// 부하 턴의 글 `n`째 절 — 실제 답처럼 제목 · 문단 · 목록 · 코드 · 표가 섞인 마크다운이다. 절마다 번호가 들어가 같은 글덩이가 되풀이되지 않는다.
+fn load_section(n: usize) -> String {
+    format!(
+        "## {n}. 스트리밍 점검 절\n\n\
+         이 문단은 `{n}`번째 절의 설명이다. 답은 **조각으로** 도착하고, 화면은 [받은 글](https://example.com/{n})을 이어 붙여 다시 그린다. \
+         한 문단은 여러 문장이고 줄이 바뀌지 않은 채 길게 이어진다.\n\n\
+         - 첫째 항목은 `Host`가 조각을 쌓는 일이다({n})\n\
+         - 둘째 항목은 33ms마다 화면으로 내보내는 일이다\n\
+         - 셋째 항목은 기록 줄이 서면 흐르는 글을 지우는 일이다\n\n\
+         ```rust\n\
+         fn section_{n}(text: &str) -> usize {{\n    text.lines().filter(|line| !line.is_empty()).count() + {n}\n}}\n\
+         ```\n\n\
+         | 값 | 뜻 |\n|---|---|\n| {n} | 절 번호 |\n| 33 | 묶는 밀리초 |\n\n\
+         > 인용 문단도 하나 둔다. 번호는 {n}이다.\n\n"
+    )
+}
+
+/// 부하 턴의 조각들 — `count`개, 조각마다 [`LOAD_PIECE_CHARS`]자다.
+pub fn load_pieces(count: usize) -> Vec<String> {
+    let needed = count * LOAD_PIECE_CHARS;
+    let mut chars: Vec<char> = Vec::with_capacity(needed);
+    let mut section = 1;
+    while chars.len() < needed {
+        chars.extend(load_section(section).chars());
+        section += 1;
+    }
+    chars.truncate(needed);
+    chars.chunks(LOAD_PIECE_CHARS).map(|piece| piece.iter().collect()).collect()
+}
+
+/// 부하 턴의 글 조각 줄 — 진짜 claude의 `text_delta`와 같은 꼴이다.
+pub fn load_piece(session_id: &str, message_id: &str, text: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}},
+        "session_id": session_id, "parent_tool_use_id": null, "api_message_id": message_id,
+    })
+}
+
+/// 부하 턴의 완성 줄 — 그 메시지의 조각을 모두 합친 글이다.
+pub fn load_finished(session_id: &str, message_id: &str, text: &str) -> Value {
+    json!({
+        "type": "assistant",
+        "message": {"model": "claude-opus-5-5", "id": message_id, "type": "message", "role": "assistant",
+                    "content": [{"type": "text", "text": text}]},
+        "parent_tool_use_id": null, "session_id": session_id,
+    })
+}
+
+/// 부하 턴 메시지의 끝 — 진짜 claude는 완성 줄 뒤에 `message_delta`로 메시지를 끝낸다. 이것이 없는 메시지는 끊긴 메시지다(restart 01b-10).
+pub fn load_ended(session_id: &str, message_id: &str) -> Value {
+    json!({
+        "type": "stream_event",
+        "event": {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}},
+        "session_id": session_id, "parent_tool_use_id": null, "api_message_id": message_id,
+    })
+}
+
+/// 부하 턴의 머리와 끝 — 녹음의 `system/init`과 `result`에 이 세션의 id를 끼운 것.
+pub fn load_bookends(session_id: &str) -> (Value, Value) {
+    let lines: Vec<Value> = json_lines(fixture(LOAD_TURN).expect("부하 턴의 원문")).collect();
+    let found = |wanted: fn(&Value) -> bool| {
+        let mut line = lines.iter().find(|line| wanted(line)).expect("원문에 그 줄이 있다").clone();
+        line["session_id"] = json!(session_id);
+        line
+    };
+    (found(|line| line["type"] == "system" && line["subtype"] == "init"), found(|line| line["type"] == "result"))
 }

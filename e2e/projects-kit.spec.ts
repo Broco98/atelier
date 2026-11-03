@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { answerByArg, PROJECTS, SPACES, WORKS } from "./fixtures";
+import { answerByArg, PROJECTS, SERVICES, WORKS } from "./fixtures";
 import {
   clipboardWrites,
   fireEvent,
@@ -21,11 +21,12 @@ import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projec
 
 // 03 구현 스펙 Testing 「Projects(`F4-KitProject`)」 — Projects 흐름 하나. 상황 모음판의 칸이 곧 경우다: 목록 줄(hover · 찾을 수 없음 · ⋯ 두
 // 갈래) · 추가 창의 소스 폴더 갈래(비어 있음 · git 레포 · git 아님 · 하위 폴더 · 이미 추가됨 · 새로 만들기 · 새로 만들기 — 폴더가 이미 있음) ·
-// 제거 창 셋과 지운 뒤 · 상세 조각(제목 고치기 · 찾을 수 없음), 그리고 끌어 놓기(Tauri 끌어 놓기 사건을 이 층이 낸다).
+// 제거 창 셋과 지운 뒤 · 상세 조각(찾을 수 없음), 그리고 끌어 놓기(Tauri 끌어 놓기 사건을 이 층이 낸다). 상세에는 고치는 자리가 없다 — 이름 ·
+// 설명 · 기준 브랜치는 대화로 고친다(restart 03-15c). 한때(03-2) 제목을 누르면 「Project 이름」 칸과 그 아래 「↵ 저장 · esc 취소 — …」가 섰다.
 //
 // 같은 것을 두 번 재지 않는다 — 다른 spec이 재는 것:
-//   목록 표 그리기 · 줄 → 상세 · 상세의 기준 브랜치 목록(키 · 묶음 · IPC · 같은 값)   `projects-list.spec.ts`
-//   상세 제목 고치기의 저장 규칙(Enter · 다른 곳 · Esc · 비움 · 그대로) · 편집 메뉴    `inline-rename.spec.ts` · `edit-menu.spec.ts`
+//   목록 표 그리기 · 줄 → 상세 · 상세의 기준 브랜치 칸                              `projects-list.spec.ts`
+//   상세 ⋯ 항목 · 제목은 이름 글                                                     `places.spec.ts`
 //
 // 이 층에는 core가 없다 — 살피기(`inspect_project_folder`) · 자리(`new_project_place`)의 답은 시험이 경로마다 둔 것이고, 추가 · 고치기의 답은
 // 값을 기억하지 않는다. 재는 것은 「무엇이 나갔나」(IPC와 그 인자)와 「받은 답을 어떻게 그렸나」다. 진짜 git이 폴더 · 브랜치 · 첫 커밋을
@@ -121,28 +122,28 @@ async function 소스를바꾼다(page: Page, from: string, to: "이 컴퓨터�
 }
 
 test.describe("목록 줄", () => {
-  test("찾을 수 없는 Project 줄은 「Project를 찾을 수 없어요 · 재설정」이고, hover면 이름 옆에 ›가 서며, 찾기는 이름 · 경로에 걸린다", async ({
+  test("폴더를 찾을 수 없는 Project 줄은 옆 글이 「폴더를 찾을 수 없어요 · 경로」이고 끝에 「재설정」이 서며, 찾기는 이름 · 경로에 걸린다", async ({
     page,
   }) => {
     await installFixtureBackend(page, { list_projects: [...PROJECTS, playground] });
     await page.goto("/projects");
 
-    // 찾을 수 없는 줄 — 경로 칸에 「⚠ Project를 찾을 수 없어요 · 경로」, 기준 브랜치 칸에 「재설정」(스토리 101).
+    // 찾을 수 없는 줄 — 이름이 흐리고 옆 글이 「폴더를 찾을 수 없어요 · 경로」, 오른쪽 끝에 「재설정」(스토리 119 · restart 03-1 — 보드 Places
+    // `.pl-fix`). 한때 경로 칸에 「⚠ Project를 찾을 수 없어요 · 경로」, 기준 브랜치 칸에 「재설정」이 따로 섰다.
     await expect(줄(page, playground.name).getByRole("cell")).toHaveText([
-      playground.name,
-      `Project를 찾을 수 없어요${playground.path}`,
+      `${playground.name}폴더를 찾을 수 없어요 · ${playground.path}`,
+      /\S/,
       "재설정",
-      "",
     ]);
-    await expect(본문(page, "Projects").getByText("폴더를 이 창에 끌어다 놓아도 추가돼요", { exact: true })).toBeVisible();
+    await expect(줄(page, playground.name)).toHaveAttribute("data-missing", "true");
+    // 찾을 수 없는 줄에는 범위로 여는 두 단추가 없다 — 그 폴더로는 작업공간도 채팅도 열 수 없다.
+    await expect(줄(page, playground.name).getByRole("button", { name: /범위로/ })).toHaveCount(0);
+    await expect(줄(page, ledger.name).getByRole("button", { name: /범위로/ })).toHaveCount(2);
+    // 목록 아래 끌어 놓기 한 줄과 이름 끝 꺾쇠는 걷었다(restart 03-1 — 보드에 없다).
+    await expect(본문(page, "Projects").getByText("폴더를 이 창에 끌어다 놓아도 추가돼요", { exact: true })).toHaveCount(0);
+    await expect(줄(page, ledger.name).getByRole("link").locator("svg")).toHaveCount(0);
 
-    // hover면 이름 끝 꺾쇠가 선다(스토리 95) — 지나기 전에는 숨어 있다.
-    const 꺾쇠 = 줄(page, ledger.name).getByRole("link").locator("svg").last();
-    await expect.poll(async () => (await 칠한값(꺾쇠, "opacity"))[0]).toBe("0");
-    await 줄(page, ledger.name).getByRole("cell").nth(1).hover();
-    await expect.poll(async () => (await 칠한값(꺾쇠, "opacity"))[0]).toBe("1");
-
-    // 찾기 — 이름 · 경로에 걸린다. 맞는 것이 없으면 「찾는 Project가 없어요」(스토리 98).
+    // 찾기 — 이름 · 경로에 걸린다. 맞는 것이 없으면 「「찾는 글」와 맞는 Project가 없어요」(스토리 98 · 보드 「찾기 결과 없음」 — 찾기 칸과 열 머리는 남는다).
     const 찾기 = page.getByRole("searchbox", { name: "Project 찾기", exact: true });
     await 찾기.fill(ledger.name);
     await expect(몸줄(목록(page)).getByRole("link")).toHaveText([ledger.name]);
@@ -150,7 +151,8 @@ test.describe("목록 줄", () => {
     await expect(몸줄(목록(page)).getByRole("link")).toHaveText([playground.name]);
     await 찾기.fill("없는 이름");
     await expect(몸줄(목록(page))).toHaveCount(0);
-    await expect(목록(page).getByText("찾는 Project가 없어요", { exact: true })).toBeVisible();
+    await expect(목록(page).getByText("「없는 이름」와 맞는 Project가 없어요", { exact: true })).toBeVisible();
+    await expect(목록(page).getByRole("columnheader")).toHaveText(["이름", "최근 활동"]);
     await 찾기.fill("");
     await expect(몸줄(목록(page))).toHaveCount(3);
     expect(await unknownIpcCalls(page)).toEqual([]);
@@ -206,16 +208,19 @@ test.describe("목록 줄", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Project가 없으면 「아직 Project가 없어요」와 설명 · 「Project 추가」 · 끌어 놓기 한 줄이 가운데 서고 찾기 칸 · 표는 없다", async ({ page }) => {
+  test("Project가 없으면 「등록한 Project가 없어요」와 끌어 놓기를 말하는 까닭 · 「Project 추가」가 가운데 서고 찾기 칸 · 표는 없다", async ({ page }) => {
     await installFixtureBackend(page, { list_projects: [] });
     await page.goto("/projects");
     const 본문칸 = 본문(page, "Projects");
 
-    await expect(본문칸.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
+    // 보드 PlaceSheet 「Project 없음」(restart 03-1) — 한때 「아직 Project가 없어요」와 따로 선 「폴더를 이 창에 끌어다 놓아도 돼요」 줄이었다.
+    await expect(본문칸.getByRole("heading", { name: "등록한 Project가 없어요", exact: true })).toBeVisible();
     await expect(
-      본문칸.getByText("이 컴퓨터의 git 레포 폴더를 추가하거나, 빈 레포를 새로 만들어요. 코드는 옮기지 않아요.", { exact: true }),
+      본문칸.getByText("폴더를 이 화면에 끌어다 놓거나 Project를 추가하면, 그 폴더를 범위로 채팅하고 작업공간을 만들 수 있어요.", {
+        exact: true,
+      }),
     ).toBeVisible();
-    await expect(본문칸.getByText("폴더를 이 창에 끌어다 놓아도 돼요", { exact: true })).toBeVisible();
+    await expect(본문칸.getByText("폴더를 이 창에 끌어다 놓아도 돼요", { exact: true })).toHaveCount(0);
     await expect(본문칸.getByRole("button", { name: "Project 추가", exact: true })).toHaveCount(1);
     await expect(목록(page)).toHaveCount(0);
     await expect(page.getByRole("searchbox", { name: "Project 찾기", exact: true })).toHaveCount(0);
@@ -239,7 +244,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(이름칸(page)).toHaveAttribute("placeholder", "예: web-app");
     await expect(추가창(page).getByRole("button", { name: "이 컴퓨터의 폴더 추가", exact: true })).toBeVisible();
     await expect(
-      추가창(page).getByText("Project는 git 레포 하나예요. Space로 묶으면 Agent가 함께 읽고, Work는 고칠 Project에만 worktree를 만들어요.", {
+      추가창(page).getByText("Project는 git 레포 하나예요. Service로 묶으면 Runtime이 함께 읽고, 작업공간은 고칠 Project에만 worktree를 만들어요.", {
         exact: true,
       }),
     ).toBeVisible();
@@ -510,12 +515,12 @@ test.describe("제거 창", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Space에 들어 있으면 「… Space에서도 빠져요」가 더해지고, 「취소」면 빼지 않으며, 그사이 같은 slug가 다시 쓰였으면 되돌리기가 그 까닭을 말한다", async ({
+  test("Service에 들어 있으면 「… Service에서도 빠져요」가 더해지고, 「취소」면 빼지 않으며, 그사이 같은 slug가 다시 쓰였으면 되돌리기가 그 까닭을 말한다", async ({
     page,
   }) => {
-    const [결제, 원장도구] = SPACES;
+    const [결제, 원장도구] = SERVICES;
     await installFixtureBackend(page, {
-      project_usage: { spaces: [결제, 원장도구].map(({ slug, name }) => ({ slug, name })), works: [] },
+      project_usage: { services: [결제, 원장도구].map(({ slug, name }) => ({ slug, name })), works: [] },
       restore_project: ipcFailure(`slug is in use again: ${ledger.slug}`),
     });
     await page.goto("/projects");
@@ -523,7 +528,7 @@ test.describe("제거 창", () => {
 
     const 창 = 제거창(page, "목록에서 제거할까요?");
     await expect(창).toHaveAccessibleDescription(
-      `폴더와 파일, git 기록은 그대로예요. 언제든 다시 추가할 수 있어요. ${결제.name} · ${원장도구.name} Space에서도 빠져요.`,
+      `폴더와 파일, git 기록은 그대로예요. 언제든 다시 추가할 수 있어요. ${결제.name} · ${원장도구.name} Service에서도 빠져요.`,
     );
     await 창.getByRole("button", { name: "취소", exact: true }).click();
     await expect(창).toHaveCount(0);
@@ -540,13 +545,13 @@ test.describe("제거 창", () => {
     page,
   }) => {
     const 고치는 = WORKS.slice(0, 2).map((work, at) => ({ slug: work.slug, title: work.title, branch: at === 0 ? "fix/refund-api" : null }));
-    await installFixtureBackend(page, { project_usage: { spaces: [], works: 고치는 } });
+    await installFixtureBackend(page, { project_usage: { services: [], works: 고치는 } });
     await page.goto("/projects");
     await 제거를묻는다(page, billing);
 
     const 창 = 제거창(page, "아직 제거할 수 없어요");
-    await expect(창).toHaveAccessibleDescription("진행 중인 Work 2개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요.");
-    const 줄들 = 창.getByRole("list", { name: "이 Project를 고치는 Work", exact: true }).getByRole("link");
+    await expect(창).toHaveAccessibleDescription("진행 중인 작업공간 2개가 이 Project를 고치고 있어요. 작업공간을 끝내 보관하면 제거할 수 있어요.");
+    const 줄들 = 창.getByRole("list", { name: "이 Project를 고치는 작업공간", exact: true }).getByRole("link");
     await expect(줄들).toHaveText([`${고치는[0].title}fix/refund-api`, 고치는[1].title]);
     // 첫 포커스는 「닫기」 — 할 수 있는 일이 그것뿐이다.
     await expect(창.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
@@ -567,7 +572,7 @@ test.describe("제거 창", () => {
     await 제거창(page, "목록에서 제거할까요?").getByRole("button", { name: "제거", exact: true }).click();
 
     const 막힘 = 제거창(page, "아직 제거할 수 없어요");
-    await expect(막힘).toHaveAccessibleDescription("진행 중인 Work 1개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요.");
+    await expect(막힘).toHaveAccessibleDescription("진행 중인 작업공간 1개가 이 Project를 고치고 있어요. 작업공간을 끝내 보관하면 제거할 수 있어요.");
     await expect(막힘.getByRole("link")).toHaveText([붙인.title]);
     await expect(화면토스트(page, `목록에서 뺐어요 — ${ledger.name}`)).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
@@ -575,52 +580,23 @@ test.describe("제거 창", () => {
 });
 
 test.describe("상세 조각", () => {
-  test("제목을 누르면 제목 줄 그 자리가 「Project 이름」 칸(높이 40)이 되고, 그 아래 「↵ 저장 · esc 취소 — 파일 이름(<slug>.md)과 경로는 그대로예요」가 선다", async ({
-    page,
-  }) => {
-    // 저장 규칙(Enter · 다른 곳 · Esc · 비움 · 그대로)과 편집 메뉴는 `inline-rename` · `edit-menu`가 잰다 — 여기는 고치는 동안의 모양과 아래 한 줄이다.
-    await installFixtureBackend(page);
-    await page.goto(`/projects/${billing.slug}`);
-    const 본문칸 = 본문(page, "Projects 상세");
-    const 제목줄 = 본문칸.getByRole("heading", { level: 1 });
-    const 칸 = 제목줄.getByRole("textbox", { name: "Project 이름", exact: true });
-    const 도움말 = 본문칸.getByText(`↵ 저장 · esc 취소 — 파일 이름(${billing.slug}.md)과 경로는 그대로예요`, { exact: true });
-    await expect(제목줄.getByRole("button")).toHaveText([billing.name, ""]);
-    await expect(도움말).toHaveCount(0);
-
-    await 본문칸.getByRole("button", { name: `${billing.name} — 이름 바꾸기`, exact: true }).click();
-    await expect(칸).toBeFocused();
-    await expect(칸).toHaveValue(billing.name);
-    // 이름 · 연필이 칸에 자리를 내준다 — 칸의 테(시안 F4-ProjRename)는 높이 40 · 너비 352 이상이고, 아래 한 줄이 그 밑에 선다.
-    await expect(제목줄.getByRole("button")).toHaveCount(0);
-    await expect(도움말).toBeVisible();
-    const 테 = (await 칸.locator("xpath=..").boundingBox())!;
-    expect(테.height).toBe(40);
-    expect(테.width).toBeGreaterThanOrEqual(352);
-    expect((await 도움말.boundingBox())!.y).toBeGreaterThanOrEqual(테.y + 테.height);
-
-    // 칸이 닫히면 그 줄도 걷히고 제목이 돌아온다.
-    await 칸.press("Escape");
-    await expect(도움말).toHaveCount(0);
-    await expect(제목줄.getByRole("button")).toHaveText([billing.name, ""]);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test("폴더를 찾을 수 없는 Project의 상세는 위에 안내 상자와 「재설정」이 서고, 기준 브랜치가 꺼지며 경로에 취소선이 그어진다", async ({ page }) => {
+  test("폴더를 찾을 수 없는 Project의 상세는 위 카드 앞에 경고 한 줄과 「재설정」이 서고, 「재설정」은 고른 폴더로 경로만 바꾼다", async ({ page }) => {
     await installFixtureBackend(page, { list_projects: [...PROJECTS, playground] });
     await page.goto(`/projects/${playground.slug}`);
     const 본문칸 = 본문(page, "Projects 상세");
 
-    const 안내 = 본문칸.getByRole("status");
-    await expect(안내).toHaveText(
-      `Project를 찾을 수 없어요${playground.path}에 폴더가 없어요. 옮겼다면 재설정으로 새 위치를 골라 주세요. 이 Project를 쓰는 Work는 고칠 수 없어요.재설정`,
-    );
-    const 정보 = 본문칸.getByRole("complementary", { name: "Project 정보", exact: true });
-    await expect(정보.getByRole("combobox", { name: "기준 브랜치", exact: true })).toBeDisabled();
-    await expect(정보.getByText("폴더를 찾아야 브랜치를 읽을 수 있어요", { exact: true })).toBeVisible();
-    const 경로칸 = 정보.getByRole("region", { name: "경로", exact: true });
-    expect(await 칠한값(경로칸.getByText(playground.path, { exact: true }), "text-decoration-line")).toEqual(["line-through"]);
-    await expect(경로칸.getByText("Project를 찾을 수 없어요", { exact: true })).toBeVisible();
+    // 경고는 한 줄 상자다(restart 03-2 · 보드 PlaceSheet 「폴더를 찾을 수 없는 Project」 `.pl-warn`) — 한때 `status` 안내 상자(「Project를 찾을 수
+    // 없어요」 · 경로 · 두 문장)와 오른쪽 칸 경로의 취소선이었다.
+    const 경고문 = 본문칸.getByText("폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요.", { exact: true });
+    await expect(경고문).toBeVisible();
+    const 안내 = 경고문.locator("xpath=..");
+    await expect(안내).toHaveText("폴더를 찾을 수 없어요. 옮겼다면 재설정으로 새 경로를 알려 주세요.재설정");
+    await expect(본문칸.getByRole("status")).toHaveCount(0);
+    await expect(본문칸.getByRole("button", { name: "재설정", exact: true })).toHaveCount(1);
+    // 경고가 위 카드 위에 선다.
+    const 경로값 = 본문칸.getByTitle(playground.path, { exact: true });
+    expect((await 안내.boundingBox())!.y).toBeLessThan((await 경로값.boundingBox())!.y);
+    expect(await 칠한값(경로값, "text-decoration-line")).toEqual(["none"]);
 
     // 안내 상자의 「재설정」 — 고른 폴더로 경로만 바꾼다.
     await 폴더를고른다(page, "/Users/tester/MyProjects/playground-moved");
