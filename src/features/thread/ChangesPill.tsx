@@ -28,6 +28,7 @@ function ChangesPill({ changes, arrival, onReview }: { changes: Changes; arrival
       <span className="text-diff-deleted tabular-nums">−{changes.deleted}</span>
       <button
         type="button"
+        tabIndex={0}
         onClick={onReview}
         className="flex h-6 items-center rounded-full bg-fill-soft px-2 text-xs tracking-normal text-fg-secondary transition-colors quiet-hover focus-ring"
       >

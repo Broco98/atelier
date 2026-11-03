@@ -425,6 +425,7 @@ function ViewTools({ view, onView, held }: { view: ProcessView; onView: (view: P
           <button
             key={one}
             type="button"
+            tabIndex={0}
             aria-pressed={view === one}
             onClick={() => onView(one)}
             className={cn(

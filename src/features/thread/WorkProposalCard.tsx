@@ -108,6 +108,7 @@ function WorkProposalCard({ thread, card, count = null, next }: WorkProposalCard
                 <button
                   key={one.slug}
                   type="button"
+                  tabIndex={0}
                   role="checkbox"
                   aria-checked={on}
                   disabled={sent}

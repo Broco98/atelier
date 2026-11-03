@@ -88,8 +88,10 @@ export function AskButton({
   ...rest
 }: { tone: AskTone; long?: boolean; keycap?: string | null } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
+    // Tab이 앉는 것이 기본이다(WebKit Tab은 맨 `<button>`을 지나친다 — `button-tab-guard.test.ts`). 부르는 쪽이 `tabIndex`를 주면 그것이 이긴다.
     <button
       type="button"
+      tabIndex={0}
       data-long={long || undefined}
       {...rest}
       className={cn(

@@ -18,6 +18,7 @@ export function CopyButton({ text, label, className }: { text: string; label: st
   return (
     <button
       type="button"
+      tabIndex={0}
       aria-label={label}
       onClick={() => {
         void navigator.clipboard?.writeText(text).then(() => {

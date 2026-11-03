@@ -125,6 +125,22 @@ const sectionOf = (html: string, label: string) => {
   return { head: textOf(body.slice(0, body.indexOf('role="table"'))).replace(/<div$/, "").trim(), rows };
 };
 
+// 맨 `<button>`은 macOS WebKit의 Tab이 지나친다 — 제목(이름 바꾸기) · 묶음 머리의 + · 경고의 글 단추도 키보드로 닿아야 한다(restart 03-13b).
+const untabbable = (html: string) =>
+  [...html.matchAll(/<button[^>]*>/g)].map((m) => m[0]).filter((button) => !/\b(tabindex="0"|disabled="")/.test(button));
+
+describe("Service 상세의 Tab", () => {
+  it("판의 단추(제목 · 머리 단추 · ⋯ · 묶음 머리의 + · 줄의 ⋯)에는 모두 Tab이 앉는다", () => {
+    expect(untabbable(render(PAYMENTS))).toEqual([]);
+  });
+
+  it("칸 단위로 고칠 수 없는 파일의 경고 단추에도 Tab이 앉는다", () => {
+    const broken = { ...PAYMENTS, problems: [{ line: 1, kind: "unclosedFrontmatter" as const, message: "frontmatter가 닫히지 않았어요" }] };
+    expect(render(broken)).toMatch(/<button[^>]*>파일로 고치기<\/button>/);
+    expect(untabbable(render(broken))).toEqual([]);
+  });
+});
+
 describe("Service 상세", () => {
   it("머리는 「← Services」 · 이름 · 작업공간 만들기 · 새 채팅 · ⋯이고, 그 아래 설명 한 줄이다", () => {
     const html = render(PAYMENTS);

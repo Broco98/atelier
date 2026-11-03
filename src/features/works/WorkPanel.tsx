@@ -98,8 +98,10 @@ function SpecTab({
   return (
     // 세로 스크롤은 여기까지 — 머리는 패널 카드에 고정되어 항상 보인다. 안쪽은 시안 `.ra-pbody`의 0 6 8이고, 행은 촘촘한 트리 행(시안
     // `.ra-tree-row` — 24 · 둥글기 4 · 사이 2 · 들여쓰기 8 + 깊이 × 12, 레이아웃이 아이콘을 주지 않은 파일은 확장자 글자)이라 글자가 카드 + 14에
-    // 선다(restart 03-12a — 한때 안쪽 8 · 행 28 · 둥글기 10 · 사이 1, 글자 카드 + 16).
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 pb-2 scroll-quiet">
+    // 선다(restart 03-12a — 한때 안쪽 8 · 행 28 · 둥글기 10 · 사이 1, 글자 카드 + 16). 위끝은 상자가 4px 올라갔다 되돌아(`-mt-1 pt-1`) 첫 줄 ·
+    // 그 「경로 복사」의 링(테두리 바깥 4px)이 서고, 줄의 자리는 그대로다(restart 03-13b · `SpecLayoutEditor`의 트리 · `index.css`의 `focus-ring-room`).
+    // 옆 6 · 아래 8은 링보다 넓어 그대로 둔다.
+    <div className="-mt-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 pt-1 pb-2 scroll-quiet">
       {items.length === 0 ? (
         <span className="px-2 py-1.5 text-chat-meta text-fg-tertiary">아직 spec 파일이 없어요</span>
       ) : (

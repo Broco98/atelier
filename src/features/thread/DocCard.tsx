@@ -17,6 +17,7 @@ export function DocCard({ doc, name, onOpen }: { doc: CreatedDoc; name: string; 
   return (
     <button
       type="button"
+      tabIndex={0}
       data-doc-card={doc.path}
       onClick={onOpen}
       className={cn(

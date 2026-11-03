@@ -134,6 +134,13 @@ describe("Services 목록", () => {
     expect(labels).toEqual(["결제 시스템 메뉴", "결제 시스템 범위로 작업공간 만들기", "결제 시스템 범위로 새 채팅"]);
   });
 
+  // 맨 `<button>`은 macOS WebKit의 Tab이 지나친다 — 줄 끝에서 범위로 시작하는 일도 키보드로 닿아야 한다(restart 03-13b).
+  it("줄 끝 단추(⋯ · 작업공간 만들기 · 새 채팅)에는 모두 Tab이 앉는다", () => {
+    const buttons = rowsOf(render()).flatMap(([, row]) => [...row.matchAll(/<button[^>]*>/g)].map((m) => m[0]));
+    expect(buttons).toHaveLength(SERVICES.length * 3);
+    for (const button of buttons) expect(button).toMatch(/\btabindex="0"/);
+  });
+
   it("머리는 제목 · ⌘F로 서는 찾기 칸 · 만들기이고, 표의 열 머리는 이름 · 최근 활동(지금 정렬 — 내림차순)이다", () => {
     const html = render();
     expect(html).toMatch(/<h1[^>]*>Services<\/h1>/);

@@ -136,8 +136,10 @@ function ServiceBody({ service }: { service: Detail }) {
           </span>
         ) : editable ? (
           // 이름을 누르면 그 자리가 입력 칸이 된다 — 쉴 때는 보드의 제목 그대로다.
+          // `tabIndex`를 명시한다 — WebKit의 Tab은 맨 단추에 서지 않는다(`@/lib/roving` 머리말, restart 03-13b).
           <button
             type="button"
+            tabIndex={0}
             aria-label={`${name} — 이름 바꾸기`}
             onClick={() => setRenaming(true)}
             className="max-w-full rounded-ctl text-left wrap-anywhere focus-ring"

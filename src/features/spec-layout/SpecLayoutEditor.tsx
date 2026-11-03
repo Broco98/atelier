@@ -360,6 +360,7 @@ export function OutsideBanner({
             앱의 버튼 농도(`fill-hover` — `quiet-hover`)다. */}
         <button
           type="button"
+          tabIndex={0}
           onClick={onReload}
           className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-sm font-medium text-fg transition-colors quiet-hover focus-ring"
         >
@@ -367,6 +368,7 @@ export function OutsideBanner({
         </button>
         <button
           type="button"
+          tabIndex={0}
           onClick={onKeep}
           className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/10 focus-ring"
         >
@@ -565,6 +567,7 @@ export function TreeCard({
           text="spec 폴더 안내"
           announce="description"
           type="button"
+          tabIndex={0}
           onClick={() => onSelect([])}
           aria-pressed={at.length === 0}
           className={cn(
@@ -635,6 +638,7 @@ function TreeTools({
               render={
                 <button
                   type="button"
+                  tabIndex={0}
                   onClick={() => onMove(move)}
                   disabled={!edits[move]}
                   className="icon-button icon-button-sm text-fg-secondary transition-colors quiet-hover focus-ring disabled:pointer-events-none disabled:opacity-35"
@@ -655,6 +659,7 @@ function TreeTools({
           render={
             <button
               type="button"
+              tabIndex={0}
               onClick={onRemove}
               disabled={!edits.remove}
               aria-label="고른 항목 지우기"
@@ -950,6 +955,7 @@ function TreeRow({
   return (
     <button
       type="button"
+      tabIndex={0}
       role="treeitem"
       aria-level={depth}
       aria-selected={selected}
@@ -1336,6 +1342,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                 key={name}
                 text={name}
                 type="button"
+                tabIndex={0}
                 role="radio"
                 aria-checked={checked}
                 aria-label={name}

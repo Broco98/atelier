@@ -31,6 +31,7 @@ export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void
     <>
       <button
         type="button"
+        tabIndex={0}
         aria-label={`작업공간 열기: ${title}`}
         onClick={onOpen}
         className={cn(
@@ -58,6 +59,7 @@ export function ServiceCrumb({ name, onOpen }: { name: string; onOpen: () => voi
     <>
       <button
         type="button"
+        tabIndex={0}
         aria-label={`Service 열기: ${name}`}
         onClick={onOpen}
         className={cn("min-w-0 truncate rounded-md whitespace-nowrap transition-colors hover:text-fg focus-ring", HEAD_CRUMB)}

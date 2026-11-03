@@ -222,16 +222,25 @@ function ServiceRow({
       actions={
         <>
           <ServiceRowMenu service={service} anchor={wrap} canCopy={canCopy} onAct={onAct} />
+          {/* `tabIndex`를 명시한다 — WebKit의 Tab은 맨 단추에 서지 않는다(`@/lib/roving` 머리말, restart 03-13b). */}
           <Hint
             text="작업공간 만들기"
             aria-label={`${name} 범위로 작업공간 만들기`}
             type="button"
+            tabIndex={0}
             onClick={() => onStart(starts.work)}
             className={PLACE_ROW_BUTTON}
           >
             <GitBranch aria-hidden className="size-3.5" />
           </Hint>
-          <Hint text="새 채팅" aria-label={`${name} 범위로 새 채팅`} type="button" onClick={() => onStart(starts.thread)} className={PLACE_ROW_BUTTON}>
+          <Hint
+            text="새 채팅"
+            aria-label={`${name} 범위로 새 채팅`}
+            type="button"
+            tabIndex={0}
+            onClick={() => onStart(starts.thread)}
+            className={PLACE_ROW_BUTTON}
+          >
             <SquarePen aria-hidden className="size-3.5" />
           </Hint>
         </>

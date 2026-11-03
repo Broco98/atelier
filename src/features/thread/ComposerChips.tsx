@@ -267,6 +267,7 @@ export function NewWorkChip({ onDrop }: NewWorkChoice) {
       {/* × — 이름 끝 5에 선 12 글리프의 단추다. 누를 자리는 글리프보다 크다(20). */}
       <button
         type="button"
+        tabIndex={0}
         aria-label={`${NEW_WORK} 빼기`}
         onClick={onDrop}
         className={cn("-ml-1 flex size-5 shrink-0 items-center justify-center rounded-full outline-none hover:text-fg focus-ring", MUTED)}
@@ -365,7 +366,7 @@ export function ScopeLineText({ scope }: { scope: ReadingScope | undefined }) {
       {line.addProject && (
         <>
           {" · "}
-          <button type="button" onClick={() => void addProject()} className="rounded-sm text-mine outline-none hover:underline focus-ring">
+          <button type="button" tabIndex={0} onClick={() => void addProject()} className="rounded-sm text-mine outline-none hover:underline focus-ring">
             Project 추가
           </button>
         </>

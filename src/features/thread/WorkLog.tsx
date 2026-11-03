@@ -305,7 +305,7 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
   return (
     <div role="group" aria-label={label} data-tool-stop={tool.stop ?? undefined} className="flex min-w-0 flex-col">
       {expandable ? (
-        <button type="button" aria-expanded={open} onClick={toggle} className={cn(ROW, ROW_BUTTON, swapped && "row-in")}>
+        <button type="button" tabIndex={0} aria-expanded={open} onClick={toggle} className={cn(ROW, ROW_BUTTON, swapped && "row-in")}>
           {line}
         </button>
       ) : (
@@ -337,7 +337,7 @@ function GroupLine({ group }: { group: LogGroup }) {
   const [open, setOpen] = useState(false);
   return (
     <div role="group" aria-label={group.label} className="flex min-w-0 flex-col">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((was) => !was)} className={cn(ROW, ROW_BUTTON)}>
+      <button type="button" tabIndex={0} aria-expanded={open} onClick={() => setOpen((was) => !was)} className={cn(ROW, ROW_BUTTON)}>
         <Glyph glyph={group.glyph} />
         <span className="min-w-0 truncate">{group.label}</span>
         <RowChevron open={open} always />
@@ -530,6 +530,7 @@ export function WorkDivider({
       {onToggle ? (
         <button
           type="button"
+          tabIndex={0}
           data-work-divider
           aria-expanded={open}
           onClick={onToggle}

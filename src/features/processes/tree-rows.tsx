@@ -429,6 +429,7 @@ function FoldButton({ fold }: { fold: RowFold }) {
   return (
     <button
       type="button"
+      tabIndex={0}
       aria-label={`${fold.name} ${fold.open ? "접기" : "펼치기"}`}
       onClick={fold.onToggle}
       className="grid size-4.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors quiet-hover focus-ring"
