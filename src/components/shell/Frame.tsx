@@ -1,4 +1,4 @@
-import { Fragment, useRef, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Fragment, useRef, type ReactElement, type ReactNode } from "react";
 import { ChevronRight, GitBranch, Pencil } from "lucide-react";
 import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
@@ -6,10 +6,9 @@ import { InlineRename } from "@/components/ui/inline-rename";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import { clippingInnerClass, PANEL_MOTION, STILL, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
+import { TAB_ROW_COLUMN } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import { HEAD_CRUMB_GAP, HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
-import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 · restart 02a-2). Terminal · Processes · Archive · Settings · 작업 화면 · spec
 // 레이아웃 편집기가 이 틀에 칸을 건넨다(Projects · Service는 03부터 `PlainFrame`이다). 틀 자체(크롬 · 머리 줄 44 · 사이드바 오른쪽 카드 자리)는
@@ -43,18 +42,6 @@ import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 interface CardContent {
   label: string;
   children: ReactNode;
-}
-
-/**
- * 오른쪽 패널 칸 — 작업공간의 spec 패널이다(앱 셸의 작업공간 도구 기둥 — `WorkTools`가 `PanelBox`로 세운다). 저장하는 폭은 **칸의 폭**이다.
- * 따로 여닫는 칸이라 머리 줄의 패널 토글이 함께 선다(`PanelToggle` — 작업공간 화면이 `Frame`의 `panelToggle`로 건넨다). 토글은 `onToggle`을
- * 부르고, ⌘Enter는 화면이 듣고 같은 열림을 뒤집는다 — 둘이 하는 일이 같다(codex-ds 결정 32 「⌘Enter는 그 화면의 오른쪽 패널」). 한때
- * Archive의 spec 목록 패널도 이 칸이라 `Frame`의 `panel`로 건넸다(restart 03-4가 걷었다).
- */
-export interface PanelSlot extends CardContent {
-  open: boolean;
-  onToggle: () => void;
-  size: ResizableWidth;
 }
 
 /**
@@ -182,119 +169,13 @@ function Frame({ head, panelToggle, beside, overlay, children }: FrameProps) {
 }
 
 /**
- * 오른쪽 패널 칸(ui-refresh 결정 4 · 15) — 작업공간의 spec 패널(앱 셸의 기둥). 바깥 상자가 두 번째 `<aside>`이고(e2e
- * `tab-row-floor`가 `aside` 순서를 잰다) 폭이 **틈 8 + 카드의 폭**이다 — 접히면 0이 되어 틈째 걷히고 왼쪽 카드가 카드 자리 오른쪽 끝
- * (레일이 서면 레일 카드 앞 틈)까지 넓어진다(시안 Motion 「패널을 닫으면 문서 카드가 넓어진다」). 왼쪽 카드와는 그 틈으로 갈린다 —
- * 틈은 안쪽 열의 왼쪽 여백이다. 손잡이는 그 틈을 덮는다(`gap` — 틈 안이라 넘침을 숨기는 상자에 잘리지 않는다).
- *
- * 폭은 **카드의 폭**이다(`--panel-width` — 저장 · 끄는 최소 폭도 카드의 것이다). 상자의 기준 폭 · 최소 폭은 그 위에 틈 하나(`space-2`)를
- * 더하고, 끄는 손이 잴 때 그 틈을 뺀다(`useResizableWidth`의 `drawnWidth`).
- *
- * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--panel-min`, 폭 훅이 받은 값)까지 왼쪽 칸에 자리를
- * 내주고, 왼쪽 칸(작업 화면의 문서 칸)에는 **패널 자신의 최소 폭만큼은 남긴다**(`max-width`). 문서 칸은 머리에 탭 줄을 이고 그 줄의
- * 바닥 아래로는 안 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 칸 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를
- * 내준다. 한때 Archive의 문서 | 목록 칸 곁에서는 두 칸의 최소를 남기고 제 최소 폭 아래로도 내줬다(`reserve` — restart 03-4가 그 패널을 걷었다).
- * 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
- *
- * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 칸 줄의
- * min-content에 들어가게 하는 장치다 — 탭 줄을 품은 칸 줄은 제 min-content를 본문 열의 바닥으로 알리는데(`TAB_ROW_COLUMN`),
- * 넓은 트리 이름이 그 바닥도 칸의 폭도 정하지 않는다. 최소 폭은 **펼 때만** 트랜지션한다 — 펴는 순간 곧장 서면 0에서 최소 폭으로 튄 뒤
- * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바와 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
- * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
- *
- * **넘침은 가로만, 움직이는 동안만 자른다** — 카드의 0.5 링이 상자 끝에서 잘리지 않게(02a-15 · 카드의 링은 네 변에 선다, 02a-2). 카드는 상자
- * 끝까지 차서(높이 100% · 폭 = 상자 − 틈) 상자가 넘침을 자르면 바깥 링(`shadow-hairline`)이 위 · 오른쪽 · 아래에서 잘린다. 세로는 늘 놓는다 —
- * 폭만 움직이고 세로로 넘칠 것이 없다(사이드바의 `overflow-x-clip`과 같은 까닭). 가로는 접힌 동안과 접고 펴는 동안만 자른다 — 그동안 카드가
- * 상자에 잘리는 것이 이 패널의 움직임이고(시안 `.ra-panelwrap { overflow: hidden }` · 02a-14c), 접힌 안쪽 열(고정 폭)이 문서의 가로 넘침이 되지
- * 않는다. 다 편 뒤에는 놓는다 — 안쪽 열이 그때 상자 폭을 상한으로 받아(`clippingInnerClass` · `foldingInnerClass`) 넘치는 것은 링뿐이다. 놓는
- * 순간은 펴는 길이만큼 늦는다: 넘침은 이산 값이라 `transition-discrete`로 늦추고, 늦음은 안쪽 열의 상한과 같은 토큰이다. 길이 · 곡선은 상자의
- * 것 하나를 함께 쓴다(따로 적으면 상자 박자의 값이 목록이 된다) — 이산 값은 곡선을 거친 진행의 가운데서 바뀌어 상한보다 조금 뒤에 놓인다.
- * 접을 때는 넘침이 트랜지션 목록에 없어 곧장 자른다. 자르는 선을 링만큼 밖으로 내는 길(`focus-ring-room`처럼 안쪽 여백 + 같은 만큼 바깥
- * 여백)은 이 상자에 못 쓴다 — 상자 폭이 「틈 + 카드」인 것을 끄는 손(`drawnWidth`)과 L3가 잰다. WebKit에는 `overflow-clip-margin`이 없다.
- *
- * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
- * 그래서 **닫힌 동안 안쪽 열은 `inert`다** — 폭만 0인 칸 안의 트리 행에 Tab · 찾기가 닿지 않게 한다(사이드바 목록 구획과 같은 손).
- * 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다. 안에 있던 포커스는 패널 토글로 간다(`useFoldedFocus`). 상자 자신(`aside` — 보조
- * 랜드마크)도 닫힌 동안은 드러내지 않는다(`aria-hidden`) — 안이 다 `inert`라 빈 랜드마크만 남는다. 작업공간의 spec 패널 상자는 앱 셸에 늘
- * 서 있어, 이것이 없으면 작업공간이 아닌 화면마다 빈 `aside`가 랜드마크 목록에 읽힌다(restart 02a-14).
- *
- * **작업공간의 spec 패널은 앱 셸의 작업공간 도구 기둥에 선다**(`WorkTools` — 화면이 바뀌어도 그 자리에 남아 작업공간을 떠날 때 접힘이
- * 보인다, restart 02a-14). 기둥에서는 패널 뒤에 레일 카드가 한 줄로 서서, 남길 폭에서 그 몫(`trail` — 레일 폭 + 틈)을 더 뺀다. 안쪽은
- * 옅어지지 않고 상자에 잘리기만 한다(시안 `.ra-panelwrap`, restart 02a-14c `clippingInnerClass`) — 여닫을 때도, 떠나며 접히는 동안 남긴 마지막
- * 몸이 보일 때도 같다. 한때 Archive의 spec 목록 패널이 이 틀의 카드 줄에서 같은 상자를 쓰며 옅어졌다(`fade` — restart 03-4가 걷었다).
- */
-export function PanelBox({
-  id,
-  slot,
-  trail,
-  still = false,
-}: {
-  id: string;
-  slot: PanelSlot;
-  /** 같은 줄에서 패널 뒤(오른쪽)에 서는 것의 폭(CSS 길이) — 남길 폭을 잴 때 함께 뺀다. 없으면 0이다. */
-  trail?: string;
-  /** 이번 그림은 움직이지 않고 선다 — 상자와 안쪽 열의 트랜지션을 끈다(`STILL` — 작업공간 도구 기둥이 처음 그려질 때). */
-  still?: boolean;
-}) {
-  const { open, size, label, children } = slot;
-  const box = useFoldedFocus<HTMLElement>(open);
-  return (
-    <aside
-      ref={box}
-      id={id}
-      aria-hidden={open ? undefined : true}
-      style={
-        {
-          "--panel-width": `${size.width}px`,
-          "--panel-min": `${size.min}px`,
-          ...(trail === undefined ? {} : { "--panel-trail": trail }),
-          ...(still ? STILL : {}),
-        } as CSSProperties
-      }
-      className={cn(
-        "relative flex contain-inline-size",
-        !size.dragging && PANEL_MOTION,
-        // 넘침은 가로만, 움직이는 동안만 자른다(아래 머리말 「카드의 링」) — 펼 때 놓는 순간은 바깥 길이만큼 늦고 접을 때는 곧장 자른다.
-        !size.dragging &&
-          (open
-            ? "transition-[flex-basis,min-width,overflow-x] delay-[0s,0s,var(--duration-panel-open)] transition-discrete"
-            : "transition-[flex-basis]"),
-        open
-          ? cn(
-              "overflow-x-visible",
-              "max-w-[calc(100%-var(--panel-min)-var(--panel-trail,0px))] basis-[calc(var(--panel-width)+var(--space-2))]",
-              "min-w-[calc(var(--panel-min)+var(--space-2))]",
-            )
-          : "basis-0 min-w-0 overflow-x-clip",
-      )}
-    >
-      {/* 접히는 동안 글이 되흐르지 않게 안쪽은 고정 폭(틈 + 카드)이고, **펴진 뒤에만** 바깥 폭을 상한으로 받는다 — 좁게 선 칸에서 카드
-          오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass` · `clippingInnerClass`에 있다. 틈은 안쪽 왼쪽 여백이다. */}
-      <div
-        inert={!open}
-        style={still ? STILL : undefined}
-        className={cn(
-          "flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2",
-          clippingInnerClass(open),
-        )}
-      >
-        <Card label={label} className="flex-1">
-          {children}
-        </Card>
-      </div>
-      {open && <ResizeHandle control={size} seat="gap" />}
-    </aside>
-  );
-}
-
-/**
  * 본문 칸 오른쪽의 옆 칸(ui-refresh 결정 15 · 27, 판 06 티켓 07 — 편집기 트리). **늘 열려 있고** 접힘 · 폭 손잡이 · 레일이 없어
  * 본문 칸과 나란히 칸 줄에 선다. 그래서 `aside`가 아니다(`aside`는 사이드바와 오른쪽 패널 둘뿐이다 — `tab-row-floor` ·
  * `works-sidebar` · `archive-docs`가 그 순서를 센다). 본문 카드와는 틈 8로 갈린다 — 틈은 상자의 안쪽 왼쪽 여백이고, 기준 폭은 틈 + 카드
  * 폭이다.
  *
  * 폭을 `flex-basis`로 주고 줄어들게 둔다(`min-w-0`) — 창이 좁아 본문 칸이 제 최소 폭보다 좁아질 때만 그만큼 자리를 내준다. 작업 패널
- * 칸이 문서 칸에 최소 폭을 남기는 것과 같은 손버릇이다(`PanelBox`). 본문 칸의 최소 폭은 그 칸의 몫이다(화면이 건넨다 — 편집기의
+ * 칸이 문서 칸에 최소 폭을 남기는 것과 같은 손버릇이다(`WorkTools`의 `PanelBox`). 본문 칸의 최소 폭은 그 칸의 몫이다(화면이 건넨다 — 편집기의
  * 폼 칸은 몸을 격리해 바닥이 없고, 밖 변경 배너가 선 동안만 그 배너가 바닥이다. 화면의 조작은 머리 줄에 선다).
  *
  * **이 칸의 머리가 탭 줄처럼 바닥이다.** 옆 칸이 선 칸 줄은 본문 열의 격리를 벗고(위 칸 줄), 이 칸의 몸은 제 내용 폭을 안
@@ -508,7 +389,7 @@ interface CardProps {
 
 /**
  * 카드 하나(ui-refresh 결정 15 · restart 02a-2). 이름(`aria-label`)과 표식(`data-slot="card"`)을 들고, 제 겉(`CARD_FACE` — 둥글기 8 ·
- * 0.5 링)으로 선다 — 이웃 카드와는 8 틈으로 갈리고, 그 틈은 카드를 품은 상자가 든다(`PanelBox` · `BesideBox`). 카드가
+ * 0.5 링)으로 선다 — 이웃 카드와는 8 틈으로 갈리고, 그 틈은 카드를 품은 상자가 든다(`BesideBox` · `WorkTools`의 `PanelBox`). 카드가
  * 넘침을 자른다(`overflow-hidden`) — 안의 스크롤 상자 · 셸 화면이 칸 밖으로 그려지지 않는다. `relative`는 칸 안에 덮이는 것(설정의
  * 메시지 등)의 기준이다.
  *

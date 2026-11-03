@@ -1035,7 +1035,7 @@ function WorksPage({
     //
     // 탭 줄의 바닥은 그 줄을 이는 카드가 들고(`TAB_ROW_CARD`), 모자라면 틀의 본문 열이 사이드바에게 자리를 요구한다
     // (`TAB_ROW_COLUMN`) — 카드가 제 몸을 격리하므로 넓은 문서 · xterm이 그 바닥을 부풀리지 않고, spec 패널은 같은 카드 자리 줄에서 제
-    // 최소 폭까지 본문 카드에 자리를 내준다(`Frame`의 `PanelBox`).
+    // 최소 폭까지 본문 카드에 자리를 내준다(`WorkTools`의 `PanelBox`).
     <>
       <Frame
         head={head}

@@ -30,22 +30,23 @@ describe("접히는 패널의 박자", () => {
     expect(foldingInnerClass(false)).not.toContain("max-w-full");
   });
 
-  // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — `Frame.tsx`에 산다.
+  // 작업 패널의 접히는 상자는 앱 셸의 작업공간 도구 기둥이 든다(`WorkTools.tsx`의 `PanelBox`). 한때 공용 틀의 패널 칸이라(ui-refresh 결정 27)
+  // `Frame.tsx`에 살았다 — 쓰는 자리가 기둥 하나라 restart 코드 리뷰가 옮겼다.
   // 공용 틀의 여백(머리 줄 · 카드 줄)도 패널과 함께 움직여 같은 박자를 읽는다(한때 분할 열도 그랬다 — restart 02a-13이 분할을 걷었다).
   // 사이드바는 접는 장치(안쪽 고정 폭 · 펴진 뒤의 상한)는 같고 박자만 제 것이다(아래 「사이드바 열고 닫기」).
   // 작업공간의 spec 패널 상자(`PanelBox`)는 같은 박자로 움직이되 안쪽은 옅어지지 않고 잘리기만 한다(`clippingInnerClass` — restart 02a-14c).
   // 한때 Archive의 spec 목록 패널이 같은 상자에서 이 규격(`foldingInnerClass`)으로 옅어졌다(restart 03-4가 걷었다).
-  it("사이드바와 공용 틀의 오른쪽 패널이 이 박자를 쓴다", () => {
-    const frame = readFileSync("src/components/shell/Frame.tsx", "utf8");
-    expect(frame).toContain("clippingInnerClass(open)");
-    expect(frame).toContain("PANEL_MOTION");
+  it("사이드바와 작업공간의 오른쪽 패널이 이 박자를 쓴다", () => {
+    const panel = readFileSync("src/components/shell/WorkTools.tsx", "utf8");
+    expect(panel).toContain("clippingInnerClass(open)");
+    expect(panel).toContain("PANEL_MOTION");
     const sidebar = readFileSync("src/components/shell/Sidebar.tsx", "utf8");
     expect(sidebar).toContain('foldingInnerClass(open, "sidebar")');
     expect(sidebar).toContain("SIDEBAR_MOTION");
     expect(sidebar).not.toContain("PANEL_MOTION");
   });
 
-  // 패널과 함께 움직이는 자리 셋 — 사이드바 · 공용 틀(목록 · 작업 패널 · 머리 줄 여백), 사이드바 끝을 따르고 전체화면에 들고
+  // 패널과 함께 움직이는 자리 넷 — 사이드바 · 공용 틀(머리 줄 여백) · 작업공간 도구 기둥(작업 패널 — 한때 공용 틀에 있었다), 사이드바 끝을 따르고 전체화면에 들고
   // 날 때 옮겨 가는 머리 줄의 왼쪽 칸(셸 컨트롤 · 이름 자리의 시작 — `ShellHead`). 박자를 제 리터럴로
   // 다시 적지 않는다 — 셸 컨트롤의 `duration-[220ms]`가 한때 이 검사 밖이라 지나갔다. 한때 분할의 되돌림을 끝내는 타이머
   // (`useSplitRatio`)도 넷째였다(restart 02a-13이 분할을 걷었다).
@@ -53,6 +54,7 @@ describe("접히는 패널의 박자", () => {
     for (const path of [
       "src/components/shell/Sidebar.tsx",
       "src/components/shell/Frame.tsx",
+      "src/components/shell/WorkTools.tsx",
       "src/components/shell/ShellHead.tsx",
     ]) {
       const source = readFileSync(path, "utf8");

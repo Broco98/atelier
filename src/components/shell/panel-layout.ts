@@ -60,7 +60,7 @@ export const WORK_PANEL_WIDTH = 340;
 /**
  * 오른쪽 패널 카드의 폭 범위(px) — 끌어서 고를 수 있는 가장 좁은 폭과 넓은 폭이다. 작업 패널(`WorksPage`)과 spec 목록 패널
  * (`ArchivePage`)이 같은 칸 규격이라 둘의 폭 훅이 함께 읽는다(레일의 L3 진열대도). 범위는 지금 것 그대로다(codex-ds 스펙 S4). 최대
- * 560은 목록 칸 둘(Projects · Archive)과 같은 값이다. 최소 폭은 창이 좁을 때 카드가 줄어드는 바닥이기도 하다(`Frame`의 `PanelBox`).
+ * 560은 목록 칸 둘(Projects · Archive)과 같은 값이다. 최소 폭은 창이 좁을 때 카드가 줄어드는 바닥이기도 하다(`WorkTools`의 `PanelBox`).
  */
 export const PANEL_MIN_WIDTH = 260;
 export const PANEL_MAX_WIDTH = 560;
@@ -121,7 +121,7 @@ export const SIDEBAR_MOTION = "duration-sidebar ease-spring motion-reduce:transi
 
 
 /**
- * 접히는 패널 **안쪽 열**의 클래스 — 사이드바와 오른쪽 패널(작업 패널 · spec 목록 패널, `Frame`의 `PanelBox`)이 같은 장치를 쓰고,
+ * 접히는 패널 **안쪽 열**의 클래스 — 사이드바와 오른쪽 패널(작업 패널 · spec 목록 패널, `WorkTools`의 `PanelBox`)이 같은 장치를 쓰고,
  * 박자(`beat`)만 바깥 상자의 것을 따른다 — 오른쪽 패널은 `PANEL_MOTION`, 사이드바는 `SIDEBAR_MOTION`이다.
  *
  * 안쪽은 접히는 동안 고정 폭이라 되흐르지 않고, **펴진 뒤에만** 바깥 폭을 상한(`max-w-full`)으로 받는다: 펼 때는

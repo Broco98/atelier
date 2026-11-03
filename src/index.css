@@ -267,8 +267,6 @@
     --color-mine: var(--mine);
     --color-mine-soft: var(--mine-soft);
     --color-surface-tray: var(--surface-tray);
-    --color-border-panel: var(--border-panel);
-    --color-border-summary: var(--border-summary);
     --color-border-slot: var(--border-slot);
     --color-border-faint: var(--border-faint);
     --color-separator: var(--separator);
@@ -366,10 +364,8 @@
     --shadow-lifted: var(--shadow-hairline), var(--shadow-card);
     --shadow-sheet: var(--shadow-hairline), var(--shadow-summary);
     /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — DS 2판 표 밖의 값이다. 값은 아래 `:root`의 「Codex 실측 그림자」가 든다. */
-    --shadow-panel: var(--shadow-panel);
     --shadow-menu: var(--shadow-menu);
     --shadow-summary: var(--shadow-summary);
-    --shadow-prompt: var(--shadow-prompt);
     /* **Codex 시간의 유틸리티**(`duration-basic` · `duration-panel` …). 값은 아래 `@theme static`의 `--duration-*`이다 —
        Tailwind의 시간 이름공간은 `--transition-duration-*`라 `--duration-*`만 두면 `duration-panel`이 아무 CSS도 안 낸다. */
     --transition-duration-basic: var(--duration-basic);
@@ -953,8 +949,6 @@
          fg-thinking           「생각 중」의 바랜 글자(12) — 띠(`shimmer-band`)가 그 위를 밝게 지나간다
          mine                  내 차례 알약의 글자(05) · 위 칸 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
          surface-tray          첫 화면 입력창 밑 트레이(10) · 대기 메시지(11)
-         border-panel          흰 판의 0.5 테두리(02). 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
-         border-summary        한때 요약 카드의 0.5 테두리(07) — restart 02b-8이 카드 겉을 0.5 링 그림자(`shadow-sheet`)로 옮겨 앱이 읽지 않는다
          border-slot           입력창 자리 카드의 1px 테두리(11)
          border-faint          한때 작업 중 점의 흰 원(32) 1px 테두리(11) — restart 02b-7이 원을 바깥 1px `border-heavy` 고리(Thread 보드
                                `.ra-jump`)로 옮겨 앱이 읽지 않는다
@@ -982,8 +976,6 @@
     --fg-thinking: #aeaeae;
     --mine: #2c67c5;
     --surface-tray: #f4f4f4;
-    --border-panel: #e8e8e8;
-    --border-summary: #dadadb;
     --border-slot: rgba(26, 28, 31, 0.078);
     --border-faint: rgba(0, 0, 0, 0.04);
     --separator: #e5e5e5;
@@ -1076,15 +1068,13 @@
     --shadow-prominent: 0 0 0 0.5px #1a1c1f1f, 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
     --shadow-2xl: 0 16px 32px -8px #00000030;
     /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — 위 「Codex 실측 색」처럼 다크 값이 없다.
-         panel    흰 판의 위 그림자(02) — 테두리는 `border-panel` 0.5. 02a-2가 판을 걷어 앱에는 읽는 자리가 없다 — 옛 판을 재는 L3(`frame-sidebar`)만 읽는다
-         menu     한때 사람 메뉴(04) — 0.5 링이 그림자 첫 겹에 든다. 02a-3이 메뉴를 걷은 뒤로 사이드바는 읽지 않는다
+         menu     되돌리기 알림(`toast.tsx`의 undo 갈래) — 0.5 링이 그림자 첫 겹에 든다. 한때 사람 메뉴(04)가 읽었다(02a-3이 메뉴를 걷었다)
          summary  요약 카드(07) — restart 02b-8부터 0.5 링 `hairline`과 겹친 `sheet`(위 `@theme`)로 읽는다
-         prompt   한때 입력창(10) — DS `composer`의 바깥 흐림 40이 Codex에서 80이다(스펙 §9). restart 02b-2가 입력창을 시안(Composer의
-                  `--shadow-composer`, 흐림 40 · 다크는 안쪽 실선)으로 돌려 앱에는 읽는 자리가 없다 */
-    --shadow-panel: 0 -1px 8px rgba(0, 0, 0, 0.03);
+       한때 흰 판의 위 그림자 `panel`(02 — 테두리 `border-panel` 0.5, 02a-2가 판을 걷었다) · 입력창의 `prompt`(10 — DS `composer`의 바깥 흐림 80,
+       restart 02b-2가 입력창을 시안 `composer`로 돌렸다)와 요약 카드의 0.5 테두리 `border-summary`(07 — restart 02b-8이 `sheet`로 옮겼다)가
+       있었다. 읽는 자리가 없어 restart 코드 리뷰(review-fix)가 걷었다. */
     --shadow-menu: 0 0 0 0.5px rgba(26, 28, 31, 0.117), 0 8px 24px rgba(0, 0, 0, 0.08);
     --shadow-summary: 0 6px 20px rgba(0, 0, 0, 0.06);
-    --shadow-prompt: 0 0 0 1px #0000000a, 0 2px 8px #0000000a, 0 4px 80px 8px #00000006;
 
     /* 원시 팔레트 — 위 토큰들이 고른 단의 원본이다. 유틸리티로 잇지 않는다(`@theme inline`의 주석) */
     --gray-0: #ffffff;
